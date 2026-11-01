@@ -2,7 +2,7 @@
 
 Gestion scolaire modulaire, de la maternelle au supérieur.
 
-Modules 01 et 02 fusionnés ; module 03 multi-établissements en développement. Django 5.2 LTS/API, React 19, PostgreSQL 17, Docker, CI GitHub et configurations Render séparées. Version 0.3.0 (branche de développement).
+Modules 01 et 02 fusionnés ; module 03 multi-établissements en développement. Django 5.2 LTS/API, React 19, PostgreSQL 17, Docker, CI GitHub et configurations Render séparées. Version 0.4.0 (phase 1, branches intégrées après validation).
 
 ## Lancer en local
 

@@ -31,7 +31,7 @@ def health(request):
         {
             "status": "ok",
             "product": "YEM",
-            "version": "0.2.0",
+            "version": "0.4.0",
             "commit": os.environ.get("RENDER_GIT_COMMIT", "local"),
             "environment": settings.ENVIRONMENT,
             "stack": {

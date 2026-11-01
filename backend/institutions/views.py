@@ -279,7 +279,11 @@ def school_settings(request, school_id):
             except (PolicyValidationError, TypeError, AttributeError, KeyError) as exc:
                 return JsonResponse({"error": "Barème invalide : " + str(exc)}, status=422)
         if obj is None:
-            obj = SchoolSetting.objects.create(school=school, scope_key=key, scope=scope, values=values)
+            try:
+                with transaction.atomic():
+                    obj = SchoolSetting.objects.create(school=school, scope_key=key, scope=scope, values=values)
+            except IntegrityError:
+                return JsonResponse({"error": "Conflit de version."}, status=409)
         else:
             obj.values = values
             obj.revision += 1
