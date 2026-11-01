@@ -194,9 +194,11 @@ def school_roles(request, school_id):
     if not set(perms) <= set(member.role.permissions):
         return refuse()
     try:
-        role = SchoolRole.objects.create(
-            school=school, code=code, label=label.strip(), permissions=sorted(set(perms))
-        )
+        # A savepoint keeps the outer request/test transaction usable after uniqueness errors.
+        with transaction.atomic():
+            role = SchoolRole.objects.create(
+                school=school, code=code, label=label.strip(), permissions=sorted(set(perms))
+            )
     except IntegrityError:
         return JsonResponse({"error": "Ce rôle existe déjà."}, status=409)
     log_event(school, request, "role_created", role.code)
