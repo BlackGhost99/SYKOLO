@@ -1,7 +1,7 @@
 # Creates NEW resources only after explicit approval. See docs/deployment.md.
 services:
   - type: web
-    name: sykolo-production
+    name: yem-production
     runtime: docker
     repo: https://github.com/BlackGhost99/SYKOLO
     branch: main
@@ -20,12 +20,12 @@ services:
         generateValue: true
       - key: DATABASE_URL
         fromDatabase:
-          name: sykolo-db-production
+          name: yem-db-production
           property: connectionString
 databases:
-  - name: sykolo-db-production
-    databaseName: sykolo_production
-    user: sykolo_production
+  - name: yem-db-production
+    databaseName: yem_production
+    user: yem_production
     region: frankfurt
     postgresMajorVersion: "17"
     plan: 0.1c-256mb

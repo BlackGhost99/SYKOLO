@@ -30,6 +30,7 @@ def health(request):
     return JsonResponse(
         {
             "status": "ok",
+            "product": "YEM",
             "version": "0.2.0",
             "commit": os.environ.get("RENDER_GIT_COMMIT", "local"),
             "environment": settings.ENVIRONMENT,

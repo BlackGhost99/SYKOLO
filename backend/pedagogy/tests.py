@@ -228,6 +228,7 @@ class ApiTests(SimpleTestCase):
             response = self.client.get("/healthz")
             self.assertEqual(response.json()["commit"], "abc123")
             self.assertEqual(response.json()["stack"]["api"], "django")
+            self.assertEqual(response.json()["product"], "YEM")
 
     def test_readiness_failure_is_unavailable(self):
         with patch("pedagogy.views.connection") as database:

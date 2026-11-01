@@ -1,14 +1,14 @@
 # Déploiement et environnements
 
-## Plan prêt à réviser
+## Mode actuel : aperçu local uniquement
 
-Les Blueprints définissent uniquement de nouvelles ressources SYKOLO dans My Workspace, région Frankfurt. Production : `render.yaml`, branche main, service `sykolo-production`, base `sykolo-db-production`. Staging : `deploy/render.staging.yaml`, branche staging, service `sykolo-staging`, base `sykolo-db-staging`.
+Les Blueprints définissent uniquement de nouvelles ressources YEM dans My Workspace, région Frankfurt. Production : `render.yaml`, branche main, service `yem-production`, base `yem-db-production`. Staging : `deploy/render.staging.yaml`, branche staging, service `yem-staging`, base `yem-db-staging`.
 
 Chaque service utilise Docker, le plan web gratuit de démonstration, le contrôle HTTP `/readyz`, une clé secrète générée par Render et la connexion interne de sa propre base PostgreSQL 17. Chaque base est indépendante, avec 1 Go, plan `0.1c-256mb`, sans accès externe (`ipAllowList: []`). Les déploiements automatiques attendent les contrôles CI.
 
-Les plans de base sont payants. Le seul emplacement PostgreSQL gratuit autorisé dans My Workspace est déjà occupé par une base Gaboshop ; aucune ressource Gaboshop ne doit être réutilisée ou modifiée pour SYKOLO. Les coûts exacts doivent être revus au Dashboard avant création. Ne pas appliquer le Blueprint sans approbation du propriétaire.
+Les plans de base sont payants. Le seul emplacement PostgreSQL gratuit autorisé dans My Workspace est déjà occupé par une base Gaboshop ; aucune ressource Gaboshop ne doit être réutilisée ou modifiée pour YEM. Les coûts exacts doivent être revus au Dashboard avant création. Ne pas appliquer le Blueprint sans approbation du propriétaire.
 
-Aucune base ni service SYKOLO n'a été créé. La tentative de création de `sykolo-db-production` au plan gratuit a été refusée par la revue automatique pour absence d'approbation précise de création d'une ressource persistante de production.
+Le propriétaire a choisi de conserver uniquement l'aperçu local pour le moment. Aucun service ni base Render YEM n'est créé. Les Blueprints restent des configurations préparées ; ne pas les appliquer sans nouvelle demande explicite.
 
 ## Étapes après validation
 
