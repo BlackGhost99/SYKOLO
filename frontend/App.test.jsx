@@ -14,7 +14,11 @@ beforeEach(() => {
     vi.fn(async (path, opts = {}) => {
       const data = opts.body ? JSON.parse(opts.body) : undefined;
       calls.push({ path, data });
-      let body = path.endsWith("/presets")
+      let body = path === "/api/v1/auth/me"
+        ? { authenticated: false }
+        : path.endsWith("/auth/csrf")
+          ? { csrf: "ready" }
+          : path.endsWith("/presets")
         ? presets
         : path === "/healthz"
           ? { version: "0.2.0", commit: "testsha" }

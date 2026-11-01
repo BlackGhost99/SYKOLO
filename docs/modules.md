@@ -1,11 +1,11 @@
 # Ordre des modules
 
-La liste ci-dessous reprend uniquement les trois modules communiqués par le porteur du projet. Les quinze autres ne sont pas encore spécifiés dans ce dépôt.
+La liste ci-dessous reprend uniquement les trois modules communiqués par le porteur du projet. La feuille de route générale comprend 18 modules ; seuls les trois premiers sont suivis ici dans le détail technique.
 
 | Module                                     | Périmètre                                                                                     | État                                                                                                      |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | 01 — Architecture et déploiement           | GitHub, Django/API, React, PostgreSQL, Docker, dev/staging/production, Render et CI/CD        | Code et configurations en validation ; déploiement Render soumis à approbation de création des ressources |
-| 02 — Authentification et sécurité          | Connexion, récupération de compte, MFA, permissions par rôle, audit et protection des données | À développer sur une nouvelle branche après validation du module 01                                       |
+| 02 — Authentification et sécurité          | Connexion, récupération de compte, MFA, permissions par rôle, audit et protection des données | Développé sur feat/module-02-identity-security, en attente de validation CI/PR                                       |
 | 03 — Multi-établissements et configuration | Isolation entre écoles, identité visuelle, paramètres et moteur hiérarchique                  | À développer après le module 02                                                                           |
 
 Le démonstrateur pédagogique livré avec le module 01 est un banc d'essai du moteur configurable, sans comptes d'école ni données réelles. Il ne constitue pas la livraison du module 03.

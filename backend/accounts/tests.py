@@ -123,21 +123,17 @@ class IdentityTests(TestCase):
         started = self.post("/api/v1/auth/mfa/begin", {"password": "Correct Horse Battery Staple 2026!"})
         secret = started.json()["manual_secret"]
         code = totp_at(secret, int(time.time()) // 30)
-        self.post("/api/v1/auth/mfa/confirm", {"code": code})
+        confirmed = self.post("/api/v1/auth/mfa/confirm", {"code": code})
+        self.assertEqual(confirmed.status_code, 200)
+        rescue = confirmed.json()["recovery_codes"][0]
         self.assertEqual(self.post("/api/v1/auth/mfa/disable", {
             "password": "wrong", "code": code,
         }).status_code, 403)
-        device = MFADevice.objects.get(user=self.user)
         recovery = self.post("/api/v1/auth/mfa/disable", {
-            "password": "Correct Horse Battery Staple 2026!",
-            "code": MFARecoveryCode.objects.filter(device=device).first() and self._recovery_code_via_new_enrollment(device),
+            "password": "Correct Horse Battery Staple 2026!", "code": rescue,
         })
-        # A used TOTP may not be replayed; the test uses next valid interval if needed.
-        self.assertIn(recovery.status_code, (200, 403))
-
-    def _recovery_code_via_new_enrollment(self, device):
-        # Deliberately incorrect recovery code; verify denial rather than leaking codes.
-        return "invalid-recovery-code"
+        self.assertEqual(recovery.status_code, 200)
+        self.assertFalse(MFADevice.objects.filter(user=self.user).exists())
 
     def test_superuser_audit_only(self):
         admin = get_user_model().objects.create_superuser(
