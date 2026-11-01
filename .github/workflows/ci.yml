@@ -39,7 +39,7 @@ jobs:
       - run: python backend/manage.py check
       - run: python backend/manage.py makemigrations --check --dry-run
       - run: python backend/manage.py migrate --noinput
-      - run: python backend/manage.py test pedagogy accounts
+      - run: python backend/manage.py test pedagogy accounts institutions
       - name: Verify production settings fail closed
         env:
           APP_ENV: production
