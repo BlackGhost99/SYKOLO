@@ -100,6 +100,7 @@ def sign_in(request):
             audit(request, "mfa_failed", user)
             return JsonResponse({"error": "Code de vérification invalide.", "mfa_required": True}, status=401)
     login(request, user)
+    request.session["mfa_verified"] = bool(device)
     request.session.set_expiry(8 * 3600)
     clear_throttle(key)
     audit(request, "login_success", user)
@@ -232,6 +233,7 @@ def mfa_confirm(request):
         device.confirmed_at = timezone.now()
         device.save(update_fields=["confirmed_at"])
         codes = new_recovery_codes(device)
+    request.session["mfa_verified"] = True
     audit(request, "mfa_enabled", request.user)
     return JsonResponse({"enabled": True, "recovery_codes": codes})
 
@@ -248,6 +250,7 @@ def mfa_disable(request):
     if not verify_factor(request.user, data.get("code")):
         return JsonResponse({"error": "Code de vérification invalide."}, status=403)
     MFADevice.objects.filter(user=request.user).delete()
+    request.session["mfa_verified"] = False
     audit(request, "mfa_disabled", request.user)
     return JsonResponse({"enabled": False})
 
@@ -255,8 +258,8 @@ def mfa_disable(request):
 @require_GET
 @authorized
 def platform_audit(request):
-    if not request.user.is_superuser:
-        return JsonResponse({"error": "Accès refusé."}, status=403)
+    if not request.user.is_superuser or not request.session.get("mfa_verified", False):
+        return JsonResponse({"error": "Accès plateforme réservé au super-administrateur avec MFA vérifié."}, status=403)
     rows = AuthAudit.objects.select_related("actor")[:100]
     return JsonResponse({"events": [
         {"id": str(e.pk), "event": e.event, "actor_id": str(e.actor_id) if e.actor_id else None,

@@ -141,6 +141,17 @@ class IdentityTests(TestCase):
             password="Platform Strong Password 2026!",
         )
         self.client.force_login(admin)
+        self.assertEqual(self.client.get("/api/v1/auth/audit").status_code, 403)
+        started = self.post("/api/v1/auth/mfa/begin", {"password": "Platform Strong Password 2026!"})
+        secret = started.json()["manual_secret"]
+        confirmed = self.post("/api/v1/auth/mfa/confirm", {"code": totp_at(secret, int(time.time()) // 30)})
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/auth/audit").status_code, 200)
+        self.post("/api/v1/auth/logout", {})
+        self.assertEqual(self.post("/api/v1/auth/login", {
+            "username": "platform", "password": "Platform Strong Password 2026!",
+            "code": confirmed.json()["recovery_codes"][0],
+        }).status_code, 200)
         self.assertEqual(self.client.get("/api/v1/auth/audit").status_code, 200)
         self.assertNotIn("encrypted_secret", self.client.get("/api/v1/auth/audit").content.decode())
 
