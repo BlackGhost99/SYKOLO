@@ -22,13 +22,13 @@ if not SECRET_KEY:
 ALLOWED_HOSTS = [
     h.strip()
     for h in os.environ.get(
-        "DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver"
+        "DJANGO_ALLOWED_HOSTS", "" if DEPLOYED else "localhost,127.0.0.1,testserver"
     ).split(",")
     if h.strip()
 ]
 if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
     ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
-if DEPLOYED and "*" in ALLOWED_HOSTS:
+if DEPLOYED and (not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS):
     raise ImproperlyConfigured("Un nom d’hôte explicite est requis.")
 INSTALLED_APPS = [
     "django.contrib.auth",
