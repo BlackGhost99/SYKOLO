@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.staticfiles",
     "accounts",
+    "institutions",
     "pedagogy",
 ]
 AUTH_USER_MODEL = "accounts.User"

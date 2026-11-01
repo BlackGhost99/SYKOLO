@@ -240,7 +240,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <span className="avatar">YE</span>
           <div>
-            Atelier YEM<small>Fondations · v0.2.0</small>
+            Atelier YEM<small>Fondations · v0.4.0</small>
           </div>
         </div>
       </aside>
@@ -747,7 +747,7 @@ export default function App() {
             <span>
               {version
                 ? `v${version.version} · ${version.commit.slice(0, 7)}`
-                : "v0.2.0"}
+                : "v0.4.0"}
             </span>
           </footer>
         </main>

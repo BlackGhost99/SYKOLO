@@ -2,7 +2,7 @@
 
 Gestion scolaire modulaire, de la maternelle au supérieur.
 
-Modules 01 et 02 : architecture et sécurité des comptes (module 02 en vérification). Django 5.2 LTS/API, React 19, PostgreSQL 17, Docker, CI GitHub et configurations Render séparées. Version 0.3.0 (branche de développement).
+Modules 01 et 02 fusionnés ; module 03 multi-établissements en développement. Django 5.2 LTS/API, React 19, PostgreSQL 17, Docker, CI GitHub et configurations Render séparées. Version 0.4.0 (phase 1, branches intégrées après validation).
 
 ## Lancer en local
 
@@ -55,3 +55,9 @@ Les calculs et la validation passent par Django. Les profils restent dans le nav
 - POST `/api/v1/policies/validate` et `/api/v1/evaluate` : JSON et en-tête `X-CSRFToken` requis.
 
 Voir [déploiement](docs/deployment.md), [architecture](docs/architecture.md) et [ordre des modules](docs/modules.md). Les configurations Render sont prêtes à réviser ; aucune ressource YEM n'est actuellement créée sur Render. Le module 02 n'est pas un déploiement. Les comptes initiaux sont provisionnés par la commande Django `createsuperuser` (aucune inscription libre). La récupération par email ne fonctionne en environnement déployé qu'après configuration SMTP HTTPS.
+
+## Module 03 — organisations et écoles
+
+Les nouvelles API sont sous `/api/v1/organizations` et `/api/v1/schools`. L'utilisateur authentifié crée une organisation et devient fondateur. Le fondateur crée une école puis nomme **explicitement** un directeur parmi les comptes existants. Fondateur n'est jamais directeur automatiquement. Chaque école possède ses rôles modifiables, ses membres, ses propres configurations et son audit. Une école étrangère répond 404 même si son UUID est connu. L'héritage des réglages (établissement/année/cycle/niveau/classe) est versionné avec verrouillage optimiste et contrôle des barèmes par le moteur Django. Cette base ne contient ni dossiers élèves ni notes officielles.
+
+L'interface de la phase 1 affiche les organisations, écoles, affectations et paramètres d'école après connexion. Les permissions métier et configurations fines sont pilotées par l'API. L'atelier public reste séparé des données scolaires réelles.

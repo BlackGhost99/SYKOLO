@@ -3,6 +3,7 @@ from pedagogy import views
 
 urlpatterns = [
     path("api/v1/auth/", include("accounts.urls")),
+    path("api/v1/", include("institutions.urls")),
     path("", views.index),
     path("healthz", views.health),
     path("readyz", views.ready),
