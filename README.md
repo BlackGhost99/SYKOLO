@@ -59,3 +59,5 @@ Voir [déploiement](docs/deployment.md), [architecture](docs/architecture.md) et
 ## Module 03 — organisations et écoles
 
 Les nouvelles API sont sous `/api/v1/organizations` et `/api/v1/schools`. L'utilisateur authentifié crée une organisation et devient fondateur. Le fondateur crée une école puis nomme **explicitement** un directeur parmi les comptes existants. Fondateur n'est jamais directeur automatiquement. Chaque école possède ses rôles modifiables, ses membres, ses propres configurations et son audit. Une école étrangère répond 404 même si son UUID est connu. L'héritage des réglages (établissement/année/cycle/niveau/classe) est versionné avec verrouillage optimiste et contrôle des barèmes par le moteur Django. Cette base ne contient ni dossiers élèves ni notes officielles.
+
+L'interface de la phase 1 affiche les organisations, écoles, affectations et paramètres d'école après connexion. Les permissions métier et configurations fines sont pilotées par l'API. L'atelier public reste séparé des données scolaires réelles.

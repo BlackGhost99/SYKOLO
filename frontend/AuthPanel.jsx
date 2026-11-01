@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import SchoolPanel from "./SchoolPanel.jsx";
 
 const csrfToken = () =>
   document.cookie.split("; ").find((item) => item.startsWith("csrftoken="))?.split("=")[1] || "";
@@ -72,6 +73,7 @@ export default function AuthPanel() {
             {account.mfa_enabled && <button disabled={busy} onClick={() => setTab("disable")}>Désactiver le MFA</button>}
             <button disabled={busy} onClick={() => setTab("change")}>Changer le mot de passe</button>
           </div>
+          <SchoolPanel />
           {tab === "mfa" && !account.mfa_enabled && (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               if (!pending) {
