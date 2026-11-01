@@ -2,7 +2,7 @@
 
 Gestion scolaire modulaire, de la maternelle au supérieur.
 
-Module 01 : architecture et déploiement. Django 5.2 LTS/API, React 19, PostgreSQL 17, Docker, CI GitHub et configurations Render séparées. Version 0.2.0.
+Modules 01 et 02 : architecture et sécurité des comptes (module 02 en vérification). Django 5.2 LTS/API, React 19, PostgreSQL 17, Docker, CI GitHub et configurations Render séparées. Version 0.3.0 (branche de développement).
 
 ## Lancer en local
 
@@ -45,7 +45,7 @@ La CI utilise PostgreSQL 17, exécute les migrations, les tests backend/frontend
 
 Huit modèles éditables : notes sur 10/15/20/100, pourcentages, lettres, appréciations et compétences. Maximum libre, seuils, libellés, équivalences, coefficients, décimales, absences, aperçu de bulletin et prévisualisation d'alerte. Les seuils des modèles sont des exemples, pas des normes institutionnelles.
 
-Les calculs et la validation passent par Django. Les profils restent dans le navigateur et s'importent/s'exportent en JSON. Aucun compte utilisable, dossier élève, paiement, bulletin officiel ou envoi de message n'est livré dans ce module. Données fictives uniquement.
+Les calculs et la validation passent par Django. Les profils restent dans le navigateur et s'importent/s'exportent en JSON. Le module 02 ajoute connexion sur invitation/administration, MFA TOTP, codes de secours, récupération de mot de passe par email, limites d'essais et audit. Aucun dossier élève, paiement ni bulletin officiel n'est livré. Données fictives uniquement.
 
 ## Environnements et API
 
@@ -54,4 +54,4 @@ Les calculs et la validation passent par Django. Les profils restent dans le nav
 - GET `/api/v1/presets` : modèles et cookie CSRF.
 - POST `/api/v1/policies/validate` et `/api/v1/evaluate` : JSON et en-tête `X-CSRFToken` requis.
 
-Voir [déploiement](docs/deployment.md), [architecture](docs/architecture.md) et [ordre des modules](docs/modules.md). Les configurations Render sont prêtes à réviser ; aucune ressource YEM n'est actuellement créée sur Render.
+Voir [déploiement](docs/deployment.md), [architecture](docs/architecture.md) et [ordre des modules](docs/modules.md). Les configurations Render sont prêtes à réviser ; aucune ressource YEM n'est actuellement créée sur Render. Le module 02 n'est pas un déploiement. Les comptes initiaux sont provisionnés par la commande Django `createsuperuser` (aucune inscription libre). La récupération par email ne fonctionne en environnement déployé qu'après configuration SMTP HTTPS.

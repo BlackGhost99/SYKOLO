@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import AuthPanel from "./AuthPanel.jsx";
 // Keep the existing namespace so saved profiles survive the product rename.
 const KEY = "sykolo.policies.v1";
 const clone = (x) => structuredClone(x);
@@ -231,7 +232,7 @@ export default function App() {
           <span>◈</span>01 · Architecture & déploiement
         </a>
         <a className="nav" href="#roadmap">
-          <span>◎</span>02 · Authentification & sécurité
+          <span>◎</span>02 · Comptes et sécurité
         </a>
         <a className="nav" href="#roadmap">
           <span>▦</span>03 · Multi-établissements
@@ -255,6 +256,7 @@ export default function App() {
           </span>
         </header>
         <main>
+          <AuthPanel />
           <div className="heading">
             <div>
               <p className="eyebrow">VOTRE ÉCOLE, VOS RÈGLES</p>

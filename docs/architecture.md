@@ -18,7 +18,7 @@ Les notes numériques sont normalisées en pourcentage avant pondération. Les c
 
 ## Modules 02 et 03 à développer
 
-L'authentification, la récupération de compte, le MFA, les permissions métier et le journal d'audit ne sont pas implémentés. Les protections de transport déjà présentes (CSRF, CSP, hôtes explicites, HTTPS, cookies sécurisés, limites de taille) constituent le socle du module 02.
+Le module 02 développe l'authentification par session Django (CSRF), l'identité UUID, MFA TOTP chiffré et anti-rejeu, les codes de secours à usage unique, la récupération email avec jeton expirant et le journal des événements d'authentification. Les rôles et permissions métier propres aux établissements, dépendants de la future adhésion d'école, arrivent au module 03. Les protections de transport déjà présentes (CSRF, CSP, hôtes explicites, HTTPS, cookies sécurisés, limites de taille) constituent le socle du module 02.
 
 Le module 03 introduira organisation/fondateur, école, campus, année et cycles configurables, adhésions et isolation inter-écoles. Fondateur, directeur, comptable, secrétaire, enseignant, parent et apprenant auront des droits contrôlés côté serveur par action et périmètre. Un fondateur ne doit pas être assimilé automatiquement à un directeur.
 
@@ -27,3 +27,11 @@ Les configurations institutionnelles seront versionnées par école/année/cycle
 ## Limites de la livraison
 
 Le laboratoire est public et utilise des données fictives ; ses profils restent uniquement dans le navigateur. La présence de PostgreSQL et du modèle utilisateur initial ne signifie pas que l'authentification, le multi-établissements ou le stockage institutionnel sont disponibles. Le serveur ne conserve ni profil pédagogique ni dossier élève à ce stade.
+
+## Sécurité des comptes (module 02)
+
+Pas d'inscription publique : le premier exploitant utilise `python backend/manage.py createsuperuser`, puis des invitations et adhésions par école seront livrées au module 03. Les comptes ne donnent aucun droit sur les données scolaires. Les sessions utilisent HttpOnly, SameSite=Lax, rotation CSRF et durée maximum de huit heures. Les échecs de connexion sont limités par empreinte HMAC de l'adresse serveur et de l'identifiant sur une fenêtre de 15 minutes, persistée en base ; dans une future infrastructure proxy, revoir l'extraction de l'IP derrière un proxy de confiance. L'audit stocke type d'action, utilisateur identifié le cas échéant, horodatage et empreinte IP, jamais mot de passe, code TOTP ou adresse IP brute. Le journal de l'application n'est pas une archive WORM.
+
+Le secret TOTP est chiffré par Fernet avec une clé indépendante `MFA_ENCRYPTION_KEY` (32 caractères minimum en staging/production). La rotation de cette clé nécessite une procédure de migration des secrets. Les codes de secours sont stockés sous empreinte HMAC et consommés une seule fois. Récupération de compte : Django PasswordResetTokenGenerator, validité 30 minutes et tokens invalidés après changement du mot de passe. La remise à zéro exige un serveur SMTP et une URL HTTPS en staging et production. Une migration complète multi-écoles et les permissions métiers restent à développer.
+
+Le journal d'audit de la plateforme est réservé au super-administrateur ayant validé le MFA dans la session courante ; la création du compte initial permet l'activation du MFA mais pas l'accès au journal avant cette activation. Les futures vues d'exploitation devront appliquer la même règle. L'accès authentifié ne constitue jamais une autorisation multi-établissements.

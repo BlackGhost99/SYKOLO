@@ -39,17 +39,18 @@ jobs:
       - run: python backend/manage.py check
       - run: python backend/manage.py makemigrations --check --dry-run
       - run: python backend/manage.py migrate --noinput
-      - run: python backend/manage.py test pedagogy
+      - run: python backend/manage.py test pedagogy accounts
       - name: Verify production settings fail closed
         env:
           APP_ENV: production
           DJANGO_SECRET_KEY: ci-validation-only-not-a-runtime-secret-abcdefghijklmnopqrstuvwxyz123456789
           DJANGO_ALLOWED_HOSTS: ci.example.test
+          MFA_ENCRYPTION_KEY: ci-not-a-secret-totp-abcdefghijklmnopqrstuvwxyz123456
         run: python backend/manage.py check --deploy --fail-level WARNING
       - run: docker build -t yem:ci .
       - name: Smoke test Docker with PostgreSQL
         run: |
-          docker run -d --name yem-ci --network host -e APP_ENV=staging -e PORT=8000 -e DATABASE_URL="$DATABASE_URL" -e DJANGO_ALLOWED_HOSTS=127.0.0.1 -e DJANGO_SECRET_KEY=ci-container-only-not-a-runtime-secret-abcdefghijklmnopqrstuvwxyz123456789 yem:ci
+          docker run -d --name yem-ci --network host -e APP_ENV=staging -e PORT=8000 -e DATABASE_URL="$DATABASE_URL" -e DJANGO_ALLOWED_HOSTS=127.0.0.1 -e DJANGO_SECRET_KEY=ci-container-only-not-a-runtime-secret-abcdefghijklmnopqrstuvwxyz123456789 -e MFA_ENCRYPTION_KEY=ci-not-a-secret-totp-abcdefghijklmnopqrstuvwxyz123456 yem:ci
           for attempt in $(seq 1 30); do
             if curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/readyz; then break; fi
             sleep 2
