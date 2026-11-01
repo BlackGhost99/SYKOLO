@@ -1,0 +1,362 @@
+[
+  {
+    "id": "numeric-10",
+    "title": "Notes sur 10",
+    "policy": {
+      "schemaVersion": 1,
+      "name": "Notes sur 10",
+      "scale": {
+        "kind": "numeric",
+        "max": 10
+      },
+      "precision": 2,
+      "missing": "exclude",
+      "bands": [
+        {
+          "min": 0,
+          "label": "À renforcer",
+          "value": 25
+        },
+        {
+          "min": 50,
+          "label": "Satisfaisant",
+          "value": 60
+        },
+        {
+          "min": 70,
+          "label": "Bien",
+          "value": 75
+        },
+        {
+          "min": 85,
+          "label": "Très bien",
+          "value": 92
+        }
+      ],
+      "report": {
+        "showScore": true,
+        "showLabel": true
+      },
+      "notification": {
+        "enabled": false,
+        "below": 50,
+        "message": "Un accompagnement pédagogique est à prévoir."
+      }
+    }
+  },
+  {
+    "id": "numeric-15",
+    "title": "Notes sur 15",
+    "policy": {
+      "schemaVersion": 1,
+      "name": "Notes sur 15",
+      "scale": {
+        "kind": "numeric",
+        "max": 15
+      },
+      "precision": 2,
+      "missing": "exclude",
+      "bands": [
+        {
+          "min": 0,
+          "label": "À renforcer",
+          "value": 25
+        },
+        {
+          "min": 50,
+          "label": "Satisfaisant",
+          "value": 60
+        },
+        {
+          "min": 70,
+          "label": "Bien",
+          "value": 75
+        },
+        {
+          "min": 85,
+          "label": "Très bien",
+          "value": 92
+        }
+      ],
+      "report": {
+        "showScore": true,
+        "showLabel": true
+      },
+      "notification": {
+        "enabled": false,
+        "below": 50,
+        "message": "Un accompagnement pédagogique est à prévoir."
+      }
+    }
+  },
+  {
+    "id": "numeric-20",
+    "title": "Notes sur 20",
+    "policy": {
+      "schemaVersion": 1,
+      "name": "Notes sur 20",
+      "scale": {
+        "kind": "numeric",
+        "max": 20
+      },
+      "precision": 2,
+      "missing": "exclude",
+      "bands": [
+        {
+          "min": 0,
+          "label": "À renforcer",
+          "value": 25
+        },
+        {
+          "min": 50,
+          "label": "Satisfaisant",
+          "value": 60
+        },
+        {
+          "min": 70,
+          "label": "Bien",
+          "value": 75
+        },
+        {
+          "min": 85,
+          "label": "Très bien",
+          "value": 92
+        }
+      ],
+      "report": {
+        "showScore": true,
+        "showLabel": true
+      },
+      "notification": {
+        "enabled": false,
+        "below": 50,
+        "message": "Un accompagnement pédagogique est à prévoir."
+      }
+    }
+  },
+  {
+    "id": "numeric-100",
+    "title": "Notes sur 100",
+    "policy": {
+      "schemaVersion": 1,
+      "name": "Notes sur 100",
+      "scale": {
+        "kind": "numeric",
+        "max": 100
+      },
+      "precision": 2,
+      "missing": "exclude",
+      "bands": [
+        {
+          "min": 0,
+          "label": "À renforcer",
+          "value": 25
+        },
+        {
+          "min": 50,
+          "label": "Satisfaisant",
+          "value": 60
+        },
+        {
+          "min": 70,
+          "label": "Bien",
+          "value": 75
+        },
+        {
+          "min": 85,
+          "label": "Très bien",
+          "value": 92
+        }
+      ],
+      "report": {
+        "showScore": true,
+        "showLabel": true
+      },
+      "notification": {
+        "enabled": false,
+        "below": 50,
+        "message": "Un accompagnement pédagogique est à prévoir."
+      }
+    }
+  },
+  {
+    "id": "percentage",
+    "title": "Pourcentages",
+    "policy": {
+      "schemaVersion": 1,
+      "name": "Pourcentages",
+      "scale": {
+        "kind": "percentage",
+        "max": 100
+      },
+      "precision": 2,
+      "missing": "exclude",
+      "bands": [
+        {
+          "min": 0,
+          "label": "À renforcer",
+          "value": 25
+        },
+        {
+          "min": 50,
+          "label": "Satisfaisant",
+          "value": 60
+        },
+        {
+          "min": 70,
+          "label": "Bien",
+          "value": 75
+        },
+        {
+          "min": 85,
+          "label": "Très bien",
+          "value": 92
+        }
+      ],
+      "report": {
+        "showScore": true,
+        "showLabel": true
+      },
+      "notification": {
+        "enabled": false,
+        "below": 50,
+        "message": "Un accompagnement pédagogique est à prévoir."
+      }
+    }
+  },
+  {
+    "id": "letters",
+    "title": "Lettres",
+    "policy": {
+      "schemaVersion": 1,
+      "name": "Lettres",
+      "scale": {
+        "kind": "letters",
+        "max": 100
+      },
+      "precision": 2,
+      "missing": "exclude",
+      "bands": [
+        {
+          "min": 0,
+          "label": "C",
+          "value": 25
+        },
+        {
+          "min": 50,
+          "label": "B",
+          "value": 65
+        },
+        {
+          "min": 75,
+          "label": "A",
+          "value": 82
+        },
+        {
+          "min": 90,
+          "label": "A+",
+          "value": 95
+        }
+      ],
+      "report": {
+        "showScore": false,
+        "showLabel": true
+      },
+      "notification": {
+        "enabled": false,
+        "below": 50,
+        "message": "Un accompagnement pédagogique est à prévoir."
+      }
+    }
+  },
+  {
+    "id": "appreciation",
+    "title": "Appréciations",
+    "policy": {
+      "schemaVersion": 1,
+      "name": "Appréciations",
+      "scale": {
+        "kind": "appreciation",
+        "max": 100
+      },
+      "precision": 2,
+      "missing": "exclude",
+      "bands": [
+        {
+          "min": 0,
+          "label": "À renforcer",
+          "value": 25
+        },
+        {
+          "min": 50,
+          "label": "Satisfaisant",
+          "value": 60
+        },
+        {
+          "min": 70,
+          "label": "Bien",
+          "value": 75
+        },
+        {
+          "min": 85,
+          "label": "Très bien",
+          "value": 92
+        }
+      ],
+      "report": {
+        "showScore": false,
+        "showLabel": true
+      },
+      "notification": {
+        "enabled": false,
+        "below": 50,
+        "message": "Un accompagnement pédagogique est à prévoir."
+      }
+    }
+  },
+  {
+    "id": "competency",
+    "title": "Compétences",
+    "policy": {
+      "schemaVersion": 1,
+      "name": "Compétences",
+      "scale": {
+        "kind": "competency",
+        "max": 100
+      },
+      "precision": 2,
+      "missing": "exclude",
+      "bands": [
+        {
+          "min": 0,
+          "label": "Non acquis",
+          "value": 20
+        },
+        {
+          "min": 40,
+          "label": "En cours",
+          "value": 55
+        },
+        {
+          "min": 70,
+          "label": "Acquis",
+          "value": 80
+        },
+        {
+          "min": 90,
+          "label": "Maîtrisé",
+          "value": 95
+        }
+      ],
+      "report": {
+        "showScore": false,
+        "showLabel": true
+      },
+      "notification": {
+        "enabled": false,
+        "below": 50,
+        "message": "Un accompagnement pédagogique est à prévoir."
+      }
+    }
+  }
+]

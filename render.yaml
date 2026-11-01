@@ -1,0 +1,33 @@
+# Creates NEW resources only after explicit approval. See docs/deployment.md.
+services:
+  - type: web
+    name: sykolo-production
+    runtime: docker
+    repo: https://github.com/BlackGhost99/SYKOLO
+    branch: main
+    region: frankfurt
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /readyz
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sykolo-db-production
+          property: connectionString
+databases:
+  - name: sykolo-db-production
+    databaseName: sykolo_production
+    user: sykolo_production
+    region: frankfurt
+    postgresMajorVersion: "17"
+    plan: 0.1c-256mb
+    diskSizeGB: 1
+    ipAllowList: []
