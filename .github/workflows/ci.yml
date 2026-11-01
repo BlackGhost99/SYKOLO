@@ -1,4 +1,4 @@
-name: Validate SYKOLO
+name: Validate YEM
 on:
   push:
     branches: [main, staging, "feat/**"]
@@ -13,14 +13,14 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: sykolo_test
-          POSTGRES_USER: sykolo_test
+          POSTGRES_DB: yem_test
+          POSTGRES_USER: yem_test
           POSTGRES_PASSWORD: ci-only-password
         ports: ["5432:5432"]
-        options: --health-cmd="pg_isready -U sykolo_test -d sykolo_test" --health-interval=5s --health-timeout=3s --health-retries=10
+        options: --health-cmd="pg_isready -U yem_test -d yem_test" --health-interval=5s --health-timeout=3s --health-retries=10
     env:
       APP_ENV: test
-      DATABASE_URL: postgres://sykolo_test:ci-only-password@localhost:5432/sykolo_test
+      DATABASE_URL: postgres://yem_test:ci-only-password@localhost:5432/yem_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,10 +46,10 @@ jobs:
           DJANGO_SECRET_KEY: ci-validation-only-not-a-runtime-secret-abcdefghijklmnopqrstuvwxyz123456789
           DJANGO_ALLOWED_HOSTS: ci.example.test
         run: python backend/manage.py check --deploy --fail-level WARNING
-      - run: docker build -t sykolo:ci .
+      - run: docker build -t yem:ci .
       - name: Smoke test Docker with PostgreSQL
         run: |
-          docker run -d --name sykolo-ci --network host -e APP_ENV=staging -e PORT=8000 -e DATABASE_URL="$DATABASE_URL" -e DJANGO_ALLOWED_HOSTS=127.0.0.1 -e DJANGO_SECRET_KEY=ci-container-only-not-a-runtime-secret-abcdefghijklmnopqrstuvwxyz123456789 sykolo:ci
+          docker run -d --name yem-ci --network host -e APP_ENV=staging -e PORT=8000 -e DATABASE_URL="$DATABASE_URL" -e DJANGO_ALLOWED_HOSTS=127.0.0.1 -e DJANGO_SECRET_KEY=ci-container-only-not-a-runtime-secret-abcdefghijklmnopqrstuvwxyz123456789 yem:ci
           for attempt in $(seq 1 30); do
             if curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/readyz; then break; fi
             sleep 2
@@ -59,7 +59,7 @@ jobs:
           curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/ > /dev/null
       - name: Container logs on failure
         if: failure()
-        run: docker logs sykolo-ci || true
+        run: docker logs yem-ci || true
       - name: Validate Render blueprint schemas
         run: |
           pip install jsonschema pyyaml

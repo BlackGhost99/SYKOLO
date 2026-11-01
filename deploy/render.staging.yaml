@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: sykolo-staging
+    name: yem-staging
     runtime: docker
     repo: https://github.com/BlackGhost99/SYKOLO
     branch: staging
@@ -19,12 +19,12 @@ services:
         generateValue: true
       - key: DATABASE_URL
         fromDatabase:
-          name: sykolo-db-staging
+          name: yem-db-staging
           property: connectionString
 databases:
-  - name: sykolo-db-staging
-    databaseName: sykolo_staging
-    user: sykolo_staging
+  - name: yem-db-staging
+    databaseName: yem_staging
+    user: yem_staging
     region: frankfurt
     postgresMajorVersion: "17"
     plan: 0.1c-256mb

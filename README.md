@@ -1,4 +1,4 @@
-# SYKOLO
+# YEM
 
 Gestion scolaire modulaire, de la maternelle au supérieur.
 
@@ -54,4 +54,4 @@ Les calculs et la validation passent par Django. Les profils restent dans le nav
 - GET `/api/v1/presets` : modèles et cookie CSRF.
 - POST `/api/v1/policies/validate` et `/api/v1/evaluate` : JSON et en-tête `X-CSRFToken` requis.
 
-Voir [déploiement](docs/deployment.md), [architecture](docs/architecture.md) et [ordre des modules](docs/modules.md). Les configurations Render sont prêtes à réviser ; aucune ressource SYKOLO n'est actuellement créée sur Render.
+Voir [déploiement](docs/deployment.md), [architecture](docs/architecture.md) et [ordre des modules](docs/modules.md). Les configurations Render sont prêtes à réviser ; aucune ressource YEM n'est actuellement créée sur Render.

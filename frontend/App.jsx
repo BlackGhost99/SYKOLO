@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+// Keep the existing namespace so saved profiles survive the product rename.
 const KEY = "sykolo.policies.v1";
 const clone = (x) => structuredClone(x);
 const csrf = () =>
@@ -179,7 +180,7 @@ export default function App() {
       );
       const link = document.createElement("a");
       link.href = url;
-      link.download = "sykolo-profil.json";
+      link.download = "yem-profil.json";
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       notify("Profil exporté.");
@@ -221,8 +222,8 @@ export default function App() {
   return (
     <>
       <aside className="sidebar">
-        <a className="brand" href="/" aria-label="SYKOLO accueil">
-          <span className="brand-icon">S</span>SYKOLO
+        <a className="brand" href="/" aria-label="YEM accueil">
+          <span className="brand-icon">Y</span>YEM
           <span className="brand-dot">.</span>
         </a>
         <p className="side-label">PHASE 1 · FONDATIONS</p>
@@ -236,9 +237,9 @@ export default function App() {
           <span>▦</span>03 · Multi-établissements
         </a>
         <div className="sidebar-bottom">
-          <span className="avatar">SY</span>
+          <span className="avatar">YE</span>
           <div>
-            Atelier SYKOLO<small>Fondations · v0.2.0</small>
+            Atelier YEM<small>Fondations · v0.2.0</small>
           </div>
         </div>
       </aside>
@@ -673,7 +674,7 @@ export default function App() {
                 </section>
                 <section className="report-card">
                   <div className="report-top">
-                    <span>SYKOLO / BULLETIN</span>
+                    <span>YEM / BULLETIN</span>
                     <span>APERÇU</span>
                   </div>
                   <p className="eyebrow">RÉSULTAT SIMULÉ</p>
@@ -740,7 +741,7 @@ export default function App() {
             </div>
           )}
           <footer>
-            SYKOLO <span>Une école singulière. Un système qui s’adapte.</span>
+            YEM <span>Une école singulière. Un système qui s’adapte.</span>
             <span>
               {version
                 ? `v${version.version} · ${version.commit.slice(0, 7)}`
