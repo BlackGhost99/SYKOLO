@@ -714,3 +714,23 @@ footer span:last-child {
     font-size: 7px;
   }
 }
+.field {
+  display: block;
+}
+.field-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 650;
+  margin-bottom: 8px;
+  color: #526b73;
+}
+.entry .field {
+  margin: 0;
+}
+.sidebar .nav {
+  font-size: 10px;
+}
+.success,
+.error {
+  margin-bottom: 20px;
+}

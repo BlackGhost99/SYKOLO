@@ -1,52 +1,57 @@
 # SYKOLO
 
-Gestion scolaire modulaire, de la maternelle au supérieur. Version 0.1.0 : fondations et atelier de configuration pédagogique.
+Gestion scolaire modulaire, de la maternelle au supérieur.
 
-## Démarrer
+Module 01 : architecture et déploiement. Django 5.2 LTS/API, React 19, PostgreSQL 17, Docker, CI GitHub et configurations Render séparées. Version 0.2.0.
 
-Node.js 24.11.1 (sans dépendance externe).
+## Lancer en local
+
+Avec Docker et Docker Compose :
 
 ```sh
-npm ci --ignore-scripts
-npm test
-npm run check
-npm start
+docker compose up --build
 ```
 
-Ouvrir http://localhost:3000. `PORT` est configurable ; écoute sur `0.0.0.0` pour Render.
+Ouvrir http://localhost:3000. PostgreSQL possède un volume local nommé ; les valeurs de connexion de Compose sont réservées au développement.
 
-## Premier module livré
+Sans Docker (Python 3.13 et Node 24) :
 
-- Huit modèles éditables : notes sur 10/15/20/100, pourcentages, lettres, appréciations, compétences.
-- Maximum libre, seuils, libellés, équivalences, coefficients, décimales et absences.
-- Calcul pondéré, aperçu de bulletin et prévisualisation d’une notification sous un seuil configurable.
-- Enregistrement de plusieurs profils dans ce navigateur, réouverture, import/export JSON validé.
-- API stateless : GET `/api/v1/presets`, POST `/api/v1/policies/validate`, POST `/api/v1/evaluate`.
-- Santé/version/commit : GET `/healthz`.
+```sh
+python -m venv .venv
+# Windows : .venv/Scripts/python.exe ; Linux : .venv/bin/python
+.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
+npm ci --ignore-scripts
+npm run build
+.venv/Scripts/python.exe backend/manage.py collectstatic --noinput
+.venv/Scripts/python.exe backend/manage.py migrate
+.venv/Scripts/python.exe backend/manage.py runserver 127.0.0.1:3000
+```
 
-Les seuils des modèles sont des exemples, pas des normes scolaires. Les règles institutionnelles sont des données validées ; aucun seuil de réussite n’est imposé par le moteur.
+Sans DATABASE_URL, le développement local utilise SQLite uniquement pour faciliter le démarrage. Staging et production refusent de démarrer sans PostgreSQL, sans clé secrète dédiée ou avec DEBUG activé. Pour le rechargement React : lancer Django sur 8000 puis `npm run dev` sur 5173.
 
-## Limites explicites
+## Vérifier
 
-Atelier de démonstration, sans compte ni dossier élève. Les profils sont conservés dans le stockage local du navigateur, sans synchronisation serveur. Exporter un JSON pour sauvegarder ou transférer un profil. Les notifications ne sont pas envoyées. L’aperçu n’est pas un bulletin officiel ni un générateur PDF. Ne pas saisir de données personnelles.
+```sh
+npm test
+npm run build
+.venv/Scripts/python.exe backend/manage.py check
+.venv/Scripts/python.exe backend/manage.py makemigrations --check --dry-run
+.venv/Scripts/python.exe backend/manage.py test pedagogy
+```
 
-## Déploiement Render
+La CI utilise PostgreSQL 17, exécute les migrations, les tests backend/frontend, les contrôles Django de production, construit Docker et vérifie le conteneur avec PostgreSQL. Elle valide aussi les deux Blueprints Render contre le schéma officiel.
 
-Web service Node, dépôt `BlackGhost99/SYKOLO`, branche `main`, plan `free`, région `frankfurt`.
+## Démonstrateur pédagogique
 
-- Build : `npm ci --ignore-scripts && npm run check && npm test`
-- Start : `npm start`
-- Node : `.node-version`
-- Endpoint à vérifier après déploiement : `/healthz` ; son `commit` doit correspondre au commit fusionné.
+Huit modèles éditables : notes sur 10/15/20/100, pourcentages, lettres, appréciations et compétences. Maximum libre, seuils, libellés, équivalences, coefficients, décimales, absences, aperçu de bulletin et prévisualisation d'alerte. Les seuils des modèles sont des exemples, pas des normes institutionnelles.
 
-Pas de base de données ni de disque requis pour ce premier module. La mise en veille du plan gratuit peut ralentir la première ouverture. Configurer `/healthz` comme contrôle HTTP dans le Dashboard ; le contrôle TCP de Render s’applique par défaut.
+Les calculs et la validation passent par Django. Les profils restent dans le navigateur et s'importent/s'exportent en JSON. Aucun compte utilisable, dossier élève, paiement, bulletin officiel ou envoi de message n'est livré dans ce module. Données fictives uniquement.
 
-## Organisation
+## Environnements et API
 
-- `src/domain/` : moteur pur et modèles de départ ; partagé entre navigateur et API.
-- `src/server.mjs` : transport HTTP, validation, taille des requêtes et fichiers publics autorisés.
-- `public/` : interface accessible et responsive, sauvegarde locale, aucune insertion HTML de contenu importé.
-- `test/` : scénarios métier et intégration HTTP.
-- `docs/architecture.md` : contrats, limites et trajectoire multi-écoles.
+- `/healthz` : version, commit, environnement et stack.
+- `/readyz` : disponibilité de la base avec `SELECT 1` ; contrôle de santé Render.
+- GET `/api/v1/presets` : modèles et cookie CSRF.
+- POST `/api/v1/policies/validate` et `/api/v1/evaluate` : JSON et en-tête `X-CSRFToken` requis.
 
-Travail par module sur une branche `feat/…`, tests, PR vers `main`, revue et fusion après validation, puis contrôle du commit réellement déployé.
+Voir [déploiement](docs/deployment.md), [architecture](docs/architecture.md) et [ordre des modules](docs/modules.md). Les configurations Render sont prêtes à réviser ; aucune ressource SYKOLO n'est actuellement créée sur Render.

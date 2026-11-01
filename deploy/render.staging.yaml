@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: sykolo-staging
+    runtime: docker
+    repo: https://github.com/BlackGhost99/SYKOLO
+    branch: staging
+    region: frankfurt
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /readyz
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sykolo-db-staging
+          property: connectionString
+databases:
+  - name: sykolo-db-staging
+    databaseName: sykolo_staging
+    user: sykolo_staging
+    region: frankfurt
+    postgresMajorVersion: "17"
+    plan: 0.1c-256mb
+    diskSizeGB: 1
+    ipAllowList: []

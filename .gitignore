@@ -5,3 +5,9 @@ node_modules/
 coverage/
 artifacts/
 *.log
+.venv/
+__pycache__/
+*.pyc
+*.sqlite3
+dist/
+staticfiles/

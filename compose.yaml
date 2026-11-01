@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: sykolo_dev
+      POSTGRES_USER: sykolo_dev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sykolo-development-only}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sykolo_dev -d sykolo_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  app:
+    build: .
+    environment:
+      APP_ENV: development
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: postgres://sykolo_dev:${POSTGRES_PASSWORD:-sykolo-development-only}@db:5432/sykolo_dev
+      PORT: "8000"
+    ports:
+      - "127.0.0.1:3000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  postgres_dev:

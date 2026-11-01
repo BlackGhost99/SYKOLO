@@ -1,14 +1,28 @@
 {
   "name": "sykolo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=24 <25"
   },
   "scripts": {
-    "start": "node src/server.mjs",
-    "test": "node --test",
-    "check": "node --check src/server.mjs && node --check public/app.mjs && node --check src/domain/policy.mjs"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "check": "npm run build"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
+    "@vitejs/plugin-react": "6.1.2",
+    "jsdom": "29.1.1",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
   }
 }

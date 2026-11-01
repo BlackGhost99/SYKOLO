@@ -1,14 +1,26 @@
 name: Validate SYKOLO
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, staging, "feat/**"]
   pull_request:
     branches: [main]
 permissions:
   contents: read
 jobs:
-  test:
+  validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: sykolo_test
+          POSTGRES_USER: sykolo_test
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5432:5432"]
+        options: --health-cmd="pg_isready -U sykolo_test -d sykolo_test" --health-interval=5s --health-timeout=3s --health-retries=10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://sykolo_test:ci-only-password@localhost:5432/sykolo_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,5 +28,39 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npm run check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
       - run: npm test
+      - run: npm run build
+      - run: python backend/manage.py check
+      - run: python backend/manage.py makemigrations --check --dry-run
+      - run: python backend/manage.py migrate --noinput
+      - run: python backend/manage.py test pedagogy
+      - name: Verify production settings fail closed
+        env:
+          APP_ENV: production
+          DJANGO_SECRET_KEY: ci-validation-only-not-a-runtime-secret-abcdefghijklmnopqrstuvwxyz123456789
+          DJANGO_ALLOWED_HOSTS: ci.example.test
+        run: python backend/manage.py check --deploy --fail-level WARNING
+      - run: docker build -t sykolo:ci .
+      - name: Smoke test Docker with PostgreSQL
+        run: |
+          docker run -d --name sykolo-ci --network host -e APP_ENV=staging -e PORT=8000 -e DATABASE_URL="$DATABASE_URL" -e DJANGO_ALLOWED_HOSTS=127.0.0.1 -e DJANGO_SECRET_KEY=ci-container-only-not-a-runtime-secret-abcdefghijklmnopqrstuvwxyz123456789 sykolo:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/readyz; then break; fi
+            sleep 2
+          done
+          curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/readyz
+          curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/healthz
+          curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/ > /dev/null
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs sykolo-ci || true
+      - name: Validate Render blueprint schemas
+        run: |
+          pip install jsonschema pyyaml
+          python scripts/validate_blueprints.py

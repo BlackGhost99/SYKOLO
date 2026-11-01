@@ -1,37 +1,29 @@
-# Fondations et décisions
+# Architecture SYKOLO
 
-## Première tranche
+## Module 01
 
-L’atelier pédagogique permet de valider le vocabulaire et les paramètres avant d’introduire les dossiers scolaires. Aucun compte, élève, paiement, secret ou donnée institutionnelle partagé n’est stocké sur le serveur. Le transport HTTP reste séparé du domaine. Le même validateur et le même calcul fonctionnent dans le navigateur et dans l’API.
+Monorepo : `backend/config` pour les réglages d'environnement et le transport Django, `backend/accounts` pour l'identité extensible, `backend/pedagogy` pour le moteur indépendant et ses modèles de départ, `frontend` pour React/Vite. L'image Docker compile React dans une première étape, puis sert le bundle et l'API depuis Django/Gunicorn/WhiteNoise sur une même origine. Le processus démarre par les migrations, puis Gunicorn reçoit directement SIGTERM.
+
+PostgreSQL 17 est requis en staging et en production. SQLite sert uniquement de solution locale de démarrage et de test rapide. Les migrations initiales installent un modèle utilisateur extensible avec identifiant UUID ; aucun endpoint de connexion n'est encore exposé. La CI vérifie la même migration avec PostgreSQL.
+
+Les variables APP_ENV, DATABASE_URL, DJANGO_SECRET_KEY, DJANGO_ALLOWED_HOSTS, DJANGO_DEBUG et APP_TIME_ZONE sont externes au code. Les booléens sont explicitement interprétés. Environnements distincts : bases et clés différentes en dev, staging et production. Aucun accès aux ressources d'autres projets n'est requis.
 
 ## Contrat de configuration v1
 
 `schemaVersion`, `name`, `scale {kind,max}`, `precision`, `missing`, `bands [{min,label,value}]`, `report {showScore,showLabel}`, `notification {enabled,below,message}`.
 
-Les bandes couvrent [0,100] par seuil inférieur inclus ; le seuil suivant est exclu. Le premier seuil est obligatoirement zéro. Le dernier couvre jusqu’à 100 inclus. Les seuils et libellés sont uniques. Les équivalences des catégories sont choisies par l’établissement dans leur bande. La note numérique est normalisée en pourcentage avant pondération ; chaque coefficient est strictement positif. Les seuils et alertes utilisent le résultat non arrondi. L’arrondi n’affecte que l’affichage chiffré. Une absence est exclue ou vaut zéro selon le profil ; si toutes les notes sont exclues, le résultat est absent.
+Le moteur Python est la seule autorité de validation et de calcul. React appelle l'API pour les résultats et avant sauvegarde/import/export. Les calculs utilisent Decimal ; l'arrondi à moitié supérieure n'affecte que le résultat affiché. Seuils et alertes utilisent la valeur non arrondie. Les bandes couvrent [0,100] par seuil inférieur inclus et seuil suivant exclu ; le dernier inclut 100. Les seuils et libellés sont uniques. Les équivalences des catégories se situent dans leur bande.
 
-La liste des types supportés et la version du schéma constituent des contrats techniques. Les maxima, seuils, libellés, coefficients, règles d’absence, options de bulletin et seuils de notification sont des données configurables. Les modèles résident dans un fichier distinct et sont clonés avant modification.
+Les notes numériques sont normalisées en pourcentage avant pondération. Les coefficients sont strictement positifs. Une absence est exclue ou compte comme zéro selon le profil. Si toutes les notes sont exclues, le résultat est absent. Les modèles se trouvent dans un fichier JSON séparé et sont copiés avant modification. Aucun seuil de réussite, barème national, tarif ou rôle institutionnel obligatoire n'est fixé par le moteur.
 
-## Prochaine tranche : écoles, identité et accès
+## Modules 02 et 03 à développer
 
-Introduire PostgreSQL, migrations et authentification avant de stocker des données réelles. Modèles prévus : organisation/fondateur, école, campus, année, cycle configurable, utilisateur, adhésion et permissions. Les rôles pressentis sont super administrateur, fondateur, directeur, comptable/économe, secrétaire, enseignant, parent et apprenant. Les permissions seront contrôlées côté serveur par action et périmètre, avec tests d’isolation inter-écoles. Le fondateur peut superviser plusieurs écoles ; ses droits ne seront pas assimilés automatiquement à ceux du directeur.
+L'authentification, la récupération de compte, le MFA, les permissions métier et le journal d'audit ne sont pas implémentés. Les protections de transport déjà présentes (CSRF, CSP, hôtes explicites, HTTPS, cookies sécurisés, limites de taille) constituent le socle du module 02.
 
-Les configurations institutionnelles devront être versionnées et publiées dans un périmètre école/année/cycle/classe. L’héritage et les dérogations devront être explicites. Un bulletin publié conservera un instantané de sa configuration et de ses résultats : modifier un profil ne doit jamais réécrire l’historique. Prévoir historique d’audit et concurrence optimiste. Le stockage local actuel sera remplacé par un adaptateur de persistance sans modifier le moteur.
+Le module 03 introduira organisation/fondateur, école, campus, année et cycles configurables, adhésions et isolation inter-écoles. Fondateur, directeur, comptable, secrétaire, enseignant, parent et apprenant auront des droits contrôlés côté serveur par action et périmètre. Un fondateur ne doit pas être assimilé automatiquement à un directeur.
 
-## Modules suivants
+Les configurations institutionnelles seront versionnées par école/année/cycle/classe avec héritage et dérogations explicites. Un bulletin publié conservera un instantané de sa configuration et de ses résultats. Prévoir audit et concurrence optimiste. Le stockage local de l'atelier sera alors remplacé par une persistance protégée, sans changer le moteur.
 
-1. Inscriptions : capacités et places, dossiers en ligne et au secrétariat, confirmation après paiement vérifié. Aucun dossier ne devient inscrit uniquement parce que les coordonnées sont saisies.
-2. Évaluations : matières, compétences, catégories et coefficients configurables ; barèmes propres aux évaluations et conversion explicite.
-3. Bulletins : modèles et sections configurables, périodes, signatures, publication, historique et exports.
-4. Finances : facturation, reçus, rapprochements et prestataires de paiement idempotents.
-5. Notifications : événements, destinataires, canaux, consentements et modèles configurables ; file transactionnelle, déduplication et journal d’envoi.
+## Limites de la livraison
 
-Ni grille tarifaire, ni pondération nationale, ni seuil de réussite universel n’est fixé à ce stade.
-
-## Sécurité et exploitation de cette version
-
-API de calcul sans état et sans CORS permissif ; schéma validé, limites de taille et de nombre d’entrées. Fichiers publics servis par liste explicite. Textes importés affichés par `textContent` ; CSP sans scripts inline, protections contre l’intégration en iframe. Avant ouverture à des données réelles, ajouter authentification, contrôle d’accès, limitation de débit, audit, sauvegardes et tests d’isolation. La présente API publique n’est pas un espace d’administration sécurisé.
-
-## Validation et livraisons
-
-Les tests couvrent échelles, pondérations, catégories, absences, seuils, arrondis, imports invalides et contrat HTTP. La CI exécute vérifications syntaxiques et tests sur chaque branche de module et PR. Render exécute aussi les tests pendant le build. La vérification de livraison exige un déploiement `live`, le SHA de fusion dans `/healthz`, le chargement de la page et un calcul API réussi.
+Le laboratoire est public et utilise des données fictives ; ses profils restent uniquement dans le navigateur. La présence de PostgreSQL et du modèle utilisateur initial ne signifie pas que l'authentification, le multi-établissements ou le stockage institutionnel sont disponibles. Le serveur ne conserve ni profil pédagogique ni dossier élève à ce stade.
