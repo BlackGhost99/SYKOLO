@@ -209,7 +209,11 @@ def children(request):
             "first_name": student.first_name, "last_name": student.last_name,
             "student_code": student.student_code,
         }
-    return JsonResponse({"children": list(result.values())})
+    has_parent_role = SchoolMember.objects.filter(
+        user=request.user, active=True, school__is_active=True,
+        role__school_id=F("school_id"), role__code="parent"
+    ).exists()
+    return JsonResponse({"children": list(result.values()), "parent_role": has_parent_role})
 
 
 @never_cache
