@@ -89,3 +89,7 @@ class SchoolAudit(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+# Django discovers the academic models through the institution app.
+from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicTrack, AcademicClass, AcademicPeriod  # noqa: E402,F401

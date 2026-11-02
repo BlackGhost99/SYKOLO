@@ -13,13 +13,14 @@ PERMISSIONS = frozenset({
     "school.view", "school.members.read", "school.members.write",
     "school.roles.read", "school.roles.manage",
     "school.settings.read", "school.settings.write", "school.audit.read",
+    "school.academic.read", "school.academic.manage",
 })
 
 # Initial editable role templates, not institution-wide immutable business rules.
 ROLE_TEMPLATES = [
     ("direction", "Direction", sorted(PERMISSIONS)),
-    ("secretariat", "Secrétariat", ["school.view", "school.members.read", "school.settings.read"]),
-    ("enseignant", "Enseignant", ["school.view", "school.settings.read"]),
+    ("secretariat", "Secrétariat", ["school.view", "school.members.read", "school.settings.read", "school.academic.read"]),
+    ("enseignant", "Enseignant", ["school.view", "school.settings.read", "school.academic.read"]),
     ("comptabilite", "Comptabilité", ["school.view"]),
     ("parent", "Parent", ["school.view"]),
     ("eleve", "Élève", ["school.view"]),

@@ -11,3 +11,8 @@ La liste ci-dessous reprend uniquement les trois modules communiqués par le por
 Le démonstrateur pédagogique livré avec le module 01 est un banc d'essai du moteur configurable, sans comptes d'école ni données réelles. Il ne constitue pas la livraison du module 03.
 
 Chaque module suit le même cycle : branche dédiée, code, tests, commit/push, PR, validation, fusion sur main, déploiement Render puis vérification du SHA live. Le staging reçoit uniquement une version validée et utilise sa propre base et sa propre clé.
+
+
+## Phase 2
+
+04 — Structure académique : années, cycles, niveaux, filières, classes et périodes ; en validation sur feat/module-04-academic-structure.
