@@ -1,4 +1,5 @@
 import json
+import base64
 import re
 import time
 from unittest.mock import patch
@@ -101,6 +102,10 @@ class IdentityTests(TestCase):
         started = self.post("/api/v1/auth/mfa/begin", {"password": "Correct Horse Battery Staple 2026!"})
         self.assertEqual(started.status_code, 200)
         self.assertIn("otpauth://", started.json()["otpauth_uri"])
+        self.assertTrue(started.json()["qr_image"].startswith("data:image/svg+xml;base64,"))
+        qr_svg = base64.b64decode(started.json()["qr_image"].split(",", 1)[1])
+        self.assertIn(b"<svg", qr_svg)
+        self.assertGreater(len(qr_svg), 1000)
         device = MFADevice.objects.get(user=self.user)
         self.assertNotIn(started.json()["manual_secret"], device.encrypted_secret)
         self.assertEqual(decrypt_secret(device.encrypted_secret), started.json()["manual_secret"])
