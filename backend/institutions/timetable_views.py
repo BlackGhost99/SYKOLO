@@ -363,10 +363,11 @@ def entry_object(school, values, current=None):
         setattr(entry, k, v)
     if not entry.instructor_id or not entry.slot_id:
         raise ValueError("Enseignant et créneau obligatoires.")
-    try:
-        entry.full_clean()
-    except ValidationError:
-        raise
+    if entry.effective_from and entry.effective_to and entry.weekday is not None and entry.effective_from <= entry.effective_to:
+        first = entry.effective_from + timedelta(days=(entry.weekday - entry.effective_from.weekday()) % 7)
+        if first > entry.effective_to:
+            raise ValueError("La période ne contient aucun jour de semaine sélectionné.")
+    entry.full_clean()
     return entry
 
 
