@@ -101,3 +101,5 @@ from .staff_models import StaffRecord, StaffAssignment  # noqa: E402,F401
 from .curriculum_models import Subject, CourseOffering, CourseUnit, CourseInstructor  # noqa: E402,F401
 
 from .assessment_models import Assessment, AssessmentGrade  # noqa: E402,F401
+
+from .report_models import SchoolReport  # noqa: E402,F401
