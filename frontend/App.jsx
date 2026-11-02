@@ -7,6 +7,7 @@ export default function App() {
   const [mode,setMode]=useState("workspace");
   const [authenticated,setAuthenticated]=useState(false);
   const [apiAvailable,setApiAvailable]=useState(null);
+  const [platformAdmin,setPlatformAdmin]=useState(false);
   useEffect(()=>{
     let active=true;
     async function refresh() {
@@ -14,7 +15,7 @@ export default function App() {
         const response=await fetch("/api/v1/auth/me",{credentials:"same-origin"});
         if (!response.ok||!response.headers.get("content-type")?.includes("application/json")) throw Error("API indisponible");
         const data=await response.json();
-        if (active) {setApiAvailable(true);setAuthenticated(Boolean(data.authenticated));if(data.authenticated)setMode("workspace");}
+        if (active) {setApiAvailable(true);setAuthenticated(Boolean(data.authenticated));setPlatformAdmin(Boolean(data.user?.is_platform_admin));if(data.authenticated)setMode("workspace");}
       } catch {
         if(active) {setApiAvailable(false);setAuthenticated(false);}
       }
@@ -23,6 +24,7 @@ export default function App() {
     window.addEventListener("yem:auth-change",refresh);
     return ()=>{active=false;window.removeEventListener("yem:auth-change",refresh);};
   },[]);
+  if (authenticated && !platformAdmin) return <AuthPanel />;
   return <div>
     {!authenticated && <nav className="yem-mode-switch" aria-label="Mode d'application YEM">
       <strong>YEM</strong>

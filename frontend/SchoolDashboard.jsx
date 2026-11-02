@@ -10,21 +10,38 @@ import FinancePanel from "./FinancePanel.jsx";
 import AttendancePanel from "./AttendancePanel.jsx";
 import TimetablePanel from "./TimetablePanel.jsx";
 import AdmissionsPanel from "./AdmissionsPanel.jsx";
-import "./platform-console.css";
+import ParentPortal from "./ParentPortal.jsx";
+import {Shell,NAV,PageHeader,Card,Icon,Button} from "./yem-ui.jsx";
+import "./yem-desktop.css";
 
-const modules = [
-  {key:"academic",label:"Années, cycles et classes",read:"school.academic.read",view:AcademicPanel},
-  {key:"students",label:"Élèves et inscriptions",read:"school.students.read",view:StudentPanel},
-  {key:"staff",label:"Personnel et enseignants",read:"school.staff.read",view:StaffPanel},
-  {key:"curriculum",label:"Matières et programmes",read:"school.curriculum.read",view:CurriculumPanel},
-  {key:"timetable",label:"Emplois du temps",read:"school.timetable.read",view:TimetablePanel},
-  {key:"assessments",label:"Évaluations",read:"school.assessments.read",view:AssessmentPanel},
-  {key:"reports",label:"Bulletins",read:"school.reports.read",view:ReportPanel},
-  {key:"council",label:"Délibérations",read:"school.deliberations.read",view:CouncilPanel},
-  {key:"attendance",label:"Présences",read:"school.attendance.read",view:AttendancePanel},
-  {key:"finance",label:"Finances",read:"school.finance.read",view:FinancePanel},
-  {key:"admissions",label:"Admissions",read:"school.admissions.read",view:AdmissionsPanel},
-];
+/* Espace réel connecté : mêmes cadre, menu et en-têtes que les maquettes (docs/maquettes),
+   chaque entrée du menu ouvrant les modules existants autorisés pour le rôle du compte. */
+const modules = {
+  academic:{label:"Années, cycles et classes",read:"school.academic.read",view:AcademicPanel},
+  students:{label:"Élèves et inscriptions",read:"school.students.read",view:StudentPanel},
+  staff:{label:"Personnel et enseignants",read:"school.staff.read",view:StaffPanel},
+  curriculum:{label:"Matières et programmes",read:"school.curriculum.read",view:CurriculumPanel},
+  timetable:{label:"Emplois du temps",read:"school.timetable.read",view:TimetablePanel},
+  assessments:{label:"Évaluations et notes",read:"school.assessments.read",view:AssessmentPanel},
+  reports:{label:"Bulletins",read:"school.reports.read",view:ReportPanel},
+  council:{label:"Conseils et décisions",read:"school.deliberations.read",view:CouncilPanel},
+  attendance:{label:"Appels et absences",read:"school.attendance.read",view:AttendancePanel},
+  finance:{label:"Frais et encaissements",read:"school.finance.read",view:FinancePanel},
+  admissions:{label:"Admissions",read:"school.admissions.read",view:AdmissionsPanel},
+};
+/* Chaque entrée du menu des maquettes regroupe un ou plusieurs modules réels. */
+const sections = {
+  students:{title:"Gestion des élèves",subtitle:"Inscriptions, classes, responsables et suivi administratif",modules:["students"]},
+  admissions:{title:"Admissions & préinscriptions",subtitle:"Demandes, inscriptions au secrétariat, capacité d’accueil et paiement",modules:["admissions"]},
+  payments:{title:"Encaissements et caisse journalière",subtitle:"Suivi des paiements, reçus et méthodes d’encaissement",modules:["finance"]},
+  arrears:{title:"Impayés & relances",subtitle:"Suivi des échéances, retards et soldes des familles",modules:["finance"]},
+  bulletins:{title:"Bulletins et résultats scolaires",subtitle:"Évaluations, préparation, contrôle et publication des bulletins",modules:["assessments","reports","council"]},
+  absences:{title:"Absences et retards",subtitle:"Appels, absences, retards et justificatifs",modules:["attendance","timetable"]},
+  staff:{title:"Personnel",subtitle:"Équipe pédagogique et administrative, affectations et comptes",modules:["staff"],extra:"users"},
+  settings:{title:"Paramétrage de l’établissement",subtitle:"Années, classes, matières, barèmes et emplois du temps",modules:["academic","curriculum","timetable"]},
+};
+const sectionIcon=Object.fromEntries(NAV.map(([id,icon])=>[id,icon]));
+
 async function get(path) {
   const r=await fetch("/api/v1/"+path,{credentials:"same-origin"});
   const data=await r.json();
@@ -40,40 +57,84 @@ async function addUser(schoolId, body) {
   if(!r.ok)throw Error(data.error||"Création refusée");
   return data;
 }
-export default function SchoolDashboard() {
-  const [schools,setSchools]=useState([]);
-  const [chosen,setChosen]=useState("");
-  const [access,setAccess]=useState(null);
-  const [page,setPage]=useState("home");
+
+function UsersForm({schoolId,onMessage}) {
   const [person,setPerson]=useState(defaultPerson);
   const [busy,setBusy]=useState(false);
+  return <Card title="Créer un compte pour l'établissement" icon="adduser" subtitle="Le compte est rattaché uniquement à cette école. Les droits dépendent de son rôle.">
+    <form onSubmit={async e=>{e.preventDefault();setBusy(true);onMessage("");try{const result=await addUser(schoolId,person);setPerson(defaultPerson);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
+      {["first_name","last_name","username","email"].map(key=><label key={key}>{{first_name:"Prénom",last_name:"Nom",username:"Identifiant de connexion",email:"Email"}[key]}<input required value={person[key]} type={key==="email"?"email":"text"} onChange={e=>setPerson(x=>({...x,[key]:e.target.value}))}/></label>)}
+      <label>Rôle<select value={person.role} onChange={e=>setPerson(x=>({...x,role:e.target.value}))}>{[["direction","Direction"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]].map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+      <label>Mot de passe initial<input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>setPerson(x=>({...x,password:e.target.value}))}/></label>
+    </div><button className="pc-primary" type="submit" disabled={busy}>Créer le compte</button></form>
+  </Card>;
+}
+
+function UserMenu({user,roleLabel,onAccount,onLogout}) {
+  const [open,setOpen]=useState(false);
+  const name=[user?.first_name,user?.last_name].filter(Boolean).join(" ")||user?.username||"Mon compte";
+  return <div className="yd-user-wrap">
+    <button type="button" className="yd-user-btn" aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>
+      <span className="yd-avatar"><Icon name="user" size={22} strokeWidth={0} className="filled"/></span>
+      <span><b>{name}</b>{roleLabel&&<small>{roleLabel}</small>}</span><Icon name="chevron" size={18}/>
+    </button>
+    {open&&<div className="yd-menu right" role="menu">
+      <button type="button" role="menuitem" onClick={()=>{setOpen(false);onAccount();}}><Icon name="shield" size={18}/>Sécurité du compte</button>
+      {onLogout&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onLogout();}}><Icon name="logout" size={18}/>Se déconnecter</button>}
+    </div>}
+  </div>;
+}
+
+export default function SchoolDashboard({user,accountView,onLogout}) {
+  const [schools,setSchools]=useState([]);
+  const [loaded,setLoaded]=useState(false);
+  const [chosen,setChosen]=useState("");
+  const [access,setAccess]=useState(null);
+  const [page,setPage]=useState("dashboard");
+  const [sub,setSub]=useState("");
+  const [isParent,setIsParent]=useState(false);
   const [message,setMessage]=useState("");
-  useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message));},[]);
+  useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
+  useEffect(()=>{let live=true;fetch("/api/v1/parents/children",{credentials:"same-origin"}).then(r=>r.ok?r.json():null).then(d=>{if(live&&d?.parent_role)setIsParent(true);}).catch(()=>{});return()=>{live=false;};},[]);
   useEffect(()=>{
     if (!chosen) {setAccess(null);return;}
     let alive=true;setAccess(null);
     get("schools/"+chosen+"/my-access").then(x=>{if(alive)setAccess(x);}).catch(e=>{if(alive)setMessage(e.message);});
-    setPage("home");return ()=>{alive=false;};
+    setPage("dashboard");return ()=>{alive=false;};
   },[chosen]);
-  const available=modules.filter(m=>access?.permissions?.includes(m.read));
-  const selectedModule=available.find(m=>m.key===page);
-  const View=selectedModule?.view;
-  return <div className="pc-school-shell">
-    <div className="pc-school-top"><div><small>YEM / ESPACE ÉTABLISSEMENT</small><h2>{access?.school?.name||"Mon établissement"}</h2><p>Tableau de bord adapté aux droits de votre compte scolaire.</p></div>
-      <label>Établissement<select value={chosen} onChange={e=>setChosen(e.target.value)}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-    </div>
+  const perms=access?.permissions||[];
+  const allowed=key=>perms.includes(modules[key].read);
+  const canUsers=perms.includes("school.members.write");
+  const visibleSections=Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers}]).filter(([,s])=>s.modules.length||s.users));
+  const nav=NAV.filter(([id])=>id==="dashboard"||visibleSections[id]||(id==="parents"&&isParent));
+  function navigate(id){setPage(id);setSub("");setMessage("");}
+  const section=visibleSections[page];
+  const tabs=section?[...section.modules.map(k=>[k,modules[k].label]),...(section.users?[["users","Comptes et accès"]]:[])]:[];
+  const tab=tabs.find(t=>t[0]===sub)?.[0]||tabs[0]?.[0];
+  const View=tab&&modules[tab]?.view;
+  const schoolName=access?.school?.name||schools.find(s=>s.id===chosen)?.name||"Mon établissement";
+  const selector=<div className="yd-school-select-wrap"><label className="yd-school-select"><Icon name="school" size={24}/>
+    {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>setChosen(e.target.value)}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:<b>{schoolName}</b>}
+    {schools.length>1&&<Icon name="chevron" size={18} className="chev"/>}</label></div>;
+  let content;
+  if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
+  else if (page==="parents") content=<div className="yd-real-body"><ParentPortal/></div>;
+  else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p>{isParent&&<Button primary icon="users" onClick={()=>navigate("parents")}>Ouvrir l'espace parents</Button>}</Card></>;
+  else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
+  else if (section) content=<>
+    <PageHeader title={section.title} subtitle={section.subtitle}/>
+    {tabs.length>1&&<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>}
+    <div className="yd-real-body">{tab==="users"?<UsersForm schoolId={chosen} onMessage={setMessage}/>:View&&<View key={chosen+"-"+tab} schoolId={chosen}/>}</div>
+  </>;
+  else content=<>
+    <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={access.role_label||"Membre"} badgeIcon="crown"/>
+    <div className="yd-real-body"><div className="pc-module-grid">{Object.entries(visibleSections).map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{NAV.find(n=>n[0]===id)?.[2]}</b><small>{s.modules.map(k=>modules[k].label).concat(s.users?["Comptes et accès"]:[]).join(" · ")}</small></button>)}</div>
+    {Object.keys(visibleSections).length===0&&<Card title="Aucun module attribué" icon="info"><p className="yd-card-sub">Aucun module n'est attribué à votre rôle dans cet établissement.</p></Card>}</div>
+  </>;
+  return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
+    userMenu={<UserMenu user={user} roleLabel={access?.role_label} onAccount={()=>navigate("account")} onLogout={onLogout}/>}>
     {message&&<p role="status" className="pc-alert">{message}</p>}
-    {schools.length===0?<div className="pc-panel"><h3>Aucun établissement attribué</h3><p>Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p></div>:
-      !access?<div className="pc-panel">Chargement de vos droits…</div>:<>
-      <div className="pc-role">Compte : <strong>{access.role_label||"Membre"}</strong> · {available.length} module(s) accessibles</div>
-      <div className="pc-school-nav"><button className={page==="home"?"active":""} onClick={()=>setPage("home")}>Accueil</button>{available.map(m=><button key={m.key} className={page===m.key?"active":""} onClick={()=>setPage(m.key)}>{m.label}</button>)}{access.permissions.includes("school.members.write")&&<button className={page==="users"?"active":""} onClick={()=>setPage("users")}>Comptes et accès</button>}</div>
-      {page==="home"&&<div className="pc-panel"><h3>Bienvenue dans votre établissement</h3><p>Accédez aux modules autorisés pour votre rôle. Les années, classes, barèmes, bulletins et emplois du temps sont gérés par établissement.</p><div className="pc-module-grid">{available.map(m=><button key={m.key} onClick={()=>setPage(m.key)}><b>{m.label}</b><small>Ouvrir le module</small></button>)}</div>{available.length===0&&<p>Aucun module supplémentaire n'est attribué à votre rôle.</p>}</div>}
-      {page==="users"&&access.permissions.includes("school.members.write")&&<section className="pc-panel pc-formpanel"><h3>Créer un compte pour l'établissement</h3><p>Le compte est rattaché uniquement à cette école. Les droits dépendent de son rôle.</p><form onSubmit={async e=>{e.preventDefault();setBusy(true);setMessage("");try{const result=await addUser(chosen,person);setPerson(defaultPerson);setMessage("Compte créé : "+result.username);}catch(err){setMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
-        {["first_name","last_name","username","email"].map(key=><label key={key}>{{first_name:"Prénom",last_name:"Nom",username:"Identifiant de connexion",email:"Email"}[key]}<input required value={person[key]} type={key==="email"?"email":"text"} onChange={e=>setPerson(x=>({...x,[key]:e.target.value}))}/></label>)}
-        <label>Rôle<select value={person.role} onChange={e=>setPerson(x=>({...x,role:e.target.value}))}>{[["direction","Direction"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]].map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
-        <label>Mot de passe initial<input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>setPerson(x=>({...x,password:e.target.value}))}/></label>
-      </div><button className="pc-primary" disabled={busy}>Créer le compte</button></form></section>}
-            {View&&<View key={chosen+"-"+page} schoolId={chosen}/>}
-    </>}
-  </div>;
+    {content}
+    <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
+  </Shell>;
 }
