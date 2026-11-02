@@ -15,6 +15,7 @@ PERMISSIONS = frozenset({
     "school.settings.read", "school.settings.write", "school.audit.read",
     "school.academic.read", "school.academic.manage",
     "school.admissions.read", "school.admissions.manage", "school.admissions.decide", "school.admissions.enroll",
+    "school.parents.manage",
     "school.students.read", "school.students.manage",
     "school.staff.read", "school.staff.manage",
     "school.curriculum.read", "school.curriculum.manage",

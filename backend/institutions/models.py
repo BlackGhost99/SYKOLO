@@ -113,3 +113,5 @@ from .attendance_models import AttendanceSession, AttendanceMark, AttendanceChan
 from .timetable_models import TimetableRoom, TimetableSlot, TimetableEntry  # noqa: E402,F401
 
 from .admission_models import AdmissionApplication, AdmissionEvent  # noqa: E402,F401
+
+from .parent_models import GuardianAccountLink  # noqa: E402,F401
