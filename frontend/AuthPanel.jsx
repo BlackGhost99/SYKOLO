@@ -82,7 +82,8 @@ export default function AuthPanel() {
               if (!pending) {
                 setPending(await authApi("mfa/begin", { password }));
                 setPassword("");
-                setMessage("Ajoutez la clé dans votre application TOTP puis confirmez.");
+                setCode("");
+                setMessage("Scannez le nouveau QR code avec votre application d’authentification. Saisissez ensuite le code à six chiffres.");
               } else {
                 const result = await authApi("mfa/confirm", { code });
                 setRecovery(result.recovery_codes);
@@ -94,13 +95,18 @@ export default function AuthPanel() {
               {!pending ? <label className="field">Mot de passe actuel
                 <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
               </label> : <>
-                <p>Clé TOTP (à saisir dans votre application) : <code>{pending.manual_secret}</code></p>
-                <p className="hint">Ne partagez pas cette clé. Un QR code pourra être ajouté ultérieurement.</p>
+                <h3>Scannez ce QR code avec votre téléphone</h3>
+                <p className="hint">Ouvrez Google Authenticator, Microsoft Authenticator ou Authy, puis choisissez « Ajouter un compte » → « Scanner un QR code ».</p>
+                <div style={{display:"inline-block",background:"#fff",border:"1px solid #dbe4dd",borderRadius:12,padding:18,margin:"8px 0 16px"}}>
+                  <img src={pending.qr_image} width="235" height="235" alt="QR code privé pour activer la double authentification YEM" style={{display:"block",maxWidth:"100%",height:"auto"}} />
+                </div>
+                <details><summary>Je ne peux pas scanner : afficher la clé de secours</summary><p><code>{pending.manual_secret}</code></p></details>
+                <p className="hint">Ce QR code contient une clé secrète : ne le partagez pas et ne faites pas de capture d’écran.</p>
                 <label className="field">Code à six chiffres
-                  <input inputMode="numeric" autoComplete="one-time-code" required value={code} onChange={(e) => setCode(e.target.value)} />
+                  <input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" placeholder="Ex. : 123456" required value={code} onChange={(e) => setCode(e.target.value.replace(/\\D/g,""))} />
                 </label>
               </>}
-              <button disabled={busy} type="submit">{pending ? "Confirmer le MFA" : "Commencer l’activation MFA"}</button>
+              <button disabled={busy} type="submit">{pending ? "Confirmer le code à six chiffres" : "Générer un nouveau QR code"}</button>
             </form>
           )}
           {recovery.length > 0 && <div role="status"><p><strong>Codes de secours, affichés une seule fois :</strong></p><pre style={{ overflowX: "auto" }}>{recovery.join("\n")}</pre><button onClick={() => setRecovery([])}>J’ai enregistré ces codes</button></div>}
