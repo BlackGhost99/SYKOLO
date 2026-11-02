@@ -1,7 +1,15 @@
 from django.urls import path
-from . import views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views
+from . import views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views
 
 urlpatterns = [
+    path("schools/<uuid:school_id>/council-choices", council_views.council_choices),
+    path("schools/<uuid:school_id>/councils", council_views.councils),
+    path("schools/<uuid:school_id>/councils/<uuid:council_id>", council_views.council_detail),
+    path("schools/<uuid:school_id>/councils/<uuid:council_id>/decisions", council_views.council_decisions),
+    path("schools/<uuid:school_id>/councils/<uuid:council_id>/close", council_views.close_council),
+    path("schools/<uuid:school_id>/reports/<uuid:report_id>/amendments", council_views.amendments),
+    path("schools/<uuid:school_id>/reports/<uuid:report_id>/amendments/<uuid:amendment_id>", council_views.amendment_detail),
+    path("schools/<uuid:school_id>/reports/<uuid:report_id>/amendments/<uuid:amendment_id>/pdf", council_views.amendment_pdf),
     path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>/publish", report_views.publish_assessment),
     path("schools/<uuid:school_id>/reports", report_views.reports),
     path("schools/<uuid:school_id>/reports/<uuid:report_id>", report_views.report_detail),
