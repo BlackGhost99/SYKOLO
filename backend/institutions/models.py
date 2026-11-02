@@ -105,3 +105,5 @@ from .assessment_models import Assessment, AssessmentGrade  # noqa: E402,F401
 from .report_models import SchoolReport  # noqa: E402,F401
 
 from .council_models import SchoolCouncil, CouncilDecision, ReportAmendment  # noqa: E402,F401
+
+from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid  # noqa: E402,F401
