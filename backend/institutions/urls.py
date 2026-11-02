@@ -1,7 +1,17 @@
 from django.urls import path
-from . import views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views
+from . import views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, parent_views
 
 urlpatterns = [
+    path("parents/children", parent_views.children),
+    path("parents/children/<uuid:student_id>/enrollments", parent_views.child_enrollments),
+    path("parents/children/<uuid:student_id>/reports", parent_views.child_reports),
+    path("parents/children/<uuid:student_id>/reports/<uuid:report_id>", parent_views.child_report_detail),
+    path("parents/children/<uuid:student_id>/reports/<uuid:report_id>/pdf", parent_views.child_report_pdf),
+    path("parents/children/<uuid:student_id>/attendance", parent_views.child_attendance),
+    path("parents/children/<uuid:student_id>/finance", parent_views.child_finance),
+    path("parents/children/<uuid:student_id>/timetable", parent_views.child_timetable),
+    path("schools/<uuid:school_id>/parent-links", parent_views.links),
+    path("schools/<uuid:school_id>/parent-links/<uuid:link_id>", parent_views.link_detail),
     path("schools/<uuid:school_id>/admissions", admission_views.applications),
     path("schools/<uuid:school_id>/admissions/capacity/<uuid:classroom_id>", admission_views.capacity),
     path("schools/<uuid:school_id>/admissions/<uuid:application_id>", admission_views.application_detail),

@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import ParentPortal from "./ParentPortal.jsx";
 import "./yem-desktop.css";
 
 const GREEN = "#1f6b2f";
@@ -203,11 +204,15 @@ function BrandingEditor({brand,onChange}){
 }
 export default function YemDesktop(){
  const [page,setPage]=useState("dashboard");
+ const [isParent,setIsParent]=useState(false);
+ useEffect(()=>{let live=true;fetch("/api/v1/parents/children",{credentials:"same-origin"})
+   .then(r=>r.ok?r.json():null).then(data=>{if(live&&data?.parent_role){setIsParent(true);setPage("parents");}})
+   .catch(()=>{});return()=>{live=false};},[]);
  const [brand,setBrand]=useState(getBrand);
  const updateBrand=next=>{setBrand(next);try{window.localStorage.setItem(BRAND_KEY,JSON.stringify(next));}catch{/* aperçu non persistant si stockage plein */}};
  const active = page === "bulletinConfig" ? "bulletins" : page;
- const content = useMemo(()=>({dashboard:<Dashboard/>,students:<Students/>,admissions:<Admissions/>,payments:<Payments/>,arrears:<Arrears/>,bulletins:<Bulletins/>,bulletinConfig:<BulletinConfig/>,absences:<Placeholder title="Absences"/>,parents:<Placeholder title="Parents"/>,staff:<Placeholder title="Personnel"/>,branding:<BrandingEditor brand={brand} onChange={updateBrand}/>})[page],[page,brand]);
+ const content = useMemo(()=>({dashboard:<Dashboard/>,students:<Students/>,admissions:<Admissions/>,payments:<Payments/>,arrears:<Arrears/>,bulletins:<Bulletins/>,bulletinConfig:<BulletinConfig/>,absences:<Placeholder title="Absences"/>,parents:<ParentPortal/>,staff:<Placeholder title="Personnel"/>,branding:<BrandingEditor brand={brand} onChange={updateBrand}/>})[page],[page,brand]);
  return <div className="yd-app" style={{"--school-primary":brand.color}}><header className="yd-topbar"><div className="yd-logo" aria-label="YEM – Gestion scolaire et universitaire"/><div className="yd-school-select">{brand.logo?<img className="yd-school-logo" src={brand.logo} alt="Logo de l’établissement"/>:<Icon name="school" size={20}/>}<b>{brand.name}</b><span>⌄</span></div><div className="yd-global-search"><Icon name="search" size={18}/><span>Rechercher un élève, une famille, un paiement...</span></div><div className="yd-bell"><Icon name="bell" size={22}/><i>3</i></div><div className="yd-user"><div>●</div><b>Mme la Directrice</b><span>⌄</span></div></header>
- <aside className="yd-sidebar">{nav.map(([id,icon,label])=><button key={id} className={active===id?"active":""} onClick={()=>setPage(id==="settings"?"bulletinConfig":id)}><Icon name={icon} size={22}/><span>{label}</span></button>)}</aside>
+ <aside className="yd-sidebar">{nav.filter(([id])=>!isParent||id==="parents").map(([id,icon,label])=><button key={id} className={active===id?"active":""} onClick={()=>setPage(id==="settings"?"bulletinConfig":id)}><Icon name={icon} size={22}/><span>{label}</span></button>)}</aside>
  <main className="yd-content"><style>{brand.banner?`.yd-school-banner{background-image:linear-gradient(90deg,#fff0,#ffffff55),url("${brand.banner}")}`:""}</style>{content}<footer className="yd-brand-footer"><span>YEM — Gestion scolaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer></main></div>;
 }
