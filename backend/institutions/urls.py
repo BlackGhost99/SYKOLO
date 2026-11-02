@@ -1,7 +1,14 @@
 from django.urls import path
-from . import views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views
+from . import views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views
 
 urlpatterns = [
+    path("schools/<uuid:school_id>/attendance/options", attendance_views.options),
+    path("schools/<uuid:school_id>/attendance/sessions", attendance_views.sessions),
+    path("schools/<uuid:school_id>/attendance/summary", attendance_views.summary),
+    path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>", attendance_views.session_detail),
+    path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/marks", attendance_views.record_marks),
+    path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/close", attendance_views.close_session),
+    path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/marks/<uuid:enrollment_id>/history", attendance_views.changes),
     path("schools/<uuid:school_id>/finance/schedules", finance_views.schedules),
     path("schools/<uuid:school_id>/finance/schedules/<uuid:schedule_id>", finance_views.schedule_detail),
     path("schools/<uuid:school_id>/finance/charges", finance_views.charges),
