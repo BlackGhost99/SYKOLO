@@ -16,3 +16,5 @@ Chaque module suit le même cycle : branche dédiée, code, tests, commit/push, 
 ## Phase 2
 
 04 — Structure académique : années, cycles, niveaux, filières, classes et périodes ; en validation sur feat/module-04-academic-structure.
+
+10 — Conseils et décisions scolaires configurables ; rectificatifs de bulletins audités (en développement).

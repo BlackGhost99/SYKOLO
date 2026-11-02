@@ -179,6 +179,9 @@ def pdf_bytes(r):
         f"Période : {data['period']['name'] if data['period'] else 'Année entière'}",
         status,
     ]
+    if data.get("amendment"):
+        labels.append("RECTIFICATIF N° " + str(data["amendment"]["sequence"]) + " — original conservé")
+        labels.append("Motif : " + data["amendment"]["reason"])
     for label in labels:story.append(Paragraph(escape(label),normal))
     story.append(Spacer(1,5*mm))
     def p(value):return Paragraph(escape(str(value)),normal)
