@@ -48,7 +48,7 @@ export default function TimetablePanel({schoolId}){
   },[schoolId]);
   useEffect(()=>{
     let active=true;
-    setInstructors([]);setInstructor("");
+    setInstructors([]);
     if(course)api(root+"courses/"+course+"/instructors").then(v=>{if(active)setInstructors(v.instructors||[])})
       .catch(()=>{if(active)setInstructors([])});
     return()=>{active=false};
@@ -113,7 +113,7 @@ export default function TimetablePanel({schoolId}){
       reset();
     })}}>
       <div className="two">
-        <label className="field">Cours<select value={course} required disabled={!!editing} onChange={e=>setCourse(e.target.value)}>
+        <label className="field">Cours<select value={course} required disabled={!!editing} onChange={e=>{setCourse(e.target.value);setInstructor("");}}>
           <option value="">Choisir…</option>
           {selectedCourses.map(c=><option key={c.id} value={c.id}>{subject(c.id)}</option>)}
         </select></label>
