@@ -49,6 +49,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="FeeCharge",
             fields=[
+                ("label", models.CharField(max_length=160)),
                 ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ("amount", models.DecimalField(decimal_places=2, max_digits=12)),
                 ("currency", models.CharField(max_length=3)),

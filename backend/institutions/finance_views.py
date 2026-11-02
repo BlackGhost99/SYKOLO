@@ -109,7 +109,7 @@ def charge_data(row):
     return {
         "id": str(row.pk), "enrollment": str(row.enrollment_id),
         "schedule": str(row.schedule_id),
-        "label": row.schedule.label, "amount": str(row.amount),
+        "label": row.label, "amount": str(row.amount),
         "currency": row.currency,
         "due_date": row.due_date.isoformat() if row.due_date else None,
         "paid": str(paid.quantize(Decimal("0.01"))),
@@ -272,7 +272,7 @@ def charges(request, school_id):
                 return JsonResponse({"error": "Tarif introuvable."}, status=404)
             row = FeeCharge(
                 school=school, enrollment=enrollment, schedule=schedule,
-                amount=schedule.amount, currency=schedule.currency,
+                label=schedule.label, amount=schedule.amount, currency=schedule.currency,
                 due_date=schedule.due_date, created_by=request.user,
             )
             row.full_clean()
@@ -432,7 +432,7 @@ def receipt(request, school_id, payment_id):
         "Référence interne : " + str(payment.pk),
         "Établissement : " + school.name,
         "Élève : " + student.first_name + " " + student.last_name,
-        "Frais : " + payment.charge.schedule.label,
+        "Frais : " + payment.charge.label,
         "Montant enregistré : " + str(payment.amount) + " " + payment.currency,
         "Date déclarée : " + payment.paid_on.isoformat(),
         "Méthode déclarée : " + payment.method,

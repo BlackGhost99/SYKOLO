@@ -57,6 +57,7 @@ class FeeCharge(models.Model):
     school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="fee_charges")
     enrollment = models.ForeignKey(Enrollment, on_delete=models.PROTECT, related_name="fee_charges")
     schedule = models.ForeignKey(FeeSchedule, on_delete=models.PROTECT, related_name="charges")
+    label = models.CharField(max_length=160)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     currency = models.CharField(max_length=3)
     due_date = models.DateField(null=True, blank=True)

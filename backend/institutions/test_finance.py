@@ -137,6 +137,7 @@ class FinanceLedgerTests(TestCase):
         self.assertEqual(changed.json()["revision"], 2)
         self.assertEqual(changed.json()["amount"], "135000.00")
         self.assertEqual(self.client.get(self.base + "charges/" + charge["id"]).json()["amount"], "120000.00")
+        self.assertEqual(self.client.get(self.base + "charges/" + charge["id"]).json()["label"], "Frais scolaires")
         self.assertEqual(self.post("schedules/" + schedule["id"], {
             "revision": 1, "label": "Écrasement",
         }, method="patch").status_code, 409)
