@@ -77,3 +77,7 @@ Fiches du personnel indépendantes des comptes (association facultative à un co
 ## Module 07 — Matières et programmes
 
 Matières par établissement, cours et coefficients configurables par classe/année, unités de programme et affectation des enseignants autorisés. Accès API isolé et interface React ; voir docs/curriculum.md.
+
+## Module 08 — Évaluations et notes
+
+Évaluations de cours liées aux barèmes configurés, copie immuable des règles, saisie de notes numériques/lettres/compétences, normalisation par le moteur Django et droit d'édition par enseignant affecté. Données non publiées tant que le module bulletin n'est pas livré ; voir docs/assessments.md.
