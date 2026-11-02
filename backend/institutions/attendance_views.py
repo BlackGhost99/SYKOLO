@@ -294,6 +294,8 @@ def record_marks(request, school_id, session_id):
         )}
         for uid, policy, revision, note, justification, justified, reason in pending:
             current = prior.get(uid)
+            if current and current.justified != justified and not has_permission(request.user, school, "school.attendance.write"):
+                return refuse()
             current_revision = current.revision if current else 0
             if revision != current_revision:
                 return JsonResponse({"error": "Conflit de version.", "enrollment": str(uid),

@@ -153,6 +153,14 @@ class AttendanceTests(TestCase):
         self.assertIsNone(hist.json()["history"][0]["before"])
         self.assertFalse(hist.json()["history"][1]["before"]["justified"])
         self.assertEqual(hist.json()["history"][1]["after"]["justification"], "Déclaration parentale")
+        self.login(self.teacher)
+        self.assertEqual(self.post(path + "/marks", {"marks": [
+            self.mark(self.enrollments[0], "a", revision=2,
+                      reason="Modification non autorisée du justificatif.",
+                      justified=False),
+        ]}).status_code, 403)
+        self.login(self.director)
+        self.assertTrue(AttendanceMark.objects.get(enrollment=self.enrollments[0]).justified)
         summary = self.client.get(self.base + "summary?classroom=" + str(self.classroom.pk)
                                   + "&from=2026-10-01&to=2026-10-31")
         self.assertEqual(summary.status_code, 200, summary.content.decode())
