@@ -1,9 +1,23 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import YemDesktop from "./YemDesktop.jsx";
 import AuthPanel from "./AuthPanel.jsx";
 
 export default function App() {
   const [mode, setMode] = useState("workspace");
+  const [apiAvailable, setApiAvailable] = useState(null);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/v1/auth/me", { credentials: "same-origin", signal: controller.signal })
+      .then(async response => {
+        if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) throw Error("API hors ligne");
+        const data = await response.json();
+        if (typeof data.authenticated !== "boolean") throw Error("API invalide");
+        setApiAvailable(true);
+      })
+      .catch(error => { if (error.name !== "AbortError") setApiAvailable(false); });
+    return () => controller.abort();
+  }, [retry]);
   return <div>
     <nav className="yem-mode-switch" aria-label="Mode d'application YEM">
       <strong>YEM</strong>
