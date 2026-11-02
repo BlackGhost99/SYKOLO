@@ -81,3 +81,7 @@ Matières par établissement, cours et coefficients configurables par classe/ann
 ## Module 08 — Évaluations et notes
 
 Évaluations de cours liées aux barèmes configurés, copie immuable des règles, saisie de notes numériques/lettres/compétences, normalisation par le moteur Django et droit d'édition par enseignant affecté. Données non publiées tant que le module bulletin n'est pas livré ; voir docs/assessments.md.
+
+## Module 09 — Bulletins
+
+Brouillons de bulletin avec agrégation décimale, modèles et barèmes configurables, publication versionnée, instantanés immuables et export PDF A4 noir/gris. Les évaluations doivent être publiées avant de contribuer à la moyenne. Voir docs/reports.md.
