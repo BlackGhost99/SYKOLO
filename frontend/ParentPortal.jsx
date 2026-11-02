@@ -42,6 +42,7 @@ export default function ParentPortal() {
   const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState("");
   const [connected,setConnected] = useState(true);
+  const [isParentAccount,setIsParentAccount] = useState(false);
 
   async function reloadChildren() {
     const result=await portalApi("parents/children");
@@ -64,6 +65,7 @@ export default function ParentPortal() {
     ]).then(([family,admin])=>{
       if (!alive)return;
       setChildren(family.children||[]);
+      setIsParentAccount(!!family.parent_role);
       setSchools(admin.schools||[]);
     }).catch(error=>{if(alive){setConnected(false);setMessage(error.message);}});
     return()=>{alive=false};
@@ -173,7 +175,7 @@ export default function ParentPortal() {
         </>}
       </Card>}
       <Message>{message}</Message>
-      {schools.length>0&&<Card title="Administration — vérifier les accès familiaux">
+      {!isParentAccount&&schools.length>0&&<Card title="Administration — vérifier les accès familiaux">
         <p>Réservé à la direction autorisée. Contrôlez l'identité du responsable légal hors application
           avant d'accorder l'accès ; un téléphone ou un e-mail identique ne suffit pas.</p>
         <label className="field">Établissement
