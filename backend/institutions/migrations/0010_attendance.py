@@ -9,7 +9,6 @@ def grant_attendance(apps, schema_editor):
     mapping = {
         "direction": ["school.attendance.read", "school.attendance.write", "school.attendance.finalize"],
         "secretariat": ["school.attendance.read", "school.attendance.write"],
-        "enseignant": ["school.attendance.read"],
     }
     for role in Role.objects.filter(code__in=mapping, revision=1).iterator():
         additions = [p for p in mapping[role.code] if p not in role.permissions]
