@@ -106,7 +106,7 @@ export default function AcademicPanel({schoolId}) {
         <form onSubmit={submit}>
           <div className="two">
             <label className="field">Code
-              <input required maxLength={40} pattern="[a-z][a-z0-9_-]*" value={form.code} onChange={e=>update("code",e.target.value)} placeholder="ex : 2026-2027" />
+              <input required maxLength={40} pattern="[a-z0-9][a-z0-9_-]*" value={form.code} onChange={e=>update("code",e.target.value)} placeholder="ex : 2026-2027" />
             </label>
             <label className="field">Intitulé
               <input required maxLength={120} value={form.name} onChange={e=>update("name",e.target.value)} placeholder="Nom libre" />

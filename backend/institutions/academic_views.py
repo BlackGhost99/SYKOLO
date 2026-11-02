@@ -66,7 +66,7 @@ def validate_fields(data, school, resource, *, editing=False):
         if key == "revision":
             continue
         if key == "code":
-            if not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,39}", value):
+            if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,39}", value):
                 raise ValueError("Code invalide (lettres minuscules, chiffres, _ et -).")
         elif key == "name":
             if not isinstance(value, str) or not (1 <= len(value.strip()) <= 120):
