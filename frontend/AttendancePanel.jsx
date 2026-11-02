@@ -127,7 +127,7 @@ export default function AttendancePanel({schoolId}) {
       })}}>
         <div className="two">
           <label className="field">Date
-            <input type="date" min={chosenClass?undefined:undefined} required value={date} onChange={e=>setDate(e.target.value)} />
+            <input type="date" required value={date} onChange={e=>setDate(e.target.value)} />
           </label>
           <label className="field">Code du créneau
             <input required maxLength={48} pattern="[a-z0-9][a-z0-9_-]*" value={slot} onChange={e=>setSlot(e.target.value)} placeholder="matin, cours1..." />

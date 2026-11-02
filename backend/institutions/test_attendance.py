@@ -221,6 +221,6 @@ class AttendanceTests(TestCase):
             "classroom": str(self.classroom.pk), "date": "2026-10-14",
             "slot": "test", "label": "Sans CSRF",
         }), content_type="application/json").status_code, 403)
-        self.assertEqual(self.client.delete(self.base + "sessions/" + session["id"]).status_code, 405)
+        self.assertEqual(self.client.delete(self.base + "sessions/" + session["id"], HTTP_X_CSRFTOKEN=self.token).status_code, 405)
         self.client.logout()
         self.assertEqual(self.client.get(self.base + "sessions/" + session["id"]).status_code, 401)
