@@ -101,7 +101,7 @@ def serialize(a):
         "period":str(a.period_id) if a.period_id else None,
         "name":a.name,"kind":a.kind,
         "assessment_date":a.assessment_date.isoformat(),
-        "weight":str(a.weight),"active":a.active,"published":a.published,
+        "weight":f"{a.weight:.3f}","active":a.active,"published":a.published,
         "revision":a.revision,"policy":a.policy_snapshot,
         "policy_layers":a.policy_layers,
     }
@@ -111,7 +111,7 @@ def grade_output(g):
     return {
         "id":str(g.pk),"enrollment":str(g.enrollment_id),
         "score":g.score,"feedback":g.feedback,
-        "status":g.status,"percent":str(g.percent) if g.percent is not None else None,
+        "status":g.status,"percent":f"{g.percent:.6f}" if g.percent is not None else None,
         "label":g.label or None,"revision":g.revision,
     }
 
