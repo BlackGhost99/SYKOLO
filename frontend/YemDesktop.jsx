@@ -45,6 +45,7 @@ const nav = [
   ["parents", "users", "Parents"],
   ["staff", "users", "Personnel"],
   ["settings", "settings", "Paramètres"],
+  ["branding", "school", "Identité visuelle"],
 ];
 
 function Button({ children, primary = false, icon, className = "" }) {
@@ -161,11 +162,52 @@ function ReportCard(){return <div className="report-sheet"><div className="repor
 
 function Placeholder({title}){return <><PageHeader title={title} subtitle="Module conservé dans la navigation PC"/><Card title={title} icon="file"><p className="yd-muted">Cet écran n’était pas inclus dans les maquettes PC de référence fournies. Il reste volontairement neutre pour ne rien réinventer.</p></Card></>}
 
+const BRAND_KEY = "yem.preview.branding.v1";
+const defaultBrand = {name:"École Privée Les Amandiers",color:"#1f6b2f",logo:"",banner:""};
+function getBrand(){
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(BRAND_KEY) || "null");
+    if (!saved || typeof saved !== "object") return defaultBrand;
+    const color = /^#[0-9a-fA-F]{6}$/.test(saved.color || "") ? saved.color : defaultBrand.color;
+    return {...defaultBrand,name:String(saved.name||defaultBrand.name).slice(0,180),color,
+      logo:typeof saved.logo==="string"&&saved.logo.startsWith("data:image/")?saved.logo:"",
+      banner:typeof saved.banner==="string"&&saved.banner.startsWith("data:image/")?saved.banner:""};
+  } catch {return defaultBrand;}
+}
+function BrandingEditor({brand,onChange}){
+ const [error,setError]=useState("");
+ function upload(field,file){
+   setError("");
+   if(!file)return;
+   if(!["image/png","image/jpeg","image/webp"].includes(file.type)){setError("Formats autorisés : PNG, JPEG, WebP.");return;}
+   if(file.size>900000){setError("Image trop volumineuse (900 Ko maximum pour cet aperçu).");return;}
+   const reader=new FileReader();
+   reader.onload=()=>onChange({...brand,[field]:String(reader.result)});
+   reader.onerror=()=>setError("Lecture du fichier impossible.");
+   reader.readAsDataURL(file);
+ }
+ return <><PageHeader title="Identité visuelle de l’établissement" subtitle="Personnalisation des pages de l’école et de son personnel — aperçu local"/>
+ <div className="yd-branding-grid">
+ <Card title="Personnalisation" icon="settings"><p className="yd-muted">Ces réglages concernent uniquement cet aperçu sur ce navigateur. Ils ne sont pas encore enregistrés dans les comptes de l’établissement.</p>
+ <label className="yd-brand-field">Nom de l’établissement<input maxLength={180} value={brand.name} onChange={e=>onChange({...brand,name:e.target.value})}/></label>
+ <label className="yd-brand-field">Couleur de l’établissement<input type="color" value={brand.color} onChange={e=>onChange({...brand,color:e.target.value})}/></label>
+ <label className="yd-brand-field">Logo de l’établissement (PNG, JPG ou WebP)<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>upload("logo",e.target.files?.[0])}/></label>
+ <label className="yd-brand-field">Bannière de l’établissement (PNG, JPG ou WebP)<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>upload("banner",e.target.files?.[0])}/></label>
+ {error&&<p role="alert" style={{color:"#a02626"}}>{error}</p>}
+ <button type="button" className="yd-btn" onClick={()=>onChange(defaultBrand)}>Réinitialiser cet aperçu</button>
+ </Card>
+ <Card title="Aperçu de l’identité" icon="school"><div className="yd-brand-preview" style={{borderColor:brand.color}}>{brand.banner&&<img className="yd-brand-banner-preview" src={brand.banner} alt="Bannière de l’établissement"/>}
+ <div className="yd-brand-preview-text">{brand.logo&&<img src={brand.logo} alt="Logo de l’établissement"/>}<strong>{brand.name||"Votre établissement"}</strong></div></div>
+ <p className="yd-muted">Le logo YEM et la mention « Développé par BWETEK Informatyk » restent présents, quelle que soit la couleur choisie.</p>
+ </Card></div></>;
+}
 export default function YemDesktop(){
  const [page,setPage]=useState("dashboard");
+ const [brand,setBrand]=useState(getBrand);
+ const updateBrand=next=>{setBrand(next);try{window.localStorage.setItem(BRAND_KEY,JSON.stringify(next));}catch{/* aperçu non persistant si stockage plein */}};
  const active = page === "bulletinConfig" ? "bulletins" : page;
- const content = useMemo(()=>({dashboard:<Dashboard/>,students:<Students/>,admissions:<Admissions/>,payments:<Payments/>,arrears:<Arrears/>,bulletins:<Bulletins/>,bulletinConfig:<BulletinConfig/>,absences:<Placeholder title="Absences"/>,parents:<Placeholder title="Parents"/>,staff:<Placeholder title="Personnel"/>})[page],[page]);
- return <div className="yd-app"><header className="yd-topbar"><div className="yd-logo" aria-label="YEM – Gestion scolaire et universitaire"/><div className="yd-school-select"><Icon name="school" size={20}/><b>École Privée Les Amandiers</b><span>⌄</span></div><div className="yd-global-search"><Icon name="search" size={18}/><span>Rechercher un élève, une famille, un paiement...</span></div><div className="yd-bell"><Icon name="bell" size={22}/><i>3</i></div><div className="yd-user"><div>●</div><b>Mme la Directrice</b><span>⌄</span></div></header>
+ const content = useMemo(()=>({dashboard:<Dashboard/>,students:<Students/>,admissions:<Admissions/>,payments:<Payments/>,arrears:<Arrears/>,bulletins:<Bulletins/>,bulletinConfig:<BulletinConfig/>,absences:<Placeholder title="Absences"/>,parents:<Placeholder title="Parents"/>,staff:<Placeholder title="Personnel"/>,branding:<BrandingEditor brand={brand} onChange={updateBrand}/>})[page],[page,brand]);
+ return <div className="yd-app" style={{"--school-primary":brand.color}}><header className="yd-topbar"><div className="yd-logo" aria-label="YEM – Gestion scolaire et universitaire"/><div className="yd-school-select">{brand.logo?<img className="yd-school-logo" src={brand.logo} alt="Logo de l’établissement"/>:<Icon name="school" size={20}/>}<b>{brand.name}</b><span>⌄</span></div><div className="yd-global-search"><Icon name="search" size={18}/><span>Rechercher un élève, une famille, un paiement...</span></div><div className="yd-bell"><Icon name="bell" size={22}/><i>3</i></div><div className="yd-user"><div>●</div><b>Mme la Directrice</b><span>⌄</span></div></header>
  <aside className="yd-sidebar">{nav.map(([id,icon,label])=><button key={id} className={active===id?"active":""} onClick={()=>setPage(id==="settings"?"bulletinConfig":id)}><Icon name={icon} size={22}/><span>{label}</span></button>)}</aside>
- <main className="yd-content">{content}</main></div>;
+ <main className="yd-content"><style>{brand.banner?`.yd-school-banner{background-image:linear-gradient(90deg,#fff0,#ffffff55),url("${brand.banner}")}`:""}</style>{content}<footer className="yd-brand-footer"><span>YEM — Gestion scolaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer></main></div>;
 }
