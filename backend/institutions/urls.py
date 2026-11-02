@@ -87,6 +87,7 @@ urlpatterns = [
     path("schools", views.schools),
     path("schools/<uuid:school_id>", views.school_detail),
     path("schools/<uuid:school_id>/my-access", views.my_school_access),
+    path("schools/<uuid:school_id>/users", views.school_user_create),
     path("schools/<uuid:school_id>/members", views.school_members),
     path("schools/<uuid:school_id>/roles", views.school_roles),
     path("schools/<uuid:school_id>/roles/<uuid:role_id>", views.school_role_detail),
