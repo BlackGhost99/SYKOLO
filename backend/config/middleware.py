@@ -8,5 +8,5 @@ class ResponseHeadersMiddleware:
             "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
         )
         if not request.path.startswith("/assets/"):
-            response["Cache-Control"] = "no-store"
+            response.setdefault("Cache-Control", "no-store")
         return response
