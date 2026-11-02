@@ -21,7 +21,7 @@ class SchoolCouncil(models.Model):
     status = models.CharField(max_length=12, default="draft")
     revision = models.PositiveIntegerField(default=1)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
-    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+")
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     closed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

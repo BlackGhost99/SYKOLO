@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
                 ("classroom", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="councils", to="institutions.academicclass")),
                 ("period", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, null=True, blank=True, related_name="councils", to="institutions.academicperiod")),
                 ("created_by", models.ForeignKey(on_delete=django.db.models.deletion.SET_NULL, null=True, to=settings.AUTH_USER_MODEL)),
-                ("closed_by", models.ForeignKey(on_delete=django.db.models.deletion.SET_NULL, null=True, related_name="+", to=settings.AUTH_USER_MODEL)),
+                ("closed_by", models.ForeignKey(on_delete=django.db.models.deletion.SET_NULL, null=True, blank=True, related_name="+", to=settings.AUTH_USER_MODEL)),
                 ("closed_at", models.DateTimeField(null=True, blank=True)),
             ],
         ),
