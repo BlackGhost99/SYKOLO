@@ -1,7 +1,15 @@
 from django.urls import path
-from . import views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views
+from . import views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views
 
 urlpatterns = [
+    path("schools/<uuid:school_id>/finance/schedules", finance_views.schedules),
+    path("schools/<uuid:school_id>/finance/schedules/<uuid:schedule_id>", finance_views.schedule_detail),
+    path("schools/<uuid:school_id>/finance/charges", finance_views.charges),
+    path("schools/<uuid:school_id>/finance/charges/<uuid:charge_id>", finance_views.charge_detail),
+    path("schools/<uuid:school_id>/finance/payments", finance_views.payments),
+    path("schools/<uuid:school_id>/finance/payments/<uuid:payment_id>/void", finance_views.void_payment),
+    path("schools/<uuid:school_id>/finance/payments/<uuid:payment_id>/receipt", finance_views.receipt),
+    path("schools/<uuid:school_id>/finance/enrollments/<uuid:enrollment_id>/statement", finance_views.statement),
     path("schools/<uuid:school_id>/council-choices", council_views.council_choices),
     path("schools/<uuid:school_id>/councils", council_views.councils),
     path("schools/<uuid:school_id>/councils/<uuid:council_id>", council_views.council_detail),
