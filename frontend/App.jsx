@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import YemDesktop from "./YemDesktop.jsx";
 import AuthPanel from "./AuthPanel.jsx";
-import SchoolWorkspace from "./SchoolWorkspace.jsx";
 
 export default function App() {
   const [mode, setMode] = useState("workspace");
@@ -15,7 +14,6 @@ export default function App() {
       <div className="yem-live-workspace">
         <div role="status" className="yem-deploy-note">Espace de gestion connecté à l'API Django. Si les services ne sont pas disponibles, les données ne peuvent pas être enregistrées : YEM est actuellement hébergé en site statique sur Render.</div>
         <AuthPanel />
-        <SchoolWorkspace />
         <footer className="yem-company">YEM · Développé par BWETEK Informatyk</footer>
       </div> : <YemDesktop />}
   </div>;
