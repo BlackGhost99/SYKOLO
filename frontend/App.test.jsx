@@ -1,118 +1,32 @@
 // @vitest-environment jsdom
 import React from "react";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, test, expect, vi } from "vitest";
+import { afterEach, test, expect } from "vitest";
 import App from "./App.jsx";
-import presets from "../backend/pedagogy/presets.json";
-let calls = [];
-beforeEach(() => {
-  calls = [];
-  localStorage.clear();
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (path, opts = {}) => {
-      const data = opts.body ? JSON.parse(opts.body) : undefined;
-      calls.push({ path, data });
-      let body = path === "/api/v1/auth/me"
-        ? { authenticated: false }
-        : path.endsWith("/auth/csrf")
-          ? { csrf: "ready" }
-          : path.endsWith("/presets")
-        ? presets
-        : path === "/healthz"
-          ? { version: "0.2.0", commit: "testsha" }
-          : path.endsWith("/validate")
-            ? { valid: true }
-            : {
-                status: "calculated",
-                score: 15.33,
-                percent: 76.6667,
-                label: "Bien",
-                notification: null,
-              };
-      return {
-        ok: true,
-        headers: { get: () => "application/json" },
-        json: async () => body,
-      };
-    }),
-  );
-});
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-});
-test("loads the API models and displays the simulated result", async () => {
+
+afterEach(cleanup);
+
+test("renders the PC dashboard from the approved YEM mockup", () => {
   render(<App />);
-  await screen.findByLabelText("Nom du profil");
-  await screen.findByText("Bien");
-  expect(screen.getByText("8 points de départ")).toBeTruthy();
-  expect(calls.some((x) => x.path === "/api/v1/evaluate")).toBe(true);
+  expect(screen.getByRole("heading", { name: "Tableau de bord fondateur" })).toBeTruthy();
+  expect(screen.getAllByText("8 950 000 FCFA").length).toBeGreaterThan(0);
+  expect(screen.getByText("École Privée Les Amandiers")).toBeTruthy();
 });
-test("saves only after server validation and reopens a local profile", async () => {
+
+test("navigates between the approved PC screens", async () => {
   const user = userEvent.setup();
   render(<App />);
-  await screen.findByLabelText("Nom du profil");
-  await user.clear(screen.getByLabelText("Nom du profil"));
-  await user.type(
-    screen.getByLabelText("Nom du profil"),
-    "Primaire personnalisé",
-  );
-  await user.click(
-    screen.getByRole("button", { name: /Enregistrer le profil/ }),
-  );
-  await waitFor(() =>
-    expect(
-      JSON.parse(localStorage.getItem("sykolo.policies.v1"))[0].policy.name,
-    ).toBe("Primaire personnalisé"),
-  );
-  expect(calls.some((x) => x.path.endsWith("/validate"))).toBe(true);
-});
-test("passes custom coefficients to Django", async () => {
-  const user = userEvent.setup();
-  render(<App />);
-  await screen.findByLabelText("Coefficient évaluation 1");
-  await user.clear(screen.getByLabelText("Coefficient évaluation 1"));
-  await user.type(screen.getByLabelText("Coefficient évaluation 1"), "3");
-  await waitFor(() =>
-    expect(
-      calls.filter((x) => x.path.endsWith("/evaluate")).at(-1)?.data.entries[0]
-        .weight,
-    ).toBe(3),
-  );
-});
-test("switches to letters without keeping numeric scores", async () => {
-  const user = userEvent.setup();
-  render(<App />);
-  await screen.findByLabelText("Partir d’un modèle");
-  await user.selectOptions(
-    screen.getByLabelText("Partir d’un modèle"),
-    "letters",
-  );
-  expect(screen.getByLabelText("Niveau évaluation 1")).toBeTruthy();
-  await waitFor(() =>
-    expect(
-      calls.filter((x) => x.path.endsWith("/evaluate")).at(-1)?.data.policy
-        .scale.kind,
-    ).toBe("letters"),
-  );
-  expect(
-    typeof calls.filter((x) => x.path.endsWith("/evaluate")).at(-1).data
-      .entries[0].score,
-  ).toBe("string");
-});
-test("renders edited content as text", async () => {
-  const user = userEvent.setup();
-  const { container } = render(<App />);
-  await screen.findByLabelText("Nom du profil");
-  await user.clear(screen.getByLabelText("Nom du profil"));
-  await user.type(
-    screen.getByLabelText("Nom du profil"),
-    "<img src=x onerror=alert(1)>",
-  );
-  expect(container.querySelector("img")).toBeNull();
-  expect(
-    screen.getByRole("heading", { name: "<img src=x onerror=alert(1)>" }),
-  ).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: /Élèves/ }));
+  expect(screen.getByRole("heading", { name: "Gestion des élèves" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: /Admissions/ }));
+  expect(screen.getByRole("heading", { name: "Admissions & préinscriptions" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: /Paiements/ }));
+  expect(screen.getByRole("heading", { name: "Encaissements et caisse journalière" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: /Impayés & relances/ }));
+  expect(screen.getByRole("heading", { name: "Impayés & relances" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: /^Bulletins$/ }));
+  expect(screen.getByRole("heading", { name: "Bulletins et résultats scolaires" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: /Paramètres/ }));
+  expect(screen.getByRole("heading", { name: "Paramétrage pédagogique et bulletins" })).toBeTruthy();
 });
