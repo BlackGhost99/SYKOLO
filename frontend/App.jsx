@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import AuthPanel from "./AuthPanel.jsx";
+import SchoolWorkspace from "./SchoolWorkspace.jsx";
 // Keep the existing namespace so saved profiles survive the product rename.
 const KEY = "sykolo.policies.v1";
 const clone = (x) => structuredClone(x);
@@ -227,7 +228,7 @@ export default function App() {
           <span className="brand-icon">Y</span>YEM
           <span className="brand-dot">.</span>
         </a>
-        <p className="side-label">PHASE 1 · FONDATIONS</p>
+        <p className="side-label">PHASE 2 · ORGANISATION SCOLAIRE</p>
         <a className="nav active" href="#configuration">
           <span>◈</span>01 · Architecture & déploiement
         </a>
@@ -240,7 +241,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <span className="avatar">YE</span>
           <div>
-            Atelier YEM<small>Fondations · v0.4.0</small>
+            Atelier YEM<small>Structure académique · v0.5.0</small>
           </div>
         </div>
       </aside>
@@ -257,6 +258,7 @@ export default function App() {
         </header>
         <main>
           <AuthPanel />
+          <SchoolWorkspace />
           <div className="heading">
             <div>
               <p className="eyebrow">VOTRE ÉCOLE, VOS RÈGLES</p>

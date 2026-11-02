@@ -42,7 +42,7 @@ export default function AuthPanel() {
     let mounted = true;
     authApi("me").then((data) => {
       if (mounted) setAccount(data);
-    }).catch(() => { if (mounted) setAccount({ authenticated: false }); });
+    }).catch(() => { if (mounted) setAccount({ authenticated: false }); window.dispatchEvent(new Event("yem:auth-change")); });
     return () => { mounted = false; };
   }, []);
 
@@ -164,7 +164,7 @@ export default function AuthPanel() {
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               const result = await authApi("login", { username, password, code });
-              setAccount(result); setPassword(""); setCode(""); setMessage("Connexion réussie.");
+              setAccount(result); window.dispatchEvent(new Event("yem:auth-change")); setPassword(""); setCode(""); setMessage("Connexion réussie.");
             }); }}>
               <label className="field">Identifiant
                 <input autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} />
