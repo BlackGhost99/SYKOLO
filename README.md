@@ -65,3 +65,7 @@ L'interface de la phase 1 affiche les organisations, écoles, affectations et pa
 ## Module 04 — Structure académique
 
 Années scolaires et dates, cycles et niveaux, filières facultatives, classes par année et périodes configurables sans découpage obligatoire (semestres, trimestres ou autres). Les objets sont séparés par école et contrôlés avec les droits `school.academic.read` et `school.academic.manage`. Les modifications exigent une révision optimiste ; suppression physique interdite, utilisez `active=false`. API documentée dans `docs/academic.md`.
+
+## Module 05 — Élèves et inscriptions
+
+Dossier élève par école, responsables légaux, inscriptions et réinscriptions par année/classe, capacité de classe, mutations historisées et droits d'accès aux informations personnelles. Aucune publication de données personnelles dans le démonstrateur public. Voir docs/students.md.
