@@ -113,3 +113,24 @@ def platform_add_user(request, school_id):
     except IntegrityError:
         return JsonResponse({"error": "Cet identifiant existe déjà."}, status=409)
     return JsonResponse({"username": user.username, "role": role.code}, status=201)
+
+
+@require_http_methods(["POST"])
+@authorized
+def platform_assume_school_administration(request, school_id):
+    """Explicit, audited association before platform staff can work inside an institution."""
+    if not platform_only(request):
+        return JsonResponse({"error": "Accès réservé au super-administrateur avec MFA."}, status=403)
+    school = School.objects.filter(pk=school_id, is_active=True).first()
+    if school is None:
+        return JsonResponse({"error": "Établissement introuvable."}, status=404)
+    with transaction.atomic():
+        role = SchoolRole.objects.filter(school=school, code="direction").first()
+        if role is None:
+            return JsonResponse({"error": "Rôle direction introuvable."}, status=409)
+        SchoolMember.objects.update_or_create(
+            school=school, user=request.user,
+            defaults={"role": role, "active": True}
+        )
+        log_event(school, request, "platform_admin_school_access", str(request.user.pk))
+    return JsonResponse({"school_id": str(school.id), "access": "direction"})
