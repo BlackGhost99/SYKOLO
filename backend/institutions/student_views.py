@@ -1,0 +1,291 @@
+"""Institutionally scoped admissions and learner records; no public learner directory."""
+import re
+from datetime import date
+from uuid import UUID
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
+from django.http import JsonResponse
+from django.views.decorators.http import require_http_methods
+from accounts.views import authorized
+from .views import access, refuse, parse_body, log_event
+from .services import has_permission
+from .academic_models import AcademicYear, AcademicClass
+from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
+
+
+def check(request, school_id, permission):
+    school, error = access(request, school_id)
+    if error is not None:
+        return None, error
+    if not has_permission(request.user, school, permission):
+        return None, refuse()
+    return school, None
+
+
+def parse_fields(data, allowed, required=(), *, revision=False):
+    if set(data) - set(allowed) - ({"revision"} if revision else set()):
+        raise ValueError("Champs inconnus ou non modifiables.")
+    if not revision and not set(required).issubset(data):
+        raise ValueError("Champs obligatoires manquants.")
+    if revision and (type(data.get("revision")) is not int or data["revision"] < 1):
+        raise ValueError("Révision requise.")
+    if revision and len(data) == 1:
+        raise ValueError("Aucune modification.")
+    clean = {}
+    for key, value in data.items():
+        if key == "revision":
+            continue
+        if key in ("student_code", "status"):
+            if not isinstance(value, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}", value):
+                raise ValueError("Code ou statut invalide.")
+            if key == "status" and len(value) > 40:
+                raise ValueError("Statut trop long.")
+        elif key in ("first_name", "last_name", "full_name"):
+            if not isinstance(value, str) or not 1 <= len(value.strip()) <= (180 if key == "full_name" else 120):
+                raise ValueError("Nom invalide.")
+            value = value.strip()
+        elif key == "relationship":
+            if not isinstance(value, str) or len(value) > 80:
+                raise ValueError("Lien de parenté invalide.")
+        elif key == "phone":
+            if not isinstance(value, str) or len(value) > 45 or any(ord(c) < 32 for c in value):
+                raise ValueError("Numéro invalide.")
+        elif key == "email":
+            if not isinstance(value, str) or len(value) > 254:
+                raise ValueError("Adresse email invalide.")
+        elif key in ("date_of_birth", "admission_date", "enrolled_on"):
+            if value is None and key != "enrolled_on":
+                pass
+            elif not isinstance(value, str):
+                raise ValueError("Date invalide.")
+            else:
+                try:
+                    value = date.fromisoformat(value)
+                    if value.isoformat() != data[key]:
+                        raise ValueError()
+                except ValueError:
+                    raise ValueError("Date ISO invalide.") from None
+        elif key in ("active", "is_primary"):
+            if type(value) is not bool:
+                raise ValueError("Booléen attendu.")
+        elif key in ("student", "year", "classroom"):
+            try:
+                value = UUID(value)
+            except (TypeError, ValueError, AttributeError):
+                raise ValueError("Identifiant incorrect.") from None
+        clean[key] = value
+    return clean
+
+
+def describe(obj):
+    result = {"id": str(obj.pk), "revision": obj.revision}
+    if isinstance(obj, Student):
+        fields = ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", "active")
+    elif isinstance(obj, StudentGuardian):
+        fields = ("full_name", "relationship", "phone", "email", "is_primary", "active")
+    else:
+        fields = ("student_id", "year_id", "classroom_id", "enrolled_on", "status", "active")
+    for field in fields:
+        val = getattr(obj, field)
+        result[field[:-3] if field.endswith("_id") else field] = val.isoformat() if isinstance(val,date) else str(val) if isinstance(val,UUID) else val
+    return result
+
+
+def validation_response(exc):
+    if hasattr(exc, "message_dict"):
+        messages = [msg for group in exc.message_dict.values() for msg in group]
+    else:
+        messages = exc.messages
+    return JsonResponse({"error": " ".join(messages)[:500]}, status=422)
+
+
+@require_http_methods(["GET", "POST"])
+@authorized
+def students(request, school_id):
+    school, error = check(request, school_id, "school.students.read" if request.method == "GET" else "school.students.manage")
+    if error is not None: return error
+    if request.method == "GET":
+        return JsonResponse({"students": [describe(s) for s in Student.objects.filter(school=school).order_by("last_name","first_name")[:500]]})
+    data, error = parse_body(request)
+    if error is not None: return error
+    try:
+        values = parse_fields(data, ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", "active"), ("student_code", "first_name", "last_name"))
+        with transaction.atomic():
+            student = Student(school=school, **values)
+            student.full_clean()
+            student.save()
+            log_event(school, request, "student_created", student.pk)
+    except ValueError as exc: return JsonResponse({"error": str(exc)}, status=422)
+    except ValidationError as exc: return validation_response(exc)
+    except IntegrityError: return JsonResponse({"error": "Code élève déjà utilisé."}, status=409)
+    return JsonResponse(describe(student), status=201)
+
+
+@require_http_methods(["GET", "PATCH"])
+@authorized
+def student_detail(request, school_id, student_id):
+    school, error = check(request, school_id, "school.students.read" if request.method == "GET" else "school.students.manage")
+    if error is not None: return error
+    if request.method == "GET":
+        student = Student.objects.filter(school=school, id=student_id).first()
+        return JsonResponse(describe(student)) if student else JsonResponse({"error": "Élève introuvable."}, status=404)
+    data,error = parse_body(request)
+    if error is not None: return error
+    try: fields = parse_fields(data, ("first_name", "last_name", "date_of_birth", "admission_date", "active"), revision=True)
+    except ValueError as exc: return JsonResponse({"error": str(exc)}, status=422)
+    try:
+        with transaction.atomic():
+            obj = Student.objects.select_for_update().filter(school=school, pk=student_id).first()
+            if obj is None: return JsonResponse({"error": "Élève introuvable."}, status=404)
+            if obj.revision != data["revision"]: return JsonResponse({"error": "Conflit de version.", "revision": obj.revision}, status=409)
+            for field,value in fields.items(): setattr(obj, field, value)
+            obj.full_clean()
+            obj.revision += 1
+            obj.save()
+            log_event(school, request, "student_updated", obj.pk)
+    except ValidationError as exc: return validation_response(exc)
+    return JsonResponse(describe(obj))
+
+
+@require_http_methods(["GET","POST"])
+@authorized
+def guardians(request, school_id, student_id):
+    school, error = check(request, school_id, "school.students.read" if request.method == "GET" else "school.students.manage")
+    if error is not None: return error
+    student = Student.objects.filter(school=school, pk=student_id).first()
+    if student is None: return JsonResponse({"error": "Élève introuvable."}, status=404)
+    if request.method == "GET":
+        return JsonResponse({"guardians": [describe(g) for g in student.guardians.order_by("full_name")[:100]]})
+    data,error = parse_body(request)
+    if error is not None: return error
+    try:
+        fields=parse_fields(data,("full_name","relationship","phone","email","is_primary","active"),("full_name",))
+        with transaction.atomic():
+            g=StudentGuardian(school=school,student=student,**fields)
+            g.full_clean();g.save();log_event(school,request,"guardian_added",student.pk)
+    except ValueError as exc: return JsonResponse({"error":str(exc)},status=422)
+    except ValidationError as exc: return validation_response(exc)
+    return JsonResponse(describe(g),status=201)
+
+
+@require_http_methods(["PATCH"])
+@authorized
+def guardian_detail(request, school_id, student_id, guardian_id):
+    school,error=check(request,school_id,"school.students.manage")
+    if error is not None: return error
+    data,error=parse_body(request)
+    if error is not None: return error
+    try: fields=parse_fields(data,("full_name","relationship","phone","email","is_primary","active"),revision=True)
+    except ValueError as exc: return JsonResponse({"error":str(exc)},status=422)
+    try:
+        with transaction.atomic():
+            g=StudentGuardian.objects.select_for_update().filter(school=school,student_id=student_id,pk=guardian_id).first()
+            if g is None: return JsonResponse({"error":"Responsable introuvable."},status=404)
+            if g.revision != data["revision"]: return JsonResponse({"error":"Conflit de version.","revision":g.revision},status=409)
+            for k,v in fields.items(): setattr(g,k,v)
+            g.full_clean();g.revision+=1;g.save()
+            log_event(school,request,"guardian_updated",student_id)
+    except ValidationError as exc: return validation_response(exc)
+    return JsonResponse(describe(g))
+
+
+def load_relations(school, values):
+    student=Student.objects.filter(school=school,pk=values["student"]).first()
+    year=AcademicYear.objects.filter(school=school,pk=values["year"]).first()
+    classroom=AcademicClass.objects.filter(school=school,pk=values["classroom"]).first()
+    if not student or not year or not classroom:
+        raise ValueError("Élève, année ou classe introuvable dans cet établissement.")
+    return student,year,classroom
+
+
+def validate_enrollment_slot(classroom, student, year, *, active=True, enrollment=None):
+    if classroom.year_id != year.pk or classroom.school_id != student.school_id:
+        raise ValueError("Classe et inscription incohérentes.")
+    if active and (not classroom.active or not year.active or not student.active):
+        raise ValueError("Impossible d'inscrire dans une classe, une année ou un dossier archivé.")
+    if active and classroom.capacity is not None:
+        active_rows=Enrollment.objects.filter(classroom=classroom,active=True)
+        if enrollment: active_rows=active_rows.exclude(pk=enrollment.pk)
+        if active_rows.count() >= classroom.capacity:
+            raise ValueError("Capacité de classe atteinte.")
+
+
+@require_http_methods(["GET","POST"])
+@authorized
+def enrollments(request,school_id):
+    school,error=check(request,school_id,"school.students.read" if request.method=="GET" else "school.students.manage")
+    if error is not None: return error
+    if request.method=="GET":
+        student_id=request.GET.get("student")
+        qs=Enrollment.objects.filter(school=school).order_by("-enrolled_on","pk")
+        if student_id:
+            try: qs=qs.filter(student_id=UUID(student_id))
+            except (ValueError,TypeError): return JsonResponse({"error":"Identifiant invalide."},status=422)
+        return JsonResponse({"enrollments":[describe(en) for en in qs[:500]]})
+    data,error=parse_body(request)
+    if error is not None: return error
+    try:
+        fields=parse_fields(data,("student","year","classroom","enrolled_on","status","active"),("student","year","classroom","enrolled_on"))
+        with transaction.atomic():
+            student,year,classroom=load_relations(school,fields)
+            # Lock class before counting places. Works with PostgreSQL concurrency.
+            classroom=AcademicClass.objects.select_for_update().get(pk=classroom.pk,school=school)
+            validate_enrollment_slot(classroom,student,year,active=fields.get("active",True))
+            values={k+"_id" if k in ("student","year","classroom") else k:v for k,v in fields.items()}
+            record=Enrollment(school=school,**values)
+            record.full_clean();record.save()
+            EnrollmentEvent.objects.create(enrollment=record,school=school,actor=request.user,
+                previous_class_id=None,new_class_id=record.classroom_id,new_status=record.status)
+            log_event(school,request,"enrollment_created",record.pk)
+    except ValueError as exc: return JsonResponse({"error":str(exc)},status=422)
+    except ValidationError as exc: return validation_response(exc)
+    except IntegrityError: return JsonResponse({"error":"Élève déjà inscrit pour cette année."},status=409)
+    return JsonResponse(describe(record),status=201)
+
+
+@require_http_methods(["GET","PATCH"])
+@authorized
+def enrollment_detail(request,school_id,enrollment_id):
+    school,error=check(request,school_id,"school.students.read" if request.method=="GET" else "school.students.manage")
+    if error is not None: return error
+    if request.method=="GET":
+        record=Enrollment.objects.filter(school=school,pk=enrollment_id).first()
+        return JsonResponse(describe(record)) if record else JsonResponse({"error":"Inscription introuvable."},status=404)
+    data,error=parse_body(request)
+    if error is not None: return error
+    try: fields=parse_fields(data,("classroom","status","active"),revision=True)
+    except ValueError as exc: return JsonResponse({"error":str(exc)},status=422)
+    try:
+        with transaction.atomic():
+            rec=Enrollment.objects.select_for_update().filter(school=school,pk=enrollment_id).first()
+            if rec is None: return JsonResponse({"error":"Inscription introuvable."},status=404)
+            if rec.revision!=data["revision"]: return JsonResponse({"error":"Conflit de version.","revision":rec.revision},status=409)
+            new_class=AcademicClass.objects.filter(school=school,pk=fields.get("classroom",rec.classroom_id)).first()
+            if not new_class: raise ValueError("Classe introuvable.")
+            new_class=AcademicClass.objects.select_for_update().get(pk=new_class.pk)
+            validate_enrollment_slot(new_class,rec.student,rec.year,active=fields.get("active",rec.active),enrollment=rec)
+            previous_class=rec.classroom_id
+            previous_status=rec.status
+            for key,val in fields.items(): setattr(rec,"classroom_id" if key=="classroom" else key,val)
+            rec.full_clean();rec.revision+=1;rec.save()
+            EnrollmentEvent.objects.create(enrollment=rec,school=school,actor=request.user,
+                previous_class_id=previous_class,new_class_id=rec.classroom_id,
+                previous_status=previous_status,new_status=rec.status)
+            log_event(school,request,"enrollment_updated",rec.pk)
+    except ValueError as exc: return JsonResponse({"error":str(exc)},status=422)
+    except ValidationError as exc: return validation_response(exc)
+    return JsonResponse(describe(rec))
+
+
+@require_http_methods(["GET"])
+@authorized
+def enrollment_history(request,school_id,enrollment_id):
+    school,error=check(request,school_id,"school.students.read")
+    if error is not None: return error
+    if not Enrollment.objects.filter(school=school,pk=enrollment_id).exists():
+        return JsonResponse({"error":"Inscription introuvable."},status=404)
+    rows=EnrollmentEvent.objects.filter(school=school,enrollment_id=enrollment_id).order_by("-at")[:100]
+    return JsonResponse({"history":[{
+        "at":r.at.isoformat(),"previous_class":str(r.previous_class_id) if r.previous_class_id else None,
+        "new_class":str(r.new_class_id),"previous_status":r.previous_status,"new_status":r.new_status,
+    } for r in rows]})
