@@ -7,8 +7,9 @@ import App from "./App.jsx";
 
 afterEach(cleanup);
 
-test("renders the PC dashboard from the approved YEM mockup", () => {
+test("renders the PC dashboard from the approved YEM mockup", async () => {
   render(<App />);
+  await userEvent.setup().click(screen.getByRole("button", { name: /Maquettes PC/ }));
   expect(screen.getByRole("heading", { name: "Tableau de bord fondateur" })).toBeTruthy();
   expect(screen.getAllByText("8 950 000 FCFA").length).toBeGreaterThan(0);
   expect(screen.getByText("École Privée Les Amandiers")).toBeTruthy();
@@ -17,6 +18,7 @@ test("renders the PC dashboard from the approved YEM mockup", () => {
 test("navigates between the approved PC screens", async () => {
   const user = userEvent.setup();
   render(<App />);
+  await user.click(screen.getByRole("button", { name: /Maquettes PC/ }));
   await user.click(screen.getByRole("button", { name: /Élèves/ }));
   expect(screen.getByRole("heading", { name: "Gestion des élèves" })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: /Admissions/ }));
@@ -34,6 +36,7 @@ test("navigates between the approved PC screens", async () => {
 test("school branding editor keeps YEM and BWETEK visible", async () => {
   const user = userEvent.setup();
   render(<App />);
+  await user.click(screen.getByRole("button", { name: /Maquettes PC/ }));
   await user.click(screen.getByRole("button", { name: /Identité visuelle/ }));
   expect(screen.getByRole("heading", { name: /Identité visuelle de l’établissement/ })).toBeTruthy();
   expect(screen.getAllByText(/BWETEK Informatyk/).length).toBeGreaterThan(0);
