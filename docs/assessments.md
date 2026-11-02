@@ -1,0 +1,9 @@
+# YEM Module 08 — Évaluations et saisie des notes
+
+Les enseignants sont autorisés à créer et gérer uniquement les évaluations des cours où ils sont affectés comme intervenants actifs. La direction disposant de school.assessments.read/manage peut gérer l'ensemble de son établissement. Aucune donnée scolaire n'est accessible d'une autre école ; le contenu des contacts familiaux n'est pas fourni dans la liste d'appel.
+
+Un barème configuré (SchoolSetting.grading par établissement, année, cycle, niveau ou classe) est **obligatoire** avant toute évaluation. Le barème et ses révisions d'origine sont copiés dans l'évaluation lors de sa création ; ils restent immuables. Toutes les notes et lettres/appréciations sont validées et converties par le moteur existant pedagogy.domain.evaluate en pourcentage, sans conversion codée en dur. Le poids de l'évaluation est libre, positif, limité à 1000, tandis que le coefficient de matière est distinct (module 07). La note est stockée au format JSON avec son résultat normalisé et sa version. Un changement du barème institutionnel n'altère pas les évaluations précédentes.
+
+Routes (préfixe /api/v1) : GET/POST /schools/{id}/courses/{course_id}/assessments ; GET/PATCH /schools/{id}/assessments/{uuid} ; GET /schools/{id}/assessments/{uuid}/roster ; GET/POST /schools/{id}/assessments/{uuid}/grades ; GET/PATCH /schools/{id}/assessments/{uuid}/grades/{uuid}. Les mutations requièrent CSRF. Une évaluation publiée sera verrouillée ; la publication et les bulletins officiels arrivent au module 09. Aucune note de ce module n'est publiée aux parents.
+
+Sécurité : on ne peut attribuer une note qu'à une inscription active de la classe et de l'année de l'évaluation ; pas de données familiales dans le roster enseignant. Les modifications des notes sont journalisées, les mises à jour utilisent des révisions optimistes, et aucun DELETE n'est proposé.
