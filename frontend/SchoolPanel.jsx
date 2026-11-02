@@ -6,6 +6,7 @@ import CurriculumPanel from "./CurriculumPanel.jsx";
 import AssessmentPanel from "./AssessmentPanel.jsx";
 import ReportPanel from "./ReportPanel.jsx";
 import CouncilPanel from "./CouncilPanel.jsx";
+import FinancePanel from "./FinancePanel.jsx";
 
 const cookie = () => document.cookie.split("; ").find((x) => x.startsWith("csrftoken="))?.split("=")[1] || "";
 async function api(path, data) {
@@ -148,6 +149,7 @@ export default function SchoolPanel() {
       {selected && <AssessmentPanel key={"assessments-"+selected} schoolId={selected} />}
       {selected && <ReportPanel key={"reports-"+selected} schoolId={selected} />}
       {selected && <CouncilPanel key={"councils-"+selected} schoolId={selected} />}
+      {selected && <FinancePanel key={"finance-"+selected} schoolId={selected} />}
       {message && <p role="status" aria-live="polite">{message}</p>}
     </section>
   );

@@ -18,3 +18,5 @@ Chaque module suit le même cycle : branche dédiée, code, tests, commit/push, 
 04 — Structure académique : années, cycles, niveaux, filières, classes et périodes ; en validation sur feat/module-04-academic-structure.
 
 10 — Conseils et décisions scolaires configurables ; rectificatifs de bulletins audités (en développement).
+
+11 — Frais scolaires et journal des paiements manuels (tarifs paramétrables, reçus A4, échéances, annulations auditables). Développement en validation.
