@@ -69,3 +69,7 @@ Années scolaires et dates, cycles et niveaux, filières facultatives, classes p
 ## Module 05 — Élèves et inscriptions
 
 Dossier élève par école, responsables légaux, inscriptions et réinscriptions par année/classe, capacité de classe, mutations historisées et droits d'accès aux informations personnelles. Aucune publication de données personnelles dans le démonstrateur public. Voir docs/students.md.
+
+## Module 06 — Personnel et affectations
+
+Fiches du personnel indépendantes des comptes (association facultative à un compte existant membre de l'école), affectations à des classes/années et responsabilités configurables, contrôles de rôles, révisions et archivage. API privée et interface React ; voir docs/staff.md.
