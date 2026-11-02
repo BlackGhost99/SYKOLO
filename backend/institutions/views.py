@@ -165,6 +165,24 @@ def school_members(request, school_id):
     return JsonResponse({"user_id": str(user.id), "role": role.code}, status=201 if created else 200)
 
 
+
+@require_GET
+@authorized
+def my_school_access(request, school_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    member = SchoolMember.objects.select_related("role").filter(
+        school=school, user=request.user, active=True
+    ).first()
+    founder = owns_organization(request.user, school.organization)
+    return JsonResponse({
+        "school": school_response(school),
+        "role": member.role.code if member else ("proprietaire" if founder else None),
+        "role_label": member.role.label if member else ("Propriétaire" if founder else ""),
+        "permissions": member.role.permissions if member else (["school.view", "school.members.write"] if founder else []),
+    })
+
 def role_response(role):
     return {"id": str(role.id), "code": role.code, "label": role.label,
             "permissions": role.permissions, "revision": role.revision}
