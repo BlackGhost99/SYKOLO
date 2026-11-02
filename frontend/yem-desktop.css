@@ -609,3 +609,15 @@ label.yd-school-select { cursor: pointer; }
 .yd-app .yd-real-body th { font-size: 13.5px; color: #1d2124; }
 .yd-app .yd-real-body h3 { font-size: 17px; }
 .yd-app .yd-real-body .actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.yd-select select, .yd-input select { border: 0; background: transparent; font: inherit; color: inherit; flex: 1; min-width: 0; appearance: none; cursor: pointer; padding: 0; outline-offset: 4px; }
+label.yd-select { cursor: pointer; }
+.yd-amount input { flex: 1; min-width: 0; border: 0; padding: 0 14px; font: inherit; background: #fff; color: var(--yd-text); }
+.yd-amount input:disabled { background: #fff; color: var(--yd-text); }
+.yd-empty { margin: 8px 0; padding: 14px; text-align: center; background: var(--yd-line-soft); border-radius: 8px; }
+.yd-link { color: var(--yd-green); font-weight: 600; text-decoration: none; }
+.yd-link:hover { text-decoration: underline; }
+a.yd-btn { text-decoration: none; }
+.yd-form-msg { margin: 0 0 10px; padding: 10px 14px; border-radius: 8px; background: var(--yd-green-softer); font-size: 15px; }
+.yd-real-tabs { margin-top: -2px; }
+.yd-paymodes { display: flex; flex-wrap: wrap; gap: 6px; }
+.yd-paymodes .yd-btn { flex: 1 1 auto; padding: 0 10px; }

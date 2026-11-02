@@ -11,6 +11,7 @@ import AttendancePanel from "./AttendancePanel.jsx";
 import TimetablePanel from "./TimetablePanel.jsx";
 import AdmissionsPanel from "./AdmissionsPanel.jsx";
 import ParentPortal from "./ParentPortal.jsx";
+import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens.jsx";
 import {Shell,NAV,PageHeader,Card,Icon,Button} from "./yem-ui.jsx";
 import "./yem-desktop.css";
 
@@ -31,10 +32,10 @@ const modules = {
 };
 /* Chaque entrée du menu des maquettes regroupe un ou plusieurs modules réels. */
 const sections = {
-  students:{title:"Gestion des élèves",subtitle:"Inscriptions, classes, responsables et suivi administratif",modules:["students"]},
+  students:{title:"Gestion des élèves",subtitle:"Inscriptions, classes, responsables et suivi administratif",modules:["students"],live:{label:"Liste des élèves",need:"school.students.read",manage:"Fiches et inscriptions"}},
   admissions:{title:"Admissions & préinscriptions",subtitle:"Demandes, inscriptions au secrétariat, capacité d’accueil et paiement",modules:["admissions"]},
-  payments:{title:"Encaissements et caisse journalière",subtitle:"Suivi des paiements, reçus et méthodes d’encaissement",modules:["finance"]},
-  arrears:{title:"Impayés & relances",subtitle:"Suivi des échéances, retards et soldes des familles",modules:["finance"]},
+  payments:{title:"Encaissements et caisse journalière",subtitle:"Suivi des paiements, reçus et méthodes d’encaissement",modules:["finance"],live:{label:"Caisse du jour",need:"school.finance.read",manage:"Tarifs, frais et relevés"}},
+  arrears:{title:"Impayés & relances",subtitle:"Suivi des échéances, retards et soldes des familles",modules:[],live:{label:"Impayés",need:"school.finance.read"}},
   bulletins:{title:"Bulletins et résultats scolaires",subtitle:"Évaluations, préparation, contrôle et publication des bulletins",modules:["assessments","reports","council"]},
   absences:{title:"Absences et retards",subtitle:"Appels, absences, retards et justificatifs",modules:["attendance","timetable"]},
   staff:{title:"Personnel",subtitle:"Équipe pédagogique et administrative, affectations et comptes",modules:["staff"],extra:"users"},
@@ -70,6 +71,12 @@ function UsersForm({schoolId,onMessage}) {
   </Card>;
 }
 
+function ModuleGrid({visibleSections,navigate}) {
+  const entries=Object.entries(visibleSections);
+  return <div className="yd-real-body">{entries.length===0?<Card title="Aucun module attribué" icon="info"><p className="yd-card-sub">Aucun module n'est attribué à votre rôle dans cet établissement.</p></Card>:
+    <div className="pc-module-grid">{entries.map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{NAV.find(n=>n[0]===id)?.[2]}</b><small>{[s.live?.label,...s.modules.map(k=>modules[k].label)].filter(Boolean).concat(s.users?["Comptes et accès"]:[]).join(" · ")}</small></button>)}</div>}</div>;
+}
+
 function UserMenu({user,roleLabel,onAccount,onLogout}) {
   const [open,setOpen]=useState(false);
   const name=[user?.first_name,user?.last_name].filter(Boolean).join(" ")||user?.username||"Mon compte";
@@ -92,6 +99,7 @@ export default function SchoolDashboard({user,accountView,onLogout}) {
   const [access,setAccess]=useState(null);
   const [page,setPage]=useState("dashboard");
   const [sub,setSub]=useState("");
+  const [params,setParams]=useState(null);
   const [isParent,setIsParent]=useState(false);
   const [message,setMessage]=useState("");
   useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
@@ -105,13 +113,14 @@ export default function SchoolDashboard({user,accountView,onLogout}) {
   const perms=access?.permissions||[];
   const allowed=key=>perms.includes(modules[key].read);
   const canUsers=perms.includes("school.members.write");
-  const visibleSections=Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers}]).filter(([,s])=>s.modules.length||s.users));
+  const visibleSections=Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers,live:s.live&&perms.includes(s.live.need)?s.live:null}]).filter(([,s])=>s.modules.length||s.users||s.live));
   const nav=NAV.filter(([id])=>id==="dashboard"||visibleSections[id]||(id==="parents"&&isParent));
-  function navigate(id){setPage(id);setSub("");setMessage("");}
+  function navigate(id,subTab="",extra=null){setPage(id);setSub(subTab);setParams(extra);setMessage("");window.scrollTo?.(0,0);}
   const section=visibleSections[page];
-  const tabs=section?[...section.modules.map(k=>[k,modules[k].label]),...(section.users?[["users","Comptes et accès"]]:[])]:[];
+  const tabs=section?[...(section.live?[["live",section.live.label]]:[]),...section.modules.map(k=>[k,section.live?.manage||modules[k].label]),...(section.users?[["users","Comptes et accès"]]:[])]:[];
   const tab=tabs.find(t=>t[0]===sub)?.[0]||tabs[0]?.[0];
   const View=tab&&modules[tab]?.view;
+  const tabBar=tabs.length>1?<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>:null;
   const schoolName=access?.school?.name||schools.find(s=>s.id===chosen)?.name||"Mon établissement";
   const selector=<div className="yd-school-select-wrap"><label className="yd-school-select"><Icon name="school" size={24}/>
     {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>setChosen(e.target.value)}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:<b>{schoolName}</b>}
@@ -121,15 +130,22 @@ export default function SchoolDashboard({user,accountView,onLogout}) {
   else if (page==="parents") content=<div className="yd-real-body"><ParentPortal/></div>;
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p>{isParent&&<Button primary icon="users" onClick={()=>navigate("parents")}>Ouvrir l'espace parents</Button>}</Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
+  else if (section&&tab==="live") {
+    const props={schoolId:chosen,schoolName,tabs:tabBar,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canReceive:perms.includes("school.finance.receive")};
+    content={students:<LiveStudents key={chosen} {...props}/>,payments:<LivePayments key={chosen+JSON.stringify(params)} {...props}/>,arrears:<LiveArrears key={chosen} {...props}/>}[page];
+  }
   else if (section) content=<>
     <PageHeader title={section.title} subtitle={section.subtitle}/>
-    {tabs.length>1&&<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>}
+    {tabBar}
     <div className="yd-real-body">{tab==="users"?<UsersForm schoolId={chosen} onMessage={setMessage}/>:View&&<View key={chosen+"-"+tab} schoolId={chosen}/>}</div>
+  </>;
+  else if (perms.includes("school.finance.read")) content=<>
+    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={access.role_label} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")}/>
+    <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   else content=<>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={access.role_label||"Membre"} badgeIcon="crown"/>
-    <div className="yd-real-body"><div className="pc-module-grid">{Object.entries(visibleSections).map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{NAV.find(n=>n[0]===id)?.[2]}</b><small>{s.modules.map(k=>modules[k].label).concat(s.users?["Comptes et accès"]:[]).join(" · ")}</small></button>)}</div>
-    {Object.keys(visibleSections).length===0&&<Card title="Aucun module attribué" icon="info"><p className="yd-card-sub">Aucun module n'est attribué à votre rôle dans cet établissement.</p></Card>}</div>
+    <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
     userMenu={<UserMenu user={user} roleLabel={access?.role_label} onAccount={()=>navigate("account")} onLogout={onLogout}/>}>
