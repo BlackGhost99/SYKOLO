@@ -111,3 +111,5 @@ from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid  
 from .attendance_models import AttendanceSession, AttendanceMark, AttendanceChange  # noqa: E402,F401
 
 from .timetable_models import TimetableRoom, TimetableSlot, TimetableEntry  # noqa: E402,F401
+
+from .admission_models import AdmissionApplication, AdmissionEvent  # noqa: E402,F401
