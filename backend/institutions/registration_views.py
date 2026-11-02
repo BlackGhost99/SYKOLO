@@ -426,8 +426,10 @@ def class_enroll(request, school_id, class_id):
             if isinstance(exc, ValidationError):
                 message = " ".join(exc.messages)[:200]
             failed.append({"student": str(raw), "error": message})
-    return JsonResponse({"enrolled": done, "failed": failed, "charges_created": charges,
-                         "fees_skipped": fees_wanted and not can_bill}, status=201 if done else 422)
+    body = {"enrolled": done, "failed": failed, "charges_created": charges, "fees_skipped": fees_wanted and not can_bill}
+    if not done:
+        body["error"] = failed[0]["error"] if failed else "Aucun élève inscrit."
+    return JsonResponse(body, status=201 if done else 422)
 
 
 @require_POST
