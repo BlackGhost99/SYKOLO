@@ -4,6 +4,7 @@ import StudentPanel from "./StudentPanel.jsx";
 import StaffPanel from "./StaffPanel.jsx";
 import CurriculumPanel from "./CurriculumPanel.jsx";
 import AssessmentPanel from "./AssessmentPanel.jsx";
+import ReportPanel from "./ReportPanel.jsx";
 
 const cookie = () => document.cookie.split("; ").find((x) => x.startsWith("csrftoken="))?.split("=")[1] || "";
 async function api(path, data) {
@@ -144,6 +145,7 @@ export default function SchoolPanel() {
       {selected && <StaffPanel key={"staff-"+selected} schoolId={selected} />}
       {selected && <CurriculumPanel key={"curriculum-"+selected} schoolId={selected} />}
       {selected && <AssessmentPanel key={"assessments-"+selected} schoolId={selected} />}
+      {selected && <ReportPanel key={"reports-"+selected} schoolId={selected} />}
       {message && <p role="status" aria-live="polite">{message}</p>}
     </section>
   );
