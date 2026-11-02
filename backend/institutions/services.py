@@ -17,6 +17,7 @@ PERMISSIONS = frozenset({
     "school.students.read", "school.students.manage",
     "school.staff.read", "school.staff.manage",
     "school.curriculum.read", "school.curriculum.manage",
+    "school.assessments.read", "school.assessments.manage",
 })
 
 # Initial editable role templates, not institution-wide immutable business rules.
