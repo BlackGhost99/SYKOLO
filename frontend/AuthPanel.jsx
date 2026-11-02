@@ -103,7 +103,7 @@ export default function AuthPanel() {
                 <details><summary>Je ne peux pas scanner : afficher la clé de secours</summary><p><code>{pending.manual_secret}</code></p></details>
                 <p className="hint">Ce QR code contient une clé secrète : ne le partagez pas et ne faites pas de capture d’écran.</p>
                 <label className="field">Code à six chiffres
-                  <input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" placeholder="Ex. : 123456" required value={code} onChange={(e) => setCode(e.target.value.replace(/\\D/g,""))} />
+                  <input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" placeholder="Ex. : 123456" required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g,""))} />
                 </label>
               </>}
               <button disabled={busy} type="submit">{pending ? "Confirmer le code à six chiffres" : "Générer un nouveau QR code"}</button>
