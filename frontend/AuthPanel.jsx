@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import SchoolPanel from "./SchoolPanel.jsx";
+import PlatformConsole from "./PlatformConsole.jsx";
+import SchoolDashboard from "./SchoolDashboard.jsx";
 
 const csrfToken = () =>
   document.cookie.split("; ").find((item) => item.startsWith("csrftoken="))?.split("=")[1] || "";
@@ -57,6 +58,8 @@ export default function AuthPanel() {
   }
 
   return (
+    <div className={account?.authenticated ? "yem-logged-in" : ""}>
+      {account?.authenticated && (account.user?.is_platform_admin ? <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} /> : <SchoolDashboard />)}
     <section className="card" id="compte" aria-label="Sécurité du compte" style={{ marginBottom: "1rem" }}>
       <h2>Compte YEM · Accès sécurisé</h2>
       <p className="hint">Les comptes sont créés par un administrateur. Le laboratoire ci-dessous reste une démonstration publique avec données fictives.</p>
@@ -67,13 +70,13 @@ export default function AuthPanel() {
             <button disabled={busy} onClick={() => run(async () => {
               await authApi("logout", {});
               setAccount({ authenticated: false });
-              setPending(null); setRecovery([]); setPassword(""); setCode("");
+              setPending(null); setRecovery([]); setPassword(""); setCode(""); window.dispatchEvent(new Event("yem:auth-change"));
             })}>Se déconnecter</button>
             {!account.mfa_enabled && <button disabled={busy} onClick={() => setTab("mfa")}>Activer la double authentification</button>}
             {account.mfa_enabled && <button disabled={busy} onClick={() => setTab("disable")}>Désactiver le MFA</button>}
             <button disabled={busy} onClick={() => setTab("change")}>Changer le mot de passe</button>
           </div>
-          <SchoolPanel />
+
           {tab === "mfa" && !account.mfa_enabled && (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               if (!pending) {
@@ -164,7 +167,7 @@ export default function AuthPanel() {
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               const result = await authApi("login", { username, password, code });
-              setAccount(result); window.dispatchEvent(new Event("yem:auth-change")); setPassword(""); setCode(""); setMessage("Connexion réussie.");
+              setAccount(await authApi("me")); window.dispatchEvent(new Event("yem:auth-change")); setPassword(""); setCode(""); setMessage("Connexion réussie.");
             }); }}>
               <label className="field">Identifiant
                 <input autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} />
@@ -182,5 +185,6 @@ export default function AuthPanel() {
       )}
       {message && <p role="status" aria-live="polite">{message}</p>}
     </section>
+    </div>
   );
 }

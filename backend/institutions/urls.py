@@ -1,7 +1,10 @@
 from django.urls import path
-from . import views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, parent_views
+from . import views, platform_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, parent_views
 
 urlpatterns = [
+    path("platform/schools", platform_views.platform_schools),
+    path("platform/schools/<uuid:school_id>/users", platform_views.platform_add_user),
+    path("platform/schools/<uuid:school_id>/admin-access", platform_views.platform_assume_school_administration),
     path("parents/children", parent_views.children),
     path("parents/children/<uuid:student_id>/enrollments", parent_views.child_enrollments),
     path("parents/children/<uuid:student_id>/reports", parent_views.child_reports),
@@ -83,6 +86,8 @@ urlpatterns = [
     path("organizations/<uuid:organization_id>/schools", views.organization_schools),
     path("schools", views.schools),
     path("schools/<uuid:school_id>", views.school_detail),
+    path("schools/<uuid:school_id>/my-access", views.my_school_access),
+    path("schools/<uuid:school_id>/users", views.school_user_create),
     path("schools/<uuid:school_id>/members", views.school_members),
     path("schools/<uuid:school_id>/roles", views.school_roles),
     path("schools/<uuid:school_id>/roles/<uuid:role_id>", views.school_role_detail),

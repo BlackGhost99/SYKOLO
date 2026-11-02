@@ -2,6 +2,8 @@ import json
 import re
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.exceptions import RequestDataTooBig
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -164,6 +166,71 @@ def school_members(request, school_id):
         log_event(school, request, "member_added" if created else "member_role_changed", str(user.id))
     return JsonResponse({"user_id": str(user.id), "role": role.code}, status=201 if created else 200)
 
+
+
+@require_GET
+@authorized
+def my_school_access(request, school_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    member = SchoolMember.objects.select_related("role").filter(
+        school=school, user=request.user, active=True
+    ).first()
+    founder = owns_organization(request.user, school.organization)
+    return JsonResponse({
+        "school": school_response(school),
+        "role": member.role.code if member else ("proprietaire" if founder else None),
+        "role_label": member.role.label if member else ("Propriétaire" if founder else ""),
+        "permissions": member.role.permissions if member else (["school.view", "school.members.write"] if founder else []),
+    })
+
+
+@require_http_methods(["POST"])
+@authorized
+def school_user_create(request, school_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if not has_permission(request.user, school, "school.members.write"):
+        return refuse()
+    data, error = parse_body(request)
+    if error is not None:
+        return error
+    username, email = data.get("username"), data.get("email")
+    first_name, last_name = data.get("first_name", ""), data.get("last_name", "")
+    password, role_code = data.get("password"), data.get("role")
+    if not (string(username, 150) and string(email, 254) and "@" in email
+            and isinstance(first_name, str) and len(first_name) <= 150
+            and isinstance(last_name, str) and len(last_name) <= 150
+            and isinstance(password, str) and string(role_code, 48)):
+        return JsonResponse({"error": "Données du nouveau compte invalides."}, status=422)
+    role = SchoolRole.objects.filter(school=school, code=role_code).first()
+    if role is None:
+        return JsonResponse({"error": "Rôle introuvable dans cet établissement."}, status=404)
+    if not owns_organization(request.user, school.organization):
+        actor = SchoolMember.objects.select_related("role").filter(
+            school=school, user=request.user, active=True
+        ).first()
+        if actor is None or not set(role.permissions).issubset(set(actor.role.permissions)):
+            return refuse()
+    User = get_user_model()
+    candidate = User(username=username.strip(), email=email.strip(),
+                     first_name=first_name.strip(), last_name=last_name.strip())
+    try:
+        validate_password(password, user=candidate)
+    except DjangoValidationError as exc:
+        return JsonResponse({"error": " ".join(exc.messages)}, status=422)
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(username=candidate.username, email=candidate.email,
+                                           first_name=candidate.first_name, last_name=candidate.last_name,
+                                           password=password)
+            SchoolMember.objects.create(school=school, user=user, role=role)
+            log_event(school, request, "member_account_created", str(user.pk))
+    except IntegrityError:
+        return JsonResponse({"error": "Cet identifiant est déjà utilisé."}, status=409)
+    return JsonResponse({"username": user.username, "role": role.code}, status=201)
 
 def role_response(role):
     return {"id": str(role.id), "code": role.code, "label": role.label,
