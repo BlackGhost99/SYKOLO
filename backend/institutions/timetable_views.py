@@ -349,14 +349,14 @@ def collisions(school, entry):
     return errors
 
 
-def entry_object(school, values, current=None):
+def entry_object(school, values, current=None, actor=None):
     if current is None:
         course = CourseOffering.objects.select_related("year", "classroom").filter(
             school=school, pk=values.get("course_id"), active=True
         ).first()
         if course is None:
             raise ValueError("Cours actif introuvable dans cette école.")
-        entry = TimetableEntry(school=school, year=course.year, classroom=course.classroom, course=course)
+        entry = TimetableEntry(school=school, year=course.year, classroom=course.classroom, course=course, created_by=actor)
     else:
         entry = current
     for k, v in values.items():
@@ -413,7 +413,7 @@ def entries(request, school_id):
             raise ValueError("Cours, enseignant et créneau obligatoires.")
         with transaction.atomic():
             School.objects.select_for_update().get(pk=school.pk)
-            entry = entry_object(school, values)
+            entry = entry_object(school, values, actor=request.user)
             conflicts = collisions(school, entry)
             if conflicts:
                 return JsonResponse({"error": "Conflit d'horaires.", "conflicts": conflicts}, status=409)
