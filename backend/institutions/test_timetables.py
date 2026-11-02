@@ -101,7 +101,7 @@ class TimetableTests(TestCase):
         monday=self.create("entries",self.entry(start="2026-09-07",end="2026-09-07"))
         self.create("entries",self.entry(start="2026-09-14",end="2026-09-14"))
         self.assertEqual(self.write("entries",self.entry(start="2026-09-07",end="2026-09-28")).status_code,409)
-        self.assertEqual(self.write("entries/"+monday["id"],{"revision":0,"active":False},method="patch").status_code,409)
+        self.assertEqual(self.write("entries/"+monday["id"],{"revision":9,"active":False},method="patch").status_code,409)
         disabled=self.write("entries/"+monday["id"],{"revision":1,"active":False},method="patch")
         self.assertEqual(disabled.status_code,200,disabled.content.decode())
         self.create("entries",self.entry(start="2026-09-07",end="2026-09-07"))
