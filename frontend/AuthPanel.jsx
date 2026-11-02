@@ -167,7 +167,7 @@ export default function AuthPanel() {
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               const result = await authApi("login", { username, password, code });
-              setAccount(result); window.dispatchEvent(new Event("yem:auth-change")); setPassword(""); setCode(""); setMessage("Connexion réussie.");
+              setAccount(await authApi("me")); window.dispatchEvent(new Event("yem:auth-change")); setPassword(""); setCode(""); setMessage("Connexion réussie.");
             }); }}>
               <label className="field">Identifiant
                 <input autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} />
