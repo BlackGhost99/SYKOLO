@@ -70,7 +70,7 @@ export default function AuthPanel() {
             <button disabled={busy} onClick={() => run(async () => {
               await authApi("logout", {});
               setAccount({ authenticated: false });
-              setPending(null); setRecovery([]); setPassword(""); setCode("");
+              setPending(null); setRecovery([]); setPassword(""); setCode(""); window.dispatchEvent(new Event("yem:auth-change"));
             })}>Se déconnecter</button>
             {!account.mfa_enabled && <button disabled={busy} onClick={() => setTab("mfa")}>Activer la double authentification</button>}
             {account.mfa_enabled && <button disabled={busy} onClick={() => setTab("disable")}>Désactiver le MFA</button>}
