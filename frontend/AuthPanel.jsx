@@ -57,9 +57,13 @@ export default function AuthPanel() {
     } finally { setBusy(false); }
   }
 
-  return (
-    <div className={account?.authenticated ? "yem-logged-in" : ""}>
-      {account?.authenticated && (account.user?.is_platform_admin ? <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} /> : <SchoolDashboard />)}
+  async function logout() {
+    await authApi("logout", {});
+    setAccount({ authenticated: false });
+    setPending(null); setRecovery([]); setPassword(""); setCode(""); window.dispatchEvent(new Event("yem:auth-change"));
+  }
+
+  const accountCard = (
     <section className="card" id="compte" aria-label="Sécurité du compte" style={{ marginBottom: "1rem" }}>
       <h2>Compte YEM · Accès sécurisé</h2>
       <p className="hint">Les comptes sont créés par un administrateur. Le laboratoire ci-dessous reste une démonstration publique avec données fictives.</p>
@@ -67,11 +71,7 @@ export default function AuthPanel() {
         <>
           <p>Connecté : <strong>{account.user.username}</strong> · MFA : {account.mfa_enabled ? "activé" : "désactivé"}</p>
           <div className="actions">
-            <button disabled={busy} onClick={() => run(async () => {
-              await authApi("logout", {});
-              setAccount({ authenticated: false });
-              setPending(null); setRecovery([]); setPassword(""); setCode(""); window.dispatchEvent(new Event("yem:auth-change"));
-            })}>Se déconnecter</button>
+            <button disabled={busy} onClick={() => run(logout)}>Se déconnecter</button>
             {!account.mfa_enabled && <button disabled={busy} onClick={() => setTab("mfa")}>Activer la double authentification</button>}
             {account.mfa_enabled && <button disabled={busy} onClick={() => setTab("disable")}>Désactiver le MFA</button>}
             <button disabled={busy} onClick={() => setTab("change")}>Changer le mot de passe</button>
@@ -191,6 +191,15 @@ export default function AuthPanel() {
       )}
       {message && <p role="status" aria-live="polite">{message}</p>}
     </section>
+  );
+
+  if (account?.authenticated && !account.user?.is_platform_admin) {
+    return <SchoolDashboard user={account.user} accountView={accountCard} onLogout={() => run(logout)} />;
+  }
+  return (
+    <div className={account?.authenticated ? "yem-logged-in" : ""}>
+      {account?.authenticated && <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} />}
+      {accountCard}
     </div>
   );
 }
