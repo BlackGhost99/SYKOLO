@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, platform_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, parent_views, overview_views
+from . import views, platform_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, parent_views, overview_views, registration_views, enrollment_form
 
 urlpatterns = [
     path("platform/schools", platform_views.platform_schools),
@@ -74,6 +74,14 @@ urlpatterns = [
     path("schools/<uuid:school_id>/staff-assignments", staff_views.assignments),
     path("schools/<uuid:school_id>/staff-assignments/<uuid:assignment_id>", staff_views.assignment_detail),
     path("schools/<uuid:school_id>/overview/students", overview_views.students_overview),
+    path("schools/<uuid:school_id>/overview/classes", registration_views.classes_overview),
+    path("schools/<uuid:school_id>/enrollment-form", enrollment_form.enrollment_form),
+    path("schools/<uuid:school_id>/students/register", registration_views.register_student),
+    path("schools/<uuid:school_id>/students/next-code", registration_views.next_code),
+    path("schools/<uuid:school_id>/students/<uuid:student_id>/dossier", registration_views.student_dossier),
+    path("schools/<uuid:school_id>/classes/<uuid:class_id>/enroll", registration_views.class_enroll),
+    path("schools/<uuid:school_id>/classes/<uuid:class_id>/apply-fees", registration_views.class_apply_fees),
+    path("schools/<uuid:school_id>/academic/quick-classes", registration_views.quick_classes),
     path("schools/<uuid:school_id>/overview/finance", overview_views.finance_overview),
     path("schools/<uuid:school_id>/students", student_views.students),
     path("schools/<uuid:school_id>/students/<uuid:student_id>", student_views.student_detail),

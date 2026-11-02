@@ -15,6 +15,15 @@ class Student(models.Model):
     last_name = models.CharField(max_length=120)
     date_of_birth = models.DateField(null=True, blank=True)
     admission_date = models.DateField(null=True, blank=True)
+    # Fiche de renseignement (facultatif, aucune donnée médicale).
+    gender = models.CharField(max_length=1, blank=True, choices=[("F", "Féminin"), ("M", "Masculin")])
+    place_of_birth = models.CharField(max_length=120, blank=True)
+    nationality = models.CharField(max_length=80, blank=True)
+    address = models.CharField(max_length=255, blank=True)
+    previous_school = models.CharField(max_length=180, blank=True)
+    # Champs propres à l'établissement (formulaire modulable) et pièces fournies.
+    extra_fields = models.JSONField(default=dict, blank=True)
+    documents = models.JSONField(default=dict, blank=True)
     active = models.BooleanField(default=True)
     revision = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -33,6 +42,8 @@ class StudentGuardian(models.Model):
     relationship = models.CharField(max_length=80, blank=True)
     phone = models.CharField(max_length=45, blank=True)
     email = models.EmailField(blank=True)
+    profession = models.CharField(max_length=120, blank=True)
+    address = models.CharField(max_length=255, blank=True)
     is_primary = models.BooleanField(default=False)
     active = models.BooleanField(default=True)
     revision = models.PositiveIntegerField(default=1)
@@ -85,3 +96,11 @@ class EnrollmentEvent(models.Model):
 
     class Meta:
         ordering = ["-at"]
+
+
+class EnrollmentFormConfig(models.Model):
+    """Formulaire d'inscription propre à chaque établissement, réglé par le secrétariat."""
+    school = models.OneToOneField(School, on_delete=models.CASCADE, primary_key=True, related_name="enrollment_form")
+    config = models.JSONField(default=dict)
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)

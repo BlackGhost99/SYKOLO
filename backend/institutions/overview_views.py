@@ -106,6 +106,14 @@ def students_overview(request, school_id):
     finance_visible = has_permission(request.user, school, "school.finance.read")
     currency, balances = enrollment_balances(school, [e.pk for e in enrollments.values()]) if finance_visible else (None, {})
     today = timezone.localdate()
+    methods, last_paid = defaultdict(set), {}
+    if finance_visible:
+        cleared = FeePayment.objects.filter(school=school, void__isnull=True, charge__enrollment_id__in=[e.pk for e in enrollments.values()])
+        for eid, method, paid_on in cleared.order_by("paid_on").values_list("charge__enrollment_id", "method", "paid_on"):
+            methods[eid].add(method)
+            last_paid[eid] = paid_on
+    from .enrollment_form import load_config, missing_documents
+    form, _ = load_config(school)
     rows = []
     for s in students:
         e = enrollments.get(s.pk)
@@ -113,12 +121,14 @@ def students_overview(request, school_id):
         b = balances.get(e.pk) if e else None
         rows.append({
             "id": str(s.pk), "student_code": s.student_code, "first_name": s.first_name, "last_name": s.last_name,
-            "active": s.active,
+            "active": s.active, "missing_documents": len(missing_documents(form, s.documents)),
             "enrollment": {"id": str(e.pk), "status": e.status, "enrolled_on": e.enrolled_on.isoformat(),
                            "classroom": {"id": str(e.classroom_id), "name": e.classroom.name}} if e else None,
             "guardian": {"full_name": g.full_name, "relationship": g.relationship, "phone": g.phone, "email": g.email} if g else None,
             "finance": ({"billed": money(b["billed"] if b else ZERO), "paid": money(b["paid"] if b else ZERO),
-                         "balance": money((b["billed"] - b["paid"]) if b else ZERO), "status": finance_status(b)}
+                         "balance": money((b["billed"] - b["paid"]) if b else ZERO), "status": finance_status(b),
+                         "overdue": money(b["overdue"] if b else ZERO), "methods": sorted(methods[e.pk]),
+                         "last_payment": last_paid[e.pk].isoformat() if e.pk in last_paid else None}
                         if finance_visible and e else None),
         })
     active = [r for r in rows if r["active"]]
@@ -130,6 +140,7 @@ def students_overview(request, school_id):
     return JsonResponse({
         "year": {"id": str(year.pk), "name": year.name} if year else None,
         "classes": [{"id": str(c.pk), "name": c.name} for c in classes],
+        "years": [{"id": str(y.pk), "name": y.name} for y in AcademicYear.objects.filter(school=school).order_by("-start_date")],
         "currency": currency,
         "finance_visible": finance_visible,
         "students": rows,
@@ -139,6 +150,7 @@ def students_overview(request, school_id):
             "new_30d": enrolled_between(today - timedelta(days=30), today + timedelta(days=1)),
             "new_prev_30d": enrolled_between(today - timedelta(days=60), today - timedelta(days=30)),
             "incomplete": sum(1 for r in active if not r["guardian"] or not r["enrollment"]),
+            "missing_documents": sum(1 for r in active if r["missing_documents"]),
             "missing_phone": sum(1 for r in active if r["guardian"] and not r["guardian"]["phone"]),
         },
     })
@@ -220,6 +232,8 @@ def finance_overview(request, school_id):
         "month": {"total": money(total(payments.filter(paid_on__gte=month0))), "previous": money(total(payments.filter(paid_on__gte=month_start(today, 1), paid_on__lt=month0))),
                   "by_method": by_method(payments.filter(paid_on__gte=month0))},
         "monthly": months,
+        "year_by_method": by_method(payments.filter(charge__enrollment__year=year)) if year else {},
+        "year_total": money(total(payments.filter(charge__enrollment__year=year))) if year else money(ZERO),
         "outstanding": money(outstanding),
         "overdue_total": money(sum((Decimal(a["amount_due"]) for a in arrears), ZERO)),
         "families_late": len(arrears),
