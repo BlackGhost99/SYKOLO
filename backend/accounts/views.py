@@ -20,6 +20,7 @@ from django.utils import timezone
 from django.db import transaction
 
 from .models import AuthAudit, MFADevice, MFARecoveryCode
+from .qr import make_qr_data_uri
 from .security import (
     audit, clear_throttle, encrypt_secret, failure, is_locked, new_recovery_codes,
     new_totp_secret, throttle_key, verify_factor,
@@ -215,7 +216,7 @@ def mfa_begin(request):
     )
     uri = f"otpauth://totp/{quote('YEM:' + request.user.get_username())}?secret={secret}&issuer=YEM&algorithm=SHA1&digits=6&period=30"
     audit(request, "mfa_enrollment_started", request.user)
-    return JsonResponse({"otpauth_uri": uri, "manual_secret": secret})
+    return JsonResponse({"otpauth_uri": uri, "manual_secret": secret, "qr_image": make_qr_data_uri(uri)})
 
 
 @require_POST
