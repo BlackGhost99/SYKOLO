@@ -4,6 +4,7 @@ from . import views, platform_views, academic_views, student_views, staff_views,
 urlpatterns = [
     path("platform/schools", platform_views.platform_schools),
     path("platform/schools/<uuid:school_id>/users", platform_views.platform_add_user),
+    path("platform/schools/<uuid:school_id>/admin-access", platform_views.platform_assume_school_administration),
     path("parents/children", parent_views.children),
     path("parents/children/<uuid:student_id>/enrollments", parent_views.child_enrollments),
     path("parents/children/<uuid:student_id>/reports", parent_views.child_reports),
