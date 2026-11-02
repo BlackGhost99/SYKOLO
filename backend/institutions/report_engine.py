@@ -63,6 +63,7 @@ def calculate_report(school,enrollment,period):
     subjects=[]
     overall_sum=Decimal("0");overall_weight=Decimal("0")
     source_ids=[]
+    recorded_grades=0
     qs=CourseOffering.objects.select_related("subject").filter(
         school=school,year=enrollment.year,classroom=classroom
     ).order_by("subject__name","pk")[:250]
@@ -83,6 +84,7 @@ def calculate_report(school,enrollment,period):
             grade=grades.get(assessment.pk)
             contribution=None
             if grade is not None and grade.percent is not None:
+                recorded_grades+=1
                 contribution=Decimal(str(grade.percent))
             elif grade is None and opts["missing_entry"]=="zero":
                 contribution=Decimal("0")
@@ -120,4 +122,5 @@ def calculate_report(school,enrollment,period):
         "template":opts,
         "layers":layers,
         "sources":source_ids,
+        "recorded_grade_count":recorded_grades,
     }

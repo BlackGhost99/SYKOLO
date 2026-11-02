@@ -238,6 +238,9 @@ def grades(request,school_id,assessment_id):
         if enrollment is None:raise ValueError("Élève non inscrit dans cette classe.")
         result=verify_score(assessment,fields["score"])
         with transaction.atomic():
+            locked=Assessment.objects.select_for_update().get(school=school,pk=assessment.pk)
+            if locked.published or not locked.active:
+                return JsonResponse({"error":"Évaluation verrouillée ou archivée."},status=409)
             grade=AssessmentGrade(school=school,assessment=assessment,enrollment=enrollment,
                 author=request.user,score=fields["score"],feedback=fields.get("feedback",""),
                 status=result["status"],percent=result["percent"],label=result["label"] or "")
@@ -265,6 +268,9 @@ def grade_detail(request,school_id,assessment_id,grade_id):
     except ValueError as exc:return JsonResponse({"error":str(exc)},status=422)
     try:
         with transaction.atomic():
+            locked=Assessment.objects.select_for_update().get(school=school,pk=assessment.pk)
+            if locked.published or not locked.active:
+                return JsonResponse({"error":"Évaluation verrouillée ou archivée."},status=409)
             grade=AssessmentGrade.objects.select_for_update().get(school=school,assessment=assessment,pk=grade_id)
             if grade.revision!=data["revision"]:return JsonResponse({"error":"Conflit de version.","revision":grade.revision},status=409)
             for k,v in values.items():setattr(grade,k,v)

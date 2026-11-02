@@ -132,7 +132,7 @@ def publish_report(request,school_id,report_id):
         r=SchoolReport.objects.select_for_update().get(school=school,pk=report_id)
         if r.status=="published":return JsonResponse({"error":"Bulletin déjà publié."},status=409)
         if r.revision!=data["revision"]:return JsonResponse({"error":"Conflit de version.","revision":r.revision},status=409)
-        if r.snapshot.get("overall",{}).get("status")!="calculated":
+        if r.snapshot.get("recorded_grade_count",0)<1 or r.snapshot.get("overall",{}).get("status")!="calculated":
             return JsonResponse({"error":"Aucun résultat calculé, publication impossible."},status=422)
         r.status="published";r.published_at=timezone.now();r.revision+=1;r.save(update_fields=["status","published_at","revision"])
         log_event(school,request,"report_published",r.pk)
