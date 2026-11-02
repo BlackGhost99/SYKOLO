@@ -30,3 +30,15 @@ test("navigates between the approved PC screens", async () => {
   await user.click(screen.getByRole("button", { name: /Paramètres/ }));
   expect(screen.getByRole("heading", { name: "Paramétrage pédagogique et bulletins" })).toBeTruthy();
 });
+
+test("school branding editor keeps YEM and BWETEK visible", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /Identité visuelle/ }));
+  expect(screen.getByRole("heading", { name: /Identité visuelle de l’établissement/ })).toBeTruthy();
+  expect(screen.getByText(/BWETEK Informatyk/)).toBeTruthy();
+  await user.clear(screen.getByLabelText("Nom de l’établissement"));
+  await user.type(screen.getByLabelText("Nom de l’établissement"), "École Exemple");
+  expect(screen.getAllByText("École Exemple").length).toBeGreaterThan(0);
+  expect(document.querySelector(".yd-logo")).toBeTruthy();
+});
