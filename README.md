@@ -73,3 +73,7 @@ Dossier élève par école, responsables légaux, inscriptions et réinscription
 ## Module 06 — Personnel et affectations
 
 Fiches du personnel indépendantes des comptes (association facultative à un compte existant membre de l'école), affectations à des classes/années et responsabilités configurables, contrôles de rôles, révisions et archivage. API privée et interface React ; voir docs/staff.md.
+
+## Module 07 — Matières et programmes
+
+Matières par établissement, cours et coefficients configurables par classe/année, unités de programme et affectation des enseignants autorisés. Accès API isolé et interface React ; voir docs/curriculum.md.
