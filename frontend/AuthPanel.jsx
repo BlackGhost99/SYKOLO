@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import SchoolPanel from "./SchoolPanel.jsx";
 import PlatformConsole from "./PlatformConsole.jsx";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 
@@ -59,6 +58,8 @@ export default function AuthPanel() {
   }
 
   return (
+    <div className={account?.authenticated ? "yem-logged-in" : ""}>
+      {account?.authenticated && (account.user?.is_platform_admin ? <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} /> : <SchoolDashboard />)}
     <section className="card" id="compte" aria-label="Sécurité du compte" style={{ marginBottom: "1rem" }}>
       <h2>Compte YEM · Accès sécurisé</h2>
       <p className="hint">Les comptes sont créés par un administrateur. Le laboratoire ci-dessous reste une démonstration publique avec données fictives.</p>
@@ -75,7 +76,7 @@ export default function AuthPanel() {
             {account.mfa_enabled && <button disabled={busy} onClick={() => setTab("disable")}>Désactiver le MFA</button>}
             <button disabled={busy} onClick={() => setTab("change")}>Changer le mot de passe</button>
           </div>
-          {account.user?.is_platform_admin ? <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} /> : <SchoolDashboard />}
+
           {tab === "mfa" && !account.mfa_enabled && (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               if (!pending) {
@@ -184,5 +185,6 @@ export default function AuthPanel() {
       )}
       {message && <p role="status" aria-live="polite">{message}</p>}
     </section>
+    </div>
   );
 }
