@@ -66,13 +66,14 @@ export default function CouncilPanel({schoolId}) {
     return () => {alive=false;};
   },[schoolId]);
   useEffect(() => {
-    if (!selectedClass) {setChoices([]);return;}
+    const relevantClass = councilData?.classroom || selectedClass;
+    if (!relevantClass) {setChoices([]);return;}
     let alive=true;
-    api(base+"council-choices?classroom="+encodeURIComponent(selectedClass))
+    api(base+"council-choices?classroom="+encodeURIComponent(relevantClass))
       .then(v => {if(alive)setChoices(v.decisions||[]);})
       .catch(() => {if(alive)setChoices([]);});
     return () => {alive=false;};
-  },[schoolId,selectedClass]);
+  },[schoolId,selectedClass,councilData?.classroom]);
   useEffect(() => {
     if(!selectedCouncil){setCouncilData(null);return;}
     let alive=true;
