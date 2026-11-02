@@ -109,3 +109,5 @@ from .council_models import SchoolCouncil, CouncilDecision, ReportAmendment  # n
 from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid  # noqa: E402,F401
 
 from .attendance_models import AttendanceSession, AttendanceMark, AttendanceChange  # noqa: E402,F401
+
+from .timetable_models import TimetableRoom, TimetableSlot, TimetableEntry  # noqa: E402,F401
