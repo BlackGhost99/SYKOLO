@@ -251,9 +251,9 @@ def convert(request, school_id, application_id):
         return fail(str(exc))
     try:
         with transaction.atomic():
-            row = AdmissionApplication.objects.select_for_update().select_related(
-                "year", "classroom", "existing_student"
-            ).filter(school=school, pk=application_id).first()
+            row = AdmissionApplication.objects.select_for_update().filter(
+                school=school, pk=application_id
+            ).first()
             if row is None:
                 return fail("Candidature introuvable.", 404)
             if row.status == "enrolled" and row.enrollment_id:
