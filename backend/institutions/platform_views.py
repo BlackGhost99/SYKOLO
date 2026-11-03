@@ -27,16 +27,26 @@ def platform_schools(request):
              "members_count": row.members.filter(active=True).count()}
             for row in rows
         ], "total": School.objects.count(), "organizations": Organization.objects.count(),
-        "users": get_user_model().objects.count()})
+        "users": get_user_model().objects.count(),
+        "organization_options": [{"id": str(o.pk), "name": o.name} for o in Organization.objects.order_by("name")[:300]]})
 
     data, error = parse_body(request)
     if error is not None:
         return error
     org_name, school_name = data.get("organization_name"), data.get("school_name")
+    existing_org_id = data.get("organization_id")
+    existing_org = None
+    if existing_org_id:
+        try:
+            existing_org = Organization.objects.filter(pk=existing_org_id).first()
+        except (ValueError, TypeError, ValidationError):
+            existing_org = None
+        if existing_org is None:
+            return JsonResponse({"error": "Organisation existante introuvable."}, status=422)
     username, email = data.get("username"), data.get("email")
     first_name, last_name = data.get("first_name", ""), data.get("last_name", "")
     password, role_code = data.get("password"), data.get("role", "direction")
-    if not all((string(org_name, 180), string(school_name, 180),
+    if not all((existing_org is not None or string(org_name, 180), string(school_name, 180),
                 string(username, 150), string(email, 254), "@" in email if isinstance(email, str) else False,
                 isinstance(first_name, str) and len(first_name) <= 150,
                 isinstance(last_name, str) and len(last_name) <= 150)):
@@ -54,7 +64,7 @@ def platform_schools(request):
     try:
         with transaction.atomic():
             # One explicit organization per provisioning request; no accidental cross-school sharing.
-            org = Organization.objects.create(name=org_name.strip())
+            org = existing_org if existing_org is not None else Organization.objects.create(name=org_name.strip())
             user = User.objects.create_user(username=candidate.username, email=candidate.email,
                                             first_name=candidate.first_name, last_name=candidate.last_name,
                                             password=password)
