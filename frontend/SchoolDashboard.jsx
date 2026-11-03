@@ -92,7 +92,7 @@ function UserMenu({user,roleLabel,onAccount,onLogout}) {
   </div>;
 }
 
-export default function SchoolDashboard({user,accountView,onLogout}) {
+export default function SchoolDashboard({user,accountView,onLogout,initialSchoolId=""}) {
   const [schools,setSchools]=useState([]);
   const [loaded,setLoaded]=useState(false);
   const [chosen,setChosen]=useState("");
@@ -102,7 +102,7 @@ export default function SchoolDashboard({user,accountView,onLogout}) {
   const [params,setParams]=useState(null);
   const [isParent,setIsParent]=useState(false);
   const [message,setMessage]=useState("");
-  useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
+  useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
   useEffect(()=>{let live=true;fetch("/api/v1/parents/children",{credentials:"same-origin"}).then(r=>r.ok?r.json():null).then(d=>{if(live&&d?.parent_role)setIsParent(true);}).catch(()=>{});return()=>{live=false;};},[]);
   useEffect(()=>{
     if (!chosen) {setAccess(null);return;}
