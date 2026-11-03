@@ -68,7 +68,8 @@ def platform_schools(request):
             user = User.objects.create_user(username=candidate.username, email=candidate.email,
                                             first_name=candidate.first_name, last_name=candidate.last_name,
                                             password=password)
-            if role_code == "proprietaire":
+            # Un propriétaire nommé pour une école existante ne devient pas propriétaire de tout le groupe.
+            if role_code == "proprietaire" and existing_org is None:
                 OrganizationMember.objects.create(organization=org, user=user, role="founder")
             school = School.objects.create(organization=org, name=school_name.strip())
             templates = list(ROLE_TEMPLATES)
