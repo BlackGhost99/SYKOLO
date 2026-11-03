@@ -88,6 +88,33 @@ class PlatformProvisioningTests(TestCase):
         }), content_type="application/json")
         self.assertEqual(attempt.status_code, 403)
 
+    def test_reuses_existing_organization_for_new_school(self):
+        session = self.client.session
+        session["mfa_verified"] = True
+        session.save()
+        first = self.post()
+        self.assertEqual(first.status_code, 201, first.content)
+        organization = Organization.objects.get()
+        payload = {**self.input, "organization_name": "", "organization_id": str(organization.pk),
+                   "school_name": "Deuxième école", "username": "responsable_2",
+                   "email": "responsable2@example.org"}
+        second = self.post(data=payload)
+        self.assertEqual(second.status_code, 201, second.content)
+        self.assertEqual(Organization.objects.count(), 1)
+        self.assertEqual(School.objects.count(), 2)
+        self.assertEqual(School.objects.get(name="Deuxième école").organization_id, organization.pk)
+        listing = self.client.get(self.url).json()
+        self.assertEqual(len(listing["organization_options"]), 1)
+
+    def test_unknown_organization_is_rejected_without_creating_school(self):
+        session = self.client.session
+        session["mfa_verified"] = True
+        session.save()
+        payload = {**self.input, "organization_name": "", "organization_id": "00000000-0000-0000-0000-000000000000"}
+        response = self.post(data=payload)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(School.objects.count(), 0)
+
     def test_platform_explicit_school_administration_is_audited(self):
         session = self.client.session
         session["mfa_verified"] = True
