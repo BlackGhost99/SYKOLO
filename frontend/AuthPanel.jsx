@@ -64,9 +64,9 @@ export default function AuthPanel() {
   }
 
   const accountCard = (
-    <section className="card" id="compte" aria-label="Sécurité du compte" style={{ marginBottom: "1rem" }}>
+    <section className="card pc-account-card" id="compte" aria-label="Sécurité du compte" style={{ marginBottom: "1rem" }}>
       <h2>Compte YEM · Accès sécurisé</h2>
-      <p className="hint">Les comptes sont créés par un administrateur. Le laboratoire ci-dessous reste une démonstration publique avec données fictives.</p>
+      <p className="hint">Gérez votre mot de passe, votre double authentification et vos codes de récupération. Les informations affichées ici concernent votre compte réel.</p>
       {account?.authenticated ? (
         <>
           <p>Connecté : <strong>{account.user.username}</strong> · MFA : {account.mfa_enabled ? "activé" : "désactivé"}</p>
@@ -196,10 +196,8 @@ export default function AuthPanel() {
   if (account?.authenticated && !account.user?.is_platform_admin) {
     return <SchoolDashboard user={account.user} accountView={accountCard} onLogout={() => run(logout)} />;
   }
-  return (
-    <div className={account?.authenticated ? "yem-logged-in" : ""}>
-      {account?.authenticated && <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} />}
-      {accountCard}
-    </div>
-  );
+  if (account?.authenticated && account.user?.is_platform_admin) {
+    return <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} accountView={accountCard} onLogout={() => run(logout)}/>;
+  }
+  return <div className="yem-login-screen">{accountCard}</div>;
 }
