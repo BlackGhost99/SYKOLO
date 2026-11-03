@@ -111,7 +111,8 @@ test("renders edited content as text", async () => {
     screen.getByLabelText("Nom du profil"),
     "<img src=x onerror=alert(1)>",
   );
-  expect(container.querySelector("img")).toBeNull();
+  // Le logo YEM officiel est légitime ; vérifier seulement que le HTML injecté ne crée aucune image.
+  expect(container.querySelector('img[src="x"], img[onerror]')).toBeNull();
   expect(
     screen.getByRole("heading", { name: "<img src=x onerror=alert(1)>" }),
   ).toBeTruthy();
