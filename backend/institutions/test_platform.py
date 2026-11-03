@@ -1,7 +1,7 @@
 import json
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from .models import Organization, School, SchoolMember
+from .models import Organization, OrganizationMember, School, SchoolMember
 
 class PlatformProvisioningTests(TestCase):
     def setUp(self):
@@ -105,6 +105,21 @@ class PlatformProvisioningTests(TestCase):
         self.assertEqual(School.objects.get(name="Deuxième école").organization_id, organization.pk)
         listing = self.client.get(self.url).json()
         self.assertEqual(len(listing["organization_options"]), 1)
+
+    def test_school_owner_in_existing_group_has_no_group_founder_rights(self):
+        session = self.client.session
+        session["mfa_verified"] = True
+        session.save()
+        first = self.post()
+        self.assertEqual(first.status_code, 201)
+        organization = Organization.objects.get()
+        second = self.post(data={**self.input, "organization_name": "", "organization_id": str(organization.pk),
+                                 "school_name": "Autre école", "username": "autre_proprio",
+                                 "email": "autre-proprio@example.org", "role": "proprietaire"})
+        self.assertEqual(second.status_code, 201, second.content)
+        user = get_user_model().objects.get(username="autre_proprio")
+        self.assertFalse(OrganizationMember.objects.filter(organization=organization, user=user).exists())
+        self.assertEqual(SchoolMember.objects.get(user=user).school.name, "Autre école")
 
     def test_unknown_organization_is_rejected_without_creating_school(self):
         session = self.client.session
