@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import brand from "./assets/yem-brand.webp";
 import PlatformConsole from "./PlatformConsole.jsx";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 
@@ -199,5 +200,5 @@ export default function AuthPanel() {
   if (account?.authenticated && account.user?.is_platform_admin) {
     return <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} accountView={accountCard} onLogout={() => run(logout)}/>;
   }
-  return <div className="yem-login-screen">{accountCard}</div>;
+  return <div className="yem-login-screen"><header className="yem-login-brand"><img src={brand} alt="Logo officiel YEM"/><div><strong>YEM</strong><span>Gestion scolaire &amp; universitaire</span></div></header>{accountCard}</div>;
 }
