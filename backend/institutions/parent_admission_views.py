@@ -17,6 +17,7 @@ from .academic_models import AcademicClass
 from .admission_models import AdmissionApplication, AdmissionEvent
 from .admission_policy import ROUTES, effective_policy, required_for_route
 from .parent_admission_models import FamilyChild, ParentAdmissionRequest, SchoolPublicListing
+from .parent_payment_views import public_payment_availability
 from .services import has_permission
 from .school_profiles import SCHOOL_PROFILES
 from .student_models import Enrollment
@@ -62,10 +63,13 @@ def class_public_data(row):
     ).count()
     capacity = row.capacity
     policy = effective_policy(row.school, row.year, row.level)
+    fee, online_available = public_payment_availability(row.school, row.year, row.level)
     return {
         "id": str(row.pk), "name": row.name,
         "year": row.year.name, "level": row.level.name,
         "cycle": row.level.cycle.name,
+        "fee_amount_xaf": fee.amount_xaf if fee else None,
+        "online_payment_available": online_available,
         "capacity": capacity,
         "remaining": max(0, capacity - occupied) if capacity is not None else None,
         "routes": list(policy.enabled_routes) if policy else list(ROUTES),
@@ -103,7 +107,9 @@ def directory(request):
             "description": listing.description,
             "phone": listing.contact_phone,
             "cash_at_school": listing.cash_at_school,
-            "online_payment_available": False,
+            "online_payment_available": any(
+                public_payment_availability(listing.school, row.year, row.level)[1] for row in classes
+            ),
             "classes": [class_public_data(row) for row in classes],
         })
     return JsonResponse({"schools": result})
@@ -200,9 +206,10 @@ def parent_application_output(link):
         "classroom": str(app.classroom_id), "classroom_name": app.classroom.name,
         "year": app.year.name, "route": app.route,
         "status": app.status, "payment_choice": link.payment_choice,
+        "fee_amount_xaf": link.fee_amount_xaf,
         "submitted_at": app.submitted_at.isoformat(),
-        "payment_status": "a_regler_sur_place",
-        "notice": "Aucun paiement confirmé ni place réservée par cette demande.",
+        "payment_status": "non_initie" if link.payment_choice == "online" else "a_regler_sur_place",
+        "notice": "Une demande ne réserve aucune place ; le paiement n’implique pas l’admission.",
     }
 
 
@@ -230,8 +237,9 @@ def family_applications(request):
         route = data["route"]
         if route not in ROUTES:
             raise ValueError("Voie d'admission inconnue.")
-        if data["payment_choice"] != "cash":
-            raise ValueError("Paiement en ligne non encore disponible ; choisissez la caisse de l'établissement.")
+        payment_choice = data["payment_choice"]
+        if payment_choice not in ("cash", "online"):
+            raise ValueError("Mode de règlement invalide.")
         relation = clean_text(data["guardian_relationship"], 80, required=True)
         phone = clean_text(data["guardian_phone"], 45, required=True)
         origin = clean_text(data.get("origin_school", ""), 180)
@@ -248,8 +256,11 @@ def family_applications(request):
             if classroom is None:
                 return error("Classe non publiée ou indisponible.", 404)
             listing = SchoolPublicListing.objects.get(school=classroom.school)
-            if not listing.cash_at_school:
+            fee, online_available = public_payment_availability(classroom.school, classroom.year, classroom.level)
+            if payment_choice == "cash" and not listing.cash_at_school:
                 return error("L'établissement n'accepte pas le règlement sur place.", 409)
+            if payment_choice == "online" and not online_available:
+                return error("Paiement en ligne indisponible pour cette classe.", 409)
             policy = effective_policy(classroom.school, classroom.year, classroom.level)
             if route not in (policy.enabled_routes if policy else ROUTES):
                 return error("Cette voie d'admission est fermée.", 409)
@@ -278,7 +289,8 @@ def family_applications(request):
             app.full_clean()
             app.save()
             link = ParentAdmissionRequest(owner=request.user, child=child,
-                                          application=app, payment_choice="cash")
+                                          application=app, payment_choice=payment_choice,
+                                          fee_amount_xaf=fee.amount_xaf if fee else None)
             link.full_clean()
             link.save()
             AdmissionEvent.objects.create(school=classroom.school, application=app,
