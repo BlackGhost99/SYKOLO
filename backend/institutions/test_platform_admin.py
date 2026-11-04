@@ -152,6 +152,29 @@ class PlatformAdminConsoleTests(TestCase):
         self.assertEqual(self.post(endpoint, body).status_code, 409)
         self.assertEqual(SchoolAdminPolicy.objects.get(school=self.school).revision, 2)
 
+    def test_member_directory_search_pagination_and_isolation(self):
+        role = SchoolRole.objects.get(school=self.school, code="enseignant")
+        User = get_user_model()
+        for n in range(24):
+            user = User.objects.create_user(
+                username=f"prof_{n:02d}", email=f"prof_{n:02d}@example.org",
+                password="ValidTeacherPassword2026!"
+            )
+            SchoolMember.objects.create(school=self.school, user=user, role=role)
+        endpoint = f"/api/v1/platform/schools/{self.school.pk}/members"
+        first = self.client.get(endpoint + "?page=1&per_page=10")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["total"], 25)
+        self.assertEqual(first.json()["pages"], 3)
+        self.assertEqual(len(first.json()["members"]), 10)
+        last = self.client.get(endpoint + "?page=3&per_page=10")
+        self.assertEqual(len(last.json()["members"]), 5)
+        match = self.client.get(endpoint + "?q=prof_01&per_page=5")
+        self.assertEqual(match.json()["total"], 1)
+        self.assertEqual(match.json()["members"][0]["username"], "prof_01")
+        self.client.force_login(self.director)
+        self.assertEqual(self.client.get(endpoint).status_code, 403)
+
     def test_audit_returns_school_interventions_without_private_documents(self):
         data = self.client.get("/api/v1/platform/audit?limit=30").json()
         self.assertTrue(data["events"])
