@@ -1,5 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from "react";
 import "./parent-discovery.css";
+import SingPayPayment from "./SingPayPayment.jsx";
 
 async function api(path, body) {
   if (body !== undefined) await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
@@ -216,6 +217,7 @@ export default function ParentDiscovery() {
       {applications.map(a=><article key={a.id} className="yp-request">
         <b>{a.school_name}</b><p>{a.classroom_name} · {a.year} · {ROUTES[a.route]||a.route}</p>
         <strong>{STATES[a.status]||a.status}</strong>
+        {a.payment_choice==="online"&&a.fee_amount_xaf&&<SingPayPayment kind="admission" objectId={a.id} api={api}/>}
         <small>{a.payment_choice==="cash"?"Paiement prévu : espèces à la caisse":
           "Mobile Money · "+(a.fee_amount_xaf?Number(a.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA · ":"")+
           ({non_initie:"non initié",initiating:"initiation en cours",pending:"en attente de confirmation",

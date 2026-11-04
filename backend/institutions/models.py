@@ -151,3 +151,4 @@ from .parent_admission_models import SchoolPublicListing, FamilyChild, ParentAdm
 from .parent_payment_models import SchoolAdmissionFee, SchoolPaymentGateway, ParentPaymentAttempt  # noqa: E402,F401
 
 from .organization_models import SchoolAppointment  # noqa: E402,F401
+from .singpay_models import SingPayMerchant, SingPayIntent, SingPayEvent, SingPaySettlement  # noqa: E402,F401

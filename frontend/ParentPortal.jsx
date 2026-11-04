@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ParentDiscovery from "./ParentDiscovery.jsx";
 import PWAInstall from "./PWAInstall.jsx";
+import SingPayPayment from "./SingPayPayment.jsx";
 
 async function portalApi(path, body, method) {
   if (body !== undefined) await fetch("/api/v1/auth/csrf", { credentials: "same-origin" });
@@ -158,13 +159,14 @@ export default function ParentPortal() {
               <strong> {a.status}</strong>{a.justified?" (justifié)":""}</p>)}
         </>}
         {tab==="finance"&&detail&&<>
-          <p>Il s'agit des encaissements enregistrés manuellement par l'établissement, sans validation bancaire automatique.</p>
+          <p>Relevé des encaissements de l'établissement. Les paiements SingPay nécessitent une confirmation serveur du prestataire.</p>
           {Object.entries(detail.totals||{}).map(([currency,value])=><p key={currency}>
             {currency} · Facturé : <strong>{value.billed}</strong> · Payé : <strong>{value.paid}</strong>
             {" "}· Restant : <strong>{value.balance}</strong>
           </p>)}
-          {(detail.charges||[]).map(c=><p key={c.id}>{c.label} — {c.amount} {c.currency}
-            {" "}· Solde {c.balance}{c.due_date?" · Échéance "+c.due_date:""}</p>)}
+          {(detail.charges||[]).map(c=><div key={c.id}><p>{c.label} — {c.amount} {c.currency}
+            {" "}· Solde {c.balance}{c.due_date?" · Échéance "+c.due_date:""}</p>
+            {c.currency==="XAF"&&<SingPayPayment kind="charge" objectId={c.id} api={portalApi} partial/>}</div>)}
           {(detail.charges||[]).length===0&&<p>Aucun frais affecté.</p>}
         </>}
         {tab==="timetable"&&detail&&<>

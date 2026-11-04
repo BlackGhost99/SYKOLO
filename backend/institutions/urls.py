@@ -1,8 +1,17 @@
 from django.urls import path
+from . import singpay_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views
 
 urlpatterns = [
+    path("parents/singpay/webhook", singpay_views.webhook),
+    path("parents/singpay/<str:kind>/<uuid:object_id>/quote", singpay_views.quote),
+    path("parents/singpay/<str:kind>/<uuid:object_id>/pay", singpay_views.pay),
+    path("parents/singpay/payments/<uuid:intent_id>/refresh", singpay_views.refresh),
+    path("parents/singpay/payments/<uuid:intent_id>/receipt", singpay_views.receipt),
+    path("schools/<uuid:school_id>/singpay/merchant", singpay_views.merchant_config),
+    path("schools/<uuid:school_id>/singpay/reconciliation", singpay_views.staff_reconciliation),
+    path("schools/<uuid:school_id>/singpay/payments/<uuid:intent_id>/settlement", singpay_views.settlement),
     path("platform/dashboard", platform_admin_views.platform_dashboard),
     path("platform/organizations", platform_admin_views.platform_organizations),
     path("platform/audit", platform_admin_views.platform_audit),
