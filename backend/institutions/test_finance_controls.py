@@ -142,6 +142,8 @@ class CashTransferConcurrencyTests(TransactionTestCase):
                 barrier.wait(timeout=10)
                 return clients[index].post(f"/api/v1/schools/{school.pk}/finance/cash/closings/{closing.pk}/transfers",json.dumps({"kind":"handover","amount":"60","reference":"parallel-"+str(index),"destination":"Trésorerie","day":timezone.localdate().isoformat()}),content_type="application/json").status_code
             finally:
+                # Worker threads must close live DB handles, not merely stale
+                # ones, or PostgreSQL will refuse Django's test DB teardown.
                 connections.close_all()
         with ThreadPoolExecutor(max_workers=2) as pool:
             codes = list(pool.map(submit,range(2)))

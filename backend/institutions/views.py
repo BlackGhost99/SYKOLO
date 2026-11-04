@@ -64,6 +64,47 @@ def log_event(school, request, event, subject="", details=None):
     )
 
 
+# Financial approvals must not be minted by the person who will control them.
+# This applies to primary and additional roles, including a founder who is
+# also the school's director. Routine non-financial appointments stay editable.
+FINANCIAL_DUTIES = frozenset({
+    "school.finance.manage", "school.finance.receive", "school.finance.reverse",
+    "school.finance.approve", "school.finance.deposit",
+})
+
+
+def financial_grant_allowed(actor, school, target, permissions):
+    requested = set(permissions) & FINANCIAL_DUTIES
+    if not requested:
+        return True
+    existing = (
+        effective_permissions(target, school) & FINANCIAL_DUTIES
+        if target is not None else set()
+    )
+    added = requested - existing
+    if not added:
+        return True
+    return (owns_organization(actor, school.organization)
+            and target is not None and actor.pk != target.pk)
+
+
+def financial_role_change_allowed(actor, school, role, permissions):
+    before = set(role.permissions) & FINANCIAL_DUTIES
+    after = set(permissions) & FINANCIAL_DUTIES
+    if before == after:
+        return True
+    if not owns_organization(actor, school.organization):
+        return False
+    if after - before:
+        # A founder may delegate to staff but must not change a role already
+        # assigned to their own account to acquire a new financial power.
+        return not SchoolMember.objects.filter(
+            Q(role=role) | Q(additional_roles=role),
+            school=school, user=actor, active=True
+        ).exists()
+    return True
+
+
 @require_http_methods(["GET", "POST"])
 @authorized
 def organizations(request):
@@ -186,6 +227,14 @@ def school_members(request, school_id):
         return JsonResponse({"error": str(exc)}, status=422)
     with transaction.atomic():
         School.objects.select_for_update().get(pk=school.pk)
+        # Match main #45: recompute financial duties under the school lock.
+        role = SchoolRole.objects.get(pk=role.pk, school=school)
+        extra = list(SchoolRole.objects.filter(school=school, code__in=set(codes)))
+        granted = set().union(*(set(r.permissions) for r in [role, *extra]))
+        if not owns_organization(request.user, school.organization) and not granted <= effective_permissions(request.user, school):
+            return refuse()
+        if not financial_grant_allowed(request.user, school, user, granted):
+            return refuse()
         previous = SchoolMember.objects.filter(school=school, user=user).first()
         before = {"role": previous.role.code, "additional_roles": list(previous.additional_roles.values_list("code", flat=True)), "functions": previous.function_codes} if previous else {}
         member, created = SchoolMember.objects.update_or_create(
@@ -266,6 +315,11 @@ def school_user_create(request, school_id):
     try:
         with transaction.atomic():
             School.objects.select_for_update().get(pk=school.pk)
+            role = SchoolRole.objects.get(pk=role.pk, school=school)
+            if not may_delegate_finance(request.user, school, role.permissions):
+                return refuse()
+            if not owns_organization(request.user, school.organization) and not set(role.permissions) <= effective_permissions(request.user, school):
+                return refuse()
             if quota_reached(school, "users"):
                 return JsonResponse({"error": "Plafond d'utilisateurs atteint pour cet établissement."}, status=409)
             user = User.objects.create_user(username=(candidate.username if not User.objects.filter(username=candidate.username).exists() else "school-" + uuid4().hex), email=candidate.email,
@@ -277,14 +331,6 @@ def school_user_create(request, school_id):
     except IntegrityError:
         return JsonResponse({"error": "Cet identifiant est déjà utilisé."}, status=409)
     return JsonResponse({"username": username.strip(), "role": role.code}, status=201)
-
-# Financial delegations require an authority independent of the school role
-# administrator. Checking permission subsets alone permits controlled approvers.
-FINANCIAL_DUTIES = frozenset({
-    "school.finance.manage", "school.finance.receive", "school.finance.reverse",
-    "school.finance.approve", "school.finance.deposit",
-})
-
 
 def may_delegate_finance(user, school, permissions):
     return not FINANCIAL_DUTIES.intersection(permissions) or owns_organization(user, school.organization)
@@ -324,6 +370,11 @@ def school_roles(request, school_id):
     try:
         # A savepoint keeps the outer request/test transaction usable after uniqueness errors.
         with transaction.atomic():
+            School.objects.select_for_update().get(pk=school.pk)
+            if not set(perms) <= effective_permissions(request.user, school):
+                return refuse()
+            if not may_delegate_finance(request.user, school, perms):
+                return refuse()
             role = SchoolRole.objects.create(
                 school=school, code=code, label=label.strip(), permissions=sorted(set(perms))
             )
@@ -352,10 +403,15 @@ def school_role_detail(request, school_id, role_id):
     if not set(perms) <= effective_permissions(request.user, school):
         return refuse()
     with transaction.atomic():
+        School.objects.select_for_update().get(pk=school.pk)
         role = SchoolRole.objects.select_for_update().filter(school=school, id=role_id).first()
         if role is None:
             return JsonResponse({"error": "Rôle introuvable."}, status=404)
+        if not set(perms) <= effective_permissions(request.user, school):
+            return refuse()
         if not may_delegate_finance(request.user, school, FINANCIAL_DUTIES.intersection(set(role.permissions) ^ set(perms))):
+            return refuse()
+        if not financial_role_change_allowed(request.user, school, role, perms):
             return refuse()
         if role.revision != revision:
             return JsonResponse({"error": "Conflit de version."}, status=409)

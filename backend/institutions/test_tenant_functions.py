@@ -88,6 +88,18 @@ class TenantFunctionTests(TestCase):
         data["permissions"]=["school.finance.receive"]
         self.assertEqual(self.send(self.base+"delegations",data).status_code,403)
 
+    def test_founder_cannot_self_delegate_financial_authority(self):
+        SchoolMember.objects.create(
+            school=self.school, user=self.owner, role=self.school.roles.get(code="enseignant")
+        )
+        payload = {
+            "user_id": str(self.owner.pk), "permissions": ["school.finance.receive"],
+            "reason": "Tentative d'auto-attribution",
+        }
+        response = self.send(self.base + "delegations", payload)
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertFalse(PermissionDelegation.objects.filter(school=self.school, member__user=self.owner).exists())
+
     def test_catalogue_each_type_and_platform_login_separate(self):
         for kind,cycles,expected in [("maternelle",["prescolaire"],"directeur_maternelle"),("primaire",["primaire"],"directeur_primaire"),("college",["college"],"principal"),("lycee_general",["lycee_general"],"censeur_principal"),("lycee_technique",["lycee_technique"],"chef_travaux"),("groupe_scolaire",["primaire","college","lycee_general"],"proviseur")]:
             self.school.school_type,self.school.education_cycles=kind,cycles

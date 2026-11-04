@@ -8,7 +8,7 @@ from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 from .models import School, SchoolMember, PermissionDelegation
 from .services import PERMISSIONS, effective_permissions, has_permission, owns_organization
-from .views import access, refuse, parse_body, log_event, may_delegate_finance, string
+from .views import access, refuse, parse_body, log_event, may_delegate_finance, financial_grant_allowed, string
 from .school_functions import positions_for_school, account_functions
 
 # Delegated authority cannot manufacture further delegators or administrators.
@@ -65,6 +65,8 @@ def delegations(request, school_id, delegation_id=None):
             member = None
         if not member:
             return JsonResponse({"error": "Compte actif de cet établissement requis."}, status=422)
+        if not financial_grant_allowed(request.user, school, member.user, perms):
+            return refuse()
         combined = effective_permissions(member.user, school) | set(perms)
         if "school.finance.receive" in combined and combined.intersection({"school.finance.approve", "school.finance.reverse"}):
             return JsonResponse({"error": "Séparez encaissement et validation/annulation financière."}, status=422)
