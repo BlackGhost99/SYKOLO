@@ -93,6 +93,14 @@ class FinanceRoleBoundaryTests(TestCase):
             "username": self.founder.username, "role": "econome",
         }).status_code, 403)
         self.assertFalse(SchoolMember.objects.filter(school=self.school, user=self.founder).exists())
+        SchoolMember.objects.create(
+            school=self.school, user=self.founder, role=self.role("direction")
+        )
+        self.assertEqual(self.call("members", {
+            "username": self.founder.username, "role": "direction",
+            "additional_roles": ["econome"],
+        }).status_code, 403)
+        self.assertNotIn("school.finance.receive", effective_permissions(self.founder, self.school))
         self.assertEqual(self.call("members", {
             "username": self.director.username, "role": "direction",
             "additional_roles": ["econome"],
