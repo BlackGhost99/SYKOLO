@@ -200,6 +200,7 @@ def family_children(request):
 
 def parent_application_output(link):
     app = link.application
+    latest = link.payment_attempts.order_by("-created_at").first() if link.payment_choice == "online" else None
     return {
         "id": str(link.pk), "child": str(link.child_id),
         "school": str(app.school_id), "school_name": app.school.name,
@@ -208,7 +209,9 @@ def parent_application_output(link):
         "status": app.status, "payment_choice": link.payment_choice,
         "fee_amount_xaf": link.fee_amount_xaf,
         "submitted_at": app.submitted_at.isoformat(),
-        "payment_status": "non_initie" if link.payment_choice == "online" else "a_regler_sur_place",
+        "payment_status": latest.state if latest else ("non_initie" if link.payment_choice == "online" else "a_regler_sur_place"),
+        "payment_mode": latest.provider_mode if latest else None,
+        "paid_confirmed": bool(latest and latest.state == "success" and latest.provider_mode == "live"),
         "notice": "Une demande ne réserve aucune place ; le paiement n’implique pas l’admission.",
     }
 
