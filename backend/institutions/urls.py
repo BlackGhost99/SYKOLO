@@ -20,6 +20,7 @@ urlpatterns = [
     path("parents/children/<uuid:student_id>/attendance", parent_views.child_attendance),
     path("parents/children/<uuid:student_id>/finance", parent_views.child_finance),
     path("parents/children/<uuid:student_id>/timetable", parent_views.child_timetable),
+    path("schools/<uuid:school_id>/profile", views.school_profile),
     path("schools/<uuid:school_id>/parent-links", parent_views.links),
     path("schools/<uuid:school_id>/parent-links/<uuid:link_id>", parent_views.link_detail),
     path("schools/<uuid:school_id>/admissions/policy", admission_route_views.policy),
