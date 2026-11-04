@@ -45,7 +45,8 @@ class ParentAdmissionRequest(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="parent_admission_requests")
     child = models.ForeignKey(FamilyChild, on_delete=models.PROTECT, related_name="admission_requests")
     application = models.OneToOneField(AdmissionApplication, on_delete=models.PROTECT, related_name="parent_request")
-    payment_choice = models.CharField(max_length=16, choices=[("cash", "Espèces sur place")], default="cash")
+    payment_choice = models.CharField(max_length=16, choices=[("cash", "Espèces sur place"), ("online", "Mobile Money en ligne")], default="cash")
+    fee_amount_xaf = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def clean(self):
