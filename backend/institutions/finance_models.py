@@ -164,3 +164,43 @@ class FeePaymentVoid(models.Model):
     def clean(self):
         if self.payment_id and self.school_id and self.payment.school_id != self.school_id:
             raise ValidationError("Annulation appartenant à une autre école.")
+
+
+class CashClosing(models.Model):
+    """Immutable declaration of a cashier's physical cash counted on a day.
+
+    Approval is a separate action by a different authorized school member.
+    It is independent of any bank or Mobile Money settlement.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="cash_closings")
+    day = models.DateField()
+    currency = models.CharField(max_length=3)
+    expected = models.DecimalField(max_digits=12, decimal_places=2)
+    counted = models.DecimalField(max_digits=12, decimal_places=2)
+    difference = models.DecimalField(max_digits=13, decimal_places=2)
+    note = models.CharField(max_length=500, blank=True)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="yem_cash_closings_submitted"
+    )
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="yem_cash_closings_approved",
+        null=True, blank=True,
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approval_note = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "day", "currency", "submitted_by"],
+                name="unique_school_cash_closing_per_cashier",
+            ),
+            models.CheckConstraint(condition=Q(expected__gte=0), name="cash_closing_expected_nonnegative"),
+            models.CheckConstraint(condition=Q(counted__gte=0), name="cash_closing_counted_nonnegative"),
+        ]
+
+    def clean(self):
+        if self.approved_by_id and self.submitted_by_id == self.approved_by_id:
+            raise ValidationError("La caisse ne peut pas être approuvée par son propre déclarant.")
