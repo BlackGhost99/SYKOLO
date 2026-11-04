@@ -6,6 +6,7 @@ from io import BytesIO
 from html import escape
 from uuid import UUID
 
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Sum
@@ -19,6 +20,8 @@ from accounts.views import authorized
 
 from .academic_models import AcademicYear, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid
+from .finance_cash_policy import cash_closed_for_recorder
+from .models import School
 from .student_models import Enrollment
 from .services import has_permission
 from .views import access, refuse, parse_body, log_event
@@ -325,10 +328,16 @@ def payments(request, school_id):
     try:
         amount = money(data["amount"])
         paid_on = iso_day(data["paid_on"])
+        if paid_on > timezone.localdate():
+            raise ValueError("Un encaissement futur ne peut pas être déclaré comme reçu.")
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
+            if method == "especes":
+                # Lock order matches the cash-closing endpoint, avoiding a race
+                # between a cashier's last payment and the end-of-day snapshot.
+                School.objects.select_for_update().get(pk=school.pk)
             charge = FeeCharge.objects.select_for_update().filter(school=school, pk=charge_id).first()
             if charge is None:
                 return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
@@ -340,6 +349,10 @@ def payments(request, school_id):
                 if same:
                     return JsonResponse(payment_data(previous), status=200)
                 return JsonResponse({"error": "Clé d'opération réutilisée avec des données différentes."}, status=409)
+            if method == "especes" and cash_closed_for_recorder(
+                school=school, day=paid_on, currency=charge.currency, user=request.user,
+            ):
+                return JsonResponse({"error": "Caisse du jour déjà déclarée par ce caissier."}, status=409)
             if cleared_total(charge) + amount > charge.amount:
                 return JsonResponse({"error": "Montant supérieur au solde restant dû."}, status=422)
             row = FeePayment(
