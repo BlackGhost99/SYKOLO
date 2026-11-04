@@ -194,3 +194,133 @@ class AdmissionWorkflowTests(TestCase):
                                             HTTP_X_CSRFTOKEN=self.token).status_code, 405)
         self.client.logout()
         self.assertEqual(self.client.get(self.base).status_code, 401)
+
+    def test_concours_requires_eligibility_and_verified_result_before_admission(self):
+        payload = {**self.data(), "route": "concours", "origin_school": "École primaire",
+                   "route_reference": ""}
+        row = self.create(payload)
+        self.assertEqual(row["route"], "concours")
+        self.assertEqual(row["required_documents"], ["concours_result"])
+        self.assertEqual(self.decide(row).status_code, 409)
+        eligible = self.post(f"/{row['id']}/eligibility", {
+            "revision": 1, "result": "eligible", "route_reference": "CONC-2026-001",
+            "orientation_authority": "", "reason": "Résultat communiqué par le centre"
+        })
+        self.assertEqual(eligible.status_code, 200, eligible.content.decode())
+        self.assertEqual(self.decide(row, revision=2).status_code, 409)
+        doc = self.post(f"/{row['id']}/documents", {
+            "revision": 2, "code": "concours_result", "reference": "Relevé concours 2026 n°001"
+        })
+        self.assertEqual(doc.status_code, 201, doc.content.decode())
+        document_id = doc.json()["documents"][0]["id"]
+        self.assertEqual(self.decide(row, revision=3).status_code, 409)
+        reviewed = self.post(f"/{row['id']}/documents/{document_id}/review", {
+            "revision": 3, "status": "verified", "reason": "Document vérifié par la direction"
+        })
+        self.assertEqual(reviewed.status_code, 200, reviewed.content.decode())
+        self.assertEqual(reviewed.json()["documents"][0]["status"], "verified")
+        accepted = self.decide(row, revision=4)
+        self.assertEqual(accepted.status_code, 200, accepted.content.decode())
+        self.assertEqual(Student.objects.count(), 0)
+        enrolled = self.convert(row, code="CONC001", revision=5)
+        self.assertEqual(enrolled.status_code, 201, enrolled.content.decode())
+        self.assertEqual(Student.objects.count(), 1)
+
+    def test_orientation_separates_eligibility_and_school_enrollment(self):
+        row = self.create({**self.data(), "route": "orientation",
+                           "origin_school": "École primaire de départ"})
+        self.assertEqual(row["required_documents"], ["orientation_decision"])
+        bad = self.post(f"/{row['id']}/eligibility", {
+            "revision": 1, "result": "eligible", "route_reference": "AFF-2026-002",
+            "orientation_authority": "", "reason": "Vérification"
+        })
+        self.assertEqual(bad.status_code, 422)
+        updated = self.post(f"/{row['id']}/eligibility", {
+            "revision": 1, "result": "eligible", "route_reference": "AFF-2026-002",
+            "orientation_authority": "Commission d'orientation", "reason": "Attestation présentée"
+        })
+        self.assertEqual(updated.status_code, 200, updated.content.decode())
+        self.assertEqual(self.decide(row, revision=2).status_code, 409)
+        doc = self.post(f"/{row['id']}/documents", {
+            "revision": 2, "code": "orientation_decision", "reference": "Attestation d'affectation n°002"
+        })
+        self.assertEqual(doc.status_code, 201, doc.content.decode())
+        checked = self.post(f"/{row['id']}/documents/{doc.json()['documents'][0]['id']}/review", {
+            "revision": 3, "status": "verified", "reason": "Pièce et destinataire contrôlés"
+        })
+        self.assertEqual(checked.status_code, 200, checked.content.decode())
+        self.assertEqual(self.decide(row, revision=4).status_code, 200)
+        self.assertFalse(Enrollment.objects.exists())
+        self.assertEqual(self.convert(row, code="AFF002", revision=5).status_code, 201)
+
+    def test_level_policy_and_mandatory_documents_snapshot(self):
+        policy = self.post("/policy", {
+            "year": str(self.year.pk), "level": str(self.classroom.level_id),
+            "revision": 0, "enabled_routes": ["direct", "concours"],
+            "required_documents": {"direct": ["birth_certificate", "school_report"],
+                                   "concours": ["birth_certificate"]}
+        })
+        self.assertEqual(policy.status_code, 200, policy.content.decode())
+        self.assertEqual(policy.json()["scope_revision"], 1)
+        policy_read = self.client.get(self.base + f"/policy?year={self.year.pk}&level={self.classroom.level_id}")
+        self.assertEqual(policy_read.json()["enabled_routes"], ["direct", "concours"])
+        cannot = self.post("", {**self.data(), "route": "orientation"})
+        self.assertEqual(cannot.status_code, 422)
+        row = self.create()
+        self.assertEqual(row["required_documents"], ["birth_certificate", "school_report"])
+        self.assertEqual(self.decide(row).status_code, 409)
+        for code, revision in (("birth_certificate", 1), ("school_report", 3)):
+            added = self.post(f"/{row['id']}/documents", {
+                "revision": revision, "code": code, "reference": f"Pièce papier {code}"
+            })
+            self.assertEqual(added.status_code, 201, added.content.decode())
+            id = added.json()["documents"][-1]["id"]
+            reviewed = self.post(f"/{row['id']}/documents/{id}/review", {
+                "revision": revision + 1, "status": "verified", "reason": "Contrôle documentaire"
+            })
+            self.assertEqual(reviewed.status_code, 200, reviewed.content.decode())
+        self.assertEqual(self.decide(row, revision=5).status_code, 200)
+        revised_policy = self.post("/policy", {
+            "year": str(self.year.pk), "level": str(self.classroom.level_id),
+            "revision": 1, "enabled_routes": ["direct"],
+            "required_documents": {"direct": ["new_document"]}
+        })
+        self.assertEqual(revised_policy.status_code, 200, revised_policy.content.decode())
+        self.assertEqual(AdmissionApplication.objects.get(pk=row["id"]).required_documents,
+                         ["birth_certificate", "school_report"])
+
+    def test_secretary_cannot_verify_or_change_policy_but_can_record(self):
+        row = self.create({**self.data(), "route": "concours"})
+        self.login(self.secretary)
+        self.assertEqual(self.post("/policy", {
+            "year": str(self.year.pk), "level": None, "revision": 0,
+            "enabled_routes": ["direct"], "required_documents": {}
+        }).status_code, 403)
+        document = self.post(f"/{row['id']}/documents", {
+            "revision": 1, "code": "concours_result", "reference": "Document au secrétariat"
+        })
+        self.assertEqual(document.status_code, 201, document.content.decode())
+        doc_id = document.json()["documents"][0]["id"]
+        self.assertEqual(self.post(f"/{row['id']}/documents/{doc_id}/review", {
+            "revision": 2, "status": "verified", "reason": "Essai"
+        }).status_code, 403)
+        self.login(self.director)
+        self.assertEqual(self.client.get(self.base + f"/{row['id']}/documents").status_code, 200)
+        self.login(self.stranger)
+        self.assertEqual(self.client.get(self.base + f"/{row['id']}/documents").status_code, 404)
+
+    def test_rejected_or_unverified_proof_never_grants_concours_admission(self):
+        row = self.create({**self.data(), "route": "concours"})
+        self.assertEqual(self.post(f"/{row['id']}/eligibility", {
+            "revision": 1, "result": "ineligible", "route_reference": "C-FAIL",
+            "orientation_authority": "", "reason": "Candidat non admis au concours"
+        }).status_code, 200)
+        added = self.post(f"/{row['id']}/documents", {
+            "revision": 2, "code": "concours_result", "reference": "Avis de résultat"
+        })
+        self.assertEqual(added.status_code, 201)
+        doc_id = added.json()["documents"][0]["id"]
+        self.assertEqual(self.post(f"/{row['id']}/documents/{doc_id}/review", {
+            "revision": 3, "status": "verified", "reason": "Document authentique"
+        }).status_code, 200)
+        self.assertEqual(self.decide(row, revision=4).status_code, 409)
