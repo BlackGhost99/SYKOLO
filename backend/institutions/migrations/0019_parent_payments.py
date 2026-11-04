@@ -10,7 +10,9 @@ def secure_new_parent_tables(apps, schema_editor):
     """RLS defence-in-depth for newly created tables on Supabase/PostgreSQL."""
     if schema_editor.connection.vendor != "postgresql":
         return
-    for name in ("SchoolAdmissionFee", "SchoolPaymentGateway", "ParentPaymentAttempt"):
+    # Appointments came from 0018 without an RLS declaration. Keep existing
+    # school staff appointments private as well as the three new payment tables.
+    for name in ("SchoolAppointment", "SchoolAdmissionFee", "SchoolPaymentGateway", "ParentPaymentAttempt"):
         model = apps.get_model("institutions", name)
         schema_editor.execute(
             "ALTER TABLE %s ENABLE ROW LEVEL SECURITY"
