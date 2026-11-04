@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 
 from .models import OrganizationMember, School, SchoolMember, SchoolSetting, SchoolAdminPolicy, Student
+from .school_profiles import TYPE_DIRECTOR_LABEL, profile_payload
 
 PERMISSIONS = frozenset({
     "school.view", "school.members.read", "school.members.write",
@@ -37,6 +38,61 @@ ROLE_TEMPLATES = [
     ("parent", "Parent", ["school.view"]),
     ("eleve", "Élève", ["school.view"]),
 ]
+
+# Suggested roles for each school type. These permissions remain editable per school.
+# No role other than direction is allowed to alter both prices and receipts.
+_FIN_READ = ["school.view", "school.academic.read", "school.students.read", "school.finance.read"]
+_STUDY_READ = ["school.view", "school.academic.read", "school.students.read",
+               "school.curriculum.read", "school.timetable.read", "school.reports.read"]
+_STUDY_MANAGE = _STUDY_READ + ["school.curriculum.manage", "school.assessments.read",
+                              "school.assessments.manage", "school.timetable.manage"]
+_LIFE_STUDENT = _STUDY_READ + ["school.attendance.read", "school.attendance.write",
+                              "school.attendance.finalize"]
+_CYCLE_ROLE_TEMPLATES = {
+    "maternelle": [
+        ("educateur_maternelle", "Éducateur / Éducatrice", _STUDY_READ + ["school.attendance.read", "school.attendance.write"]),
+        ("assistant_maternelle", "Assistant(e) maternelle", ["school.view", "school.academic.read", "school.attendance.read", "school.attendance.write"]),
+    ],
+    "primaire": [
+        ("responsable_primaire", "Responsable pédagogique primaire", _STUDY_MANAGE),
+    ],
+    "college": [
+        ("responsable_etudes", "Responsable des études", _STUDY_MANAGE),
+        ("surveillant_general", "Surveillant général", _LIFE_STUDENT),
+        ("intendant", "Intendant", _FIN_READ + ["school.finance.manage"]),
+    ],
+    "lycee": [
+        ("censeur_pedagogique", "Censeur pédagogique", _STUDY_MANAGE),
+        ("censeur_vie_scolaire", "Censeur de la vie scolaire", _LIFE_STUDENT),
+        ("surveillant_general", "Surveillant général", _LIFE_STUDENT),
+        ("intendant", "Intendant", _FIN_READ + ["school.finance.manage"]),
+        ("responsable_orientation", "Responsable de l'orientation", _STUDY_READ),
+    ],
+}
+_COMMON_EXTRA_ROLES = [
+    ("econome", "Économe / Caissier", _FIN_READ + ["school.finance.receive"]),
+    ("auditeur_financier", "Auditeur financier (lecture seule)", _FIN_READ + ["school.audit.read"]),
+]
+_CYCLE_ORDER = ("maternelle", "primaire", "college", "lycee")
+
+
+def role_templates_for_profile(school_type, enabled_cycles):
+    """Only *propose* templates; an existing school's customized roles survive."""
+    templates = [(code, TYPE_DIRECTOR_LABEL.get(school_type, label) if code == "direction" else label,
+                  list(perms)) for code, label, perms in ROLE_TEMPLATES]
+    if school_type == "a_configurer":
+        return templates
+    seen = {code for code, _, _ in templates}
+    candidates = _COMMON_EXTRA_ROLES + [
+        role for cycle in _CYCLE_ORDER if cycle in enabled_cycles
+        for role in _CYCLE_ROLE_TEMPLATES[cycle]
+    ]
+    for code, label, permissions in candidates:
+        if code not in seen:
+            templates.append((code, label, sorted(set(permissions) & PERMISSIONS)))
+            seen.add(code)
+    return templates
+
 
 SCOPE_FIELDS = ("year", "cycle", "level", "class")
 
@@ -82,6 +138,7 @@ def school_response(school):
         "id": str(school.pk), "organization_id": str(school.organization_id),
         "name": school.name, "short_name": school.short_name,
         "primary_color": school.primary_color,
+        **profile_payload(school),
     }
 
 
