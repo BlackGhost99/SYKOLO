@@ -48,6 +48,7 @@ class ParentPaymentTests(TestCase):
                 SchoolRole.objects.create(school=school,code=code,label=label,permissions=permissions)
         SchoolMember.objects.create(school=self.school,user=self.director,
             role=SchoolRole.objects.get(school=self.school,code="direction"))
+        SchoolMember.objects.get(school=self.school,user=self.director).additional_roles.add(SchoolRole.objects.get(school=self.school,code="tarification"))
         self.year=AcademicYear.objects.create(school=self.school,code="2026",name="2026/2027",
             start_date="2026-09-01",end_date="2027-07-31")
         cycle=AcademicCycle.objects.create(school=self.school,code="primaire",name="Primaire")

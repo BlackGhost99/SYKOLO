@@ -28,7 +28,7 @@ class MultiFeeReceiptTests(TestCase):
         for school in (self.school, self.other_school):
             for code, label, permissions in ROLE_TEMPLATES:
                 SchoolRole.objects.create(school=school, code=code, label=label, permissions=permissions)
-        for user, role in ((self.cashier, "comptabilite"), (self.teacher, "enseignant")):
+        for user, role in ((self.cashier, "econome"), (self.teacher, "enseignant")):
             SchoolMember.objects.create(school=self.school, user=user,
                 role=SchoolRole.objects.get(school=self.school, code=role))
         year = AcademicYear.objects.create(
@@ -180,6 +180,7 @@ class MultiFeeReceiptTests(TestCase):
             school=self.school,user=director,
             role=SchoolRole.objects.get(school=self.school, code="direction"),
         )
+        SchoolMember.objects.get(school=self.school, user=director).additional_roles.add(SchoolRole.objects.get(school=self.school, code="econome"))
         return director
 
     def test_cash_close_blocks_new_cash_but_allows_idempotent_replay(self):
@@ -240,10 +241,10 @@ class MultiFeeReceiptTests(TestCase):
         response=self.client.post(self.base+"payments/"+str(payment_id)+"/void", json.dumps({
             "reason":"Annulation ultérieure avec justificatif disponible",
         }),content_type="application/json",HTTP_X_CSRFTOKEN=self.token)
-        self.assertEqual(response.status_code,201,response.content)
+        self.assertEqual(response.status_code,403,response.content)
         closings=self.client.get(self.base+"cash/closings")
         self.assertEqual(closings.status_code,200)
-        self.assertEqual(closings.json()["closings"][0]["adjustment_since_submission"],"-10000.00")
+        self.assertEqual(closings.json()["closings"][0]["adjustment_since_submission"],"0.00")
 
     def test_teacher_cannot_create_or_approve_cash_closings(self):
         director=self.create_director()

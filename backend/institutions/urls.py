@@ -64,6 +64,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/finance/charges/<uuid:charge_id>", finance_views.charge_detail),
     path("schools/<uuid:school_id>/finance/summary", finance_summary_views.summary),
     path("schools/<uuid:school_id>/finance/payments", finance_views.payments),
+    path("schools/<uuid:school_id>/finance/cash/closings/<uuid:closing_id>/transfers", finance_cash_views.cash_transfer),
+    path("schools/<uuid:school_id>/finance/cash/closings/<uuid:closing_id>/transfers/<uuid:transfer_id>/approve", finance_cash_views.approve_transfer),
     path("schools/<uuid:school_id>/finance/cash/closings", finance_cash_views.cash_closings),
     path("schools/<uuid:school_id>/finance/cash/closings/<uuid:closing_id>/approve", finance_cash_views.approve_cash_closing),
     path("schools/<uuid:school_id>/finance/batches", finance_batch_views.create_batch),

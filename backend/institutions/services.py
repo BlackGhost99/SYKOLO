@@ -26,15 +26,17 @@ PERMISSIONS = frozenset({
     "school.reports.amend",
     "school.timetable.read", "school.timetable.manage",
     "school.attendance.read", "school.attendance.write", "school.attendance.finalize",
-    "school.finance.read", "school.finance.manage", "school.finance.receive", "school.finance.reverse",
+    "school.finance.read", "school.finance.manage", "school.finance.receive", "school.finance.reverse", "school.finance.approve", "school.finance.deposit",
 })
 
 # Initial editable role templates, not institution-wide immutable business rules.
 ROLE_TEMPLATES = [
-    ("direction", "Direction", sorted(PERMISSIONS)),
+    ("direction", "Direction", sorted(PERMISSIONS - {"school.finance.receive", "school.finance.reverse", "school.finance.manage", "school.finance.deposit"})),
     ("secretariat", "Secrétariat", ["school.view", "school.members.read", "school.settings.read", "school.academic.read", "school.students.read", "school.students.manage", "school.admissions.read", "school.admissions.manage", "school.admissions.enroll", "school.staff.read", "school.staff.manage", "school.organization.read", "school.curriculum.read", "school.curriculum.manage", "school.reports.read", "school.deliberations.read", "school.attendance.read", "school.attendance.write", "school.timetable.read", "school.timetable.manage"]),
     ("enseignant", "Enseignant", ["school.view", "school.settings.read", "school.academic.read", "school.curriculum.read", "school.timetable.read"]),
-    ("comptabilite", "Comptabilité", ["school.view", "school.students.read", "school.academic.read", "school.finance.read", "school.finance.manage", "school.finance.receive"]),
+    ("comptabilite", "Comptabilité", ["school.view", "school.students.read", "school.academic.read", "school.finance.read", "school.finance.approve", "school.finance.reverse"]),
+    ("econome", "Économe / Caissier", ["school.view", "school.students.read", "school.academic.read", "school.finance.read", "school.finance.receive", "school.finance.deposit"]),
+    ("tarification", "Responsable des tarifs", ["school.view", "school.finance.read", "school.finance.manage"]),
     ("parent", "Parent", ["school.view"]),
     ("eleve", "Élève", ["school.view"]),
 ]
@@ -60,10 +62,19 @@ def has_permission(user, school, permission):
     if permission == "school.members.write" and owns_organization(user, school.organization):
         # A founder can appoint a director but is not automatically that director.
         return True
-    member = SchoolMember.objects.select_related("role").filter(
+    return permission in effective_permissions(user, school)
+
+
+def effective_permissions(user, school):
+    member = SchoolMember.objects.select_related("role").prefetch_related("additional_roles").filter(
         school=school, user=user, active=True, role__school=school
     ).first()
-    return bool(member and permission in member.role.permissions)
+    founder_permissions = {"school.members.write"} if owns_organization(user, school.organization) else set()
+    if not member:
+        return founder_permissions
+    roles = [member.role, *member.additional_roles.filter(school=school)]
+    return founder_permissions | set().union(*(set(role.permissions) for role in roles))
+
 
 
 def quota_reached(school, resource):

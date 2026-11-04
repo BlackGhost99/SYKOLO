@@ -55,10 +55,10 @@ async function get(path) {
 }
 const defaultPerson={username:"",email:"",first_name:"",last_name:"",password:"",role:"enseignant"};
 const DEFAULT_ROLE_OPTIONS=[["direction","Direction"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]];
-async function addUser(schoolId, body) {
+async function addUser(schoolId, body, endpoint="users") {
   await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
   const token=document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1]||"";
-  const r=await fetch("/api/v1/schools/"+schoolId+"/users",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-CSRFToken":token},body:JSON.stringify(body)});
+  const r=await fetch("/api/v1/schools/"+schoolId+"/"+endpoint,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-CSRFToken":token},body:JSON.stringify(body)});
   const data=await r.json();
   if(!r.ok)throw Error(data.error||"Création refusée");
   return data;
@@ -66,6 +66,7 @@ async function addUser(schoolId, body) {
 
 function UsersForm({schoolId,onMessage}) {
   const [person,setPerson]=useState(defaultPerson);
+  const [assignment,setAssignment]=useState({username:"",role:"enseignant",additional_roles:[]});
   const [busy,setBusy]=useState(false);
   const [roleOptions,setRoleOptions]=useState(DEFAULT_ROLE_OPTIONS);
   useEffect(()=>{
@@ -86,6 +87,13 @@ function UsersForm({schoolId,onMessage}) {
       <label>Rôle<select value={person.role} onChange={e=>setPerson(x=>({...x,role:e.target.value}))}>{roleOptions.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
       <label>Mot de passe initial<input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>setPerson(x=>({...x,password:e.target.value}))}/></label>
     </div><button className="pc-primary" type="submit" disabled={busy}>Créer le compte</button></form>
+    <form aria-label="Fonctions d'un compte existant" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await addUser(schoolId,assignment,"members");onMessage("Fonctions mises à jour.");}catch(err){onMessage(err.message);}finally{setBusy(false);}}}>
+      <h3>Fonctions d'un compte existant</h3>
+      <label>Identifiant<input required value={assignment.username} onChange={e=>setAssignment({...assignment,username:e.target.value})}/></label>
+      <label>Rôle principal<select value={assignment.role} onChange={e=>setAssignment({...assignment,role:e.target.value})}>{roleOptions.map(([code,label])=><option key={code} value={code}>{label}</option>)}</select></label>
+      <fieldset><legend>Fonctions supplémentaires (remplace la sélection précédente)</legend>{roleOptions.filter(([code])=>code!==assignment.role).map(([code,label])=><label key={code}><input type="checkbox" checked={assignment.additional_roles.includes(code)} onChange={e=>setAssignment(old=>({...old,additional_roles:e.target.checked?[...old.additional_roles,code]:old.additional_roles.filter(x=>x!==code)}))}/>{label}</label>)}</fieldset>
+      <button disabled={busy}>Enregistrer les fonctions</button>
+    </form>
   </Card>;
 }
 

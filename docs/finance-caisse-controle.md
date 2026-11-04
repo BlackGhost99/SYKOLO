@@ -31,3 +31,18 @@ Ce module ne réalise pas le rapprochement bancaire, le remboursement effectif, 
 La branche est construite sur le main après fusion des PR parents et organigramme. Migration 0020_finance_payment_batches, après 0019_parent_payments (issue de la PR #38).
 
 La PR #26 modifie également LiveScreens.jsx. À sa fusion, réconcilier cette interface financière avec les écrans d'inscription. Ne pas écraser les travaux des autres conversations. Ne pas fusionner ni déployer avant les tests PostgreSQL et React, les contrôles d'isolation et une recette avec de fausses opérations de caisse.
+
+
+## Séparation financière (suite de #41)
+
+La direction lit les finances et contrôle les clôtures, sans encaisser, modifier les tarifs ni annuler par défaut. Le comptable contrôle et peut annuler l'encaissement d'un autre agent. L'économe encaisse, déclare sa caisse et documente les remises/dépôts. Le rôle tarification gère les frais. Les rôles supplémentaires d'un membre cumulent ses habilitations ; ils ne suppriment jamais l'interdiction d'auto-validation. Le propriétaire peut attribuer ces fonctions ; les autres gestionnaires ne peuvent attribuer des droits qu'ils ne possèdent pas.
+
+Les migrations 0021 puis 0022 prolongent 0020 sans modifier les migrations déjà publiées. 0022 retire les anciens droits financiers excessifs de direction/comptabilité et crée les nouveaux rôles sans écraser un rôle personnalisé existant. Les affectations de caisse/tarification doivent être attribuées explicitement par le propriétaire après migration. Le retour arrière du schéma ne rétablit pas les anciens droits excessifs.
+
+Les vues élèves, caisse, relances et tableau de bord permettent de choisir la devise et l'année. Les encaissements du tableau de bord suivent l'année des frais, y compris les inscriptions archivées. Le tableau de synthèse de la clôture couvre tous les exercices ; il ne mélange jamais les devises.
+
+Après déclaration d'une caisse, les nouvelles écritures espèces et les annulations de cette caisse sont bloquées pour préserver son instantané. Une clôture dont le journal aurait changé ne peut pas être approuvée. Toute correction après clôture exige pour l'instant un traitement supervisé distinct : il n'existe pas de réouverture automatique.
+
+Une remise ne peut dépasser le montant compté d'une clôture validée. Un dépôt ne peut dépasser les remises déjà contrôlées. Les mouvements en attente réservent les fonds pour empêcher leur double affectation ; les écritures sont sérialisées sur la clôture. Référence, destinataire/banque et date sont obligatoires. Chaque justificatif est contrôlé par un autre compte habilité, même en cas de cumul de fonctions. Ces écritures documentent un mouvement physique déclaré : elles ne constituent pas une confirmation bancaire automatique. Les mouvements sont conservés et ne disposent pas d'une suppression automatique.
+
+Les PR #26 et #33 sont anciennes et comportent des migrations parallèles : ne pas les fusionner sans les réconcilier avec la chaîne actuelle. La présence d'une correction dans GitHub ne prouve pas son déploiement Render ; comparer séparément le SHA du déploiement live.
