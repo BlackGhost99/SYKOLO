@@ -228,6 +228,9 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const [person,setPerson]=useState(userBlank);
   const [policyForm,setPolicyForm]=useState({plan_name:"Sans formule",max_users:"",max_students:"",revision:0});
   const [memberSearch,setMemberSearch]=useState("");
+  const [memberPage,setMemberPage]=useState(1);
+  const [memberResults,setMemberResults]=useState({members:[],total:0,page:1,pages:1,per_page:20});
+  const [memberLoading,setMemberLoading]=useState(false);
   const [modal,setModal]=useState(null);
   const [reason,setReason]=useState("");
   const [roleId,setRoleId]=useState("");
@@ -283,6 +286,20 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     }
   },[view,refreshKey]);
   useEffect(()=>{
+    if(view!=="users" || !mfaEnabled || !schoolId){
+      setMemberResults({members:[],total:0,page:1,pages:1,per_page:20});
+      return;
+    }
+    let live=true;
+    setMemberLoading(true);
+    const params=new URLSearchParams({q:memberSearch,page:String(memberPage),per_page:"20"});
+    api("platform/schools/"+schoolId+"/members?"+params.toString()).then(result=>{
+      if(live)setMemberResults(result);
+    }).catch(error=>{if(live)setNotice({type:"error",message:error.message});})
+      .finally(()=>{if(live)setMemberLoading(false);});
+    return()=>{live=false;};
+  },[view,schoolId,memberPage,memberSearch,refreshKey,mfaEnabled]);
+  useEffect(()=>{
     if(selectedDetail?.policy) setPolicyForm({
       plan_name:selectedDetail.policy.plan_name,
       max_users:selectedDetail.policy.max_users==null?"":String(selectedDetail.policy.max_users),
@@ -301,7 +318,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     } catch(e) {setNotice({type:"error",message:e.message});return null;}
     finally {setBusy(false);}
   }
-  function chooseSchool(id) {setSchoolId(String(id));setDetailTab("info");}
+  function chooseSchool(id) {setSchoolId(String(id));setDetailTab("info");setMemberPage(1);}
   function openModal(type, member=null) {
     if(type==="role"&&!member) member=(selectedDetail?.members||[]).find(x=>!x.is_platform_admin)||null;
     setRoleId(member?.role_id||selectedDetail?.roles?.[0]?.id||"");
@@ -358,7 +375,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   function filteredAudit(events) {
     return events.filter(e=>!memberSearch||[e.actor,e.event,e.school,e.subject,e.reason].join(" ").toLowerCase().includes(memberSearch.toLowerCase()));
   }
-  const visibleMembers=useMemo(()=>selectedDetail?.members?.filter(m=>[m.name,m.username,m.email,m.role].join(" ").toLowerCase().includes(memberSearch.toLowerCase()))||[],[selectedDetail,memberSearch]);
+  const visibleMembers=memberResults.members||[];
   const openForAccount=()=>{goto("users");};
   const detailActions={
     onCreate:openForAccount,
@@ -408,7 +425,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
         </div>
         <div className="ya-bottom-grid">
           <section className="ya-box ya-quick"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="activity" size={23}/></div><div><h2>Création rapide</h2><p>Actions courantes de super-administration.</p></div></div>
-            <div className="ya-quick-grid">{[["school","Nouvel établissement","newSchool"],["layers","Nouvelle organisation","organizations"],["mail","Inviter un directeur","newSchool"],["userplus","Créer un compte","users"]].map(([icon,label,key])=><button type="button" key={label} onClick={()=>goto(key)}><Icon name={icon} size={29}/><strong>{label}</strong><Icon name="right" size={19}/></button>)}</div>
+            <div className="ya-quick-grid">{[["school","Nouvel établissement","newSchool"],["layers","Nouvelle organisation","organizations"],["mail","Créer un directeur","users"],["userplus","Créer un compte","users"]].map(([icon,label,key])=><button type="button" key={label} onClick={()=>goto(key)}><Icon name={icon} size={29}/><strong>{label}</strong><Icon name="right" size={19}/></button>)}</div>
           </section>
           <AuditFeed events={dashboard.recent_events||[]} onAll={()=>goto("audit")}/>
         </div>
@@ -439,10 +456,17 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       {view==="users"&&<div className="ya-two-panels ya-users-layout">
         <section className="ya-box"><h2>Utilisateurs et droits d'accès</h2><p>Les permissions sont propres à l'établissement choisi.</p>
           <Field label="Établissement"><select value={schoolId} onChange={e=>chooseSchool(e.target.value)}><option value="">Choisir…</option>{allSchools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}{selectedDetail&&!allSchools.some(s=>s.id===schoolId)&&<option value={schoolId}>{selectedDetail.school.name}</option>}</select></Field>
-          <Field label="Rechercher un compte"><input type="search" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)} placeholder="Nom, identifiant, e-mail, rôle…"/></Field>
-          <div className="ya-member-list">{visibleMembers.length?visibleMembers.map(m=><div key={m.id} className="ya-member"><span className="ya-member-avatar"><Icon name="users"/></span><div><b>{m.name}</b><small>{m.username} · {m.role} · {m.active?"Actif":"Suspendu"}</small><small>{m.email}</small></div>
+          <Field label="Rechercher un compte"><input type="search" value={memberSearch} onChange={e=>{setMemberSearch(e.target.value);setMemberPage(1);}} placeholder="Nom, identifiant, e-mail, rôle…"/></Field>
+          <div className="ya-member-list">{memberLoading?<p className="ya-empty">Chargement des comptes…</p>:visibleMembers.length?visibleMembers.map(m=><div key={m.id} className="ya-member"><span className="ya-member-avatar"><Icon name="users"/></span><div><b>{m.name}</b><small>{m.username} · {m.role} · {m.active?"Actif":"Suspendu"}</small><small>{m.email}</small></div>
             {!m.is_platform_admin&&<div className="ya-member-actions"><button onClick={()=>openModal("role",m)}>Changer le rôle</button><button onClick={()=>openModal("memberStatus",m)}>{m.membership_active?"Suspendre":"Réactiver"}</button></div>}</div>):<p className="ya-empty">Aucun compte à afficher pour cette sélection.</p>}</div>
-          {selectedDetail?.members_truncated&&<p className="ya-note">La liste est limitée à 250 comptes. La recherche complète sera ajoutée avec la pagination serveur.</p>}
+          <div className="ya-pagination ya-members-pagination">
+            <span>{fmt(memberResults.total||0)} compte(s)</span>
+            <div className="ya-pager">
+              <button aria-label="Page précédente des comptes" disabled={memberLoading||memberPage<=1} onClick={()=>setMemberPage(p=>Math.max(1,p-1))}><Icon name="left" size={17}/></button>
+              <span>Page {memberResults.page||1} / {memberResults.pages||1}</span>
+              <button aria-label="Page suivante des comptes" disabled={memberLoading||memberPage>=(memberResults.pages||1)} onClick={()=>setMemberPage(p=>p+1)}><Icon name="right" size={17}/></button>
+            </div>
+          </div>
         </section>
         <section className="ya-box ya-form-box"><h2>Créer un compte</h2><p>Identifiants et permissions isolés par établissement.</p><form onSubmit={newUser}>
           <p className="ya-selected-school">Établissement : <b>{selectedName}</b></p>
