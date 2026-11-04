@@ -7,7 +7,7 @@ from itertools import combinations
 from django.db.models import Q
 from django.http import JsonResponse
 
-from .models import OrganizationMember, School, SchoolMember, SchoolSetting
+from .models import OrganizationMember, School, SchoolMember, SchoolSetting, SchoolAdminPolicy, Student
 
 PERMISSIONS = frozenset({
     "school.view", "school.members.read", "school.members.write",
@@ -63,6 +63,18 @@ def has_permission(user, school, permission):
         school=school, user=user, active=True, role__school=school
     ).first()
     return bool(member and permission in member.role.permissions)
+
+
+def quota_reached(school, resource):
+    """Used within a transaction locking the school row for serial capacity checks."""
+    policy = SchoolAdminPolicy.objects.filter(school=school).first()
+    if not policy:
+        return False
+    if resource == "users" and policy.max_users is not None:
+        return SchoolMember.objects.filter(school=school, active=True, user__is_active=True, user__is_superuser=False).count() >= policy.max_users
+    if resource == "students" and policy.max_students is not None:
+        return Student.objects.filter(school=school, active=True).count() >= policy.max_students
+    return False
 
 
 def school_response(school):

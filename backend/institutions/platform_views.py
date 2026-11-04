@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 from .models import Organization, OrganizationMember, School, SchoolMember, SchoolRole
-from .services import ROLE_TEMPLATES, school_response
+from .services import ROLE_TEMPLATES, school_response, quota_reached
 from .views import parse_body, log_event, string
 
 
@@ -24,7 +24,7 @@ def platform_schools(request):
         rows = School.objects.select_related("organization").order_by("name")[:300]
         return JsonResponse({"schools": [
             {**school_response(row), "organization": row.organization.name, "active": row.is_active,
-             "members_count": row.members.filter(active=True).count()}
+             "members_count": row.members.filter(active=True, user__is_active=True, user__is_superuser=False).count()}
             for row in rows
         ], "total": School.objects.count(), "organizations": Organization.objects.count(),
         "users": get_user_model().objects.count(),
@@ -116,6 +116,9 @@ def platform_add_user(request, school_id):
         return JsonResponse({"error": " ".join(exc.messages)}, status=422)
     try:
         with transaction.atomic():
+            School.objects.select_for_update().get(pk=school.pk)
+            if quota_reached(school, "users"):
+                return JsonResponse({"error": "Plafond d'utilisateurs atteint pour cet établissement."}, status=409)
             user = User.objects.create_user(username=candidate.username, email=candidate.email,
                                             first_name=candidate.first_name, last_name=candidate.last_name,
                                             password=password)
