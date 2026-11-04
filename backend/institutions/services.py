@@ -71,7 +71,7 @@ def quota_reached(school, resource):
     if not policy:
         return False
     if resource == "users" and policy.max_users is not None:
-        return SchoolMember.objects.filter(school=school, active=True, user__is_active=True).count() >= policy.max_users
+        return SchoolMember.objects.filter(school=school, active=True, user__is_active=True, user__is_superuser=False).count() >= policy.max_users
     if resource == "students" and policy.max_students is not None:
         return Student.objects.filter(school=school, active=True).count() >= policy.max_students
     return False
