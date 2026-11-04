@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import CashClosingPanel from "./CashClosingPanel.jsx";
 import { Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Toggle, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
 
 /* Écrans réels branchés sur l'API, avec la présentation des maquettes (docs/maquettes). */
@@ -131,6 +132,8 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [pendingOperation, setPendingOperation] = useState(null);
+  const [receiptUrl, setReceiptUrl] = useState("");
   const enrolled = (roster.data?.students || []).filter(s => s.active && s.enrollment);
   const student = enrolled.find(s => s.enrollment.id === enrollment);
   useEffect(() => {
@@ -145,20 +148,36 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
   const remaining = charges.reduce((a, c) => a + Number(c.balance), 0) - entered;
   const currency = charges[0]?.currency || fin.data?.currency;
   async function submit() {
-    if (!entered || entered <= 0 || entered > due + 0.001) { setMessage("Montant invalide : il doit être positif et ne pas dépasser le total sélectionné."); return; }
-    setBusy(true); setMessage("");
+    if (!enrollment || !selected.length || !Number.isFinite(entered) || entered <= 0 || entered > due + 0.001) {
+      setMessage("Montant invalide : choisissez les frais et un montant positif qui ne dépasse pas le solde."); return;
+    }
+    if (new Set(selected.map(c => c.currency)).size !== 1) {
+      setMessage("Ces frais ont des devises différentes. Effectuez un encaissement par devise."); return;
+    }
+    setBusy(true); setMessage(""); setReceiptUrl("");
     try {
-      let left = entered;
-      const paidOn = fin.data?.today.date || new Date().toISOString().slice(0, 10);
-      for (const c of selected) {
-        if (left <= 0) break;
-        const part = Math.min(left, Number(c.balance));
-        await api(`schools/${schoolId}/finance/payments`, { charge: c.id, amount: part.toFixed(2), method, reference: "", paid_on: paidOn, idempotency_key: newKey() });
+      // Allocate integer cents, never floating-point payment fragments.
+      let left = Math.round(entered * 100);
+      const lines = selected.map(c => {
+        const part = Math.min(left, Math.round(Number(c.balance) * 100));
         left -= part;
-      }
-      setMessage(`Paiement de ${fmtMoney(entered, currency)} enregistré.`);
+        return {charge:c.id,amount:(part / 100).toFixed(2)};
+      }).filter(line => line.amount !== "0.00");
+      if (left !== 0 || !lines.length) throw Error("Répartition du paiement impossible.");
+      const paidOn = fin.data?.today.date || new Date().toISOString().slice(0, 10);
+      const operation = {enrollment,lines,method,reference:"",paid_on:paidOn};
+      const fingerprint = JSON.stringify(operation);
+      const key = pendingOperation?.fingerprint === fingerprint ? pendingOperation.key : newKey();
+      setPendingOperation({fingerprint,key});
+      const batch = await api(`schools/${schoolId}/finance/batches`, {...operation,idempotency_key:key});
+      setPendingOperation(null);
+      setReceiptUrl(batch.receipt_url);
+      setMessage(`Encaissement de ${fmtMoney(batch.total, batch.currency)} enregistré sous la référence ${batch.id.slice(0, 8).toUpperCase()}.`);
       setAmount(""); setPartial(false); fin.reload();
-    } catch (e) { setMessage(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      // Keep the same key on retry after an uncertain connection result.
+      setMessage(e.message);
+    } finally { setBusy(false); }
   }
   const d = fin.data;
   const byMethod = d?.today.by_method || {};
@@ -191,6 +210,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
             <div className="yd-amount-row"><div className="yd-amount"><input id="pay-amount" inputMode="decimal" disabled={!partial} value={partial ? amount : num(due)} onChange={e => setAmount(e.target.value)}/><em>{cur(currency)}</em></div><button type="button" className="yd-toggle-btn" aria-pressed={partial} onClick={() => { setPartial(p => !p); setAmount(""); }}><Toggle on={partial}/>Paiement partiel</button></div>
             <div className="yd-balance"><span><Icon name="coins" size={22}/>Solde après paiement</span><strong>{fmtMoney(Math.max(remaining, 0), currency)}</strong></div>
             {message && <p role="status" className="yd-form-msg">{message}</p>}
+            {receiptUrl && <p><a className="yd-link" href={receiptUrl} target="_blank" rel="noreferrer">Télécharger le reçu groupé PDF</a></p>}
             <Button primary icon="check" className="wide" disabled={busy || !selected.length || entered <= 0} onClick={submit}>Valider le paiement</Button>
           </>}
         </Card>
@@ -207,6 +227,9 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
           </Card>
         </div>
       </div>
+      <Card title="Clôture de caisse" icon="cash">
+        <CashClosingPanel schoolId={schoolId} defaultDay={d.today.date}/>
+      </Card>
     </>}</Loading>
   </>;
 }
