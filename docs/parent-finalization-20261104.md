@@ -1,5 +1,7 @@
 # YEM Parents — clôture technique du pilote Android (04/11/2026)
 
+Dernière vérification : contrat PayCentral (initiation ULID / exemple webhook UUID), validation HMAC et isolation des transactions, et activation RLS des nominations scolaires 0018 avant déploiement.
+
 Cette phase suit la PR #31 et s'appuie sur `0018_school_appointments`. Son développement est isolé des PR #26 (dossiers élèves), #33 (profils) et #36 (finance). **Ne pas modifier la comptabilité des frais de scolarité depuis le module de candidature.**
 
 ## 1. Compte parent et e-mail de validation
@@ -34,7 +36,7 @@ Le paiement de **candidature** est un objet séparé des `FeeCharge`/`FeePayment
 - `GET /api/v1/schools/{school}/admission-gateway`, `POST` idem : uniquement personnel combinant droits admissions et finances.
 - `GET/POST /api/v1/schools/{school}/admission-fees` : même politique.
 - `POST /api/v1/parents/applications/{request}/pay` : génère une tentative locale unique, puis sollicite le prestataire. Double clic ou réseau incertain ne génèrent pas une nouvelle tentative tant que la précédente n'est pas définitivement échouée.
-- `POST /api/v1/parents/paycentral/webhook` : route publique **uniquement pour un HMAC SHA256 valide**, puis comparaison référence, id transaction, montant, devise et opérateur ; gestion répétée idempotente.
+- `POST /api/v1/parents/paycentral/webhook` : route publique **uniquement pour un HMAC SHA256 valide**, puis comparaison référence, montant, devise et opérateur, en acceptant la différence documentée de format d'identifiant sur un webhook HMAC signé (contrôle strict d'identifiant conservé pour le statut API) ; gestion répétée idempotente.
 - `POST /api/v1/parents/applications/{request}/payment-refresh` : statut réinterrogé **sur le serveur** avec la clé marchande, jamais accepté depuis une affirmation du navigateur.
 - `GET /api/v1/parents/applications/{request}/payments` : compte propriétaire uniquement.
 - `GET /api/v1/schools/{school}/admission-payments` : comptabilité ou gestion admissions autorisée de l'école.
