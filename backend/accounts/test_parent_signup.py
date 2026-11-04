@@ -81,6 +81,16 @@ class ParentRegistrationTests(TestCase):
         self.assertEqual(missing.json()["message"],res.json()["message"])
         self.assertEqual(len(mail.outbox),2)
 
+    def test_resend_mail_failure_keeps_non_enumerating_response(self):
+        from unittest.mock import patch
+        self.assertEqual(self.post("parents/register",self.user_payload()).status_code,201)
+        with patch("accounts.parent_signup_views.send_verification_email",side_effect=RuntimeError("mail down")):
+            known=self.post("parents/resend-verification",{"email":"famille@example.test"})
+            unknown=self.post("parents/resend-verification",{"email":"unregistered@example.test"})
+        self.assertEqual(known.status_code,200)
+        self.assertEqual(unknown.status_code,200)
+        self.assertEqual(known.json(),unknown.json())
+
     def test_registration_status_does_not_disclose_mail_secrets(self):
         result=self.client.get("/api/v1/auth/parents/registration-status")
         self.assertEqual(result.status_code,200)
