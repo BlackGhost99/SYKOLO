@@ -103,6 +103,15 @@ def school_gateway(request, school_id):
             created = row is None
             if created:
                 row = SchoolPaymentGateway(school=school)
+            unsettled = ParentPaymentAttempt.objects.filter(
+                school=school, state__in=("initiating", "pending", "unknown"),
+            ).exists()
+            if unsettled and (
+                (data["api_key"] and row.encrypted_api_key)
+                or (data["webhook_secret"] and row.encrypted_webhook_secret)
+                or (row.mode != data["mode"])
+            ):
+                return fail("Des paiements sont en cours : rapprochez-les avant de changer les clés ou l'environnement.", 409)
             if data["api_key"]:
                 expected = "sk_live_" if data["mode"] == "live" else "sk_sandbox_"
                 if not data["api_key"].startswith(expected):
@@ -113,10 +122,6 @@ def school_gateway(request, school_id):
             if data["webhook_secret"]:
                 if not data["webhook_secret"].startswith("whsec_"):
                     return fail("Le secret webhook doit venir du tableau de bord PayCentral.")
-                if ParentPaymentAttempt.objects.filter(
-                    school=school, state__in=("initiating", "pending", "unknown")
-                ).exists() and row.encrypted_webhook_secret:
-                    return fail("Des paiements attendent une confirmation : ne changez pas le secret webhook.", 409)
                 row.encrypted_webhook_secret = encrypt_secret(data["webhook_secret"])
             row.mode = data["mode"]
             row.enabled = data["enabled"]
