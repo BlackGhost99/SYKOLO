@@ -37,6 +37,9 @@ beforeEach(()=>{
     if(value.includes("/platform/audit"))return json({events:[]});
     if(value.includes("/platform/organizations"))return json({organizations:[{id:school.organization_id,name:"Groupe Test",schools_count:1}]});
     if(value.includes("/platform/schools/")&&value.endsWith("/detail"))return json(detail);
+    if(value.includes("/platform/schools/")&&value.includes("/members?"))return json({
+      members:detail.members,total:1,page:1,pages:1,per_page:20
+    });
     if(value.includes("/platform/schools/")&&value.endsWith("/action"))return json(detail);
     if(value.includes("/platform/schools/")&&value.endsWith("/admin-access"))return json({access:"direction"});
     if(value.includes("/platform/schools/")&&value.includes("/members/"))return json(detail);
@@ -89,6 +92,17 @@ test("un changement de statut exige un motif",async()=>{
   expect(confirm.disabled).toBe(false);
   await u.click(confirm);
   await waitFor(()=>expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/action"),expect.objectContaining({method:"POST"})));
+});
+
+test("la page Utilisateurs & rôles recherche les comptes auprès du serveur",async()=>{
+  mount();
+  const u=userEvent.setup();
+  await u.click(screen.getByRole("button",{name:"Utilisateurs & rôles"}));
+  expect(await screen.findByText("Directrice Test")).toBeTruthy();
+  expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/members?q=&page=1&per_page=20"),expect.anything());
+  expect(screen.getByRole("button",{name:"Changer le rôle"})).toBeTruthy();
+  await u.type(screen.getByRole("searchbox",{name:"Rechercher un compte"}),"directrice");
+  await waitFor(()=>expect(fetch).toHaveBeenCalledWith(expect.stringContaining("q=directrice"),expect.anything()));
 });
 
 test("le MFA bloque totalement la console",()=>{
