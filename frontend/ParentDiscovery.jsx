@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from "react";
+import React, {useEffect, useMemo, useRef, useState} from "react";
 import "./parent-discovery.css";
 
 async function api(path, body) {
@@ -22,6 +22,8 @@ export default function ParentDiscovery() {
   const [schools,setSchools]=useState([]);
   const [family,setFamily]=useState([]);
   const [applications,setApplications]=useState([]);
+  const [notifications,setNotifications]=useState([]);
+  const lastNotification=useRef(null);
   const [search,setSearch]=useState("");
   const [chosenSchool,setChosenSchool]=useState("");
   const [child,setChild]=useState("");
@@ -31,6 +33,10 @@ export default function ParentDiscovery() {
   const [phone,setPhone]=useState("");
   const [origin,setOrigin]=useState("");
   const [reference,setReference]=useState("");
+  const [paymentChoice,setPaymentChoice]=useState("cash");
+  const [paymentOperator,setPaymentOperator]=useState("airtel");
+  const [paymentPhone,setPaymentPhone]=useState("");
+  const [activePay,setActivePay]=useState("");
   const [newChild,setNewChild]=useState({first_name:"",last_name:"",date_of_birth:""});
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
@@ -38,24 +44,36 @@ export default function ParentDiscovery() {
   const [view,setView]=useState("schools");
 
   async function refresh() {
-    const [list,children,requests]=await Promise.all([
-      api("parents/catalog"),api("parents/family-children"),api("parents/applications"),
+    const [list,children,requests,alerts]=await Promise.all([
+      api("parents/catalog"),api("parents/family-children"),api("parents/applications"),api("parents/notifications"),
     ]);
     setSchools(list.schools||[]);
     setFamily(children.children||[]);
     setApplications(requests.applications||[]);
+    setNotifications(alerts.notifications||[]);
   }
   useEffect(()=>{
     let live=true;
-    Promise.all([api("parents/catalog"),api("parents/family-children"),api("parents/applications")])
-      .then(([list,children,requests])=>{
+    Promise.all([api("parents/catalog"),api("parents/family-children"),api("parents/applications"),api("parents/notifications")])
+      .then(([list,children,requests,alerts])=>{
         if(!live)return;
         setSchools(list.schools||[]);
         setFamily(children.children||[]);
         setApplications(requests.applications||[]);
+        setNotifications(alerts.notifications||[]);
       }).catch(e=>{if(live)setError(e.message)});
     return()=>{live=false};
   },[]);
+  useEffect(()=>{
+    const latest=notifications[0];
+    if(!latest)return;
+    if(lastNotification.current&&latest.id!==lastNotification.current
+      &&typeof window!=="undefined"&&"Notification" in window
+      &&window.Notification.permission==="granted"){
+      new window.Notification("YEM · "+latest.school,{body:latest.message});
+    }
+    lastNotification.current=latest.id;
+  },[notifications]);
   const selectedSchool=schools.find(s=>s.id===chosenSchool);
   const selectedClass=selectedSchool?.classes.find(c=>c.id===classroom);
   const visible=useMemo(()=>schools.filter(s=>
@@ -74,7 +92,7 @@ export default function ParentDiscovery() {
       <div className="yp-stat">{family.length}<small>profils enfant</small></div>
     </header>
     <nav className="yp-tabs" aria-label="Espace familles">
-      {[["schools","Établissements"],["children","Mes enfants"],["requests","Mes demandes"]].map(([key,label])=>
+      {[["schools","Établissements"],["children","Mes enfants"],["requests","Mes demandes"],["notifications","Actualités"]].map(([key,label])=>
         <button type="button" key={key} aria-current={view===key?"page":undefined}
           onClick={()=>{setView(key);setMessage("");setError("");}}>{label}</button>)}
     </nav>
@@ -94,14 +112,14 @@ export default function ParentDiscovery() {
           <p className="yp-muted">{s.classes.length} classe(s) ouvertes à la consultation
             {s.phone?" · Contact : "+s.phone:""}</p>
           <button type="button" className="yp-button" onClick={()=>{
-            setChosenSchool(s.id);setClassroom("");setRoute("direct");
+            setChosenSchool(s.id);setClassroom("");setRoute("direct");setPaymentChoice("cash");
           }}>{chosenSchool===s.id?"Établissement sélectionné":"Voir les classes et candidater"}</button>
           {chosenSchool===s.id&&<div className="yp-apply">
             <h4>Demander une inscription</h4>
             <p>Une candidature n'est ni une inscription définitive, ni une réservation de place.</p>
             <form onSubmit={e=>{e.preventDefault();run(async()=>{
               await api("parents/applications",{
-                child,classroom,route,payment_choice:"cash",
+                child,classroom,route,payment_choice:paymentChoice,
                 guardian_relationship:relation,guardian_phone:phone,
                 origin_school:origin,route_reference:reference,
               });
@@ -116,7 +134,7 @@ export default function ParentDiscovery() {
               </label>
               {family.length===0&&<p>Commencez par créer le profil de votre enfant dans « Mes enfants ».</p>}
               <label className="yp-field">Classe souhaitée
-                <select required value={classroom} onChange={e=>{const id=e.target.value;setClassroom(id);const c=s.classes.find(c=>c.id===id);setRoute(c?.routes[0]||"direct");}}>
+                <select required value={classroom} onChange={e=>{const id=e.target.value;setClassroom(id);const c=s.classes.find(c=>c.id===id);setRoute(c?.routes[0]||"direct");setPaymentChoice(s.cash_at_school?"cash":c?.online_payment_available?"online":"cash");}}>
                   <option value="">Sélectionner une classe</option>
                   {s.classes.map(c=><option key={c.id} value={c.id} disabled={c.remaining===0}>
                     {c.name} · {c.year} · {c.remaining===null?"Places à confirmer":c.remaining+" place(s) restante(s)"}
