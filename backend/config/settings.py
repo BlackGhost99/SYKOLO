@@ -50,9 +50,21 @@ EMAIL_PORT = int(os.environ.get("YEM_SMTP_PORT", "587"))
 EMAIL_HOST_USER = os.environ.get("YEM_SMTP_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("YEM_SMTP_PASSWORD", "")
 EMAIL_USE_TLS = not os.environ.get("YEM_SMTP_TLS", "true").lower() == "false"
-EMAIL_BACKEND = os.environ.get("YEM_EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend" if DEPLOYED else "django.core.mail.backends.console.EmailBackend")
+YEM_RESEND_API_KEY = os.environ.get("YEM_RESEND_API_KEY", "")
 DEFAULT_FROM_EMAIL = os.environ.get("YEM_FROM_EMAIL", "no-reply@localhost")
-PASSWORD_RESET_ENABLED = not DEPLOYED or bool(os.environ.get("YEM_SMTP_HOST") and os.environ.get("YEM_FROM_EMAIL") and AUTH_PUBLIC_BASE_URL.startswith("https://"))
+EMAIL_BACKEND = os.environ.get(
+    "YEM_EMAIL_BACKEND",
+    "accounts.email_backends.ResendEmailBackend" if YEM_RESEND_API_KEY else
+    ("django.core.mail.backends.smtp.EmailBackend" if DEPLOYED else "django.core.mail.backends.console.EmailBackend"),
+)
+# Two supported production transports: HTTPS email API or SMTP on hosting
+# that permits outbound mail ports. Do not claim availability on key alone:
+# actual delivery must be tested with the user's verified sender domain.
+PASSWORD_RESET_ENABLED = not DEPLOYED or bool(
+    AUTH_PUBLIC_BASE_URL.startswith("https://")
+    and os.environ.get("YEM_FROM_EMAIL")
+    and (YEM_RESEND_API_KEY or os.environ.get("YEM_SMTP_HOST"))
+)
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
