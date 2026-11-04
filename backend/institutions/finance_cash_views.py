@@ -123,7 +123,9 @@ def approve_cash_closing(request, school_id, closing_id):
         return JsonResponse({"error": "Motif de contrôle invalide."}, status=422)
     try:
         with transaction.atomic():
-            row = CashClosing.objects.select_for_update().select_related(
+            # Lock only the closing row: approved_by is nullable, and
+            # PostgreSQL rejects FOR UPDATE on the nullable side of an outer join.
+            row = CashClosing.objects.select_for_update(of=("self",)).select_related(
                 "school", "submitted_by", "approved_by"
             ).filter(school=school, pk=closing_id).first()
             if row is None:
