@@ -11,7 +11,7 @@ SCHOOL_TYPES = (
     ("primaire", "École primaire"),
     ("college", "Collège"),
     ("lycee", "Lycée"),
-    ("groupe_scolaire", "Groupe scolaire / multicyle"),
+    ("groupe_scolaire", "Groupe scolaire / multicycle"),
 )
 CYCLE_TYPES = (
     ("maternelle", "Pré-primaire / maternelle"),
