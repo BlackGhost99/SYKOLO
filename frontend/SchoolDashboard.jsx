@@ -100,7 +100,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [page,setPage]=useState("dashboard");
   const [sub,setSub]=useState("");
   const [params,setParams]=useState(null);
-  const [isParent,setIsParent]=useState(false);
+  const [isParent,setIsParent]=useState(true);
+  const [showWorkspace,setShowWorkspace]=useState(false);
   const [message,setMessage]=useState("");
   useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
   useEffect(()=>{let live=true;fetch("/api/v1/parents/children",{credentials:"same-origin"}).then(r=>r.ok?r.json():null).then(d=>{if(live&&d?.parent_role)setIsParent(true);}).catch(()=>{});return()=>{live=false;};},[]);
@@ -125,6 +126,21 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const selector=<div className="yd-school-select-wrap"><label className="yd-school-select"><Icon name="school" size={24}/>
     {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>setChosen(e.target.value)}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:<b>{schoolName}</b>}
     {schools.length>1&&<Icon name="chevron" size={18} className="chev"/>}</label></div>;
+  // Une famille connectée arrive directement dans YEM Parents, sans tableau de bord scolaire.
+  // Un même compte peut aussi travailler dans un établissement : la bascule reste accessible.
+  const parentLanding = loaded && (schools.length === 0 || (access?.role === "parent" && !showWorkspace));
+  if (parentLanding) return <div className="yd-parent-standalone" style={{maxWidth:1040,margin:"0 auto",padding:"1rem"}}>
+    <nav aria-label="Navigation du compte parent" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:14}}>
+      <strong style={{fontSize:21,color:"#175c46"}}>YEM Parents</strong>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {schools.length>0&&<button type="button" className="yd-btn" onClick={()=>setShowWorkspace(true)}>Espace établissement</button>}
+        <button type="button" className="yd-btn" onClick={()=>setPage(page==="account"?"parents":"account")}>{page==="account"?"Mes enfants":"Mon compte"}</button>
+        <button type="button" className="yd-btn" onClick={onLogout}>Se déconnecter</button>
+      </div>
+    </nav>
+    {page==="account"?accountView:<ParentPortal/>}
+    <footer className="yd-brand-footer"><span>YEM · Espace familles</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
+  </div>;
   let content;
   if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
   else if (page==="parents") content=<div className="yd-real-body"><ParentPortal/></div>;

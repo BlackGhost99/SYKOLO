@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from "react";
 import {AdmissionPolicyEditor,AdmissionProofPanel,ROUTES} from "./AdmissionRoutesPanel.jsx";
+import {SchoolCatalogSettings} from "./ParentDiscovery.jsx";
 
 async function admissionApi(path, body){
   if(body!==undefined) await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
@@ -76,6 +77,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false}){
   const availableClasses=classes.filter(x=>x.active&&x.year===year);
   return <section className="card" style={{marginTop:"1rem"}} aria-label="Admissions et préinscriptions">
     <h2>Admissions et préinscriptions</h2>
+    <SchoolCatalogSettings schoolId={schoolId}/>
     <p className="hint">Trois voies possibles : inscription directe, concours/test ou affectation. Le secrétariat prépare les dossiers ; la direction statue. Une admission ne vaut ni inscription définitive ni paiement.</p>
     <details className="ar-settings">
       <summary>Configurer les voies et pièces exigées par année / niveau</summary>
