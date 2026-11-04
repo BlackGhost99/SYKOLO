@@ -62,12 +62,22 @@ async function addUser(schoolId, body) {
 function UsersForm({schoolId,onMessage}) {
   const [person,setPerson]=useState(defaultPerson);
   const [busy,setBusy]=useState(false);
+  const [roles,setRoles]=useState([]);
+  useEffect(()=>{
+    let alive=true;
+    get("schools/"+schoolId+"/roles").then(x=>{
+      if (!alive) return;
+      const list=x.roles||[];setRoles(list);
+      setPerson(p=>list.some(r=>r.code===p.role)?p:{...p,role:list[0]?.code||""});
+    }).catch(e=>{if(alive){setRoles([]);onMessage(e.message);}});
+    return ()=>{alive=false;};
+  },[schoolId]);
   return <Card title="Créer un compte pour l'établissement" icon="adduser" subtitle="Le compte est rattaché uniquement à cette école. Les droits dépendent de son rôle.">
     <form onSubmit={async e=>{e.preventDefault();setBusy(true);onMessage("");try{const result=await addUser(schoolId,person);setPerson(defaultPerson);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
       {["first_name","last_name","username","email"].map(key=><label key={key}>{{first_name:"Prénom",last_name:"Nom",username:"Identifiant de connexion",email:"Email"}[key]}<input required value={person[key]} type={key==="email"?"email":"text"} onChange={e=>setPerson(x=>({...x,[key]:e.target.value}))}/></label>)}
-      <label>Rôle<select value={person.role} onChange={e=>setPerson(x=>({...x,role:e.target.value}))}>{[["direction","Direction"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]].map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+      <label>Rôle<select required value={person.role} disabled={!roles.length} onChange={e=>setPerson(x=>({...x,role:e.target.value}))}>{roles.map(r=><option key={r.id} value={r.code}>{r.label}</option>)}</select></label>
       <label>Mot de passe initial<input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>setPerson(x=>({...x,password:e.target.value}))}/></label>
-    </div><button className="pc-primary" type="submit" disabled={busy}>Créer le compte</button></form>
+    </div><button className="pc-primary" type="submit" disabled={busy||!roles.length||!person.role}>Créer le compte</button></form>
   </Card>;
 }
 
