@@ -100,7 +100,7 @@ export default function SchoolPaymentSetup({schoolId,years=[],classes=[]}) {
         <input type="password" autoComplete="off" value={secret} onChange={e=>setSecret(e.target.value)}
           placeholder="whsec_..."/>
       </label>
-      <p>Webhook à déclarer dans PayCentral : <code>{typeof window==="undefined"?"":window.location.origin+"/api/v1/parents/paycentral/webhook"}</code></p>
+      <p>Webhook à déclarer dans PayCentral : <code>{gateway.webhook_url}</code></p>
       <label className="yp-toggle"><input type="checkbox" checked={gateway.enabled}
         onChange={e=>setGateway(v=>({...v,enabled:e.target.checked}))}/> Activer cette passerelle</label>
       {!gateway.encryption_ready&&<p className="yp-error">La clé de chiffrement serveur n'est pas encore configurée. Aucune clé marchande ne sera enregistrée.</p>}
