@@ -164,12 +164,20 @@ export default function ParentDiscovery() {
               </>}
               <fieldset className="yp-payment">
                 <legend>Comment souhaitez-vous payer les frais ?</legend>
-                <label><input type="radio" name="yp-payment" checked readOnly/> Payer en espèces à l'école</label>
-                <label className="yp-disabled"><input type="radio" name="yp-payment" disabled/> Payer en ligne (prochainement)</label>
-                <small>Aucun encaissement n'est effectué ici. Le montant et le reçu seront confirmés par l'établissement.</small>
+                <label><input type="radio" name="yp-payment" checked={paymentChoice==="cash"}
+                  onChange={()=>setPaymentChoice("cash")} disabled={!s.cash_at_school}/> Payer en espèces à l'école</label>
+                <label className={!selectedClass?.online_payment_available?"yp-disabled":""}>
+                  <input type="radio" name="yp-payment" checked={paymentChoice==="online"}
+                    onChange={()=>setPaymentChoice("online")} disabled={!selectedClass?.online_payment_available}/>
+                  Payer en ligne (Airtel Money / Moov Money)
+                </label>
+                <small>{selectedClass?.fee_amount_xaf?
+                  "Frais de dossier : "+Number(selectedClass.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA.":
+                  "Montant des frais à confirmer auprès de l'établissement."}</small>
+                <small>Aucun paiement n'est confirmé tant que le prestataire n'a pas vérifié la transaction.</small>
               </fieldset>
               <button className="yp-button yp-primary" type="submit"
-                disabled={busy||!family.length||!classroom||!s.cash_at_school}>
+                disabled={busy||!family.length||!classroom||(paymentChoice==="cash"&&!s.cash_at_school)||(paymentChoice==="online"&&!selectedClass?.online_payment_available)}>
                 {busy?"Enregistrement...":"Déposer ma demande"}
               </button>
               {!s.cash_at_school&&<p>Le paiement en espèces n'est pas proposé par cette école.</p>}
