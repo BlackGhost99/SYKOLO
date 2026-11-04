@@ -405,7 +405,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           audit:"Sécurité & audit",plans:"Abonnements et limites",settings:"Paramètres de la plateforme",newSchool:"Nouvel établissement",
         }[view]||"Console d'administration YEM")}</h1><span>Administration globale de YEM — organisations, établissements, utilisateurs et droits.</span></div>
         <div className="ya-top-actions"><div className="ya-global-search"><Icon name="search" size={20}/><input ref={searchRef} type="search" aria-label="Recherche globale" placeholder="Rechercher un établissement…" value={filters.q} onChange={e=>setFilters(o=>({...o,q:e.target.value,page:1}))}/><kbd>Ctrl + K</kbd></div>
-          <button className="ya-icon-button" title="Historique et notifications" aria-label="Historique et notifications" onClick={()=>goto("audit")}><Icon name="bell" size={23}/></button>
+          <button className="ya-icon-button" title="Historique des opérations" aria-label="Historique des opérations" onClick={()=>goto("audit")}><Icon name="bell" size={23}/></button>
           <div className="ya-profile-wrap"><button className="ya-profile" onClick={()=>setProfileOpen(o=>!o)} aria-expanded={profileOpen}><span className="ya-avatar"><Icon name="users" size={21}/></span><span><b>{user?.username||"Super-admin"}</b><small>Super-administrateur</small></span><Icon name="chevron" size={17}/></button>
           {profileOpen&&<div className="ya-profile-menu"><button onClick={()=>goto("settings")}>Sécurité de mon compte</button><button onClick={onLogout}>Se déconnecter</button></div>}</div>
           <button className="ya-mobile-toggle" onClick={()=>setMenuOpen(o=>!o)} aria-label="Ouvrir le menu"><Icon name="menu" size={25}/></button>
@@ -425,7 +425,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
         </div>
         <div className="ya-bottom-grid">
           <section className="ya-box ya-quick"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="activity" size={23}/></div><div><h2>Création rapide</h2><p>Actions courantes de super-administration.</p></div></div>
-            <div className="ya-quick-grid">{[["school","Nouvel établissement","newSchool"],["layers","Nouvelle organisation","organizations"],["mail","Créer un directeur","users"],["userplus","Créer un compte","users"]].map(([icon,label,key])=><button type="button" key={label} onClick={()=>goto(key)}><Icon name={icon} size={29}/><strong>{label}</strong><Icon name="right" size={19}/></button>)}</div>
+            <div className="ya-quick-grid">{[["school","Nouvel établissement","newSchool"],["layers","Nouvelle organisation","organizations"],["mail","Créer un directeur","users"],["userplus","Créer un compte","users"]].map(([icon,label,key])=><button type="button" key={label} onClick={()=>{if(label==="Créer un directeur")setPerson(old=>({...old,role:"direction"}));goto(key);}}><Icon name={icon} size={29}/><strong>{label}</strong><Icon name="right" size={19}/></button>)}</div>
           </section>
           <AuditFeed events={dashboard.recent_events||[]} onAll={()=>goto("audit")}/>
         </div>
