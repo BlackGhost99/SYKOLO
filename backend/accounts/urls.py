@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, parent_signup_views
+from . import views, parent_signup_views, password_admin_views
 
 urlpatterns = [
     path("csrf", views.csrf),
@@ -11,6 +11,8 @@ urlpatterns = [
     path("password/change", views.change_password),
     path("password/reset/request", views.password_reset_request),
     path("password/reset/confirm", views.password_reset_confirm),
+    path("password/admin-reset", password_admin_views.admin_password_reset),
+    path("password/admin-parent-reset", password_admin_views.admin_parent_password_reset),
     path("mfa/begin", views.mfa_begin),
     path("mfa/confirm", views.mfa_confirm),
     path("mfa/disable", views.mfa_disable),

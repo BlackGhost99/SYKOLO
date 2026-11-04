@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import SchoolDashboard from "./SchoolDashboard.jsx";
+import AdminPasswordReset from "./AdminPasswordReset.jsx";
 import brand from "./assets/yem-brand.webp";
 import "./superadmin.css";
 
@@ -238,6 +239,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const [memberPage,setMemberPage]=useState(1);
   const [memberResults,setMemberResults]=useState({members:[],total:0,page:1,pages:1,per_page:20});
   const [memberLoading,setMemberLoading]=useState(false);
+  const [resetMember,setResetMember]=useState(null);
   const [modal,setModal]=useState(null);
   const [reason,setReason]=useState("");
   const [roleId,setRoleId]=useState("");
@@ -493,10 +495,13 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       </div>}
       {view==="users"&&<div className="ya-two-panels ya-users-layout">
         <section className="ya-box"><h2>Utilisateurs et droits d'accès</h2><p>Les permissions sont propres à l'établissement choisi.</p>
+          <button className="ya-btn ya-btn-outline" type="button" onClick={()=>setResetMember({mode:"parent"})}>
+            Récupération d'un compte parent
+          </button>
           <Field label="Établissement"><select value={schoolId} onChange={e=>chooseSchool(e.target.value)}><option value="">Choisir…</option>{allSchools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}{selectedDetail&&!allSchools.some(s=>s.id===schoolId)&&<option value={schoolId}>{selectedDetail.school.name}</option>}</select></Field>
           <Field label="Rechercher un compte"><input type="search" value={memberSearch} onChange={e=>{setMemberSearch(e.target.value);setMemberPage(1);}} placeholder="Nom, identifiant, e-mail, rôle…"/></Field>
           <div className="ya-member-list">{memberLoading?<p className="ya-empty">Chargement des comptes…</p>:visibleMembers.length?visibleMembers.map(m=><div key={m.id} className="ya-member"><span className="ya-member-avatar"><Icon name="users"/></span><div><b>{m.name}</b><small>{m.username} · {m.is_platform_admin?"Plateforme (intervention)":m.role} · {m.active?"Actif":"Suspendu"}</small><small>{m.email}</small></div>
-            {!m.is_platform_admin&&<div className="ya-member-actions"><button onClick={()=>openModal("role",m)}>Changer le rôle</button><button onClick={()=>openModal("memberStatus",m)}>{m.membership_active?"Suspendre":"Réactiver"}</button></div>}</div>):<p className="ya-empty">Aucun compte à afficher pour cette sélection.</p>}</div>
+            {!m.is_platform_admin&&<div className="ya-member-actions"><button onClick={()=>openModal("role",m)}>Changer le rôle</button><button onClick={()=>openModal("memberStatus",m)}>{m.membership_active?"Suspendre":"Réactiver"}</button><button className="ya-reset-account" type="button" onClick={()=>setResetMember(m)}>Mot de passe oublié</button></div>}</div>):<p className="ya-empty">Aucun compte à afficher pour cette sélection.</p>}</div>
           <div className="ya-pagination ya-members-pagination">
             <span>{fmt(memberResults.total||0)} compte(s)</span>
             <div className="ya-pager">
@@ -538,5 +543,8 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       <footer className="ya-footer"><span><strong>YEM</strong> — Gestion scolaire &amp; universitaire</span><span>Développé par <b>BWETEK Informatyk</b></span></footer>
     </main>
     <Modal modal={modal} detail={selectedDetail} reason={reason} setReason={setReason} roleId={roleId} setRoleId={setRoleId} onCancel={()=>setModal(null)} onConfirm={confirmModal} busy={busy}/>
+    {resetMember&&(schoolId||resetMember.mode==="parent")&&
+      <AdminPasswordReset schoolId={schoolId} member={resetMember}
+        parent={resetMember.mode==="parent"} onClose={()=>setResetMember(null)}/>} 
   </div>;
 }
