@@ -157,7 +157,7 @@ function Directory({dashboard,filters,setFilters,onSchool,selected,onNew,compact
     </div>
   </section>;
 }
-function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onPlan,onRename}) {
+function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onPlan,onRename,onProfile}) {
   if (loading && !detail) return <section className="ya-box ya-detail"><div className="ya-empty">Chargement de la fiche…</div></section>;
   if (!detail) return <section className="ya-box ya-detail"><div className="ya-empty">Sélectionnez un établissement dans le répertoire pour consulter sa fiche et ses accès.</div></section>;
   const s=detail.school,people=detail.members||[];
@@ -168,6 +168,9 @@ function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onP
       {[["info","Informations"],["roles","Accès & rôles"],["limits","Limites & abonnement"],["history","Historique"]].map(([key,label])=><button key={key} role="tab" aria-selected={tab===key} className={tab===key?"active":""} onClick={()=>setTab(key)}>{label}</button>)}
     </div>
     {tab==="info"&&<div className="ya-detail-content">
+      <div className="ya-info-row"><Icon name="school" size={20}/><span>Type</span><strong>{s.school_type_label||"À configurer"}</strong></div>
+      <div className="ya-info-row"><Icon name="layers" size={20}/><span>Cycles</span><strong>{(s.enabled_cycles||[]).map(x=>CYCLE_TYPES.find(([key])=>key===x)?.[1]||x).join(", ")||"À préciser"}</strong></div>
+      <button className="ya-btn ya-btn-outline" type="button" onClick={onProfile}>Modifier le type et les cycles</button>
       <div className="ya-info-row"><Icon name="users" size={20}/><span>Direction principale</span><strong>{director?director.name:"Non désignée"}</strong></div>
       <div className="ya-info-row"><Icon name="mail" size={20}/><span>Contact</span><strong>{director?.email || "Non renseigné"}</strong></div>
       <div className="ya-info-row"><Icon name="shield" size={20}/><span>Rôle principal</span><strong>{director?.role || "À attribuer"}</strong></div>
@@ -197,15 +200,20 @@ function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onP
 }
 function Modal({modal,detail,reason,setReason,roleId,setRoleId,onCancel,onConfirm,busy}) {
   if (!modal) return null;
-  const title={role:"Attribuer un rôle",memberStatus:"Modifier l'accès du compte",schoolStatus:"Modifier le statut de l'établissement",rename:"Renommer l'établissement"}[modal.type];
+  const title={role:"Attribuer un rôle",memberStatus:"Modifier l'accès du compte",schoolStatus:"Modifier le statut de l'établissement",rename:"Renommer l'établissement",schoolProfile:"Configurer le type et les cycles"}[modal.type];
   return <div className="ya-modal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onCancel();}}>
     <div className="ya-modal" role="dialog" aria-modal="true" aria-label={title}>
       <div className="ya-modal-heading"><h2>{title}</h2><button aria-label="Fermer" onClick={onCancel}>×</button></div>
       <p>{modal.member?.name || detail?.school?.name}. Toute modification est enregistrée dans le journal d'audit.</p>
       {modal.type==="role"&&<Field label="Rôle attribué"><select value={roleId} onChange={e=>setRoleId(e.target.value)}>{(detail?.roles||[]).map(r=><option key={r.id} value={r.id}>{r.label}</option>)}</select></Field>}
       {modal.type==="rename"&&<Field label="Nouveau nom"><input value={modal.name||""} onChange={e=>modal.setName(e.target.value)} maxLength={180} required/></Field>}
+      {modal.type==="schoolProfile"&&<>
+        <Field label="Type d'établissement"><select value={modal.school_type} onChange={e=>modal.setProfile({school_type:e.target.value,enabled_cycles:defaultCycles(e.target.value)})}><option value="a_configurer">À configurer</option>{SCHOOL_TYPES.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></Field>
+        {modal.school_type==="groupe_scolaire"&&<fieldset><legend>Cycles proposés</legend>{CYCLE_TYPES.map(([key,label])=><label key={key} style={{display:"inline-flex",alignItems:"center",gap:6,marginRight:12}}><input type="checkbox" checked={modal.enabled_cycles.includes(key)} onChange={()=>modal.setProfile({enabled_cycles:toggleCycle(modal.enabled_cycles,key)})}/>{label}</label>)}</fieldset>}
+        <p className="ya-small-copy">Les classes et rôles existants restent inchangés : vérifiez ensuite leurs affectations.</p>
+      </>
       <Field label="Motif obligatoire"><textarea value={reason} onChange={e=>setReason(e.target.value)} maxLength={240} rows={3} placeholder="Expliquez pourquoi vous effectuez cette modification…"/></Field>
-      <div className="ya-modal-footer"><button className="ya-btn ya-btn-outline" onClick={onCancel}>Annuler</button><button className="ya-btn ya-btn-primary" disabled={busy||!reason.trim()||(modal.type==="role"&&!roleId)||(modal.type==="rename"&&!modal.name?.trim())} onClick={onConfirm}>{busy?"Enregistrement…":"Confirmer"}</button></div>
+      <div className="ya-modal-footer"><button className="ya-btn ya-btn-outline" onClick={onCancel}>Annuler</button><button className="ya-btn ya-btn-primary" disabled={busy||!reason.trim()||(modal.type==="role"&&!roleId)||(modal.type==="rename"&&!modal.name?.trim())||(modal.type==="schoolProfile"&&modal.school_type==="groupe_scolaire"&&!modal.enabled_cycles.length)} onClick={onConfirm}>{busy?"Enregistrement…":"Confirmer"}</button></div>
     </div>
   </div>;
 }
@@ -324,7 +332,10 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     if(type==="role"&&!member) member=(selectedDetail?.members||[]).find(x=>!x.is_platform_admin)||null;
     setRoleId(member?.role_id||selectedDetail?.roles?.[0]?.id||"");
     setReason("");
-    setModal({type,member,name:selectedDetail?.school?.name||"",setName:name=>setModal(o=>({...o,name}))});
+    setModal({type,member,name:selectedDetail?.school?.name||"",setName:name=>setModal(o=>({...o,name})),
+      school_type:selectedDetail?.school?.school_type||"a_configurer",
+      enabled_cycles:selectedDetail?.school?.enabled_cycles||[],
+      setProfile:changes=>setModal(o=>({...o,...changes}))});
   }
   async function confirmModal() {
     if(!modal||!selectedDetail)return;
@@ -332,6 +343,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     let url=base+"/action",body={reason:reason.trim()};
     if (modal.type==="schoolStatus") body={...body,action:"status",active:!selectedDetail.school.active};
     else if (modal.type==="rename") body={...body,action:"rename",name:modal.name.trim()};
+    else if (modal.type==="schoolProfile") body={...body,action:"profile",school_type:modal.school_type,enabled_cycles:modal.enabled_cycles,revision:selectedDetail.school.profile_revision};
     else {
       if(!modal.member)return;
       url=base+"/members/"+modal.member.id+"/action";
@@ -385,6 +397,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     onAccess:enterSchool,
     onPlan:()=>goto("plans"),
     onRename:()=>openModal("rename"),
+    onProfile:()=>openModal("schoolProfile"),
   };
 
   if (!mfaEnabled) return <div className="ya-mfa"><div className="ya-warning"><Icon name="lock"/><div><h2>Sécurisez votre espace de super-administration</h2><p>Activez la double authentification pour accéder aux établissements, aux rôles et aux données de plateforme.</p></div></div>{accountView}</div>;
