@@ -9,6 +9,7 @@ from html import escape
 from io import BytesIO
 from uuid import uuid5
 
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse, JsonResponse
@@ -67,6 +68,8 @@ def create_batch(request, school_id):
 
     try:
         paid_on = iso_day(data["paid_on"])
+        if paid_on > timezone.localdate():
+            raise ValueError("Un encaissement futur ne peut pas être déclaré comme reçu.")
         entries = {}
         total = Decimal("0.00")
         for line in data["lines"]:
