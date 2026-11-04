@@ -37,6 +37,7 @@ export default function SchoolPanel() {
   const [newType, setNewType] = useState("");
   const [newCycles, setNewCycles] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [canEditProfile, setCanEditProfile] = useState(false);
   const [editType, setEditType] = useState("a_configurer");
   const [editCycles, setEditCycles] = useState([]);
   const [orgId, setOrgId] = useState("");
@@ -64,10 +65,12 @@ export default function SchoolPanel() {
       api("schools/" + selected + "/roles").catch(() => ({ roles: [] })),
       api("schools/" + selected + "/settings").catch(() => null),
       api("schools/" + selected + "/profile"),
-    ]).then(([r, s, p]) => {
+      api("schools/" + selected + "/my-access"),
+    ]).then(([r, s, p, access]) => {
       if (!active) return;
       setRoles(r.roles || []);
       setProfile(p);
+      setCanEditProfile((access.permissions||[]).some(x=>x==="school.settings.write"||x==="school.members.write"));
       setEditType(p.school_type);
       setEditCycles(p.enabled_cycles || []);
       setCanEditConfiguration(Boolean(s));
@@ -128,7 +131,8 @@ export default function SchoolPanel() {
         </select>
       </label>
       {selected && <>
-        {profile&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
+        {profile&&!canEditProfile&&<p className="hint">Profil : {profile.school_type_label}. Modification réservée à la direction autorisée ou au fondateur.</p>}
+        {profile&&canEditProfile&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
           const result=await api("schools/"+selected+"/profile",{school_type:editType,enabled_cycles:editCycles,revision:profile.profile_revision},"PATCH");
           setProfile(result);setEditType(result.school_type);setEditCycles(result.enabled_cycles);
           const rolesData=await api("schools/"+selected+"/roles").catch(()=>({roles:[]}));
