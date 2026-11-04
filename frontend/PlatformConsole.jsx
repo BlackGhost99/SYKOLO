@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 import brand from "./assets/yem-brand.webp";
+import {SCHOOL_TYPES, CYCLE_TYPES, defaultCycles, toggleCycle} from "./schoolProfiles.js";
 import "./superadmin.css";
 
 /* Tableau de bord réel : aucun chiffre, utilisateur ni établissement fictif. */
@@ -54,7 +55,7 @@ function dateText(value) {
 }
 const fmt = n => (typeof n === "number" ? new Intl.NumberFormat("fr-GA").format(n) : "—");
 const orgBlank = {name:""};
-const schoolBlank = {organization_name:"",organization_id:"",school_name:"",username:"",email:"",first_name:"",last_name:"",password:"",role:"direction"};
+const schoolBlank = {organization_name:"",organization_id:"",school_name:"",school_type:"",enabled_cycles:[],username:"",email:"",first_name:"",last_name:"",password:"",role:"direction"};
 const userBlank = {username:"",email:"",first_name:"",last_name:"",password:"",role:""};
 const icons = {
   home:<><path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-6h6v6"/></>,
@@ -446,6 +447,8 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           {schoolForm.organization_id?<Field label="Sélectionner l'organisation"><select value={schoolForm.organization_id} required onChange={e=>update(setSchoolForm,"organization_id",e.target.value)}>{(dashboard.organization_options||[]).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></Field>
           :<Field label="Nom de la nouvelle organisation"><input required maxLength={180} value={schoolForm.organization_name} onChange={e=>update(setSchoolForm,"organization_name",e.target.value)}/></Field>}
           <Field label="Nom de l'établissement"><input required maxLength={180} value={schoolForm.school_name} onChange={e=>update(setSchoolForm,"school_name",e.target.value)}/></Field>
+          <Field label="Type d'établissement"><select required value={schoolForm.school_type} onChange={e=>setSchoolForm(old=>({...old,school_type:e.target.value,enabled_cycles:defaultCycles(e.target.value)}))}><option value="">Choisir le type…</option>{SCHOOL_TYPES.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></Field>
+          {schoolForm.school_type==="groupe_scolaire"&&<fieldset className="ya-form-cycles"><legend>Cycles assurés par l'établissement</legend>{CYCLE_TYPES.map(([key,label])=><label key={key} style={{display:"inline-flex",alignItems:"center",gap:6,marginRight:14}}><input type="checkbox" checked={schoolForm.enabled_cycles.includes(key)} onChange={()=>setSchoolForm(old=>({...old,enabled_cycles:toggleCycle(old.enabled_cycles,key)}))}/>{label}</label>)}</fieldset>}
         </div><h3>02 — Compte du responsable</h3><div className="ya-form-grid">
           {[["first_name","Prénom"],["last_name","Nom"],["username","Identifiant"],["email","Adresse e-mail"]].map(([k,l])=><Field key={k} label={l}><input type={k==="email"?"email":"text"} required maxLength={k==="email"?254:150} value={schoolForm[k]} onChange={e=>update(setSchoolForm,k,e.target.value)}/></Field>)}
           <Field label="Fonction du responsable"><select value={schoolForm.role} onChange={e=>update(setSchoolForm,"role",e.target.value)}><option value="direction">Direction</option><option value="proprietaire">Propriétaire de l'école</option></select></Field>
