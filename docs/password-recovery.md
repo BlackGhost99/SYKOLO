@@ -15,23 +15,36 @@ de secours.
 
 ### À configurer sur Render pour activer l'envoi
 
+**Render Free bloque les ports SMTP sortants 25, 465 et 587** (documentation
+officielle : https://render.com/docs/free). Pour conserver l'offre gratuite,
+YEM prend en charge un **transport d'e-mail par API HTTPS** (Resend), sans
+installer de SDK externe ni changer les identités des utilisateurs.
+
 Aucune valeur de démonstration ne doit être utilisée en production.
 
 | Variable d'environnement | Rôle |
 |---|---|
 | `AUTH_PUBLIC_BASE_URL` | `https://yem-api.onrender.com` ou domaine YEM public final |
-| `YEM_SMTP_HOST` | Hôte SMTP du fournisseur choisi |
-| `YEM_SMTP_PORT` | Port SMTP autorisé par l'hébergeur / fournisseur |
-| `YEM_SMTP_USER` | Identifiant SMTP |
-| `YEM_SMTP_PASSWORD` | Mot de passe ou clé SMTP privée |
-| `YEM_FROM_EMAIL` | Adresse d'expédition vérifiée |
-| `YEM_SMTP_TLS` | `true` pour connexion STARTTLS (selon fournisseur) |
+| `YEM_RESEND_API_KEY` | Clé API Resend (secret, jamais exposé dans le navigateur) |
+| `YEM_FROM_EMAIL` | Adresse d'expédition appartenant au domaine vérifié |
 
-Le code calcule `PASSWORD_RESET_ENABLED` depuis cette configuration en déploiement.
-**Configurer le nom des variables sans un service d'envoi fonctionnel ne suffit
-pas** : tester l'envoi réel, la réception, la protection du domaine expéditeur,
-le taux de délivrabilité, les retours d'erreur et les éventuelles restrictions
-de sorties réseau de l'hébergeur.
+L'adresse expéditrice doit être **vérifiée chez le fournisseur** et des tests
+réels doivent confirmer la réception. Une clé invalide ou un domaine non
+vérifié ne permettent pas d'envoyer un e-mail : **aucune fausse confirmation
+d'envoi ne doit être affichée**.
+
+Un transport SMTP existe aussi pour les hébergeurs qui autorisent les ports
+sortants de messagerie (`YEM_SMTP_HOST`, `YEM_SMTP_PORT`, `YEM_SMTP_USER`,
+`YEM_SMTP_PASSWORD`, `YEM_SMTP_TLS`), mais pas sur Render Free via les ports
+standard. Ne pas activer l'un et l'autre simultanément sans décider explicitement
+du transport.
+
+Le code calcule `PASSWORD_RESET_ENABLED` depuis la présence du domaine public,
+de l'expéditeur et d'un transport configuré. **La présence d'une clé ne garantit
+pas la distribution** : effectuer un véritable test de bout en bout.
+
+Tarif fournisseur indicatif à vérifier lors de la configuration :
+https://resend.com/pricing (offre gratuite annoncée, soumise à quotas).
 
 En attendant, le bouton utilisateur reste indisponible si la messagerie manque.
 Ceci est volontaire : YEM ne doit pas simuler un envoi.
