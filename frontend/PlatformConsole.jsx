@@ -33,6 +33,7 @@ const menu = [
 const eventLabels = {
   organization_created:"a créé une organisation",
   school_provisioned:"a créé un établissement",
+  school_profile_updated:"a modifié la classification d’un établissement",
   member_account_created:"a créé un compte scolaire",
   platform_admin_school_access:"a ouvert un accès d'administration",
   member_role_changed:"a modifié un rôle",
@@ -54,7 +55,7 @@ function dateText(value) {
 }
 const fmt = n => (typeof n === "number" ? new Intl.NumberFormat("fr-GA").format(n) : "—");
 const orgBlank = {name:""};
-const schoolBlank = {organization_name:"",organization_id:"",school_name:"",username:"",email:"",first_name:"",last_name:"",password:"",role:"direction"};
+const schoolBlank = {organization_name:"",organization_id:"",school_name:"",school_type:"",education_cycles:[],username:"",email:"",first_name:"",last_name:"",password:"",role:"direction"};
 const userBlank = {username:"",email:"",first_name:"",last_name:"",password:"",role:""};
 const icons = {
   home:<><path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-6h6v6"/></>,
@@ -156,7 +157,7 @@ function Directory({dashboard,filters,setFilters,onSchool,selected,onNew,compact
     </div>
   </section>;
 }
-function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onPlan,onRename}) {
+function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onPlan,onRename,onProfile,cycleLabels}) {
   if (loading && !detail) return <section className="ya-box ya-detail"><div className="ya-empty">Chargement de la fiche…</div></section>;
   if (!detail) return <section className="ya-box ya-detail"><div className="ya-empty">Sélectionnez un établissement dans le répertoire pour consulter sa fiche et ses accès.</div></section>;
   const s=detail.school,people=detail.members||[];
@@ -170,6 +171,8 @@ function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onP
       <div className="ya-info-row"><Icon name="users" size={20}/><span>Direction principale</span><strong>{director?director.name:"Non désignée"}</strong></div>
       <div className="ya-info-row"><Icon name="mail" size={20}/><span>Contact</span><strong>{director?.email || "Non renseigné"}</strong></div>
       <div className="ya-info-row"><Icon name="shield" size={20}/><span>Rôle principal</span><strong>{director?.role || "À attribuer"}</strong></div>
+      <div className="ya-info-row"><Icon name="school" size={20}/><span>Type d’établissement</span><strong>{s.school_type_label||"À classifier"}</strong></div>
+      <div className="ya-info-row"><Icon name="book" size={20}/><span>Cycles enseignés</span><strong>{(s.education_cycles||[]).map(c=>cycleLabels?.[c]||c).join(" · ")||"Non renseignés"}</strong></div>
       <div className="ya-info-row"><Icon name="users" size={20}/><span>Comptes actifs</span><strong>{fmt(detail.members_count)}</strong></div>
       <div className="ya-info-row"><Icon name="book" size={20}/><span>Élèves actifs</span><strong>{fmt(detail.students_count)}</strong></div>
       <div className="ya-detail-progress"><Progress value={detail.members_count} max={detail.policy.max_users} label="Utilisateurs"/><Progress value={detail.students_count} max={detail.policy.max_students} label="Élèves"/></div>
@@ -191,6 +194,7 @@ function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onP
       <button className={"ya-btn "+(s.active?"ya-btn-danger":"ya-btn-outline")} onClick={onStatus}><Icon name={s.active?"pause":"check"} size={17}/>{s.active?"Suspendre":"Réactiver"}</button>
       <button className="ya-btn ya-btn-outline" onClick={onAccess} disabled={!s.active}><Icon name="external" size={16}/> Ouvrir l'école</button>
     </div>
+    <button className="ya-link ya-rename" onClick={onProfile}><Icon name="settings" size={14}/> Configurer le type et les cycles</button>
     <button className="ya-link ya-rename" onClick={onRename}><Icon name="edit" size={14}/> Renommer l'établissement</button>
   </section>;
 }
@@ -222,6 +226,9 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const [detailKey,setDetailKey]=useState(0);
   const [organizations,setOrganizations]=useState([]);
   const [allSchools,setAllSchools]=useState([]);
+  const [schoolProfiles,setSchoolProfiles]=useState([]);
+  const [cycleLabels,setCycleLabels]=useState({});
+  const [profileForm,setProfileForm]=useState({school_type:"",education_cycles:[]});
   const [events,setEvents]=useState([]);
   const [organizationForm,setOrganizationForm]=useState(orgBlank);
   const [schoolForm,setSchoolForm]=useState(schoolBlank);
@@ -263,7 +270,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   useEffect(()=>{
     if(!mfaEnabled)return;
     let live=true;
-    api("platform/schools").then(result=>{if(live)setAllSchools(result.schools||[]);})
+    api("platform/schools").then(result=>{if(live){setAllSchools(result.schools||[]);setSchoolProfiles(result.school_profiles||[]);setCycleLabels(result.cycle_labels||{});}})
       .catch(e=>{if(live)setNotice({type:"error",message:e.message});});
     return()=>{live=false;};
   },[mfaEnabled,refreshKey]);
@@ -349,6 +356,22 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     const result=await execute(()=>api("platform/organizations",{name:organizationForm.name}),"Organisation créée.");
     if(result){setOrganizationForm(orgBlank);setOrganizations(old=>[...old,{...result,schools_count:0}]);}
   }
+  useEffect(()=>{
+    if(selectedDetail?.school){setProfileForm({school_type:selectedDetail.school.school_type||"",education_cycles:[...(selectedDetail.school.education_cycles||[])]});}
+  },[selectedDetail?.school?.id,selectedDetail?.school?.school_type,selectedDetail?.school?.education_cycles?.join(",")]);
+  function chooseProfile(code,setter){
+    const p=schoolProfiles.find(x=>x.code===code);
+    setter(old=>({...old,school_type:code,education_cycles:[...(p?.default_cycles||[])]}));
+  }
+  function toggleCycle(code,setter){
+    setter(old=>({...old,education_cycles:old.education_cycles.includes(code)?old.education_cycles.filter(x=>x!==code):[...old.education_cycles,code]}));
+  }
+  async function saveSchoolProfile(e){
+    e.preventDefault();if(!schoolId)return;
+    const payload={action:"profile",school_type:profileForm.school_type,education_cycles:profileForm.education_cycles,reason:reason.trim()};
+    const result=await execute(()=>api("platform/schools/"+schoolId+"/action",payload),"Classification enregistrée et auditée.");
+    if(result){setDetail(result);setReason("");goto("schools");setNotice({type:"success",message:"Type et cycles mis à jour sans modifier les classes ni les élèves."});}
+  }
   async function newSchool(e) {
     e.preventDefault();
     const result=await execute(()=>api("platform/schools",schoolForm),"Établissement et responsable créés.");
@@ -384,6 +407,8 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     onAccess:enterSchool,
     onPlan:()=>goto("plans"),
     onRename:()=>openModal("rename"),
+    onProfile:()=>{setReason("");goto("profile");},
+    cycleLabels,
   };
 
   if (!mfaEnabled) return <div className="ya-mfa"><div className="ya-warning"><Icon name="lock"/><div><h2>Sécurisez votre espace de super-administration</h2><p>Activez la double authentification pour accéder aux établissements, aux rôles et aux données de plateforme.</p></div></div>{accountView}</div>;
@@ -402,7 +427,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       <header className="ya-top">
         <div className="ya-top-title"><p>PLATEFORME / SUPER-ADMIN</p><h1>{view==="overview"?"Console d'administration YEM":({
           organizations:"Organisations",schools:"Établissements",users:"Utilisateurs & rôles",
-          audit:"Sécurité & audit",plans:"Abonnements et limites",settings:"Paramètres de la plateforme",newSchool:"Nouvel établissement",
+          audit:"Sécurité & audit",plans:"Abonnements et limites",settings:"Paramètres de la plateforme",newSchool:"Nouvel établissement",profile:"Type et cycles de l’établissement",
         }[view]||"Console d'administration YEM")}</h1><span>Administration globale de YEM — organisations, établissements, utilisateurs et droits.</span></div>
         <div className="ya-top-actions"><div className="ya-global-search"><Icon name="search" size={20}/><input ref={searchRef} type="search" aria-label="Recherche globale" placeholder="Rechercher un établissement…" value={filters.q} onChange={e=>setFilters(o=>({...o,q:e.target.value,page:1}))}/><kbd>Ctrl + K</kbd></div>
           <button className="ya-icon-button" title="Historique des opérations" aria-label="Historique des opérations" onClick={()=>goto("audit")}><Icon name="bell" size={23}/></button>
@@ -446,12 +471,25 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           {schoolForm.organization_id?<Field label="Sélectionner l'organisation"><select value={schoolForm.organization_id} required onChange={e=>update(setSchoolForm,"organization_id",e.target.value)}>{(dashboard.organization_options||[]).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></Field>
           :<Field label="Nom de la nouvelle organisation"><input required maxLength={180} value={schoolForm.organization_name} onChange={e=>update(setSchoolForm,"organization_name",e.target.value)}/></Field>}
           <Field label="Nom de l'établissement"><input required maxLength={180} value={schoolForm.school_name} onChange={e=>update(setSchoolForm,"school_name",e.target.value)}/></Field>
+          <Field label="Type d’établissement"><select required value={schoolForm.school_type} onChange={e=>chooseProfile(e.target.value,setSchoolForm)}><option value="">Choisir la catégorie…</option>{schoolProfiles.map(p=><option value={p.code} key={p.code}>{p.label}</option>)}</select></Field>
+          {schoolForm.school_type&&<div className="ya-field"><span>Cycles réellement enseignés</span><div role="group" aria-label="Cycles enseignés" style={{display:"grid",gap:8}}>{(schoolProfiles.find(p=>p.code===schoolForm.school_type)?.allowed_cycles||[]).map(c=><label key={c}><input type="checkbox" checked={schoolForm.education_cycles.includes(c)} onChange={()=>toggleCycle(c,setSchoolForm)}/> {cycleLabels[c]||c}</label>)}</div><small>Les classes ne sont pas créées automatiquement.</small></div>}
         </div><h3>02 — Compte du responsable</h3><div className="ya-form-grid">
           {[["first_name","Prénom"],["last_name","Nom"],["username","Identifiant"],["email","Adresse e-mail"]].map(([k,l])=><Field key={k} label={l}><input type={k==="email"?"email":"text"} required maxLength={k==="email"?254:150} value={schoolForm[k]} onChange={e=>update(setSchoolForm,k,e.target.value)}/></Field>)}
           <Field label="Fonction du responsable"><select value={schoolForm.role} onChange={e=>update(setSchoolForm,"role",e.target.value)}><option value="direction">Direction</option><option value="proprietaire">Propriétaire de l'école</option></select></Field>
           <Field label="Mot de passe initial (12 caractères minimum)"><input type="password" required minLength={12} autoComplete="new-password" value={schoolForm.password} onChange={e=>update(setSchoolForm,"password",e.target.value)}/></Field>
-        </div><div className="ya-form-footer"><button className="ya-btn ya-btn-primary" type="submit" disabled={busy}>{busy?"Création…":"Créer l'établissement et son responsable"}</button><button className="ya-btn ya-btn-outline" type="button" onClick={()=>goto("schools")}>Annuler</button></div>
+        </div><div className="ya-form-footer"><button className="ya-btn ya-btn-primary" type="submit" disabled={busy||!schoolForm.school_type||!schoolForm.education_cycles.length}>{busy?"Création…":"Créer l’établissement et son responsable"}</button><button className="ya-btn ya-btn-outline" type="button" onClick={()=>goto("schools")}>Annuler</button></div>
         </form>
+      </div>}
+      {view==="profile"&&<div className="ya-box ya-form-page"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="school"/></div><div><h2>Type et cycles enseignés</h2><p>Classification de l’établissement ; aucune classe ou inscription ne sera modifiée.</p></div></div>
+        {selectedDetail?<form onSubmit={saveSchoolProfile}>
+          <p className="ya-selected-school">Établissement : <b>{selectedDetail.school.name}</b></p>
+          <div className="ya-form-grid">
+            <Field label="Catégorie administrative"><select required value={profileForm.school_type} onChange={e=>chooseProfile(e.target.value,setProfileForm)}><option value="">À classifier…</option>{schoolProfiles.map(p=><option key={p.code} value={p.code}>{p.label}</option>)}</select></Field>
+            {profileForm.school_type!=="non_classe"&&<div className="ya-field"><span>Cycles réellement enseignés</span><div role="group" aria-label="Cycles enseignés" style={{display:"grid",gap:8}}>{(schoolProfiles.find(p=>p.code===profileForm.school_type)?.allowed_cycles||[]).map(c=><label key={c}><input type="checkbox" checked={profileForm.education_cycles.includes(c)} onChange={()=>toggleCycle(c,setProfileForm)}/> {cycleLabels[c]||c}</label>)}</div></div>}
+          </div>
+          <Field label="Motif obligatoire"><textarea required maxLength={240} rows={3} value={reason} onChange={e=>setReason(e.target.value)}/></Field>
+          <div className="ya-form-footer"><button className="ya-btn ya-btn-primary" disabled={busy||!profileForm.education_cycles.length||profileForm.school_type==="non_classe"} type="submit">Enregistrer la classification</button><button type="button" className="ya-btn ya-btn-outline" onClick={()=>goto("schools")}>Retour aux établissements</button></div>
+        </form>:<p className="ya-empty">Sélectionnez d’abord un établissement dans le répertoire.</p>}
       </div>}
       {view==="users"&&<div className="ya-two-panels ya-users-layout">
         <section className="ya-box"><h2>Utilisateurs et droits d'accès</h2><p>Les permissions sont propres à l'établissement choisi.</p>
