@@ -160,7 +160,7 @@ function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onP
   if (loading && !detail) return <section className="ya-box ya-detail"><div className="ya-empty">Chargement de la fiche…</div></section>;
   if (!detail) return <section className="ya-box ya-detail"><div className="ya-empty">Sélectionnez un établissement dans le répertoire pour consulter sa fiche et ses accès.</div></section>;
   const s=detail.school,people=detail.members||[];
-  const director=people.find(m=>m.active&&["direction","proprietaire"].includes(m.role_code));
+  const director=people.find(m=>m.active&&!m.is_platform_admin&&["direction","proprietaire"].includes(m.role_code));
   return <section className="ya-box ya-detail">
     <div className="ya-detail-top"><span className="ya-detail-building"><Icon name="school" size={34}/></span><div className="ya-detail-title"><h2>{s.name}</h2><p>{s.organization}</p><small>ID : {s.id.slice(0,8).toUpperCase()}</small></div><Status active={s.active}/></div>
     <div className="ya-detail-tabs" role="tablist" aria-label="Détails de l'établissement">
