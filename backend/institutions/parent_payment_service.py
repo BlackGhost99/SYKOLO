@@ -104,9 +104,13 @@ def verified_money(data, amount):
         return False
 
 
-def verified_transaction(attempt, data):
+def verified_transaction(attempt, data, *, signed_webhook=False):
     transaction_id = data.get("transaction_id") or data.get("id")
-    if attempt.transaction_id and transaction_id != attempt.transaction_id:
+    # PayCentral's published initiation example uses a ULID while its signed
+    # webhook example uses a UUID in 'data.id'. A valid HMAC plus matching
+    # merchant reference, operator, currency and amount permits that difference.
+    # For status API responses, keep strict ID matching (no webhook HMAC).
+    if attempt.transaction_id and transaction_id != attempt.transaction_id and not signed_webhook:
         return False
     return bool(
         isinstance(transaction_id, str) and TRANSACTION_ID.fullmatch(transaction_id)
