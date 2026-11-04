@@ -44,6 +44,9 @@ MFA_ENCRYPTION_KEY = os.environ.get("MFA_ENCRYPTION_KEY", SECRET_KEY if not DEPL
 if DEPLOYED and len(MFA_ENCRYPTION_KEY) < 32:
     raise ImproperlyConfigured("MFA_ENCRYPTION_KEY (32 caractères minimum) est requise.")
 PASSWORD_RESET_TIMEOUT = 1800
+# Never enable real payments without a reviewed merchant contract and environment secrets.
+YEM_PAYMENTS_LIVE_ENABLED = os.environ.get("YEM_PAYMENTS_LIVE_ENABLED", "false").lower() == "true"
+YEM_PAYMENT_ENCRYPTION_KEY = os.environ.get("YEM_PAYMENT_ENCRYPTION_KEY", "")
 AUTH_PUBLIC_BASE_URL = os.environ.get("AUTH_PUBLIC_BASE_URL", "" if DEPLOYED else "http://localhost:3000")
 EMAIL_HOST = os.environ.get("YEM_SMTP_HOST", "localhost")
 EMAIL_PORT = int(os.environ.get("YEM_SMTP_PORT", "587"))
