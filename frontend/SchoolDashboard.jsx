@@ -137,7 +137,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else if (section) content=<>
     <PageHeader title={section.title} subtitle={section.subtitle}/>
     {tabBar}
-    <div className="yd-real-body">{tab==="users"?<UsersForm schoolId={chosen} onMessage={setMessage}/>:View&&<View key={chosen+"-"+tab} schoolId={chosen}/>}</div>
+    <div className="yd-real-body">{tab==="users"?<UsersForm schoolId={chosen} onMessage={setMessage}/>:View&&<View key={chosen+"-"+tab} schoolId={chosen} canDecide={perms.includes("school.admissions.decide")}/>}</div>
   </>;
   else if (perms.includes("school.finance.read")) content=<>
     <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={access.role_label} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")}/>

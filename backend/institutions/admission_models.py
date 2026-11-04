@@ -7,6 +7,13 @@ from .models import School
 from .academic_models import AcademicYear, AcademicClass
 from .student_models import Student, Enrollment
 
+ROUTES = (("direct", "Inscription directe"), ("concours", "Concours ou test"),
+          ("orientation", "Affectation ou orientation"))
+OUTCOMES = (("pending", "À vérifier"), ("eligible", "Éligible"),
+            ("ineligible", "Non éligible"))
+DOCUMENT_STATES = (("pending", "À vérifier"), ("verified", "Vérifié"),
+                   ("rejected", "Non conforme"))
+
 APPLICATION_STATES = (
     ("submitted", "Déposée"),
     ("review", "En cours d'étude"),
@@ -30,6 +37,12 @@ class AdmissionApplication(models.Model):
     guardian_phone = models.CharField(max_length=45, blank=True)
     guardian_email = models.EmailField(blank=True)
     source = models.SlugField(max_length=48)
+    route = models.CharField(max_length=16, choices=ROUTES, default="direct")
+    origin_school = models.CharField(max_length=180, blank=True)
+    route_reference = models.CharField(max_length=140, blank=True)
+    orientation_authority = models.CharField(max_length=120, blank=True)
+    external_result = models.CharField(max_length=16, choices=OUTCOMES, default="pending")
+    required_documents = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=16, choices=APPLICATION_STATES, default="submitted")
     decision_reason = models.CharField(max_length=1000, blank=True)
     revision = models.PositiveIntegerField(default=1)
@@ -78,3 +91,54 @@ class AdmissionEvent(models.Model):
     def clean(self):
         if self.school_id and self.application_id and self.application.school_id != self.school_id:
             raise ValidationError("Événement rattaché à un autre établissement.")
+
+
+class AdmissionPolicy(models.Model):
+    """Rules for an academic year, optionally refined per level.
+
+    Requirements are document codes, not files or national credentials.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="admission_policies")
+    year = models.ForeignKey(AcademicYear, on_delete=models.PROTECT, related_name="admission_policies")
+    level = models.ForeignKey("institutions.AcademicLevel", on_delete=models.PROTECT,
+                              null=True, blank=True, related_name="admission_policies")
+    scope_key = models.CharField(max_length=85)
+    enabled_routes = models.JSONField(default=list)
+    required_documents = models.JSONField(default=dict, blank=True)
+    revision = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["school", "scope_key"], name="unique_school_admission_policy_scope"),
+        ]
+
+    def clean(self):
+        if self.year_id and self.school_id and self.year.school_id != self.school_id:
+            raise ValidationError("L'année doit appartenir à cet établissement.")
+        if self.level_id and self.school_id and self.level.school_id != self.school_id:
+            raise ValidationError("Le niveau doit appartenir à cet établissement.")
+
+
+class AdmissionDocument(models.Model):
+    """Reviewed document references only; no unprotected child files or scans."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="admission_documents")
+    application = models.ForeignKey(AdmissionApplication, on_delete=models.PROTECT, related_name="documents")
+    code = models.SlugField(max_length=48)
+    reference = models.CharField(max_length=180)
+    status = models.CharField(max_length=16, choices=DOCUMENT_STATES, default="pending")
+    review_reason = models.CharField(max_length=280, blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                    null=True, blank=True, related_name="+")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["application", "code"], name="unique_admission_document_code"),
+        ]
+
+    def clean(self):
+        if self.school_id and self.application_id and self.application.school_id != self.school_id:
+            raise ValidationError("La pièce justificative appartient à un autre établissement.")

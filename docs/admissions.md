@@ -34,3 +34,45 @@ Préfixe `/api/v1/schools/{school_id}` :
 - `GET /admissions/capacity/{class_id}` — disponibilité informative
 
 Les données de test sont fictives. Le module n'est pas une recette sur Render ni une admission libre-service.
+
+
+## Extension 2026 — Voies d'admission, concours et orientation (module 1 de la feuille de route)
+
+YEM sépare désormais trois voies de candidature : `direct` (inscription directe), `concours` (concours ou test) et `orientation` (affectation par une autorité ou établissement partenaire). Le champ `source` conserve le **canal de collecte** (guichet, téléphone, etc.) et ne désigne plus le type d'admission.
+
+L'orientation peut résulter de l'admission au CEP / d'un concours, notamment pour des élèves orientés en sixième vers des établissements privés partenaires. **Une même candidature d'orientation peut exiger à la fois `concours_result` et `orientation_decision`** dans la configuration du niveau de sixième : cela représente sans ambiguïté le cas « concours réussi puis affectation ». Les références externes restent déclaratives jusqu'à leur contrôle par une personne habilitée. Aucune intégration automatique KEWA, Xgest ou gouvernementale n'est revendiquée.
+
+### Règles configurables
+
+Une `AdmissionPolicy` est définie pour une année scolaire et éventuellement un niveau précis. Elle contient les voies autorisées et des listes de codes de pièces obligatoires par voie. La portée `niveau` remplace celle de l'année lorsque définie. L'API impose une révision optimiste : une modification concurrente est rejetée en 409. La configuration est gérée uniquement par une personne habilitée à décider des admissions, et peut être différente dans chaque établissement.
+
+À la création d'une candidature, la liste des pièces requises est **figée** dans `required_documents`. Changer la politique ultérieurement ne modifie pas rétroactivement les anciens dossiers. Pour les voies `concours` et `orientation`, les justificatifs `concours_result` et `orientation_decision` restent systématiquement obligatoires même si un administrateur supprime leur code de la grille personnalisée.
+
+### Contrôle de l'éligibilité
+
+L'éligibilité déclarée (`pending`, `eligible`, `ineligible`) est distincte du résultat administratif d'admission (`submitted`, `review`, `accepted`, `rejected`, `enrolled`). Le secrétariat peut enregistrer la référence de décision / concours, l'autorité qui a émis l'affectation et les références des justificatifs. Une direction autorisée contrôle chaque référence et attribue `verified` ou `rejected`, avec motif et trace horodatée.
+
+Le passage à `accepted` est refusé si l'éligibilité n'est pas marquée `eligible`, si la référence est manquante ou si les pièces requises ne sont pas vérifiées. L'orientation exige en outre le nom de l'autorité compétente. **Même un concours déclaré réussi et un dossier admissible ne créent aucune inscription** : il faut ensuite appeler explicitement `convert`, qui revérifie année, capacité de la classe, matricule et restrictions multi-sociétés.
+
+La saisie actuelle porte sur les références des documents consultés par le personnel ; **les fichiers sources ne sont pas téléchargés et ne sont pas conservés en clair** dans ce module. La gestion future des fichiers devra passer par un stockage privé, des contrôles antivirus, de type MIME, d'accès et de durée de conservation avant l'activation pour des dossiers d'enfants réels.
+
+### Nouvelles API
+
+Même préfixe `/api/v1/schools/{school_id}` :
+
+- `GET /admissions/policy?year={uuid}&level={uuid}` — politique applicable et révision exacte de la portée demandée.
+- `POST /admissions/policy` — `{year,level,revision,enabled_routes,required_documents}` ; décisionnaire uniquement.
+- `POST /admissions` — champs historiques + `route`, `origin_school`, `route_reference`, `orientation_authority`.
+- `GET/POST /admissions/{id}/documents` — consultation et ajout d'une référence `{revision,code,reference}`.
+- `POST /admissions/{id}/documents/{document_id}/review` — `{revision,status,reason}`.
+- `POST /admissions/{id}/eligibility` — `{revision,result,route_reference,orientation_authority,reason}`.
+- `GET /admissions?route=concours|orientation|direct` — filtre de la liste.
+
+### Sources et limites
+
+Références contextuelles Gabon :
+- Journal officiel, réglementation CEP et orientation en sixième : https://journal-officiel.ga/6388-448-pr-menestfprscjs-/
+- AGP, lancement commission orientation 6e du 20 juillet 2026 : https://agpgabon.ga/gabon-education-lancement-des-travaux-de-la-commission-dorientation-en-6/
+- AGP, résultats publiés le 8 août 2026 via KEWA : https://agpgabon.ga/gabon-orientation-en-6e-resultats-de-la-commission-disponibles/
+
+La configuration est une capacité métier et ne remplace pas une décision publique officielle. Les formulaires ouverts aux familles, le téléversement des originaux et les imports vérifiés par API nationale restent des chantiers séparés, nécessitant des garanties de confidentialité et une validation administrative.
