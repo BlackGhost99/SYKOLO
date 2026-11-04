@@ -92,8 +92,8 @@ class ParentPaymentTests(TestCase):
         })
 
     def fake_provider_response(self):
-        return {"success":True,"transaction_id":MOCK_TXN,"status":"processing",
-            "provider":"airtel","amount":2500,"currency":"XAF"}
+        return {"success":True,"data":{"transaction_id":MOCK_TXN,"status":"processing",
+            "provider":"airtel","amount":2500,"currency":"XAF"}}
 
     def webhook(self,attempt,secret=SECRET,amount="2500.00",status="success",signed=True,reference=None):
         payload={"event":"payment."+status,"timestamp":"2026-11-04T08:00:00Z","data":{
