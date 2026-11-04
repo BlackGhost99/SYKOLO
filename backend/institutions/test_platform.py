@@ -15,6 +15,7 @@ class PlatformProvisioningTests(TestCase):
             "username":"responsable","email":"responsable@example.org",
             "first_name":"Anne","last_name":"Test",
             "password":"Valid-responsable-2026!","role":"direction",
+            "school_type":"primaire","education_cycles":["primaire"],
         }
 
     def post(self, url=None, data=None):
