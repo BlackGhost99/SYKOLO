@@ -495,6 +495,9 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       </div>}
       {view==="users"&&<div className="ya-two-panels ya-users-layout">
         <section className="ya-box"><h2>Utilisateurs et droits d'accès</h2><p>Les permissions sont propres à l'établissement choisi.</p>
+          <button className="ya-btn ya-btn-outline" type="button" onClick={()=>setResetMember({mode:"parent"})}>
+            Récupération d'un compte parent
+          </button>
           <Field label="Établissement"><select value={schoolId} onChange={e=>chooseSchool(e.target.value)}><option value="">Choisir…</option>{allSchools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}{selectedDetail&&!allSchools.some(s=>s.id===schoolId)&&<option value={schoolId}>{selectedDetail.school.name}</option>}</select></Field>
           <Field label="Rechercher un compte"><input type="search" value={memberSearch} onChange={e=>{setMemberSearch(e.target.value);setMemberPage(1);}} placeholder="Nom, identifiant, e-mail, rôle…"/></Field>
           <div className="ya-member-list">{memberLoading?<p className="ya-empty">Chargement des comptes…</p>:visibleMembers.length?visibleMembers.map(m=><div key={m.id} className="ya-member"><span className="ya-member-avatar"><Icon name="users"/></span><div><b>{m.name}</b><small>{m.username} · {m.is_platform_admin?"Plateforme (intervention)":m.role} · {m.active?"Actif":"Suspendu"}</small><small>{m.email}</small></div>
@@ -540,6 +543,8 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       <footer className="ya-footer"><span><strong>YEM</strong> — Gestion scolaire &amp; universitaire</span><span>Développé par <b>BWETEK Informatyk</b></span></footer>
     </main>
     <Modal modal={modal} detail={selectedDetail} reason={reason} setReason={setReason} roleId={roleId} setRoleId={setRoleId} onCancel={()=>setModal(null)} onConfirm={confirmModal} busy={busy}/>
-    {resetMember&&schoolId&&<AdminPasswordReset schoolId={schoolId} member={resetMember} onClose={()=>setResetMember(null)}/>} 
+    {resetMember&&(schoolId||resetMember.mode==="parent")&&
+      <AdminPasswordReset schoolId={schoolId} member={resetMember}
+        parent={resetMember.mode==="parent"} onClose={()=>setResetMember(null)}/>} 
   </div>;
 }
