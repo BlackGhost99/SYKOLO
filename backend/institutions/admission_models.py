@@ -42,7 +42,7 @@ class AdmissionApplication(models.Model):
     route_reference = models.CharField(max_length=140, blank=True)
     orientation_authority = models.CharField(max_length=120, blank=True)
     external_result = models.CharField(max_length=16, choices=OUTCOMES, default="pending")
-    required_documents = models.JSONField(default=list)
+    required_documents = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=16, choices=APPLICATION_STATES, default="submitted")
     decision_reason = models.CharField(max_length=1000, blank=True)
     revision = models.PositiveIntegerField(default=1)
@@ -105,7 +105,7 @@ class AdmissionPolicy(models.Model):
                               null=True, blank=True, related_name="admission_policies")
     scope_key = models.CharField(max_length=85)
     enabled_routes = models.JSONField(default=list)
-    required_documents = models.JSONField(default=dict)
+    required_documents = models.JSONField(default=dict, blank=True)
     revision = models.PositiveIntegerField(default=1)
 
     class Meta:
