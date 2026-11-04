@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
                     ("primaire", "École primaire"),
                     ("college", "Collège"),
                     ("lycee", "Lycée"),
-                    ("groupe_scolaire", "Groupe scolaire / multicyle"),
+                    ("groupe_scolaire", "Groupe scolaire / multicycle"),
                 ],
                 default="a_configurer",
                 max_length=24,
