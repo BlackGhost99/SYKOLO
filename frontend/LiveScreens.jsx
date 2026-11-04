@@ -114,9 +114,6 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
           </div>
         </Card> : <Card title="Aperçu de l’élève" icon="user"><Empty>Sélectionnez un élève dans la liste.</Empty></Card>}
       </div>
-      <Card title="Clôture de caisse" icon="cash">
-        <CashClosingPanel schoolId={schoolId} defaultDay={d.today.date}/>
-      </Card>
     </>}</Loading>
   </>;
 }
@@ -230,6 +227,9 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
           </Card>
         </div>
       </div>
+      <Card title="Clôture de caisse" icon="cash">
+        <CashClosingPanel schoolId={schoolId} defaultDay={d.today.date}/>
+      </Card>
     </>}</Loading>
   </>;
 }
