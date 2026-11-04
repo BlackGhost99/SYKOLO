@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 from django.test import TestCase, TransactionTestCase, Client, override_settings
-from django.db import connection, close_old_connections
+from django.db import connection, connections
 
 from .finance_models import FeeCharge, FeeSchedule, FeePayment
 from .models import OrganizationMember
@@ -262,14 +262,16 @@ class SingPayConcurrencyTests(TransactionTestCase):
         gate=Barrier(2)
         cookies=self.client.cookies.copy()
         def send():
-            close_old_connections()
+            connections.close_all()
             client=Client(enforce_csrf_checks=True);client.cookies=cookies.copy()
             gate.wait(timeout=10)
             try:
                 return client.post(self.root+"/pay",json.dumps(self.body),content_type="application/json",
                     HTTP_X_CSRFTOKEN=self.csrf).status_code
             finally:
-                close_old_connections()
+                # CONN_MAX_AGE keeps healthy connections alive; explicitly close
+                # this worker's thread-local connection before the test DB drops.
+                connections.close_all()
         with patch("institutions.singpay_service.provider_request",return_value={}) as provider:
             with ThreadPoolExecutor(max_workers=2) as executor:
                 results=list(executor.map(lambda _:send(),range(2)))
