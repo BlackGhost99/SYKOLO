@@ -37,7 +37,7 @@ function useData(path, deps = []) {
 const nf = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const num = v => nf.format(Math.round(Number(v) || 0)).replace(/ | /g, " ");
 const cur = c => (!c || c === "XAF" || c === "XOF") ? "FCFA" : c;
-export const fmtMoney = (v, c) => `${num(v)} ${cur(c)}`;
+export const fmtMoney = (v, c) => `${new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(Number(v) || 0).replace(/ | /g, " ")} ${cur(c)}`;
 const pct = (now, before) => { const a = Number(now) || 0, b = Number(before) || 0; if (!b) return null; const p = (a - b) / b * 100; return `${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(1).replace(".", ",")} %`; };
 const fmtDate = iso => iso ? new Date(iso + (iso.length === 10 ? "T00:00:00" : "")).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -155,8 +155,8 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
   const selected = charges.filter(c => picked[c.id]);
   const due = selected.reduce((a, c) => a + Number(c.balance), 0);
   const entered = partial ? Number(String(amount).replace(/\s/g, "").replace(",", ".")) || 0 : due;
-  const remaining = charges.reduce((a, c) => a + Number(c.balance), 0) - entered;
   const currency = charges.find(c => picked[c.id])?.currency || fin.data?.currency;
+  const remaining = charges.filter(c => c.currency === currency).reduce((a, c) => a + Number(c.balance), 0) - entered;
   async function submit() {
     if (!enrollment || !selected.length || !Number.isFinite(entered) || entered <= 0 || entered > due + 0.001) {
       setMessage("Montant invalide : choisissez les frais et un montant positif qui ne dépasse pas le solde."); return;
@@ -214,11 +214,11 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
             <label className="yd-label">Parent <i>*</i></label>
             <div className="yd-input"><Icon name="users" size={20}/><span>{student?.guardian ? `${student.guardian.full_name}${student.guardian.relationship ? ` (${student.guardian.relationship})` : ""}` : "—"}</span>{student?.guardian?.phone && <em><Icon name="phone" size={16}/>{student.guardian.phone}</em>}</div>
             <label className="yd-label">Impayés sélectionnés <i>*</i></label>
-            <div className="yd-debts">{charges.length === 0 ? <p className="yd-card-sub yd-empty">{enrollment ? "Aucun frais restant dû pour cet élève." : "Choisissez d’abord un élève."}</p> : charges.map(c => <button type="button" key={c.id} className={picked[c.id] ? "active" : ""} onClick={() => setPicked(p => ({ ...p, [c.id]: !p[c.id] }))}><Check on={!!picked[c.id]}/><span>{c.label}{c.due_date ? ` · échéance ${fmtDate(c.due_date)}` : ""}</span><b>{fmtMoney(c.balance, c.currency)}</b></button>)}</div>
+            <div className="yd-debts">{charges.length === 0 ? <p className="yd-card-sub yd-empty">{enrollment ? "Aucun frais restant dû pour cet élève." : "Choisissez d’abord un élève."}</p> : charges.map(c => <button type="button" key={c.id} className={picked[c.id] ? "active" : ""} onClick={() => setPicked(p => selected.some(row => row.currency !== c.currency) ? {[c.id]:true} : ({ ...p, [c.id]: !p[c.id] }))}><Check on={!!picked[c.id]}/><span>{c.label}{c.due_date ? ` · échéance ${fmtDate(c.due_date)}` : ""}</span><b>{fmtMoney(c.balance, c.currency)}</b></button>)}</div>
             <label className="yd-label">Mode de paiement <i>*</i></label>
             <div className="yd-paymodes">{METHODS.map(([k, l, ic]) => <Button key={k} primary={method === k} icon={ic} onClick={() => setMethod(k)}>{l}</Button>)}</div>
             <label className="yd-label" htmlFor="pay-amount">Montant saisi <i>*</i></label>
-            <div className="yd-amount-row"><div className="yd-amount"><input id="pay-amount" inputMode="decimal" disabled={!partial} value={partial ? amount : num(due)} onChange={e => setAmount(e.target.value)}/><em>{cur(currency)}</em></div><button type="button" className="yd-toggle-btn" aria-pressed={partial} onClick={() => { setPartial(p => !p); setAmount(""); }}><Toggle on={partial}/>Paiement partiel</button></div>
+            <div className="yd-amount-row"><div className="yd-amount"><input id="pay-amount" inputMode="decimal" disabled={!partial} value={partial ? amount : new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(due).replace(/ | /g, " ")} onChange={e => setAmount(e.target.value)}/><em>{cur(currency)}</em></div><button type="button" className="yd-toggle-btn" aria-pressed={partial} onClick={() => { setPartial(p => !p); setAmount(""); }}><Toggle on={partial}/>Paiement partiel</button></div>
             <div className="yd-balance"><span><Icon name="coins" size={22}/>Solde après paiement</span><strong>{fmtMoney(Math.max(remaining, 0), currency)}</strong></div>
             {message && <p role="status" className="yd-form-msg">{message}</p>}
             {receiptUrl && <p><a className="yd-link" href={receiptUrl} target="_blank" rel="noreferrer">Télécharger le reçu groupé PDF</a></p>}
