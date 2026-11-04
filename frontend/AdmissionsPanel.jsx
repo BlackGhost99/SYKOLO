@@ -78,7 +78,8 @@ export default function AdmissionsPanel({schoolId,canDecide=false}){
     <p className="hint">Trois voies possibles : inscription directe, concours/test ou affectation. Le secrétariat prépare les dossiers ; la direction statue. Une admission ne vaut ni inscription définitive ni paiement.</p>
     {canDecide&&<details className="ar-settings">
       <summary>Configurer les voies et pièces exigées par année / niveau</summary>
-      <AdmissionPolicyEditor api={admissionApi} base={base} year={year} level={selectedLevel} canDecide={canDecide}/>
+      <AdmissionPolicyEditor api={admissionApi} base={base} year={year} level={selectedLevel}
+        canDecide={canDecide} onSaved={next=>{setRoutePolicy(next);if(!next.enabled_routes.includes(route))setRoute(next.enabled_routes[0]);}}/>
     </details>}
     <h3>Nouvelle candidature</h3>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
