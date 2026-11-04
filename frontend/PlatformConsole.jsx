@@ -120,7 +120,7 @@ function AuditFeed({events=[],onAll}) {
 }
 function Directory({dashboard,filters,setFilters,onSchool,selected,onNew,compact=false}) {
   const rows=dashboard.schools || [];
-  const change=(k,v)=>setFilters(old=>({...old,[k]:v,page:1}));
+  const change=(k,v)=>setFilters(old=>({...old,[k]:v,page:k==="page"?v:1}));
   return <section className="ya-box ya-directory">
     <div className="ya-box-head">
       <div className="ya-heading-icon"><Icon name="school" size={24}/></div><div><h2>Répertoire des établissements</h2><p>Liste réelle des établissements de la plateforme.</p></div>
@@ -221,6 +221,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const [refreshKey,setRefreshKey]=useState(0);
   const [detailKey,setDetailKey]=useState(0);
   const [organizations,setOrganizations]=useState([]);
+  const [allSchools,setAllSchools]=useState([]);
   const [events,setEvents]=useState([]);
   const [organizationForm,setOrganizationForm]=useState(orgBlank);
   const [schoolForm,setSchoolForm]=useState(schoolBlank);
@@ -256,6 +257,13 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     }).catch(e=>{if(live)setNotice({type:"error",message:e.message});});
     return()=>{live=false;};
   },[mfaEnabled,filters,refreshKey]);
+  useEffect(()=>{
+    if(!mfaEnabled)return;
+    let live=true;
+    api("platform/schools").then(result=>{if(live)setAllSchools(result.schools||[]);})
+      .catch(e=>{if(live)setNotice({type:"error",message:e.message});});
+    return()=>{live=false;};
+  },[mfaEnabled,refreshKey]);
   useEffect(()=>{
     if(!mfaEnabled||!schoolId){setDetail(null);return;}
     let live=true;setDetailLoading(true);
@@ -430,14 +438,14 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       </div>}
       {view==="users"&&<div className="ya-two-panels ya-users-layout">
         <section className="ya-box"><h2>Utilisateurs et droits d'accès</h2><p>Les permissions sont propres à l'établissement choisi.</p>
-          <Field label="Établissement"><select value={schoolId} onChange={e=>chooseSchool(e.target.value)}><option value="">Choisir…</option>{(dashboard.organization_options||[]).length===0&&dashboard.schools.length===0&&<option disabled>Aucun établissement</option>}{dashboard.schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}{selectedDetail&&!dashboard.schools.some(s=>s.id===schoolId)&&<option value={schoolId}>{selectedDetail.school.name}</option>}</select></Field>
+          <Field label="Établissement"><select value={schoolId} onChange={e=>chooseSchool(e.target.value)}><option value="">Choisir…</option>{allSchools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}{selectedDetail&&!allSchools.some(s=>s.id===schoolId)&&<option value={schoolId}>{selectedDetail.school.name}</option>}</select></Field>
           <Field label="Rechercher un compte"><input type="search" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)} placeholder="Nom, identifiant, e-mail, rôle…"/></Field>
           <div className="ya-member-list">{visibleMembers.length?visibleMembers.map(m=><div key={m.id} className="ya-member"><span className="ya-member-avatar"><Icon name="users"/></span><div><b>{m.name}</b><small>{m.username} · {m.role} · {m.active?"Actif":"Suspendu"}</small><small>{m.email}</small></div>
             {!m.is_platform_admin&&<div className="ya-member-actions"><button onClick={()=>openModal("role",m)}>Changer le rôle</button><button onClick={()=>openModal("memberStatus",m)}>{m.membership_active?"Suspendre":"Réactiver"}</button></div>}</div>):<p className="ya-empty">Aucun compte à afficher pour cette sélection.</p>}</div>
           {selectedDetail?.members_truncated&&<p className="ya-note">La liste est limitée à 250 comptes. La recherche complète sera ajoutée avec la pagination serveur.</p>}
         </section>
         <section className="ya-box ya-form-box"><h2>Créer un compte</h2><p>Identifiants et permissions isolés par établissement.</p><form onSubmit={newUser}>
-          {![...Array(0)].length&&<p className="ya-selected-school">Établissement : <b>{selectedName}</b></p>}
+          <p className="ya-selected-school">Établissement : <b>{selectedName}</b></p>
           <div className="ya-form-grid">
             {[["first_name","Prénom"],["last_name","Nom"],["username","Identifiant de connexion"],["email","E-mail"]].map(([k,l])=><Field key={k} label={l}><input required type={k==="email"?"email":"text"} value={person[k]} onChange={e=>update(setPerson,k,e.target.value)}/></Field>)}
             <Field label="Rôle dans l'établissement"><select required value={person.role||selectedDetail?.roles?.[0]?.code||""} onChange={e=>update(setPerson,"role",e.target.value)}>{(selectedDetail?.roles||[]).map(r=><option key={r.id} value={r.code}>{r.label}</option>)}</select></Field>
@@ -451,7 +459,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       </div>}
       {view==="plans"&&<div className="ya-two-panels">
         <section className="ya-box"><h2>Limites de l'établissement</h2><p>Les plafonds fixés ici sont appliqués à la création de comptes et d'élèves.</p>
-          <Field label="Établissement"><select value={schoolId} onChange={e=>chooseSchool(e.target.value)}><option value="">Choisir…</option>{dashboard.schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}{selectedDetail&&!dashboard.schools.some(s=>s.id===schoolId)&&<option value={schoolId}>{selectedDetail.school.name}</option>}</select></Field>
+          <Field label="Établissement"><select value={schoolId} onChange={e=>chooseSchool(e.target.value)}><option value="">Choisir…</option>{allSchools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}{selectedDetail&&!allSchools.some(s=>s.id===schoolId)&&<option value={schoolId}>{selectedDetail.school.name}</option>}</select></Field>
           {selectedDetail&&<div className="ya-plan-info"><h3>{selectedDetail.school.name}</h3><Progress label="Utilisateurs" value={selectedDetail.members_count} max={selectedDetail.policy.max_users}/><Progress label="Élèves" value={selectedDetail.students_count} max={selectedDetail.policy.max_students}/></div>}
         </section>
         <section className="ya-box ya-form-box"><h2>Paramétrer une formule</h2><p>Gestion administrative uniquement : aucun prélèvement ou paiement automatique n'est effectué.</p>
