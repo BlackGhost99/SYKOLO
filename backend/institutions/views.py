@@ -63,6 +63,47 @@ def log_event(school, request, event, subject=""):
     )
 
 
+# Financial approvals must not be minted by the person who will control them.
+# This applies to primary and additional roles, including a founder who is
+# also the school's director. Routine non-financial appointments stay editable.
+FINANCIAL_DUTIES = frozenset({
+    "school.finance.manage", "school.finance.receive", "school.finance.reverse",
+    "school.finance.approve", "school.finance.deposit",
+})
+
+
+def financial_grant_allowed(actor, school, target, permissions):
+    requested = set(permissions) & FINANCIAL_DUTIES
+    if not requested:
+        return True
+    existing = (
+        effective_permissions(target, school) & FINANCIAL_DUTIES
+        if target is not None else set()
+    )
+    added = requested - existing
+    if not added:
+        return True
+    return (owns_organization(actor, school.organization)
+            and target is not None and actor.pk != target.pk)
+
+
+def financial_role_change_allowed(actor, school, role, permissions):
+    before = set(role.permissions) & FINANCIAL_DUTIES
+    after = set(permissions) & FINANCIAL_DUTIES
+    if before == after:
+        return True
+    if not owns_organization(actor, school.organization):
+        return False
+    if after - before:
+        # A founder may delegate to staff but must not change a role already
+        # assigned to their own account to acquire a new financial power.
+        return not SchoolMember.objects.filter(
+            Q(role=role) | Q(additional_roles=role),
+            school=school, user=actor, active=True
+        ).exists()
+    return True
+
+
 @require_http_methods(["GET", "POST"])
 @authorized
 def organizations(request):
@@ -169,6 +210,9 @@ def school_members(request, school_id):
     if not owns_organization(request.user, school.organization) and not granted <= effective_permissions(request.user, school):
         return refuse()
     with transaction.atomic():
+        School.objects.select_for_update().get(pk=school.pk)
+        if not financial_grant_allowed(request.user, school, user, granted):
+            return refuse()
         member, created = SchoolMember.objects.update_or_create(
             school=school, user=user, defaults={"role": role, "active": True}
         )
@@ -220,6 +264,8 @@ def school_user_create(request, school_id):
     role = SchoolRole.objects.filter(school=school, code=role_code).first()
     if role is None:
         return JsonResponse({"error": "Rôle introuvable dans cet établissement."}, status=404)
+    if set(role.permissions) & FINANCIAL_DUTIES and not owns_organization(request.user, school.organization):
+        return refuse()
     if not owns_organization(request.user, school.organization):
         actor = SchoolMember.objects.select_related("role").filter(
             school=school, user=request.user, active=True
@@ -276,9 +322,12 @@ def school_roles(request, school_id):
     member = SchoolMember.objects.select_related("role").get(school=school, user=request.user, active=True)
     if not set(perms) <= effective_permissions(request.user, school):
         return refuse()
+    if set(perms) & FINANCIAL_DUTIES and not owns_organization(request.user, school.organization):
+        return refuse()
     try:
         # A savepoint keeps the outer request/test transaction usable after uniqueness errors.
         with transaction.atomic():
+            School.objects.select_for_update().get(pk=school.pk)
             role = SchoolRole.objects.create(
                 school=school, code=code, label=label.strip(), permissions=sorted(set(perms))
             )
@@ -308,11 +357,14 @@ def school_role_detail(request, school_id, role_id):
     if not set(perms) <= effective_permissions(request.user, school):
         return refuse()
     with transaction.atomic():
+        School.objects.select_for_update().get(pk=school.pk)
         role = SchoolRole.objects.select_for_update().filter(school=school, id=role_id).first()
         if role is None:
             return JsonResponse({"error": "Rôle introuvable."}, status=404)
         if role.revision != revision:
             return JsonResponse({"error": "Conflit de version."}, status=409)
+        if not financial_role_change_allowed(request.user, school, role, perms):
+            return refuse()
         role.label = label.strip()
         role.permissions = sorted(set(perms))
         role.revision += 1
