@@ -40,7 +40,7 @@ ROLE_TEMPLATES = [
 ]
 
 # Suggested roles for each school type. These permissions remain editable per school.
-# No role other than direction is allowed to alter both prices and receipts.
+# Legacy 'comptabilite' permissions are preserved for compatibility; finer finance segregation is a follow-up.
 _FIN_READ = ["school.view", "school.academic.read", "school.students.read", "school.finance.read"]
 _STUDY_READ = ["school.view", "school.academic.read", "school.students.read",
                "school.curriculum.read", "school.timetable.read", "school.reports.read"]
