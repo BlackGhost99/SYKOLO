@@ -349,9 +349,9 @@ def paycentral_webhook(request):
         if body["event"] != "payment.updated" and not body["event"].endswith(raw_status):
             if not (body["event"] == "payment.pending" and raw_status == "processing"):
                 return fail("Statut et événement incohérents.", 409)
-        if not attempt.transaction_id:
-            attempt.transaction_id = data.get("transaction_id") or data.get("id")
-            attempt.save(update_fields=["transaction_id"])
+        # Never replace the canonical initiation/status-API transaction ID
+        # with the webhook's possibly distinct signed event UUID. This also
+        # handles a webhook that beats the initiation HTTP response.
         apply_verified_status(attempt, raw_status, data.get("provider_reference", ""))
     return JsonResponse({"received": True})
 
