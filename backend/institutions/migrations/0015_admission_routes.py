@@ -35,7 +35,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name="admissionapplication", name="required_documents",
-            field=models.JSONField(default=list),
+            field=models.JSONField(default=list, blank=True),
         ),
         migrations.CreateModel(
             name="AdmissionPolicy",
@@ -43,7 +43,7 @@ class Migration(migrations.Migration):
                 ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ("scope_key", models.CharField(max_length=85)),
                 ("enabled_routes", models.JSONField(default=list)),
-                ("required_documents", models.JSONField(default=dict)),
+                ("required_documents", models.JSONField(default=dict, blank=True)),
                 ("revision", models.PositiveIntegerField(default=1)),
                 ("level", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT,
                                             related_name="admission_policies", to="institutions.academiclevel")),
