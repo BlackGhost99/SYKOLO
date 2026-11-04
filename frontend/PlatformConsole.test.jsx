@@ -70,7 +70,7 @@ test("l'ouverture d'un établissement est explicite et séparée de la plateform
   mount();
   await screen.findAllByText("Lycée Test");
   const u=userEvent.setup();
-  await u.click(screen.getByRole("button",{name:/Ouvrir l'école/}));
+  await u.click(await screen.findByRole("button",{name:/Ouvrir l'école/}));
   await screen.findByTestId("school-workspace");
   expect(document.querySelector(".ya-root")).toBeNull();
   await u.click(screen.getByRole("button",{name:/Retour à la console super-admin/}));
