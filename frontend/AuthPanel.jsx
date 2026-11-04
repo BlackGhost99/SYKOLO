@@ -35,6 +35,7 @@ export default function AuthPanel() {
   const [newPassword, setNewPassword] = useState("");
   const [registerFirst, setRegisterFirst] = useState("");
   const [registerLast, setRegisterLast] = useState("");
+  const [registrationReady, setRegistrationReady] = useState(null);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(null);
   const [recovery, setRecovery] = useState([]);
@@ -43,6 +44,13 @@ export default function AuthPanel() {
   const isResetLink = window.location.hash.startsWith("#/reset?");
   const isVerifyLink = window.location.hash.startsWith("#/verify?");
 
+  useEffect(() => {
+    let live = true;
+    authApi("parents/registration-status").then(data=>{
+      if(live)setRegistrationReady(data.email_registration_available);
+    }).catch(()=>{if(live)setRegistrationReady(false)});
+    return()=>{live=false};
+  },[]);
   useEffect(() => {
     let mounted = true;
     authApi("me").then((data) => {
@@ -150,6 +158,7 @@ export default function AuthPanel() {
             <button type="button" onClick={() => { setTab("login"); setMessage(""); }}>Connexion</button>
             <button type="button" onClick={() => { setTab("reset"); setMessage(""); }}>Mot de passe oublié</button>
             <button type="button" onClick={() => { setTab("register"); setMessage(""); }}>Créer un compte parent</button>
+            <button type="button" onClick={() => { setTab("resend"); setMessage(""); }}>Renvoyer mon lien d'activation</button>
           </div>
           {isVerifyLink ? (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
@@ -174,6 +183,18 @@ export default function AuthPanel() {
               </label>
               <button disabled={busy}>Réinitialiser le mot de passe</button>
             </form>
+          ) : tab === "resend" ? (
+            <form onSubmit={e=>{e.preventDefault();run(async()=>{
+              const response=await authApi("parents/resend-verification",{email});
+              setMessage(response.message);
+              setTab("login");
+            });}}>
+              <p>Si votre compte parent a été créé et n'est pas encore activé, un nouveau lien de confirmation vous sera envoyé.</p>
+              <label className="field">Adresse e-mail
+                <input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/>
+              </label>
+              <button disabled={busy||registrationReady===false} type="submit">Renvoyer le lien</button>
+            </form>
           ) : tab === "register" ? (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               const result = await authApi("parents/register", {
@@ -183,12 +204,13 @@ export default function AuthPanel() {
               setMessage(result.message); setTab("login"); setNewPassword("");
             }); }}>
               <p>Un seul compte parent pour plusieurs enfants et plusieurs écoles. Vérification par e-mail obligatoire.</p>
+              {registrationReady===false&&<p role="status">L'envoi d'e-mails n'est pas encore configuré sur YEM. L'ouverture des nouveaux comptes est momentanément suspendue.</p>}
               <label className="field">Prénom<input required maxLength={120} autoComplete="given-name" value={registerFirst} onChange={e=>setRegisterFirst(e.target.value)}/></label>
               <label className="field">Nom<input required maxLength={120} autoComplete="family-name" value={registerLast} onChange={e=>setRegisterLast(e.target.value)}/></label>
               <label className="field">Identifiant<input required minLength={3} maxLength={50} autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label>
               <label className="field">Adresse e-mail<input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)}/></label>
               <label className="field">Mot de passe (au moins 12 caractères)<input required type="password" minLength={12} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></label>
-              <button disabled={busy} type="submit">Créer mon compte parent</button>
+              <button disabled={busy||registrationReady===false} type="submit">Créer mon compte parent</button>
             </form>
           ) : tab === "reset" ? (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {

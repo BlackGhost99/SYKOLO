@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {AdmissionPolicyEditor,AdmissionProofPanel,ROUTES} from "./AdmissionRoutesPanel.jsx";
 import {SchoolCatalogSettings} from "./ParentDiscovery.jsx";
+import SchoolPaymentSetup from "./SchoolPaymentSetup.jsx";
 
 async function admissionApi(path, body){
   if(body!==undefined) await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
@@ -17,7 +18,7 @@ async function admissionApi(path, body){
 }
 
 const STATES={submitted:"Déposée",review:"En étude",accepted:"Admise",rejected:"Refusée",enrolled:"Inscrite"};
-export default function AdmissionsPanel({schoolId,canDecide=false}){
+export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePayment=false}){
   const root="schools/"+schoolId+"/";
   const base=root+"admissions";
   const [years,setYears]=useState([]),[classes,setClasses]=useState([]),
@@ -78,6 +79,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false}){
   return <section className="card" style={{marginTop:"1rem"}} aria-label="Admissions et préinscriptions">
     <h2>Admissions et préinscriptions</h2>
     <SchoolCatalogSettings schoolId={schoolId}/>
+    {canConfigurePayment&&<details><summary>Tarifs et paiements Mobile Money</summary><SchoolPaymentSetup schoolId={schoolId} years={years} classes={classes}/></details>}
     <p className="hint">Trois voies possibles : inscription directe, concours/test ou affectation. Le secrétariat prépare les dossiers ; la direction statue. Une admission ne vaut ni inscription définitive ni paiement.</p>
     <details className="ar-settings">
       <summary>Configurer les voies et pièces exigées par année / niveau</summary>

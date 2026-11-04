@@ -69,3 +69,33 @@ class ParentRegistrationTests(TestCase):
     def test_unconfigured_email_disables_registration(self):
         response=self.post("parents/register",self.user_payload())
         self.assertEqual(response.status_code,503)
+
+    def test_resend_link_is_generic_and_only_for_self_registered_parent(self):
+        self.assertEqual(self.post("parents/register",self.user_payload()).status_code,201)
+        self.assertEqual(len(mail.outbox),1)
+        res=self.post("parents/resend-verification",{"email":"famille@example.test"})
+        self.assertEqual(res.status_code,200,res.content)
+        self.assertEqual(len(mail.outbox),2)
+        missing=self.post("parents/resend-verification",{"email":"inconnu@example.test"})
+        self.assertEqual(missing.status_code,200)
+        self.assertEqual(missing.json()["message"],res.json()["message"])
+        self.assertEqual(len(mail.outbox),2)
+
+    def test_resend_mail_failure_keeps_non_enumerating_response(self):
+        from unittest.mock import patch
+        self.assertEqual(self.post("parents/register",self.user_payload()).status_code,201)
+        with patch("accounts.parent_signup_views.send_verification_email",side_effect=RuntimeError("mail down")):
+            known=self.post("parents/resend-verification",{"email":"famille@example.test"})
+            unknown=self.post("parents/resend-verification",{"email":"unregistered@example.test"})
+        self.assertEqual(known.status_code,200)
+        self.assertEqual(unknown.status_code,200)
+        self.assertEqual(known.json(),unknown.json())
+
+    def test_registration_status_does_not_disclose_mail_secrets(self):
+        result=self.client.get("/api/v1/auth/parents/registration-status")
+        self.assertEqual(result.status_code,200)
+        self.assertTrue(result.json()["email_registration_available"])
+        self.assertNotIn("password",result.content.decode().lower())
+        with override_settings(PASSWORD_RESET_ENABLED=False):
+            result=self.client.get("/api/v1/auth/parents/registration-status")
+            self.assertFalse(result.json()["email_registration_available"])

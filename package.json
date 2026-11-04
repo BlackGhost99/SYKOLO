@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "prebuild": "node frontend/generate-pwa-icons.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",

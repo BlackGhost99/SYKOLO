@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from "react";
+import React, {useEffect, useMemo, useRef, useState} from "react";
 import "./parent-discovery.css";
 
 async function api(path, body) {
@@ -22,6 +22,8 @@ export default function ParentDiscovery() {
   const [schools,setSchools]=useState([]);
   const [family,setFamily]=useState([]);
   const [applications,setApplications]=useState([]);
+  const [notifications,setNotifications]=useState([]);
+  const lastNotification=useRef(null);
   const [search,setSearch]=useState("");
   const [chosenSchool,setChosenSchool]=useState("");
   const [child,setChild]=useState("");
@@ -31,6 +33,10 @@ export default function ParentDiscovery() {
   const [phone,setPhone]=useState("");
   const [origin,setOrigin]=useState("");
   const [reference,setReference]=useState("");
+  const [paymentChoice,setPaymentChoice]=useState("cash");
+  const [paymentOperator,setPaymentOperator]=useState("airtel");
+  const [paymentPhone,setPaymentPhone]=useState("");
+  const [activePay,setActivePay]=useState("");
   const [newChild,setNewChild]=useState({first_name:"",last_name:"",date_of_birth:""});
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
@@ -38,24 +44,36 @@ export default function ParentDiscovery() {
   const [view,setView]=useState("schools");
 
   async function refresh() {
-    const [list,children,requests]=await Promise.all([
-      api("parents/catalog"),api("parents/family-children"),api("parents/applications"),
+    const [list,children,requests,alerts]=await Promise.all([
+      api("parents/catalog"),api("parents/family-children"),api("parents/applications"),api("parents/notifications"),
     ]);
     setSchools(list.schools||[]);
     setFamily(children.children||[]);
     setApplications(requests.applications||[]);
+    setNotifications(alerts.notifications||[]);
   }
   useEffect(()=>{
     let live=true;
-    Promise.all([api("parents/catalog"),api("parents/family-children"),api("parents/applications")])
-      .then(([list,children,requests])=>{
+    Promise.all([api("parents/catalog"),api("parents/family-children"),api("parents/applications"),api("parents/notifications")])
+      .then(([list,children,requests,alerts])=>{
         if(!live)return;
         setSchools(list.schools||[]);
         setFamily(children.children||[]);
         setApplications(requests.applications||[]);
+        setNotifications(alerts.notifications||[]);
       }).catch(e=>{if(live)setError(e.message)});
     return()=>{live=false};
   },[]);
+  useEffect(()=>{
+    const latest=notifications[0];
+    if(!latest)return;
+    if(lastNotification.current&&latest.id!==lastNotification.current
+      &&typeof window!=="undefined"&&"Notification" in window
+      &&window.Notification.permission==="granted"){
+      new window.Notification("YEM · "+latest.school,{body:latest.message});
+    }
+    lastNotification.current=latest.id;
+  },[notifications]);
   const selectedSchool=schools.find(s=>s.id===chosenSchool);
   const selectedClass=selectedSchool?.classes.find(c=>c.id===classroom);
   const visible=useMemo(()=>schools.filter(s=>
@@ -74,7 +92,7 @@ export default function ParentDiscovery() {
       <div className="yp-stat">{family.length}<small>profils enfant</small></div>
     </header>
     <nav className="yp-tabs" aria-label="Espace familles">
-      {[["schools","Établissements"],["children","Mes enfants"],["requests","Mes demandes"]].map(([key,label])=>
+      {[["schools","Établissements"],["children","Mes enfants"],["requests","Mes demandes"],["notifications","Actualités"]].map(([key,label])=>
         <button type="button" key={key} aria-current={view===key?"page":undefined}
           onClick={()=>{setView(key);setMessage("");setError("");}}>{label}</button>)}
     </nav>
@@ -94,14 +112,14 @@ export default function ParentDiscovery() {
           <p className="yp-muted">{s.classes.length} classe(s) ouvertes à la consultation
             {s.phone?" · Contact : "+s.phone:""}</p>
           <button type="button" className="yp-button" onClick={()=>{
-            setChosenSchool(s.id);setClassroom("");setRoute("direct");
+            setChosenSchool(s.id);setClassroom("");setRoute("direct");setPaymentChoice("cash");
           }}>{chosenSchool===s.id?"Établissement sélectionné":"Voir les classes et candidater"}</button>
           {chosenSchool===s.id&&<div className="yp-apply">
             <h4>Demander une inscription</h4>
             <p>Une candidature n'est ni une inscription définitive, ni une réservation de place.</p>
             <form onSubmit={e=>{e.preventDefault();run(async()=>{
               await api("parents/applications",{
-                child,classroom,route,payment_choice:"cash",
+                child,classroom,route,payment_choice:paymentChoice,
                 guardian_relationship:relation,guardian_phone:phone,
                 origin_school:origin,route_reference:reference,
               });
@@ -116,7 +134,7 @@ export default function ParentDiscovery() {
               </label>
               {family.length===0&&<p>Commencez par créer le profil de votre enfant dans « Mes enfants ».</p>}
               <label className="yp-field">Classe souhaitée
-                <select required value={classroom} onChange={e=>{const id=e.target.value;setClassroom(id);const c=s.classes.find(c=>c.id===id);setRoute(c?.routes[0]||"direct");}}>
+                <select required value={classroom} onChange={e=>{const id=e.target.value;setClassroom(id);const c=s.classes.find(c=>c.id===id);setRoute(c?.routes[0]||"direct");setPaymentChoice(s.cash_at_school?"cash":c?.online_payment_available?"online":"cash");}}>
                   <option value="">Sélectionner une classe</option>
                   {s.classes.map(c=><option key={c.id} value={c.id} disabled={c.remaining===0}>
                     {c.name} · {c.year} · {c.remaining===null?"Places à confirmer":c.remaining+" place(s) restante(s)"}
@@ -146,12 +164,20 @@ export default function ParentDiscovery() {
               </>}
               <fieldset className="yp-payment">
                 <legend>Comment souhaitez-vous payer les frais ?</legend>
-                <label><input type="radio" name="yp-payment" checked readOnly/> Payer en espèces à l'école</label>
-                <label className="yp-disabled"><input type="radio" name="yp-payment" disabled/> Payer en ligne (prochainement)</label>
-                <small>Aucun encaissement n'est effectué ici. Le montant et le reçu seront confirmés par l'établissement.</small>
+                <label><input type="radio" name="yp-payment" checked={paymentChoice==="cash"}
+                  onChange={()=>setPaymentChoice("cash")} disabled={!s.cash_at_school}/> Payer en espèces à l'école</label>
+                <label className={!selectedClass?.online_payment_available?"yp-disabled":""}>
+                  <input type="radio" name="yp-payment" checked={paymentChoice==="online"}
+                    onChange={()=>setPaymentChoice("online")} disabled={!selectedClass?.online_payment_available}/>
+                  Payer en ligne (Airtel Money / Moov Money)
+                </label>
+                <small>{selectedClass?.fee_amount_xaf?
+                  "Frais de dossier : "+Number(selectedClass.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA.":
+                  "Montant des frais à confirmer auprès de l'établissement."}</small>
+                <small>Aucun paiement n'est confirmé tant que le prestataire n'a pas vérifié la transaction.</small>
               </fieldset>
               <button className="yp-button yp-primary" type="submit"
-                disabled={busy||!family.length||!classroom||!s.cash_at_school}>
+                disabled={busy||!family.length||!classroom||(paymentChoice==="cash"&&!s.cash_at_school)||(paymentChoice==="online"&&!selectedClass?.online_payment_available)}>
                 {busy?"Enregistrement...":"Déposer ma demande"}
               </button>
               {!s.cash_at_school&&<p>Le paiement en espèces n'est pas proposé par cette école.</p>}
@@ -190,8 +216,61 @@ export default function ParentDiscovery() {
       {applications.map(a=><article key={a.id} className="yp-request">
         <b>{a.school_name}</b><p>{a.classroom_name} · {a.year} · {ROUTES[a.route]||a.route}</p>
         <strong>{STATES[a.status]||a.status}</strong>
-        <small>Paiement choisi : espèces à la caisse · non confirmé en ligne</small>
+        <small>{a.payment_choice==="cash"?"Paiement prévu : espèces à la caisse":
+          "Mobile Money · "+(a.fee_amount_xaf?Number(a.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA · ":"")+
+          ({non_initie:"non initié",initiating:"initiation en cours",pending:"en attente de confirmation",
+            unknown:"à rapprocher avec l'école",success:"confirmé par le prestataire",
+            failed:"échec",cancelled:"annulé",refunded:"remboursé"}[a.payment_status]||a.payment_status)}
+          {a.payment_mode==="sandbox"&&" · SIMULATION sans argent réel"}</small>
+        {a.payment_choice==="online"&&a.fee_amount_xaf&&
+          !["success","refunded","pending","initiating","unknown"].includes(a.payment_status)&&
+          a.status!=="rejected"&&a.status!=="enrolled"&&<>
+          <button type="button" className="yp-button" onClick={()=>setActivePay(activePay===a.id?"":a.id)}>
+            {activePay===a.id?"Fermer":"Payer les frais de dossier"}</button>
+          {activePay===a.id&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
+            const pay=await api("parents/applications/"+a.id+"/pay",{channel:paymentOperator,phone:paymentPhone});
+            setMessage(pay.provider_mode==="sandbox"?"Paiement simulé lancé.":"Demande envoyée. Validez sur votre téléphone.");
+            setActivePay("");
+          });}}>
+            <label className="yp-field">Opérateur
+              <select value={paymentOperator} onChange={e=>setPaymentOperator(e.target.value)}>
+                <option value="airtel">Airtel Money Gabon</option><option value="moov">Moov Money Gabon</option>
+              </select>
+            </label>
+            <label className="yp-field">Téléphone Mobile Money (+241...)
+              <input type="tel" required pattern="\\+241[0-9]{8,9}" value={paymentPhone}
+                onChange={e=>setPaymentPhone(e.target.value)} placeholder="+24107123456"/>
+            </label>
+            <button className="yp-button yp-primary" disabled={busy}>Demander le paiement sécurisé</button>
+          </form>}</>}
+        {a.payment_choice==="online"&&["pending","unknown","initiating"].includes(a.payment_status)&&
+          <button type="button" className="yp-button" disabled={busy} onClick={()=>run(async()=>{
+            const result=await api("parents/applications/"+a.id+"/payment-refresh",{});
+            setMessage(result.notice);
+          })}>Vérifier mon paiement</button>}
       </article>)}
+    </div>}
+    {view==="notifications"&&<div className="yp-pane">
+      <h3>Notifications de mes établissements</h3>
+      <p>Décisions d'admission et confirmations du prestataire de paiement.</p>
+      <div className="yp-two">
+        <button className="yp-button" type="button" onClick={()=>run(async()=>{
+          const data=await api("parents/notifications");setNotifications(data.notifications||[]);
+          setMessage("Notifications actualisées.");
+        })}>Actualiser</button>
+        <button className="yp-button" type="button" onClick={async()=>{
+          if(typeof window!=="undefined"&&"Notification" in window){
+            const result=await window.Notification.requestPermission();
+            setMessage(result==="granted"?"Alertes autorisées lorsque l'application est ouverte.":"Notifications non autorisées.");
+          }else setMessage("Les notifications système ne sont pas disponibles dans ce navigateur.");
+        }}>Autoriser les alertes</button>
+      </div>
+      {notifications.length===0&&<p>Aucune actualité pour le moment.</p>}
+      {notifications.map(n=><article className="yp-request" key={n.kind+n.id}>
+        <b>{n.school}</b><p>{n.message}</p>
+        <small>{new Date(n.at).toLocaleString("fr-GA")}</small>
+      </article>)}
+      <small>Les alertes en arrière-plan nécessitent encore un service Web Push.</small>
     </div>}
   </section>;
 }

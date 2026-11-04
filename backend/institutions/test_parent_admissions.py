@@ -122,7 +122,7 @@ class FamilyDiscoveryTests(TestCase):
         self.setup_listing()
         self.login(self.parent)
         child_id = self.create_child()
-        self.assertEqual(self.application(child_id, payment_choice="online").status_code, 422)
+        self.assertEqual(self.application(child_id, payment_choice="online").status_code, 409)
         self.assertEqual(AdmissionApplication.objects.count(), 0)
         listing = SchoolPublicListing.objects.get(school=self.school)
         listing.published = False
