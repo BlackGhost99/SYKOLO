@@ -12,6 +12,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from accounts.views import authorized
 from pedagogy.domain import ValidationError as PolicyValidationError, validate_policy
 
+from .school_profiles import profile_fields
 from .models import (
     Organization, OrganizationMember, School, SchoolAudit, SchoolMember,
     SchoolRole, SchoolSetting,
@@ -19,7 +20,7 @@ from .models import (
 from .services import (
     PERMISSIONS, ROLE_TEMPLATES, has_permission, key_for_scope,
     owns_organization, resolve_settings, school_access, school_response, quota_reached,
-    validate_scope,
+    validate_scope, role_templates_for_profile,
 )
 
 
@@ -99,17 +100,62 @@ def organization_schools(request, organization_id):
     color = data.get("primary_color", "#1B664C")
     if not isinstance(short_name, str) or len(short_name) > 60 or not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
         return JsonResponse({"error": "Identité visuelle invalide."}, status=422)
+    try:
+        school_type, enabled_cycles = profile_fields(data)
+    except DjangoValidationError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
     with transaction.atomic():
         school = School.objects.create(
             organization=org, name=data["name"].strip(),
             short_name=short_name.strip(), primary_color=color,
+            school_type=school_type, enabled_cycles=enabled_cycles,
         )
         SchoolRole.objects.bulk_create([
             SchoolRole(school=school, code=code, label=label, permissions=permissions)
-            for code, label, permissions in ROLE_TEMPLATES
+            for code, label, permissions in role_templates_for_profile(school_type, enabled_cycles)
         ])
         log_event(school, request, "school_created")
     return JsonResponse(school_response(school), status=201)
+
+
+@require_http_methods(["GET", "PATCH"])
+@authorized
+def school_profile(request, school_id):
+    """School type/cycle configuration, with optimistic locking and role preservation."""
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if request.method == "GET":
+        return JsonResponse(school_response(school))
+    if not (has_permission(request.user, school, "school.settings.write")
+            or owns_organization(request.user, school.organization)):
+        return refuse()
+    data, error = parse_body(request)
+    if error is not None:
+        return error
+    if set(data) - {"revision", "school_type", "enabled_cycles"} or type(data.get("revision")) is not int:
+        return JsonResponse({"error": "Révision et champs du profil requis."}, status=422)
+    try:
+        with transaction.atomic():
+            school = School.objects.select_for_update().get(pk=school.pk)
+            if data["revision"] != school.profile_revision:
+                return JsonResponse({"error": "Profil modifié par une autre session."}, status=409)
+            school_type, enabled_cycles = profile_fields(data, school.school_type, school.enabled_cycles)
+            if school_type == school.school_type and enabled_cycles == school.enabled_cycles:
+                return JsonResponse(school_response(school))
+            school.school_type, school.enabled_cycles = school_type, enabled_cycles
+            school.profile_revision += 1
+            school.full_clean()
+            school.save(update_fields=["school_type", "enabled_cycles", "profile_revision"])
+            for code, label, permissions in role_templates_for_profile(school_type, enabled_cycles):
+                SchoolRole.objects.get_or_create(
+                    school=school, code=code,
+                    defaults={"label": label, "permissions": permissions},
+                )
+            log_event(school, request, "school_profile_changed", school_type)
+    except DjangoValidationError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+    return JsonResponse(school_response(school))
 
 
 @require_GET
