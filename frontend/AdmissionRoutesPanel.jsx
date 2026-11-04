@@ -18,10 +18,11 @@ export const DOCUMENTS = {
 const basicDocs = Object.keys(DOCUMENTS);
 const emptyDocs = ()=>({direct:[],concours:[],orientation:[]});
 
-export function AdmissionPolicyEditor({api,base,year,level,canDecide}){
+export function AdmissionPolicyEditor({api,base,year,level,canDecide,onSaved}){
   const [policy,setPolicy]=useState(null);
   const [busy,setBusy]=useState(false),[message,setMessage]=useState("");
   const [newCode,setNewCode]=useState("");
+  const [newCodeRoute,setNewCodeRoute]=useState("direct");
   useEffect(()=>{
     let live=true;setPolicy(null);setMessage("");
     if(!year)return;
@@ -52,6 +53,7 @@ export function AdmissionPolicyEditor({api,base,year,level,canDecide}){
         required_documents:policy.required_documents
       });
       setPolicy({...response,required_documents:{...emptyDocs(),...response.required_documents}});
+      onSaved?.(response);
       setMessage("Règles enregistrées pour ce niveau et cette année scolaire.");
     }catch(e){setMessage(e.message)}finally{setBusy(false)}
   }
@@ -78,16 +80,22 @@ export function AdmissionPolicyEditor({api,base,year,level,canDecide}){
             </label>)}
         </fieldset>)}</div>
       {canDecide&&<div className="ar-custom">
+        <label className="field">Voie concernée par cette pièce
+          <select value={policy.enabled_routes.includes(newCodeRoute)?newCodeRoute:policy.enabled_routes[0]}
+            onChange={e=>setNewCodeRoute(e.target.value)}>
+            {policy.enabled_routes.map(r=><option key={r} value={r}>{ROUTES[r]}</option>)}
+          </select>
+        </label>
         <label className="field">Nouveau code de pièce personnalisée (minuscules, chiffres et tirets)
           <input pattern="[a-z][a-z0-9_-]*" maxLength={48} value={newCode} onChange={e=>setNewCode(e.target.value)}
             placeholder="ex. autorisation_parentale"/>
         </label>
         <button type="button" disabled={!/^[a-z][a-z0-9_-]{0,47}$/.test(newCode)} onClick={()=>{
-          const route=policy.enabled_routes[0];if(!route)return;
+          const route=policy.enabled_routes.includes(newCodeRoute)?newCodeRoute:policy.enabled_routes[0];if(!route)return;
           setPolicy(old=>({...old,required_documents:{...old.required_documents,
             [route]:[...new Set([...(old.required_documents[route]||[]),newCode])]}}));
           setNewCode("");
-        }}>Ajouter à la première voie sélectionnée</button>
+        }}>Ajouter à la voie choisie</button>
       </div>}
       {canDecide&&<button type="submit" disabled={busy||!policy.enabled_routes.length}>
         {busy?"Enregistrement…":"Enregistrer les règles d'admission"}
