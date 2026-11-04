@@ -73,7 +73,10 @@ def audit_item(row, *, source):
 
 def recent_events(limit=12, school_id=None):
     platform = PlatformAudit.objects.select_related("actor", "school").all()
-    school = SchoolAudit.objects.select_related("actor", "school").all()
+    school = SchoolAudit.objects.select_related("actor", "school").exclude(
+        event__in=("member_role_changed", "member_reactivated", "member_suspended",
+                   "school_reactivated", "school_suspended")
+    )
     if school_id:
         platform = platform.filter(school_id=school_id)
         school = school.filter(school_id=school_id)
@@ -362,3 +365,43 @@ def platform_audit(request):
             return JsonResponse({"error": "Établissement introuvable."}, status=404)
     limit = size(request.GET.get("limit"), default=50, upper=100)
     return JsonResponse({"events": recent_events(limit, school_id)})
+
+
+@require_GET
+@authorized
+def platform_school_members(request, school_id):
+    """Paginated, searchable school-scoped member directory for the platform."""
+    if not platform_only(request):
+        return denied()
+    school = School.objects.filter(pk=school_id).first()
+    if school is None:
+        return JsonResponse({"error": "Établissement introuvable."}, status=404)
+    search = str(request.GET.get("q", "")).strip()[:80]
+    page = size(request.GET.get("page"), 1)
+    per_page = size(request.GET.get("per_page"), 20, 50)
+    qs = SchoolMember.objects.filter(school=school).select_related("user", "role")
+    if search:
+        qs = qs.filter(
+            Q(user__username__icontains=search)
+            | Q(user__first_name__icontains=search)
+            | Q(user__last_name__icontains=search)
+            | Q(user__email__icontains=search)
+            | Q(role__label__icontains=search)
+        )
+    total = qs.count()
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    rows = qs.order_by("user__last_name", "user__username")[(page - 1) * per_page:page * per_page]
+    return JsonResponse({
+        "members": [
+            {
+                "id": str(m.id), "username": m.user.username,
+                "name": f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username,
+                "email": m.user.email, "active": m.active and m.user.is_active,
+                "membership_active": m.active,
+                "role_id": str(m.role_id), "role": m.role.label, "role_code": m.role.code,
+                "is_platform_admin": m.user.is_superuser,
+            } for m in rows
+        ],
+        "total": total, "page": page, "pages": pages, "per_page": per_page,
+    })
