@@ -95,11 +95,13 @@ def school_gateway(request, school_id):
         return fail("Clé de chiffrement serveur manquante.", 503)
     try:
         with transaction.atomic():
-            SchoolPaymentGateway.objects.select_for_update().filter(school=school)
+            from .models import School
+            School.objects.select_for_update().get(pk=school.pk)
             row = SchoolPaymentGateway.objects.select_for_update().filter(school=school).first()
             if (row.revision if row else 0) != data["revision"]:
                 return fail("La configuration a changé : actualisez la fiche.", 409)
-            if row is None:
+            created = row is None
+            if created:
                 row = SchoolPaymentGateway(school=school)
             if data["api_key"]:
                 expected = "sk_live_" if data["mode"] == "live" else "sk_sandbox_"
@@ -124,7 +126,7 @@ def school_gateway(request, school_id):
                 return fail("Secret webhook obligatoire.")
             if row.enabled and not gateway_configured(row):
                 return fail("Configuration du prestataire incomplète.", 409)
-            row.revision = row.revision + 1 if row.pk and row.revision else 1
+            row.revision = 1 if created else row.revision + 1
             row.full_clean()
             row.save()
             log_event(school, request, "admission_gateway_updated", school.pk)
@@ -265,7 +267,8 @@ def parent_pay(request, application_id):
             "merchant_reference": attempt.merchant_reference,
             "callback_url": settings.AUTH_PUBLIC_BASE_URL.rstrip("/") + "/api/v1/parents/paycentral/webhook",
         })
-        transaction_id = response.get("transaction_id") or response.get("data", {}).get("transaction_id")
+        payload_data = response.get("data") if isinstance(response.get("data"), dict) else {}
+        transaction_id = response.get("transaction_id") or payload_data.get("transaction_id")
         if not (isinstance(transaction_id, str) and TRANSACTION_ID.fullmatch(transaction_id)):
             raise ProviderError("Transaction non confirmée par le prestataire.")
         if response.get("currency") not in (None, "XAF") or response.get("provider") not in (None, channel):
