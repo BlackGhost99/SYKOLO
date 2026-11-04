@@ -272,3 +272,19 @@ class MultiFeeReceiptTests(TestCase):
         self.assertEqual(self.client.get(self.base + "summary?year=invalid").status_code, 422)
         self.login(self.teacher)
         self.assertEqual(self.client.get(self.base + "summary").status_code, 403)
+
+    def test_future_dated_manual_payment_cannot_be_recorded(self):
+        from datetime import timedelta
+        future=(timezone.localdate()+timedelta(days=1)).isoformat()
+        grouped=self.payload()
+        grouped["paid_on"]=future
+        self.assertEqual(self.send(grouped).status_code,422)
+        unit={
+            "charge":str(self.charges[0].pk),"amount":"10",
+            "method":"especes","reference":"",
+            "paid_on":future,"idempotency_key":str(uuid.uuid4()),
+        }
+        response=self.client.post(self.base+"payments", json.dumps(unit),
+            content_type="application/json",HTTP_X_CSRFTOKEN=self.token)
+        self.assertEqual(response.status_code,422)
+        self.assertEqual(FeePayment.objects.count(),0)
