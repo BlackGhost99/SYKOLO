@@ -56,3 +56,29 @@ test("affiche une erreur sans révéler de lien si le serveur refuse l'opératio
   expect(await screen.findByRole("alert")).toHaveProperty("textContent","Confirmation du super-administrateur incorrecte.");
   expect(screen.queryByText(/Lien généré et opération auditée/)).toBeNull();
 });
+
+
+test("la récupération des parents demande une identité exacte avant de transmettre un lien",async()=>{
+  const calls=[];
+  vi.stubGlobal("fetch",vi.fn(async(url,options)=>{
+    calls.push([url,options]);
+    if(String(url).endsWith("/auth/csrf"))return {ok:true};
+    return {ok:true,json:async()=>({
+      issued:true,username:"parent_ga",expires_in_minutes:30,
+      reset_url:"https://yem.example.test/#/reset?uid=parent&token=private",
+    })};
+  }));
+  const u=userEvent.setup();
+  render(<AdminPasswordReset parent schoolId="" member={{mode:"parent"}} onClose={()=>{}}/>);
+  await u.type(screen.getByRole("textbox",{name:/Identifiant exact du compte parent/}),"parent_ga");
+  await u.type(screen.getByRole("textbox",{name:/Adresse e-mail exacte du compte parent/}),"parent_ga@example.test");
+  await u.type(screen.getByRole("textbox",{name:/Motif obligatoire/}),"Pièce de vérification présentée");
+  await u.type(screen.getByLabelText(/Confirmer votre mot de passe/),"Super mot de passe");
+  await u.click(screen.getByRole("checkbox",{name:/J'ai vérifié l'identité/}));
+  await u.click(screen.getByRole("button",{name:"Générer le lien sécurisé"}));
+  expect(await screen.findByText(/Lien généré et opération auditée/)).toBeTruthy();
+  const call=calls.find(([url])=>String(url).endsWith("/password/admin-parent-reset"));
+  expect(call).toBeTruthy();
+  const body=JSON.parse(call[1].body);
+  expect(body).toMatchObject({username:"parent_ga",email:"parent_ga@example.test"});
+});
