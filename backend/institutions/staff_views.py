@@ -24,7 +24,7 @@ def scope(request, school_id, action):
 
 def parse_staff(data, *, editing=False):
     allowed={"staff_code","first_name","last_name","position","hired_on","username","active"}
-    if editing: allowed-={"staff_code","username"}
+    if editing: allowed-={"staff_code"}
     if set(data)-allowed-({"revision"} if editing else set()): raise ValueError("Champs inconnus ou non modifiables.")
     if not editing and not {"staff_code","first_name","last_name","position"} <= set(data): raise ValueError("Champs obligatoires manquants.")
     if editing and (type(data.get("revision")) is not int or data["revision"]<1 or len(data)==1): raise ValueError("Révision invalide ou aucune modification.")
@@ -115,10 +115,23 @@ def staff_detail(request,school_id,staff_id):
             record=StaffRecord.objects.select_for_update().filter(school=school,pk=staff_id).first()
             if record is None:return JsonResponse({"error":"Personnel introuvable."},status=404)
             if record.revision!=data["revision"]:return JsonResponse({"error":"Conflit de version.","revision":record.revision},status=409)
+            if "username" in values:
+                identifier=values.pop("username")
+                if identifier is None:
+                    record.account=None
+                else:
+                    candidate=get_user_model().objects.filter(username=identifier.strip(),is_active=True).first()
+                    if candidate is None or not SchoolMember.objects.filter(
+                        school=school,user=candidate,active=True,
+                    ).exists():
+                        raise ValueError("Ce compte n'est pas membre actif de cette école.")
+                    record.account=candidate
             for field,value in values.items():setattr(record,field,value)
             record.full_clean();record.revision+=1;record.save()
             log_event(school,request,"staff_updated",record.pk)
+    except ValueError as exc:return JsonResponse({"error":str(exc)},status=422)
     except ValidationError as exc:return fail_validation(exc)
+    except IntegrityError:return JsonResponse({"error":"Ce compte est déjà associé à un personnel."},status=409)
     return JsonResponse(staff_repr(record))
 
 

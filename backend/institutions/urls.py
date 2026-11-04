@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, overview_views
+from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, overview_views, organization_views
 
 urlpatterns = [
     path("platform/dashboard", platform_admin_views.platform_dashboard),
@@ -83,6 +83,10 @@ urlpatterns = [
     path("schools/<uuid:school_id>/courses/<uuid:course_id>/units/<uuid:unit_id>", curriculum_views.unit_detail),
     path("schools/<uuid:school_id>/courses/<uuid:course_id>/instructors", curriculum_views.instructors),
     path("schools/<uuid:school_id>/courses/<uuid:course_id>/instructors/<uuid:instructor_id>", curriculum_views.instructor_detail),
+    path("schools/<uuid:school_id>/organization/positions", organization_views.positions),
+    path("schools/<uuid:school_id>/organization/appointments", organization_views.appointments),
+    path("schools/<uuid:school_id>/organization/appointments/<uuid:appointment_id>", organization_views.appointment_detail),
+    path("schools/<uuid:school_id>/organization/my-appointments", organization_views.my_appointments),
     path("schools/<uuid:school_id>/staff", staff_views.staff),
     path("schools/<uuid:school_id>/staff/me/assignments", staff_views.my_assignments),
     path("schools/<uuid:school_id>/staff/<uuid:staff_id>", staff_views.staff_detail),

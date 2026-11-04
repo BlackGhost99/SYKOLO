@@ -18,6 +18,7 @@ PERMISSIONS = frozenset({
     "school.parents.manage",
     "school.students.read", "school.students.manage",
     "school.staff.read", "school.staff.manage",
+    "school.organization.read", "school.organization.manage",
     "school.curriculum.read", "school.curriculum.manage",
     "school.assessments.read", "school.assessments.manage",
     "school.reports.read", "school.reports.manage", "school.reports.publish",
@@ -31,7 +32,7 @@ PERMISSIONS = frozenset({
 # Initial editable role templates, not institution-wide immutable business rules.
 ROLE_TEMPLATES = [
     ("direction", "Direction", sorted(PERMISSIONS)),
-    ("secretariat", "Secrétariat", ["school.view", "school.members.read", "school.settings.read", "school.academic.read", "school.students.read", "school.students.manage", "school.admissions.read", "school.admissions.manage", "school.admissions.enroll", "school.staff.read", "school.staff.manage", "school.curriculum.read", "school.curriculum.manage", "school.reports.read", "school.deliberations.read", "school.attendance.read", "school.attendance.write", "school.timetable.read", "school.timetable.manage"]),
+    ("secretariat", "Secrétariat", ["school.view", "school.members.read", "school.settings.read", "school.academic.read", "school.students.read", "school.students.manage", "school.admissions.read", "school.admissions.manage", "school.admissions.enroll", "school.staff.read", "school.staff.manage", "school.organization.read", "school.curriculum.read", "school.curriculum.manage", "school.reports.read", "school.deliberations.read", "school.attendance.read", "school.attendance.write", "school.timetable.read", "school.timetable.manage"]),
     ("enseignant", "Enseignant", ["school.view", "school.settings.read", "school.academic.read", "school.curriculum.read", "school.timetable.read"]),
     ("comptabilite", "Comptabilité", ["school.view", "school.students.read", "school.academic.read", "school.finance.read", "school.finance.manage", "school.finance.receive"]),
     ("parent", "Parent", ["school.view"]),

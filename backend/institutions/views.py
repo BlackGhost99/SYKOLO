@@ -249,7 +249,8 @@ def school_roles(request, school_id):
     if request.method == "GET":
         if not has_permission(request.user, school, "school.roles.read") and not owns_organization(request.user, school.organization):
             return refuse()
-        return JsonResponse({"roles": [role_response(r) for r in school.roles.order_by("code")]})
+        return JsonResponse({"roles": [role_response(r) for r in school.roles.order_by("code")],
+                             "available_permissions": sorted(PERMISSIONS)})
     if not has_permission(request.user, school, "school.roles.manage"):
         return refuse()
     data, error = parse_body(request)
