@@ -49,6 +49,7 @@ def safe_gateway_view(row):
         "encryption_ready": len(settings.YEM_PAYMENT_ENCRYPTION_KEY) >= 32,
         "active": gateway_configured(row),
         "provider": "paycentral",
+        "webhook_url": settings.AUTH_PUBLIC_BASE_URL.rstrip("/") + "/api/v1/parents/paycentral/webhook",
     }
 
 
@@ -119,6 +120,8 @@ def school_gateway(request, school_id):
                 row.encrypted_api_key = encrypt_secret(data["api_key"])
             elif row.mode != data["mode"] and row.encrypted_api_key:
                 return fail("Une nouvelle clé API est requise pour changer d'environnement.")
+            if row.mode != data["mode"] and row.encrypted_webhook_secret and not data["webhook_secret"]:
+                return fail("Un nouveau secret webhook est requis au changement d'environnement.")
             if data["webhook_secret"]:
                 if not data["webhook_secret"].startswith("whsec_"):
                     return fail("Le secret webhook doit venir du tableau de bord PayCentral.")
