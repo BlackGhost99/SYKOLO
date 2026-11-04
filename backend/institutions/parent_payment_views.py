@@ -342,7 +342,7 @@ def paycentral_webhook(request):
         raw_status = data.get("status")
         if body.get("event") not in {"payment.success", "payment.failed", "payment.cancelled", "payment.pending", "payment.updated", "payment.refunded"}:
             return fail("Événement non reconnu.", 422)
-        if (not verified_transaction(attempt, data) or raw_status not in (
+        if (not verified_transaction(attempt, data, signed_webhook=True) or raw_status not in (
             "pending", "processing", "success", "failed", "cancelled", "refunded"
         )):
             return fail("Transaction incohérente.", 409)
