@@ -267,14 +267,18 @@ def parent_pay(request, application_id):
             "merchant_reference": attempt.merchant_reference,
             "callback_url": settings.AUTH_PUBLIC_BASE_URL.rstrip("/") + "/api/v1/parents/paycentral/webhook",
         })
-        payload_data = response.get("data") if isinstance(response.get("data"), dict) else {}
-        transaction_id = response.get("transaction_id") or payload_data.get("transaction_id")
+        # PayCentral documents the transaction fields inside 'data'.
+        # Require exact amount/currency/provider, even on a successful HTTP status.
+        payload_data = response.get("data") if isinstance(response.get("data"), dict) else response
+        transaction_id = payload_data.get("transaction_id")
+        if response.get("success") is not True:
+            raise ProviderError("Le prestataire n'a pas confirmé l'initiation.")
         if not (isinstance(transaction_id, str) and TRANSACTION_ID.fullmatch(transaction_id)):
-            raise ProviderError("Transaction non confirmée par le prestataire.")
-        if response.get("currency") not in (None, "XAF") or response.get("provider") not in (None, channel):
-            raise ProviderError("Réponse du prestataire incohérente.")
-        if response.get("amount") is not None and not verified_money(response, attempt.amount_xaf):
-            raise ProviderError("Montant du prestataire incohérent.")
+            raise ProviderError("Identifiant de transaction invalide.")
+        if payload_data.get("provider") != channel or not verified_money(payload_data, attempt.amount_xaf):
+            raise ProviderError("La réponse du prestataire ne correspond pas au dossier.")
+        if payload_data.get("status") not in ("pending", "processing"):
+            raise ProviderError("Statut d'initiation non reconnu.")
         with transaction.atomic():
             locked = ParentPaymentAttempt.objects.select_for_update().get(pk=attempt.pk)
             if locked.transaction_id and locked.transaction_id != transaction_id:
