@@ -82,6 +82,9 @@ def school_response(school):
         "id": str(school.pk), "organization_id": str(school.organization_id),
         "name": school.name, "short_name": school.short_name,
         "primary_color": school.primary_color,
+        "school_type": school.school_type,
+        "school_type_label": school.get_school_type_display(),
+        "education_cycles": school.education_cycles,
     }
 
 

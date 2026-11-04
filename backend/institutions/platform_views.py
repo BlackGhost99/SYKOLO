@@ -8,6 +8,7 @@ from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 from .models import Organization, OrganizationMember, School, SchoolMember, SchoolRole
 from .services import ROLE_TEMPLATES, school_response, quota_reached
+from .school_profiles import CYCLE_LABELS, profile_options, validate_school_profile
 from .views import parse_body, log_event, string
 
 
@@ -28,7 +29,8 @@ def platform_schools(request):
             for row in rows
         ], "total": School.objects.count(), "organizations": Organization.objects.count(),
         "users": get_user_model().objects.count(),
-        "organization_options": [{"id": str(o.pk), "name": o.name} for o in Organization.objects.order_by("name")[:300]]})
+        "organization_options": [{"id": str(o.pk), "name": o.name} for o in Organization.objects.order_by("name")[:300]],
+        "school_profiles": profile_options(), "cycle_labels": CYCLE_LABELS})
 
     data, error = parse_body(request)
     if error is not None:
@@ -43,6 +45,12 @@ def platform_schools(request):
             existing_org = None
         if existing_org is None:
             return JsonResponse({"error": "Organisation existante introuvable."}, status=422)
+    try:
+        school_type, education_cycles = validate_school_profile(
+            data.get("school_type"), data.get("education_cycles")
+        )
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
     username, email = data.get("username"), data.get("email")
     first_name, last_name = data.get("first_name", ""), data.get("last_name", "")
     password, role_code = data.get("password"), data.get("role", "direction")
@@ -71,7 +79,10 @@ def platform_schools(request):
             # Un propriétaire nommé pour une école existante ne devient pas propriétaire de tout le groupe.
             if role_code == "proprietaire" and existing_org is None:
                 OrganizationMember.objects.create(organization=org, user=user, role="founder")
-            school = School.objects.create(organization=org, name=school_name.strip())
+            school = School.objects.create(
+                organization=org, name=school_name.strip(),
+                school_type=school_type, education_cycles=education_cycles,
+            )
             templates = list(ROLE_TEMPLATES)
             if role_code == "proprietaire":
                 direction_perms = next(perms for code, _, perms in templates if code == "direction")

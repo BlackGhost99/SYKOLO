@@ -12,6 +12,7 @@ from .models import (
     SchoolAudit, SchoolMember, SchoolRole, Student,
 )
 from .platform_views import platform_only
+from .school_profiles import validate_school_profile
 from .views import parse_body, log_event, string
 
 
@@ -36,6 +37,9 @@ def size(value, default=1, upper=10000):
 def summary(school):
     return {
         "id": str(school.pk), "name": school.name,
+        "school_type": school.school_type,
+        "school_type_label": school.get_school_type_display(),
+        "education_cycles": school.education_cycles,
         "organization": school.organization.name,
         "organization_id": str(school.organization_id),
         "members_count": school.members_count,
@@ -184,6 +188,9 @@ def detail_dict(s):
     return {
         "school": {
             "id": str(s.id), "name": s.name, "active": s.is_active,
+            "school_type": s.school_type,
+            "school_type_label": s.get_school_type_display(),
+            "education_cycles": s.education_cycles,
             "organization": s.organization.name,
             "organization_id": str(s.organization_id),
             "created_at": s.created_at.isoformat(),
@@ -267,6 +274,22 @@ def platform_school_action(request, school_id):
             school.name = name
             school.save(update_fields=["name"])
             audit(request, "school_renamed", name, school, reason)
+        elif action == "profile":
+            try:
+                school_type, education_cycles = validate_school_profile(
+                    body.get("school_type"), body.get("education_cycles")
+                )
+            except ValueError as exc:
+                return JsonResponse({"error": str(exc)}, status=422)
+            if school.school_type == school_type and school.education_cycles == education_cycles:
+                return JsonResponse({"error": "La classification est déjà à jour."}, status=409)
+            # Ne jamais modifier ou supprimer les cycles/classes réels :
+            # il s’agit ici d’une classification administrative distincte.
+            school.school_type = school_type
+            school.education_cycles = education_cycles
+            school.save(update_fields=["school_type", "education_cycles"])
+            log_event(school, request, "school_profile_updated", reason)
+            audit(request, "school_profile_updated", school.name, school, reason)
         elif action == "plan":
             label = body.get("plan_name")
             revision = body.get("revision")

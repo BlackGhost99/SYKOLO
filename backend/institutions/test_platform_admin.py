@@ -18,6 +18,7 @@ class PlatformAdminConsoleTests(TestCase):
             "username": "direction_arc", "email": "arc@example.org",
             "first_name": "Aya", "last_name": "Test",
             "password": "Secure-Director-2026!", "role": "direction",
+            "school_type": "lycee_general", "education_cycles": ["college", "lycee_general"],
         }
         created = self.post("/api/v1/platform/schools", self.payload)
         self.assertEqual(created.status_code, 201, created.content)
