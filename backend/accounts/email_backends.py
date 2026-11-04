@@ -27,7 +27,7 @@ class ResendEmailBackend(BaseEmailBackend):
         for msg in email_messages:
             # Authentication messages must have a single private recipient.
             if (len(msg.to) != 1 or msg.cc or msg.bcc or msg.attachments
-                    or msg.alternatives):
+                    or getattr(msg, "alternatives", None)):
                 if self.fail_silently:
                     return count
                 raise ValueError("Seuls les e-mails transactionnels individuels sont autorisés.")
