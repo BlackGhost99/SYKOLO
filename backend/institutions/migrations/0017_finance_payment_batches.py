@@ -44,4 +44,29 @@ class Migration(migrations.Migration):
             model_name="feepayment",
             constraint=models.UniqueConstraint(fields=("batch", "charge"), name="unique_charge_in_fee_batch"),
         ),
+        migrations.CreateModel(
+            name="CashClosing",
+            fields=[
+                ("id", models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, serialize=False)),
+                ("day", models.DateField()),
+                ("currency", models.CharField(max_length=3)),
+                ("expected", models.DecimalField(max_digits=12, decimal_places=2)),
+                ("counted", models.DecimalField(max_digits=12, decimal_places=2)),
+                ("difference", models.DecimalField(max_digits=13, decimal_places=2)),
+                ("note", models.CharField(blank=True, max_length=500)),
+                ("submitted_at", models.DateTimeField(auto_now_add=True)),
+                ("approved_at", models.DateTimeField(blank=True, null=True)),
+                ("approval_note", models.CharField(blank=True, max_length=500)),
+                ("school", models.ForeignKey(to="institutions.school", on_delete=django.db.models.deletion.PROTECT, related_name="cash_closings")),
+                ("submitted_by", models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=django.db.models.deletion.PROTECT, related_name="yem_cash_closings_submitted")),
+                ("approved_by", models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=django.db.models.deletion.SET_NULL, related_name="yem_cash_closings_approved", null=True, blank=True)),
+            ],
+            options={
+                "constraints": [
+                    models.UniqueConstraint(fields=("school", "day", "currency", "submitted_by"), name="unique_school_cash_closing_per_cashier"),
+                    models.CheckConstraint(condition=models.Q(expected__gte=0), name="cash_closing_expected_nonnegative"),
+                    models.CheckConstraint(condition=models.Q(counted__gte=0), name="cash_closing_counted_nonnegative"),
+                ],
+            },
+        ),
     ]
