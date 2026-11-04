@@ -131,9 +131,9 @@ transport ; la procédure de production n'autorise pas à le faire pour l'instan
    une signature Gaboshop supposée officielle.
 4. Compléter les opérations comptables de remboursement/avoir et la résolution
    supervisée des paiements reçus mais non affectés ; conserver les preuves.
-5. Ajouter une interface de gestion marchande et de contrôle de règlement pour
-   l'équipe administrative (les endpoints sont préparés), pagination au-delà de 250,
-   et un rapprochement planifié avec limitation des appels et alertes.
+5. Compléter la pagination au-delà de 250 et un rapprochement planifié avec
+   limitation des appels et alertes. L'interface administrative de préparation
+   marchande et de rapprochement documentaire est disponible selon les droits.
 6. Recette PostgreSQL concurrente et CI complètes, essais prestataire explicitement
    autorisés par le titulaire du compte (aucun ici), contrôle des PR/migrations récentes.
 7. Vérifier lien parent → dossier → paiement → reçu → solde et relevé marchand sur

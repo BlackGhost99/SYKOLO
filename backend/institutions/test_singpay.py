@@ -218,6 +218,9 @@ class SingPayTests(TestCase):
         result=self.write(path,{"approve":True})
         self.assertTrue(result.json()["approved"])
         self.assertEqual(FeePayment.objects.count(),1)
+        report=self.client.get(f"/api/v1/schools/{self.school.pk}/singpay/reconciliation")
+        self.assertEqual(report.status_code,200,report.content)
+        self.assertTrue(report.json()["payments"][0]["settlement"]["approved"])
 
     def test_manual_ledger_cannot_impersonate_singpay_or_void_verified_receipt(self):
         from .models import SchoolMember, SchoolRole

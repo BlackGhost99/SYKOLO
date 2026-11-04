@@ -261,8 +261,16 @@ def staff_reconciliation(request, school_id):
     if not has_permission(request.user, school, "school.finance.approve"):
         return refuse()
     if request.method == "GET":
-        rows = SingPayIntent.objects.filter(school=school).order_by("-created_at")[:250]
-        return JsonResponse({"payments": [intent_view(row) for row in rows],
+        rows = SingPayIntent.objects.filter(school=school).select_related("singpaysettlement").order_by("-created_at")[:250]
+        payments = []
+        for row in rows:
+            item = intent_view(row)
+            settled = getattr(row, "singpaysettlement", None)
+            item["settlement"] = ({"statement_reference": settled.statement_reference,
+                "received_net_xaf": settled.received_net_xaf, "observed_fee_xaf": settled.observed_fee_xaf,
+                "approved": bool(settled.approved_at)} if settled else None)
+            payments.append(item)
+        return JsonResponse({"payments": payments,
                              "notice": "Succès du paiement distinct du règlement marchand ; relevé SingPay requis."})
     data, error = parse_body(request)
     if error is not None:
