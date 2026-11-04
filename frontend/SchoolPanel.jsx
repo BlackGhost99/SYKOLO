@@ -10,12 +10,13 @@ import FinancePanel from "./FinancePanel.jsx";
 import AttendancePanel from "./AttendancePanel.jsx";
 import TimetablePanel from "./TimetablePanel.jsx";
 import AdmissionsPanel from "./AdmissionsPanel.jsx";
+import {SCHOOL_TYPES, CYCLE_TYPES, defaultCycles, toggleCycle} from "./schoolProfiles.js";
 
 const cookie = () => document.cookie.split("; ").find((x) => x.startsWith("csrftoken="))?.split("=")[1] || "";
-async function api(path, data) {
+async function api(path, data, method = "POST") {
   if (data !== undefined) await fetch("/api/v1/auth/csrf", { credentials: "same-origin" });
   const response = await fetch("/api/v1/" + path, {
-    method: data === undefined ? "GET" : "POST",
+    method: data === undefined ? "GET" : method,
     credentials: "same-origin",
     headers: data === undefined ? {} : { "Content-Type": "application/json", "X-CSRFToken": cookie() },
     body: data === undefined ? undefined : JSON.stringify(data),
@@ -33,6 +34,11 @@ export default function SchoolPanel() {
   const [selected, setSelected] = useState("");
   const [orgName, setOrgName] = useState("");
   const [schoolName, setSchoolName] = useState("");
+  const [newType, setNewType] = useState("");
+  const [newCycles, setNewCycles] = useState([]);
+  const [profile, setProfile] = useState(null);
+  const [editType, setEditType] = useState("a_configurer");
+  const [editCycles, setEditCycles] = useState([]);
   const [orgId, setOrgId] = useState("");
   const [targetUser, setTargetUser] = useState("");
   const [roleCode, setRoleCode] = useState("direction");
@@ -52,14 +58,18 @@ export default function SchoolPanel() {
 
   useEffect(() => { reload().catch((err) => setMessage(err.message)); }, []);
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) { setProfile(null); return; }
     let active = true;
     Promise.all([
       api("schools/" + selected + "/roles").catch(() => ({ roles: [] })),
       api("schools/" + selected + "/settings").catch(() => null),
-    ]).then(([r, s]) => {
+      api("schools/" + selected + "/profile"),
+    ]).then(([r, s, p]) => {
       if (!active) return;
       setRoles(r.roles || []);
+      setProfile(p);
+      setEditType(p.school_type);
+      setEditCycles(p.enabled_cycles || []);
       setCanEditConfiguration(Boolean(s));
       setConfiguration(s ? JSON.stringify(s.effective || {}, null, 2) : "");
       setRevision(s?.layers?.find((x) => Object.keys(x.scope).length === 0)?.revision || 0);
@@ -89,8 +99,8 @@ export default function SchoolPanel() {
           <button disabled={busy} type="submit">Créer l’organisation</button>
         </form>
         <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-          const school = await api("organizations/" + orgId + "/schools", { name: schoolName });
-          setSchoolName(""); await reload(); setSelected(school.id);
+          const school = await api("organizations/" + orgId + "/schools", { name: schoolName, school_type: newType, enabled_cycles: newCycles });
+          setSchoolName(""); setNewType(""); setNewCycles([]); await reload(); setSelected(school.id);
           setMessage("École créée. Nommez maintenant un directeur.");
         }); }}>
           <label className="field">Organisation propriétaire
@@ -102,7 +112,13 @@ export default function SchoolPanel() {
           <label className="field">Nouvel établissement
             <input required maxLength={180} value={schoolName} onChange={(e) => setSchoolName(e.target.value)} />
           </label>
-          <button disabled={busy || !orgId} type="submit">Créer l’établissement</button>
+          <label className="field">Type d'établissement
+            <select required value={newType} onChange={e=>{setNewType(e.target.value);setNewCycles(defaultCycles(e.target.value));}}>
+              <option value="">Choisir…</option>{SCHOOL_TYPES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+            </select>
+          </label>
+          {newType==="groupe_scolaire"&&<fieldset><legend>Cycles proposés</legend>{CYCLE_TYPES.map(([key,label])=><label key={key} style={{marginRight:12}}><input type="checkbox" checked={newCycles.includes(key)} onChange={()=>setNewCycles(c=>toggleCycle(c,key))}/>{label}</label>)}</fieldset>}
+          <button disabled={busy || !orgId || !newType || (newType==="groupe_scolaire"&&!newCycles.length)} type="submit">Créer l’établissement</button>
         </form>
       </div>
       <label className="field">Établissement actif
@@ -112,6 +128,23 @@ export default function SchoolPanel() {
         </select>
       </label>
       {selected && <>
+        {profile&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
+          const result=await api("schools/"+selected+"/profile",{school_type:editType,enabled_cycles:editCycles,revision:profile.profile_revision},"PATCH");
+          setProfile(result);setEditType(result.school_type);setEditCycles(result.enabled_cycles);
+          const rolesData=await api("schools/"+selected+"/roles").catch(()=>({roles:[]}));
+          setRoles(rolesData.roles||[]);await reload();
+          setMessage("Profil enregistré. Les rôles personnalisés existants sont conservés.");
+        });}}>
+          <h3>Profil et cycles de l'établissement</h3>
+          <p className="hint">Type actuel : {profile.school_type_label}. La modification ne supprime aucune classe ni aucun rôle existant.</p>
+          <label className="field">Type d'établissement
+            <select value={editType} onChange={e=>{setEditType(e.target.value);setEditCycles(defaultCycles(e.target.value));}}>
+              <option value="a_configurer">À configurer</option>{SCHOOL_TYPES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+            </select>
+          </label>
+          {editType==="groupe_scolaire"&&<fieldset><legend>Cycles proposés</legend>{CYCLE_TYPES.map(([key,label])=><label key={key} style={{marginRight:12}}><input type="checkbox" checked={editCycles.includes(key)} onChange={()=>setEditCycles(c=>toggleCycle(c,key))}/>{label}</label>)}</fieldset>}
+          <button type="submit" disabled={busy||(editType==="groupe_scolaire"&&!editCycles.length)}>Enregistrer le profil</button>
+        </form>}
         <form onSubmit={(e) => { e.preventDefault(); run(async () => {
           await api("schools/" + selected + "/members", { username: targetUser, role: roleCode });
           setTargetUser(""); setMessage("Affectation enregistrée pour cette école.");
