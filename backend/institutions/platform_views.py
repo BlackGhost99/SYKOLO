@@ -24,7 +24,7 @@ def platform_schools(request):
         rows = School.objects.select_related("organization").order_by("name")[:300]
         return JsonResponse({"schools": [
             {**school_response(row), "organization": row.organization.name, "active": row.is_active,
-             "members_count": row.members.filter(active=True).count()}
+             "members_count": row.members.filter(active=True, user__is_active=True, user__is_superuser=False).count()}
             for row in rows
         ], "total": School.objects.count(), "organizations": Organization.objects.count(),
         "users": get_user_model().objects.count(),
