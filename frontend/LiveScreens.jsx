@@ -36,7 +36,7 @@ export const fmtMoney = (v, c) => `${num(v)} ${cur(c)}`;
 const pct = (now, before) => { const a = Number(now) || 0, b = Number(before) || 0; if (!b) return null; const p = (a - b) / b * 100; return `${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(1).replace(".", ",")} %`; };
 const fmtDate = iso => iso ? new Date(iso + (iso.length === 10 ? "T00:00:00" : "")).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
-const METHODS = [["airtel_money", "Airtel Money", "mobile"], ["moov_money", "Moov Money", "mobile"], ["especes", "Espèces", "cash"], ["virement", "Virement", "transfer"]];
+const METHODS = [["airtel_money", "Airtel Money reçu (manuel)", "mobile"], ["moov_money", "Moov Money reçu (manuel)", "mobile"], ["especes", "Espèces", "cash"], ["virement", "Virement reçu (manuel)", "transfer"]];
 const methodLabel = m => METHODS.find(x => x[0] === m)?.[1] || (m === "mobile_money" ? "Mobile money" : m === "autre" ? "Autre" : m);
 const methodIcon = m => METHODS.find(x => x[0] === m)?.[2] || (m === "mobile_money" ? "mobile" : "coins");
 const isMobileMoney = m => m === "airtel_money" || m === "moov_money" || m === "mobile_money";
