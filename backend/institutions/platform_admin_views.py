@@ -1,6 +1,7 @@
 """API de pilotage YEM. Reserved to MFA-verified platform super-admins."""
 from uuid import UUID
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q
 from django.http import JsonResponse
@@ -12,6 +13,8 @@ from .models import (
     SchoolAudit, SchoolMember, SchoolRole, Student,
 )
 from .platform_views import platform_only
+from .school_profiles import profile_fields, profile_payload
+from .services import role_templates_for_profile
 from .views import parse_body, log_event, string
 
 
@@ -41,6 +44,7 @@ def summary(school):
         "members_count": school.members_count,
         "students_count": school.students_count,
         "active": school.is_active,
+        **profile_payload(school),
         "created_at": school.created_at.isoformat(),
     }
 
@@ -184,6 +188,7 @@ def detail_dict(s):
     return {
         "school": {
             "id": str(s.id), "name": s.name, "active": s.is_active,
+            **profile_payload(s),
             "organization": s.organization.name,
             "organization_id": str(s.organization_id),
             "created_at": s.created_at.isoformat(),
@@ -267,6 +272,24 @@ def platform_school_action(request, school_id):
             school.name = name
             school.save(update_fields=["name"])
             audit(request, "school_renamed", name, school, reason)
+        elif action == "profile":
+            revision = body.get("revision")
+            if type(revision) is not int or revision != school.profile_revision:
+                return JsonResponse({"error": "Profil modifié : rechargez la fiche.", "revision": school.profile_revision}, status=409)
+            try:
+                school_type, enabled_cycles = profile_fields(body, school.school_type, school.enabled_cycles)
+            except ValidationError as exc:
+                return JsonResponse({"error": str(exc)}, status=422)
+            if school.school_type == school_type and school.enabled_cycles == enabled_cycles:
+                return JsonResponse({"error": "Le profil est déjà configuré de cette façon."}, status=409)
+            school.school_type, school.enabled_cycles = school_type, enabled_cycles
+            school.profile_revision += 1
+            school.full_clean()
+            school.save(update_fields=["school_type", "enabled_cycles", "profile_revision"])
+            for code, label, permissions in role_templates_for_profile(school_type, enabled_cycles):
+                SchoolRole.objects.get_or_create(school=school, code=code, defaults={"label": label, "permissions": permissions})
+            log_event(school, request, "school_profile_changed", school_type)
+            audit(request, "school_profile_changed", school.name, school, reason)
         elif action == "plan":
             label = body.get("plan_name")
             revision = body.get("revision")
