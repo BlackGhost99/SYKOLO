@@ -48,7 +48,7 @@ def summary(school):
 def directory():
     return School.objects.select_related("organization").annotate(
         members_count=Count(
-            "members", filter=Q(members__active=True, members__user__is_active=True), distinct=True
+            "members", filter=Q(members__active=True, members__user__is_active=True, members__user__is_superuser=False), distinct=True
         ),
         students_count=Count("students", filter=Q(students__active=True), distinct=True),
     )
@@ -133,7 +133,7 @@ def platform_dashboard(request):
         "schools_active": School.objects.filter(is_active=True).count(),
         "schools_inactive": School.objects.filter(is_active=False).count(),
         "users_active": get_user_model().objects.filter(
-            is_active=True, schoolmember__active=True,
+            is_active=True, is_superuser=False, schoolmember__active=True,
             schoolmember__school__is_active=True,
         ).distinct().count(),
         "schools": [summary(s) for s in rows],
@@ -188,7 +188,7 @@ def detail_dict(s):
             "organization_id": str(s.organization_id),
             "created_at": s.created_at.isoformat(),
         },
-        "members_count": members.filter(active=True, user__is_active=True).count(),
+        "members_count": members.filter(active=True, user__is_active=True, user__is_superuser=False).count(),
         "students_count": Student.objects.filter(school=s, active=True).count(),
         "roles": [
             {"id": str(r.id), "code": r.code, "label": r.label}
@@ -337,7 +337,7 @@ def platform_member_action(request, school_id, member_id):
                 return JsonResponse({"error": "Ce compte possède déjà cet état."}, status=409)
             policy = SchoolAdminPolicy.objects.select_for_update().filter(school=school).first()
             if active and policy and policy.max_users is not None and (
-                SchoolMember.objects.filter(school=school, active=True, user__is_active=True).count() >= policy.max_users
+                SchoolMember.objects.filter(school=school, active=True, user__is_active=True, user__is_superuser=False).count() >= policy.max_users
             ):
                 return JsonResponse({"error": "Plafond de comptes atteint."}, status=409)
             member.active = active
