@@ -6,6 +6,7 @@ from io import BytesIO
 from html import escape
 from uuid import UUID
 
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Sum
@@ -327,6 +328,8 @@ def payments(request, school_id):
     try:
         amount = money(data["amount"])
         paid_on = iso_day(data["paid_on"])
+        if paid_on > timezone.localdate():
+            raise ValueError("Un encaissement futur ne peut pas être déclaré comme reçu.")
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=422)
     try:
