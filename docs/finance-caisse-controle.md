@@ -28,6 +28,6 @@ Après la déclaration, les nouveaux encaissements en espèces du même caissier
 
 Ce module ne réalise pas le rapprochement bancaire, le remboursement effectif, la gestion de paie, de stocks, la comptabilité SYSCOHADA ni les dépenses. Une véritable passerelle de paiement Mobile Money devra disposer d'une vérification serveur indépendante et d'un rapprochement sécurisé avant d'être activée.
 
-La branche est construite sur le main après fusion des PR parents et organigramme. Migration 0019_finance_payment_batches, après 0018_school_appointments.
+La branche est construite sur le main après fusion des PR parents et organigramme. Migration 0020_finance_payment_batches, après 0019_parent_payments (issue de la PR #38).
 
-La PR #26 modifie également LiveScreens.jsx. À sa fusion, réconcilier cette interface financière avec les écrans d'inscription. Ne pas fusionner ni déployer avant les tests PostgreSQL et React, les contrôles d'isolation et une recette avec de fausses opérations de caisse.
+La PR #26 modifie également LiveScreens.jsx. À sa fusion, réconcilier cette interface financière avec les écrans d'inscription. Ne pas écraser les travaux des autres conversations. Ne pas fusionner ni déployer avant les tests PostgreSQL et React, les contrôles d'isolation et une recette avec de fausses opérations de caisse.
