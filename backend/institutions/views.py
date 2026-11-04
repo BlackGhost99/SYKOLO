@@ -18,7 +18,7 @@ from .models import (
 )
 from .services import (
     PERMISSIONS, ROLE_TEMPLATES, has_permission, key_for_scope,
-    owns_organization, resolve_settings, school_access, school_response,
+    owns_organization, resolve_settings, school_access, school_response, quota_reached,
     validate_scope,
 )
 
@@ -223,6 +223,9 @@ def school_user_create(request, school_id):
         return JsonResponse({"error": " ".join(exc.messages)}, status=422)
     try:
         with transaction.atomic():
+            School.objects.select_for_update().get(pk=school.pk)
+            if quota_reached(school, "users"):
+                return JsonResponse({"error": "Plafond d'utilisateurs atteint pour cet établissement."}, status=409)
             user = User.objects.create_user(username=candidate.username, email=candidate.email,
                                            first_name=candidate.first_name, last_name=candidate.last_name,
                                            password=password)
