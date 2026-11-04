@@ -18,9 +18,9 @@ test("l'établissement configure les voies par niveau sans autoriser une admissi
   });
   render(<AdmissionPolicyEditor api={api} base="schools/test/admissions" year={YEAR} level={LEVEL} canDecide/>);
   const u=userEvent.setup();
-  await screen.findByText("Concours ou test d'admission");
+  await screen.findAllByText("Concours ou test d'admission");
   expect(screen.getByText(/preuve d'un concours ou d'une affectation reste obligatoire/)).toBeTruthy();
-  await u.click(screen.getByLabelText("Acte de naissance").closest("label").querySelector("input"));
+  await u.click(screen.getAllByLabelText("Acte de naissance")[0]);
   await u.click(screen.getByRole("button",{name:"Enregistrer les règles d'admission"}));
   await waitFor(()=>expect(api).toHaveBeenCalledWith("schools/test/admissions/policy",
     expect.objectContaining({year:YEAR,level:LEVEL,revision:0})));
