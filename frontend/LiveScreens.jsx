@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import CashClosingPanel from "./CashClosingPanel.jsx";
 import { Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Toggle, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
 
 /* Écrans réels branchés sur l'API, avec la présentation des maquettes (docs/maquettes). */
@@ -113,6 +114,9 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
           </div>
         </Card> : <Card title="Aperçu de l’élève" icon="user"><Empty>Sélectionnez un élève dans la liste.</Empty></Card>}
       </div>
+      <Card title="Clôture de caisse" icon="cash">
+        <CashClosingPanel schoolId={schoolId} defaultDay={d.today.date}/>
+      </Card>
     </>}</Loading>
   </>;
 }
