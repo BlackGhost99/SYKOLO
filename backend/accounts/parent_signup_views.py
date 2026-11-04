@@ -148,6 +148,6 @@ def resend_verification(request):
         send_verification_email(user)
     except Exception:
         audit(request, "parent_registration_resend_failed", user)
-        return JsonResponse({"error": "Envoi indisponible. Réessayez plus tard."}, status=503)
+        return generic  # Do not expose account existence via SMTP failures.
     audit(request, "parent_registration_resent", user)
     return generic
