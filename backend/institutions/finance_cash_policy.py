@@ -19,4 +19,4 @@ def recorded_cash_total(*, school, day, currency, user):
         school=school, recorded_by=user, paid_on=day,
         currency=currency, method="especes", void__isnull=True,
     ).aggregate(total=Sum("amount"))["total"]
-    return total or Decimal("0.00")
+    return (total or Decimal("0.00")).quantize(Decimal("0.01"))

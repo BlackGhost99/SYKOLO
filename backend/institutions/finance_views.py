@@ -382,9 +382,14 @@ def void_payment(request, school_id, payment_id):
     if set(data) != {"reason"} or not isinstance(data["reason"], str) or not 10 <= len(data["reason"].strip()) <= 1000:
         return JsonResponse({"error": "Motif d'annulation obligatoire (10 à 1000 caractères)."}, status=422)
     with transaction.atomic():
+        School.objects.select_for_update().get(pk=school.pk)
         row = FeePayment.objects.select_related("charge").filter(school=school, pk=payment_id).first()
         if row is None:
             return JsonResponse({"error": "Paiement introuvable."}, status=404)
+        if row.recorded_by_id == request.user.pk:
+            return JsonResponse({"error": "Un autre agent doit autoriser cette annulation."}, status=403)
+        if row.method == "especes" and cash_closed_for_recorder(school=school, day=row.paid_on, currency=row.currency, user=row.recorded_by):
+            return JsonResponse({"error": "Caisse déclarée : annulation bloquée pour préserver le contrôle."}, status=409)
         FeeCharge.objects.select_for_update().get(pk=row.charge_id, school=school)
         if FeePaymentVoid.objects.filter(school=school, payment=row).exists():
             return JsonResponse({"error": "Paiement déjà annulé."}, status=409)

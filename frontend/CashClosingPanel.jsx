@@ -36,13 +36,14 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
   const [counted,setCounted]=useState("");
   const [note,setNote]=useState("");
   const [approvalNotes,setApprovalNotes]=useState({});
+  const [transfer,setTransfer]=useState({closing:"",kind:"handover",amount:"",reference:"",destination:"",day:todayLocal()});
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
   const [error,setError]=useState("");
 
   const canRead=permissions.includes("school.finance.read");
   const canReceive=permissions.includes("school.finance.receive");
-  const canApprove=permissions.includes("school.finance.reverse");
+  const canApprove=permissions.includes("school.finance.approve");
 
   async function reload() {
     const [result,report]=await Promise.all([
@@ -81,7 +82,7 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
   return <section className="yd-cash-closing" aria-label="Clôture de caisse">
     <h3>Contrôle quotidien des espèces</h3>
     {canRead&&summary&&<div style={{marginBottom:16}}>
-      <h4>Situation financière par devise</h4>
+      <h4>Situation financière par devise · tous exercices</h4>
       <p className="yd-card-sub">Montants déclarés manuellement par l'établissement, hors confirmations automatiques des banques et opérateurs mobiles.</p>
       {Object.keys(summary.currencies).length===0
         ?<p className="yd-card-sub">Aucun frais encore facturé.</p>
@@ -111,6 +112,14 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
       <label>Justification (obligatoire en cas d'écart)<textarea rows={2} value={note} maxLength={500} onChange={e=>setNote(e.target.value)} placeholder="Comptage, éventuels écarts et pièces justificatives…"/></label>
       <button type="submit" className="yd-btn" disabled={busy||!counted||!day}>Soumettre le contrôle de caisse</button>
     </form>}
+    {permissions.includes("school.finance.deposit")&&<form aria-label="Remise ou dépôt" onSubmit={e=>{e.preventDefault(); const {closing,...data}=transfer; act(()=>financeRequest(`schools/${schoolId}/finance/cash/closings/${closing}/transfers`,data),"Mouvement enregistré, justificatif à contrôler.");}}>
+      <h4>Remise des fonds / dépôt bancaire</h4>
+      <label>Clôture validée<select required value={transfer.closing} onChange={e=>setTransfer({...transfer,closing:e.target.value})}><option value="">Choisir</option>{rows.filter(r=>r.status==="approved").map(r=><option key={r.id} value={r.id}>{r.day} · {r.submitted_by} · {r.currency}</option>)}</select></label>
+      <label>Opération<select value={transfer.kind} onChange={e=>setTransfer({...transfer,kind:e.target.value})}><option value="handover">Remise physique</option><option value="deposit">Dépôt bancaire</option></select></label>
+      {[['amount','Montant'],['reference','Référence du justificatif'],['destination','Destinataire / banque'],['day','Date']].map(([key,label])=><label key={key}>{label}<input required type={key==='day'?'date':'text'} value={transfer[key]} onChange={e=>setTransfer({...transfer,[key]:e.target.value})}/></label>)}
+      <button disabled={busy} className="yd-btn">Enregistrer le mouvement</button>
+    </form>}
+    {rows.flatMap(r=>(r.transfers||[]).map(t=><p key={t.id}>{t.kind==='handover'?'Remise':'Dépôt'} · {formatMoney(t.amount,r.currency)} · {t.destination} · {t.reference} · {t.approved_by?`Contrôlé par ${t.approved_by}`:canApprove?<button disabled={busy} onClick={()=>act(()=>financeRequest(`schools/${schoolId}/finance/cash/closings/${r.id}/transfers/${t.id}/approve`,{}),"Justificatif contrôlé.")}>Contrôler le justificatif</button>:"À contrôler"}</p>))}
     {error&&<p role="alert" className="pc-alert">{error}</p>}
     {message&&<p role="status" className="yd-form-msg">{message}</p>}
     {canRead&&<div style={{marginTop:14}}>

@@ -26,8 +26,8 @@ class FinanceLedgerTests(TestCase):
             for code, name, permissions in ROLE_TEMPLATES:
                 SchoolRole.objects.create(school=school, code=code, label=name, permissions=permissions)
         for user, role in [
-            (self.director, "direction"),
-            (self.accountant, "comptabilite"),
+            (self.director, "tarification"),
+            (self.accountant, "econome"),
             (self.teacher, "enseignant"),
         ]:
             SchoolMember.objects.create(
@@ -49,6 +49,9 @@ class FinanceLedgerTests(TestCase):
             school=self.school, student=student, year=self.year,
             classroom=self.classroom, enrolled_on="2026-09-08",
         )
+        self.controller = User.objects.create_user(username="controller-fin", password="Strong controller password 2026!")
+        SchoolMember.objects.create(school=self.school, user=self.controller, role=SchoolRole.objects.get(school=self.school, code="comptabilite"))
+        SchoolMember.objects.get(school=self.school, user=self.director).additional_roles.add(SchoolRole.objects.get(school=self.school, code="econome"))
         self.client = Client(enforce_csrf_checks=True)
         self.login(self.director)
         self.base = "/api/v1/schools/" + str(self.school.pk) + "/finance/"
@@ -106,7 +109,7 @@ class FinanceLedgerTests(TestCase):
         self.assertTrue(receipt.content.startswith(b"%PDF-"))
         self.login(self.accountant)
         self.assertEqual(self.post("payments/" + first["id"] + "/void", {"reason": "Erreur de saisie documentée"}).status_code, 403)
-        self.login(self.director)
+        self.login(self.controller)
         voided = self.post("payments/" + first["id"] + "/void", {"reason": "Erreur de caisse vérifiée par la direction."})
         self.assertEqual(voided.status_code, 201, voided.content.decode())
         self.assertEqual(self.client.get(self.base + "charges/" + charge["id"]).json()["balance"], "45000.50")

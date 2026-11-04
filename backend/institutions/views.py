@@ -17,7 +17,7 @@ from .models import (
     SchoolRole, SchoolSetting,
 )
 from .services import (
-    PERMISSIONS, ROLE_TEMPLATES, has_permission, key_for_scope,
+    PERMISSIONS, ROLE_TEMPLATES, has_permission, effective_permissions, key_for_scope,
     owns_organization, resolve_settings, school_access, school_response, quota_reached,
     validate_scope,
 )
@@ -147,7 +147,7 @@ def school_members(request, school_id):
         ).order_by("user__username")[:200]
         return JsonResponse({"members": [
             {"user_id": str(m.user_id), "username": m.user.username,
-             "role": m.role.code}
+             "role": m.role.code, "additional_roles": list(m.additional_roles.filter(school=school).values_list("code", flat=True))}
             for m in rows
         ]})
     data, error = parse_body(request)
@@ -159,10 +159,21 @@ def school_members(request, school_id):
     role = SchoolRole.objects.filter(school=school, code=data["role"]).first()
     if user is None or role is None:
         return JsonResponse({"error": "Compte ou rôle introuvable."}, status=404)
+    codes = data.get("additional_roles", [])
+    if not isinstance(codes, list) or not all(isinstance(code, str) for code in codes) or len(codes) > 20:
+        return JsonResponse({"error": "Fonctions supplémentaires invalides."}, status=422)
+    extra = list(SchoolRole.objects.filter(school=school, code__in=set(codes)))
+    if len(extra) != len(set(codes)):
+        return JsonResponse({"error": "Fonction étrangère ou inconnue."}, status=422)
+    granted = set().union(*(set(r.permissions) for r in [role, *extra]))
+    if not owns_organization(request.user, school.organization) and not granted <= effective_permissions(request.user, school):
+        return refuse()
     with transaction.atomic():
         member, created = SchoolMember.objects.update_or_create(
             school=school, user=user, defaults={"role": role, "active": True}
         )
+        if "additional_roles" in data:
+            member.additional_roles.set(extra)
         log_event(school, request, "member_added" if created else "member_role_changed", str(user.id))
     return JsonResponse({"user_id": str(user.id), "role": role.code}, status=201 if created else 200)
 
@@ -182,7 +193,8 @@ def my_school_access(request, school_id):
         "school": school_response(school),
         "role": member.role.code if member else ("proprietaire" if founder else None),
         "role_label": member.role.label if member else ("Propriétaire" if founder else ""),
-        "permissions": member.role.permissions if member else (["school.view", "school.members.write"] if founder else []),
+        "roles": [member.role.code, *member.additional_roles.filter(school=school).values_list("code", flat=True)] if member else [],
+        "permissions": sorted(effective_permissions(request.user, school)) if member else (["school.view", "school.members.write"] if founder else []),
     })
 
 
@@ -212,7 +224,7 @@ def school_user_create(request, school_id):
         actor = SchoolMember.objects.select_related("role").filter(
             school=school, user=request.user, active=True
         ).first()
-        if actor is None or not set(role.permissions).issubset(set(actor.role.permissions)):
+        if actor is None or not set(role.permissions).issubset(effective_permissions(request.user, school)):
             return refuse()
     User = get_user_model()
     candidate = User(username=username.strip(), email=email.strip(),
@@ -262,7 +274,7 @@ def school_roles(request, school_id):
     if not isinstance(perms, list) or not all(isinstance(x, str) for x in perms) or not set(perms) <= PERMISSIONS:
         return JsonResponse({"error": "Permissions inconnues."}, status=422)
     member = SchoolMember.objects.select_related("role").get(school=school, user=request.user, active=True)
-    if not set(perms) <= set(member.role.permissions):
+    if not set(perms) <= effective_permissions(request.user, school):
         return refuse()
     try:
         # A savepoint keeps the outer request/test transaction usable after uniqueness errors.
@@ -293,7 +305,7 @@ def school_role_detail(request, school_id, role_id):
     if type(revision) is not int or revision < 1:
         return JsonResponse({"error": "Révision invalide."}, status=422)
     member = SchoolMember.objects.select_related("role").get(school=school, user=request.user, active=True)
-    if not set(perms) <= set(member.role.permissions):
+    if not set(perms) <= effective_permissions(request.user, school):
         return refuse()
     with transaction.atomic():
         role = SchoolRole.objects.select_for_update().filter(school=school, id=role_id).first()

@@ -204,3 +204,25 @@ class CashClosing(models.Model):
     def clean(self):
         if self.approved_by_id and self.submitted_by_id == self.approved_by_id:
             raise ValidationError("La caisse ne peut pas être approuvée par son propre déclarant.")
+
+
+class CashTransfer(models.Model):
+    """Documented physical handover or bank deposit, independently checked."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    closing = models.ForeignKey(CashClosing, on_delete=models.PROTECT, related_name="transfers")
+    kind = models.CharField(max_length=12, choices=[("handover", "Remise"), ("deposit", "Dépôt")])
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reference = models.CharField(max_length=100)
+    destination = models.CharField(max_length=160)
+    day = models.DateField()
+    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="cash_transfers_submitted")
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="cash_transfers_approved")
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=Q(amount__gt=0), name="cash_transfer_positive"),
+            models.CheckConstraint(condition=Q(kind__in=["handover", "deposit"]), name="cash_transfer_kind"),
+            models.UniqueConstraint(fields=["closing", "kind", "reference"], name="cash_transfer_reference"),
+        ]

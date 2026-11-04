@@ -55,6 +55,7 @@ class SchoolMember(models.Model):
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="members")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     role = models.ForeignKey(SchoolRole, on_delete=models.PROTECT)
+    additional_roles = models.ManyToManyField(SchoolRole, blank=True, related_name="additional_members")
     active = models.BooleanField(default=True)
 
     class Meta:
