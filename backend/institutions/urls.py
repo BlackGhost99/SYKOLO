@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, parent_views, overview_views
+from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, overview_views
 
 urlpatterns = [
     path("platform/dashboard", platform_admin_views.platform_dashboard),
@@ -22,7 +22,11 @@ urlpatterns = [
     path("parents/children/<uuid:student_id>/timetable", parent_views.child_timetable),
     path("schools/<uuid:school_id>/parent-links", parent_views.links),
     path("schools/<uuid:school_id>/parent-links/<uuid:link_id>", parent_views.link_detail),
+    path("schools/<uuid:school_id>/admissions/policy", admission_route_views.policy),
     path("schools/<uuid:school_id>/admissions", admission_views.applications),
+    path("schools/<uuid:school_id>/admissions/<uuid:application_id>/documents", admission_route_views.evidence),
+    path("schools/<uuid:school_id>/admissions/<uuid:application_id>/documents/<uuid:document_id>/review", admission_route_views.review_evidence),
+    path("schools/<uuid:school_id>/admissions/<uuid:application_id>/eligibility", admission_route_views.eligibility),
     path("schools/<uuid:school_id>/admissions/capacity/<uuid:classroom_id>", admission_views.capacity),
     path("schools/<uuid:school_id>/admissions/<uuid:application_id>", admission_views.application_detail),
     path("schools/<uuid:school_id>/admissions/<uuid:application_id>/decide", admission_views.decide),
