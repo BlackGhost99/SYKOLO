@@ -216,8 +216,61 @@ export default function ParentDiscovery() {
       {applications.map(a=><article key={a.id} className="yp-request">
         <b>{a.school_name}</b><p>{a.classroom_name} · {a.year} · {ROUTES[a.route]||a.route}</p>
         <strong>{STATES[a.status]||a.status}</strong>
-        <small>Paiement choisi : espèces à la caisse · non confirmé en ligne</small>
+        <small>{a.payment_choice==="cash"?"Paiement prévu : espèces à la caisse":
+          "Mobile Money · "+(a.fee_amount_xaf?Number(a.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA · ":"")+
+          ({non_initie:"non initié",initiating:"initiation en cours",pending:"en attente de confirmation",
+            unknown:"à rapprocher avec l'école",success:"confirmé par le prestataire",
+            failed:"échec",cancelled:"annulé",refunded:"remboursé"}[a.payment_status]||a.payment_status)}
+          {a.payment_mode==="sandbox"&&" · SIMULATION sans argent réel"}</small>
+        {a.payment_choice==="online"&&a.fee_amount_xaf&&
+          !["success","refunded","pending","initiating","unknown"].includes(a.payment_status)&&
+          a.status!=="rejected"&&a.status!=="enrolled"&&<>
+          <button type="button" className="yp-button" onClick={()=>setActivePay(activePay===a.id?"":a.id)}>
+            {activePay===a.id?"Fermer":"Payer les frais de dossier"}</button>
+          {activePay===a.id&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
+            const pay=await api("parents/applications/"+a.id+"/pay",{channel:paymentOperator,phone:paymentPhone});
+            setMessage(pay.provider_mode==="sandbox"?"Paiement simulé lancé.":"Demande envoyée. Validez sur votre téléphone.");
+            setActivePay("");
+          });}}>
+            <label className="yp-field">Opérateur
+              <select value={paymentOperator} onChange={e=>setPaymentOperator(e.target.value)}>
+                <option value="airtel">Airtel Money Gabon</option><option value="moov">Moov Money Gabon</option>
+              </select>
+            </label>
+            <label className="yp-field">Téléphone Mobile Money (+241...)
+              <input type="tel" required pattern="\\+241[0-9]{8,9}" value={paymentPhone}
+                onChange={e=>setPaymentPhone(e.target.value)} placeholder="+24107123456"/>
+            </label>
+            <button className="yp-button yp-primary" disabled={busy}>Demander le paiement sécurisé</button>
+          </form>}</>}
+        {a.payment_choice==="online"&&["pending","unknown","initiating"].includes(a.payment_status)&&
+          <button type="button" className="yp-button" disabled={busy} onClick={()=>run(async()=>{
+            const result=await api("parents/applications/"+a.id+"/payment-refresh",{});
+            setMessage(result.notice);
+          })}>Vérifier mon paiement</button>}
       </article>)}
+    </div>}
+    {view==="notifications"&&<div className="yp-pane">
+      <h3>Notifications de mes établissements</h3>
+      <p>Décisions d'admission et confirmations du prestataire de paiement.</p>
+      <div className="yp-two">
+        <button className="yp-button" type="button" onClick={()=>run(async()=>{
+          const data=await api("parents/notifications");setNotifications(data.notifications||[]);
+          setMessage("Notifications actualisées.");
+        })}>Actualiser</button>
+        <button className="yp-button" type="button" onClick={async()=>{
+          if(typeof window!=="undefined"&&"Notification" in window){
+            const result=await window.Notification.requestPermission();
+            setMessage(result==="granted"?"Alertes autorisées lorsque l'application est ouverte.":"Notifications non autorisées.");
+          }else setMessage("Les notifications système ne sont pas disponibles dans ce navigateur.");
+        }}>Autoriser les alertes</button>
+      </div>
+      {notifications.length===0&&<p>Aucune actualité pour le moment.</p>}
+      {notifications.map(n=><article className="yp-request" key={n.kind+n.id}>
+        <b>{n.school}</b><p>{n.message}</p>
+        <small>{new Date(n.at).toLocaleString("fr-GA")}</small>
+      </article>)}
+      <small>Les alertes en arrière-plan nécessitent encore un service Web Push.</small>
     </div>}
   </section>;
 }
