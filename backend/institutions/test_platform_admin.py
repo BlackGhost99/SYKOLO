@@ -144,6 +144,27 @@ class PlatformAdminConsoleTests(TestCase):
         self.assertEqual(b.status_code, 409, b.content)
         self.assertEqual(Student.objects.filter(school=self.school).count(), 1)
 
+    def test_platform_intervention_does_not_consume_school_quota(self):
+        endpoint = f"/api/v1/platform/schools/{self.school.pk}/action"
+        configured = self.post(endpoint, {
+            "action":"plan", "plan_name":"Standard", "max_users":2,
+            "max_students":20, "revision":0, "reason":"Formule contractuelle"
+        })
+        self.assertEqual(configured.status_code, 200, configured.content)
+        access = self.client.post(f"/api/v1/platform/schools/{self.school.pk}/admin-access")
+        self.assertEqual(access.status_code, 200, access.content)
+        overview = self.client.get("/api/v1/platform/dashboard").json()
+        self.assertEqual(overview["users_active"], 1)
+        self.assertEqual(overview["schools"][0]["members_count"], 1)
+        detail = self.client.get(f"/api/v1/platform/schools/{self.school.pk}/detail").json()
+        self.assertEqual(detail["members_count"], 1)
+        another = self.post(f"/api/v1/platform/schools/{self.school.pk}/users", {
+            "username":"new_teacher", "email":"new_teacher@example.org",
+            "first_name":"Test", "last_name":"Teacher",
+            "password":"Valid-Teacher-2026!", "role":"enseignant",
+        })
+        self.assertEqual(another.status_code, 201, another.content)
+
     def test_plan_revision_prevents_lost_updates(self):
         endpoint = f"/api/v1/platform/schools/{self.school.pk}/action"
         body = {"action":"plan","plan_name":"Standard","max_users":10,
