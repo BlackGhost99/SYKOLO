@@ -95,9 +95,9 @@ class ParentPaymentTests(TestCase):
         return {"success":True,"data":{"transaction_id":MOCK_TXN,"status":"processing",
             "provider":"airtel","amount":2500,"currency":"XAF"}}
 
-    def webhook(self,attempt,secret=SECRET,amount="2500.00",status="success",signed=True,reference=None):
+    def webhook(self,attempt,secret=SECRET,amount="2500.00",status="success",signed=True,reference=None,webhook_txn_id=MOCK_TXN):
         payload={"event":"payment."+status,"timestamp":"2026-11-04T08:00:00Z","data":{
-            "id":MOCK_TXN,"provider":"airtel","amount":amount,
+            "id":webhook_txn_id,"provider":"airtel","amount":amount,
             "currency":"XAF","status":status,
             "merchant_reference":reference or attempt.merchant_reference,
             "provider_reference":"provider-ref-test",
@@ -153,8 +153,11 @@ class ParentPaymentTests(TestCase):
         self.assertEqual(self.webhook(attempt,amount="50000.00").status_code,409)
         attempt.refresh_from_db()
         self.assertEqual(attempt.state,"pending")
-        response=self.webhook(attempt)
+        # The signed webhook may expose a UUID, while initiation returned
+        # another provider transaction identifier (per published API examples).
+        response=self.webhook(attempt,webhook_txn_id="01a1918d-9bc8-7383-b422-79d779e1c1ea")
         self.assertEqual(response.status_code,200,response.content)
+        self.assertEqual(ParentPaymentAttempt.objects.get(pk=attempt.pk).transaction_id,MOCK_TXN)
         self.assertEqual(self.webhook(attempt).status_code,200)
         attempt.refresh_from_db()
         self.assertEqual(attempt.state,"success")
