@@ -3,6 +3,8 @@ from . import views, parent_signup_views
 
 urlpatterns = [
     path("csrf", views.csrf),
+    path("parents/registration-status", parent_signup_views.registration_status),
+    path("parents/resend-verification", parent_signup_views.resend_verification),
     path("parents/register", parent_signup_views.register),
     path("parents/verify", parent_signup_views.verify),
     path("me", views.me),
