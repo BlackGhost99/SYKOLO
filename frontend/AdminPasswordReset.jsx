@@ -4,8 +4,10 @@ import "./admin-password-reset.css";
 const csrf = () => document.cookie.split("; ").find(c=>c.startsWith("csrftoken="))?.split("=")[1]||"";
 
 /** Only shown to MFA-verified super-admins on the school member directory. */
-export default function AdminPasswordReset({schoolId,member,onClose}) {
+export default function AdminPasswordReset({schoolId,member,onClose,parent=false}) {
   const [reason,setReason]=useState("");
+  const [parentUsername,setParentUsername]=useState("");
+  const [parentEmail,setParentEmail]=useState("");
   const [currentPassword,setCurrentPassword]=useState("");
   const [identityVerified,setIdentityVerified]=useState(false);
   const [result,setResult]=useState(null);
@@ -20,11 +22,12 @@ export default function AdminPasswordReset({schoolId,member,onClose}) {
     try {
       const csrfResult=await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
       if(!csrfResult.ok)throw Error("Impossible de confirmer la session sécurisée.");
-      const response=await fetch("/api/v1/auth/password/admin-reset",{
+      const response=await fetch(parent?"/api/v1/auth/password/admin-parent-reset":"/api/v1/auth/password/admin-reset",{
         method:"POST",credentials:"same-origin",
         headers:{"Content-Type":"application/json","X-CSRFToken":csrf()},
-        body:JSON.stringify({school_id:schoolId,member_id:member.id,
-          reason:reason.trim(),current_password:currentPassword}),
+        body:JSON.stringify(parent?
+          {username:parentUsername.trim(),email:parentEmail.trim(),reason:reason.trim(),current_password:currentPassword}:
+          {school_id:schoolId,member_id:member.id,reason:reason.trim(),current_password:currentPassword}),
       });
       const payload=await response.json();
       if(!response.ok)throw Error(payload.error||"Réinitialisation refusée.");
@@ -44,9 +47,20 @@ export default function AdminPasswordReset({schoolId,member,onClose}) {
         <h2>Réinitialiser l'accès</h2>
         <button type="button" aria-label="Fermer" onClick={onClose}>×</button>
       </div>
-      <p>Compte : <strong>{member.name||member.username}</strong> ({member.username}).</p>
+      {parent?<p>Récupération d'un compte parent indépendant de l'école.</p>:
+        <p>Compte : <strong>{member.name||member.username}</strong> ({member.username}).</p>}
       <p className="ya-reset-context">YEM génère un lien privé permettant à cette personne de choisir son nouveau mot de passe. Vous ne verrez jamais son ancien mot de passe. Le MFA éventuel reste actif.</p>
       {!result ? <form onSubmit={submit}>
+        {parent&&<>
+          <label className="ya-field">Identifiant exact du compte parent
+            <input required maxLength={150} value={parentUsername}
+              autoComplete="off" onChange={e=>setParentUsername(e.target.value)} />
+          </label>
+          <label className="ya-field">Adresse e-mail exacte du compte parent
+            <input type="email" required maxLength={254} value={parentEmail}
+              autoComplete="off" onChange={e=>setParentEmail(e.target.value)} />
+          </label>
+        </>}
         <label className="ya-field">Motif obligatoire (10 caractères minimum)
           <textarea required rows={3} minLength={10} maxLength={240} value={reason}
             onChange={e=>setReason(e.target.value)} placeholder="Ex. Identité vérifiée au secrétariat à la demande du titulaire"/>
@@ -62,7 +76,7 @@ export default function AdminPasswordReset({schoolId,member,onClose}) {
         {error&&<p role="alert" className="ya-reset-error">{error}</p>}
         <div className="ya-modal-footer">
           <button type="button" className="ya-btn ya-btn-outline" onClick={onClose}>Annuler</button>
-          <button type="submit" className="ya-btn ya-btn-primary" disabled={busy||!identityVerified||reason.trim().length<10||!currentPassword}>
+          <button type="submit" className="ya-btn ya-btn-primary" disabled={busy||!identityVerified||reason.trim().length<10||!currentPassword||(parent&&(!parentUsername.trim()||!parentEmail.trim()))}>
             {busy?"Vérification…":"Générer le lien sécurisé"}
           </button>
         </div>
