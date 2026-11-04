@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, overview_views, organization_views
+from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views
 
 urlpatterns = [
     path("platform/dashboard", platform_admin_views.platform_dashboard),
@@ -12,6 +12,14 @@ urlpatterns = [
     path("platform/schools/<uuid:school_id>/members/<uuid:member_id>/action", platform_admin_views.platform_member_action),
     path("platform/schools/<uuid:school_id>/users", platform_views.platform_add_user),
     path("platform/schools/<uuid:school_id>/admin-access", platform_views.platform_assume_school_administration),
+    path("parents/paycentral/webhook", parent_payment_views.paycentral_webhook),
+    path("parents/notifications", parent_payment_views.family_notifications),
+    path("parents/applications/<uuid:application_id>/payments", parent_payment_views.parent_payment_status),
+    path("parents/applications/<uuid:application_id>/pay", parent_payment_views.parent_pay),
+    path("parents/applications/<uuid:application_id>/payment-refresh", parent_payment_views.parent_payment_refresh),
+    path("schools/<uuid:school_id>/admission-gateway", parent_payment_views.school_gateway),
+    path("schools/<uuid:school_id>/admission-fees", parent_payment_views.school_admission_fees),
+    path("schools/<uuid:school_id>/admission-payments", parent_payment_views.staff_admission_payments),
     path("parents/catalog", parent_admission_views.directory),
     path("parents/family-children", parent_admission_views.family_children),
     path("parents/applications", parent_admission_views.family_applications),
