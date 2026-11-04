@@ -30,6 +30,7 @@ const formatMoney = (amount, currency) =>
 export default function CashClosingPanel({schoolId, defaultDay}) {
   const [permissions,setPermissions]=useState([]);
   const [rows,setRows]=useState([]);
+  const [summary,setSummary]=useState(null);
   const [day,setDay]=useState(defaultDay || todayLocal());
   const [currency,setCurrency]=useState("XAF");
   const [counted,setCounted]=useState("");
@@ -44,18 +45,24 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
   const canApprove=permissions.includes("school.finance.reverse");
 
   async function reload() {
-    const result=await financeRequest(`schools/${schoolId}/finance/cash/closings`);
+    const [result,report]=await Promise.all([
+      financeRequest(`schools/${schoolId}/finance/cash/closings`),
+      financeRequest(`schools/${schoolId}/finance/summary`),
+    ]);
     setRows(result.closings || []);
+    setSummary(report);
   }
   useEffect(()=>{
     let alive=true;
     Promise.all([
       financeRequest(`schools/${schoolId}/my-access`),
       financeRequest(`schools/${schoolId}/finance/cash/closings`),
-    ]).then(([access,result])=>{
+      financeRequest(`schools/${schoolId}/finance/summary`),
+    ]).then(([access,result,report])=>{
       if (!alive) return;
       setPermissions(access.permissions||[]);
       setRows(result.closings||[]);
+      setSummary(report);
     }).catch(e=>{if(alive)setError(e.message);});
     return ()=>{alive=false;};
   },[schoolId]);
@@ -73,6 +80,22 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
   if(!canRead && !error)return null;
   return <section className="yd-cash-closing" aria-label="Clôture de caisse">
     <h3>Contrôle quotidien des espèces</h3>
+    {canRead&&summary&&<div style={{marginBottom:16}}>
+      <h4>Situation financière par devise</h4>
+      <p className="yd-card-sub">Montants déclarés manuellement par l'établissement, hors confirmations automatiques des banques et opérateurs mobiles.</p>
+      {Object.keys(summary.currencies).length===0
+        ?<p className="yd-card-sub">Aucun frais encore facturé.</p>
+        :<div className="yd-table-wrap"><table className="dense">
+          <thead><tr><th>Devise</th><th>Facturé</th><th>Encaissé</th><th>Restant dû</th><th>Échu et impayé</th></tr></thead>
+          <tbody>{Object.entries(summary.currencies).map(([devise,row])=><tr key={devise}>
+            <td>{devise}</td>
+            <td>{formatMoney(row.billed,devise)}</td>
+            <td>{formatMoney(row.paid,devise)}</td>
+            <td>{formatMoney(row.balance,devise)}</td>
+            <td>{formatMoney(row.overdue,devise)}</td>
+          </tr>)}</tbody>
+        </table></div>}
+    </div>}
     <p className="yd-card-sub">Seuls les encaissements en espèces effectivement enregistrés sont comptés. Les paiements Mobile Money et virements ne sont pas de l'argent en caisse.</p>
     {canReceive&&<form onSubmit={e=>{e.preventDefault();act(async()=>{
       await financeRequest(`schools/${schoolId}/finance/cash/closings`,{
