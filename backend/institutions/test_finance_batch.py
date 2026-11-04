@@ -3,6 +3,7 @@ import json
 import uuid
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
+from django.utils import timezone
 
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentBatch
@@ -82,7 +83,7 @@ class MultiFeeReceiptTests(TestCase):
                 for charge, amount in zip(self.charges, amounts)
             ],
             "method": "especes", "reference": "CAISSE-GABON-001",
-            "paid_on": "2026-11-04", "idempotency_key": idem or str(uuid.uuid4()),
+            "paid_on": timezone.localdate().isoformat(), "idempotency_key": idem or str(uuid.uuid4()),
         }
 
     def send(self, data):
@@ -151,7 +152,7 @@ class MultiFeeReceiptTests(TestCase):
         charge = self.charges[0]
         body = {
             "charge": str(charge.pk), "amount": "2500", "method": "especes",
-            "reference": "TEST", "paid_on": "2026-11-04",
+            "reference": "TEST", "paid_on": timezone.localdate().isoformat(),
             "idempotency_key": str(uuid.uuid4()),
         }
         response = self.client.post(self.base + "payments", json.dumps(body),
@@ -160,3 +161,96 @@ class MultiFeeReceiptTests(TestCase):
         self.assertIsNone(FeePayment.objects.get(pk=response.json()["id"]).batch)
         batch = self.send(self.payload(("50000", "20000")))
         self.assertEqual(batch.status_code, 422)
+
+    def post_closing(self, counted, note=""):
+        return self.client.post(self.base+"cash/closings", json.dumps({
+            "day": timezone.localdate().isoformat(), "currency": "XAF",
+            "counted": counted, "note": note,
+        }), content_type="application/json", HTTP_X_CSRFTOKEN=self.token)
+
+    def approve_closing(self, closing_id, note=""):
+        return self.client.post(self.base+"cash/closings/"+closing_id+"/approve",
+            json.dumps({"note": note}), content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.token)
+
+    def create_director(self):
+        User=get_user_model()
+        director=User.objects.create_user("batch-fin-director", password="Good Testing Pass 2026!")
+        SchoolMember.objects.create(
+            school=self.school,user=director,
+            role=SchoolRole.objects.get(school=self.school, code="direction"),
+        )
+        return director
+
+    def test_cash_close_blocks_new_cash_but_allows_idempotent_replay(self):
+        original=self.payload()
+        receipt=self.send(original)
+        self.assertEqual(receipt.status_code,201,receipt.content)
+        closing=self.post_closing("30000")
+        self.assertEqual(closing.status_code,201,closing.content)
+        self.assertEqual(closing.json()["expected"],"30000.00")
+        self.assertEqual(closing.json()["difference"],"0.00")
+        self.assertEqual(self.send(original).status_code,200)
+        self.assertEqual(self.send(self.payload(("100", "100"))).status_code,409)
+        self.assertEqual(self.post_closing("30000").status_code,409)
+        single={
+            "charge":str(self.charges[0].pk),"amount":"100",
+            "method":"especes","reference":"","paid_on":timezone.localdate().isoformat(),
+            "idempotency_key":str(uuid.uuid4()),
+        }
+        response=self.client.post(self.base+"payments", json.dumps(single),
+            content_type="application/json",HTTP_X_CSRFTOKEN=self.token)
+        self.assertEqual(response.status_code,409,response.content)
+        self.assertEqual(FeePayment.objects.count(),2)
+
+    def test_cash_variance_requires_justification_and_separate_approver(self):
+        self.assertEqual(self.post_closing("1000").status_code,422)
+        submitted=self.post_closing("1000","Comptage manuel différent du journal")
+        self.assertEqual(submitted.status_code,201,submitted.content)
+        data=submitted.json()
+        self.assertEqual(data["difference"],"1000.00")
+        director=self.create_director()
+        self.login(director)
+        self.assertEqual(self.approve_closing(data["id"],"trop court").status_code,422)
+        approved=self.approve_closing(data["id"],"Écart vérifié, justification consignée dans le journal")
+        self.assertEqual(approved.status_code,200,approved.content)
+        self.assertEqual(approved.json()["status"],"approved")
+        self.assertEqual(approved.json()["approved_by"],director.username)
+        self.assertEqual(self.approve_closing(data["id"],"Encore").status_code,409)
+
+    def test_cashier_cannot_approve_own_closure_even_as_director(self):
+        director=self.create_director()
+        self.login(director)
+        submitted=self.post_closing("0")
+        self.assertEqual(submitted.status_code,201,submitted.content)
+        self.assertEqual(self.approve_closing(submitted.json()["id"]).status_code,403)
+
+    def test_cash_closing_excludes_mobile_and_notes_post_closing_voids(self):
+        original=self.payload()
+        self.assertEqual(self.send(original).status_code,201)
+        external=self.payload(("100", "200"))
+        external["method"]="airtel_money"
+        self.assertEqual(self.send(external).status_code,201)
+        submitted=self.post_closing("30000")
+        self.assertEqual(submitted.status_code,201,submitted.content)
+        self.assertEqual(submitted.json()["expected"],"30000.00")
+        director=self.create_director()
+        self.login(director)
+        payment_id=FeePayment.objects.get(batch__idempotency_key=original["idempotency_key"],charge=self.charges[0]).pk
+        response=self.client.post(self.base+"payments/"+str(payment_id)+"/void", json.dumps({
+            "reason":"Annulation ultérieure avec justificatif disponible",
+        }),content_type="application/json",HTTP_X_CSRFTOKEN=self.token)
+        self.assertEqual(response.status_code,201,response.content)
+        closings=self.client.get(self.base+"cash/closings")
+        self.assertEqual(closings.status_code,200)
+        self.assertEqual(closings.json()["closings"][0]["adjustment_since_submission"],"-10000.00")
+
+    def test_teacher_cannot_create_or_approve_cash_closings(self):
+        director=self.create_director()
+        self.login(self.teacher)
+        self.assertEqual(self.post_closing("0").status_code,403)
+        self.assertEqual(self.client.get(self.base+"cash/closings").status_code,403)
+        self.login(director)
+        submitted=self.post_closing("0")
+        self.login(self.teacher)
+        self.assertEqual(self.approve_closing(submitted.json()["id"]).status_code,403)
