@@ -123,7 +123,7 @@ class CashTransferConcurrencyTests(TransactionTestCase):
     def test_parallel_handovers_cannot_reserve_the_same_cash(self):
         from concurrent.futures import ThreadPoolExecutor
         from threading import Barrier
-        from django.db import close_old_connections
+        from django.db import close_old_connections, connections
         from django.test import Client
         from .models import Organization, School
         from .finance_models import CashClosing, CashTransfer
@@ -142,7 +142,9 @@ class CashTransferConcurrencyTests(TransactionTestCase):
                 barrier.wait(timeout=10)
                 return clients[index].post(f"/api/v1/schools/{school.pk}/finance/cash/closings/{closing.pk}/transfers",json.dumps({"kind":"handover","amount":"60","reference":"parallel-"+str(index),"destination":"Trésorerie","day":timezone.localdate().isoformat()}),content_type="application/json").status_code
             finally:
-                close_old_connections()
+                # Worker threads must close live DB handles, not merely stale
+                # ones, or PostgreSQL will refuse Django's test DB teardown.
+                connections.close_all()
         with ThreadPoolExecutor(max_workers=2) as pool:
             codes = list(pool.map(submit,range(2)))
         self.assertEqual(sorted(codes),[201,409])
