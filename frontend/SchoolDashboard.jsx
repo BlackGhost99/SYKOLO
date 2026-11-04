@@ -1,3 +1,4 @@
+import DelegationManager from "./DelegationManager.jsx";
 import React, {useEffect,useState} from "react";
 import AcademicPanel from "./AcademicPanel.jsx";
 import StudentPanel from "./StudentPanel.jsx";
@@ -53,7 +54,7 @@ async function get(path) {
   if (!r.ok) throw Error(data.error||"Accès refusé");
   return data;
 }
-const defaultPerson={username:"",email:"",first_name:"",last_name:"",password:"",role:"enseignant"};
+const defaultPerson={username:"",email:"",first_name:"",last_name:"",password:"",role:"enseignant",function_codes:[]};
 const DEFAULT_ROLE_OPTIONS=[["direction","Direction"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]];
 async function addUser(schoolId, body, endpoint="users") {
   await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
@@ -66,34 +67,40 @@ async function addUser(schoolId, body, endpoint="users") {
 
 function UsersForm({schoolId,onMessage}) {
   const [person,setPerson]=useState(defaultPerson);
-  const [assignment,setAssignment]=useState({username:"",role:"enseignant",additional_roles:[]});
+  const [assignment,setAssignment]=useState({username:"",role:"enseignant",additional_roles:[],function_codes:[]});
   const [busy,setBusy]=useState(false);
-  const [roleOptions,setRoleOptions]=useState(DEFAULT_ROLE_OPTIONS);
+  const [roleOptions,setRoleOptions]=useState([]);
+  const [functions,setFunctions]=useState([]);
+  const [members,setMembers]=useState([]);
   useEffect(()=>{
     let alive=true;
+    get("schools/"+schoolId+"/members").then(result=>{if(alive)setMembers(result.members||[]);}).catch(err=>{if(alive)onMessage(err.message);});
     get("schools/"+schoolId+"/roles").then(result=>{
       if(!alive)return;
+      setFunctions(result.functions||[]);
       const options=(result.roles||[]).map(r=>[r.code,r.label]);
       if(options.length){
         setRoleOptions(options);
         setPerson(old=>options.some(([code])=>code===old.role)?old:{...old,role:options[0][0]});
       }
-    }).catch(()=>{if(alive)setRoleOptions(DEFAULT_ROLE_OPTIONS);});
+    }).catch(err=>{if(alive){setRoleOptions([]);onMessage(err.message);}});
     return()=>{alive=false;};
   },[schoolId]);
   return <Card title="Créer un compte pour l'établissement" icon="adduser" subtitle="Le compte est rattaché uniquement à cette école. Les droits dépendent de son rôle.">
-    <form onSubmit={async e=>{e.preventDefault();setBusy(true);onMessage("");try{const result=await addUser(schoolId,person);setPerson(defaultPerson);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
+    <form onSubmit={async e=>{e.preventDefault();setBusy(true);onMessage("");try{const result=await addUser(schoolId,person);setPerson(defaultPerson);setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
       {["first_name","last_name","username","email"].map(key=><label key={key}>{{first_name:"Prénom",last_name:"Nom",username:"Identifiant de connexion",email:"Email"}[key]}<input required value={person[key]} type={key==="email"?"email":"text"} onChange={e=>setPerson(x=>({...x,[key]:e.target.value}))}/></label>)}
       <label>Rôle<select value={person.role} onChange={e=>setPerson(x=>({...x,role:e.target.value}))}>{roleOptions.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
       <label>Mot de passe initial<input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>setPerson(x=>({...x,password:e.target.value}))}/></label>
-    </div><button className="pc-primary" type="submit" disabled={busy}>Créer le compte</button></form>
-    <form aria-label="Fonctions d'un compte existant" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await addUser(schoolId,assignment,"members");onMessage("Fonctions mises à jour.");}catch(err){onMessage(err.message);}finally{setBusy(false);}}}>
+    </div><fieldset><legend>Fonctions exercées (facultatives, sans droits automatiques)</legend>{functions.map(f=><label key={f.code}><input type="checkbox" checked={person.function_codes.includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...old.function_codes,f.code]:old.function_codes.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset><button className="pc-primary" type="submit" disabled={busy||!roleOptions.length}>Créer le compte</button></form>
+    <form aria-label="Fonctions d'un compte existant" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await addUser(schoolId,assignment,"members");setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Fonctions mises à jour.");}catch(err){onMessage(err.message);}finally{setBusy(false);}}}>
       <h3>Fonctions d'un compte existant</h3>
-      <label>Identifiant<input required value={assignment.username} onChange={e=>setAssignment({...assignment,username:e.target.value})}/></label>
+      <label>Compte existant<select required value={assignment.username} onChange={e=>{const m=members.find(x=>x.username===e.target.value);if(m)setAssignment({username:m.username,role:m.role,additional_roles:m.additional_roles||[],function_codes:m.function_codes||[]});}}><option value="">Choisir…</option>{members.map(m=><option key={m.user_id} value={m.username}>{m.username}</option>)}</select></label>
       <label>Rôle principal<select value={assignment.role} onChange={e=>setAssignment({...assignment,role:e.target.value})}>{roleOptions.map(([code,label])=><option key={code} value={code}>{label}</option>)}</select></label>
       <fieldset><legend>Fonctions supplémentaires (remplace la sélection précédente)</legend>{roleOptions.filter(([code])=>code!==assignment.role).map(([code,label])=><label key={code}><input type="checkbox" checked={assignment.additional_roles.includes(code)} onChange={e=>setAssignment(old=>({...old,additional_roles:e.target.checked?[...old.additional_roles,code]:old.additional_roles.filter(x=>x!==code)}))}/>{label}</label>)}</fieldset>
+      <fieldset><legend>Fonctions exercées (remplace la sélection précédente)</legend>{functions.map(f=><label key={f.code}><input type="checkbox" checked={assignment.function_codes.includes(f.code)} onChange={e=>setAssignment(old=>({...old,function_codes:e.target.checked?[...old.function_codes,f.code]:old.function_codes.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset>
       <button disabled={busy}>Enregistrer les fonctions</button>
     </form>
+    <DelegationManager schoolId={schoolId} onFunctions={setFunctions}/>
   </Card>;
 }
 

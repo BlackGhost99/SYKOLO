@@ -46,6 +46,18 @@ export default function FinancePanel({schoolId}) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [allowed, setAllowed] = useState(true);
+  const [permissions, setPermissions] = useState([]);
+  const canManage = permissions.includes("school.finance.manage");
+  const canReceive = permissions.includes("school.finance.receive");
+  const canReverse = permissions.includes("school.finance.reverse");
+  useEffect(() => {
+    let active = true;
+    setPermissions([]);
+    financeApi(root+"my-access").then(access => {
+      if (active) setPermissions(access.permissions || []);
+    }).catch(() => { if (active) setPermissions([]); });
+    return () => { active = false; };
+  }, [schoolId]);
 
   async function refresh() {
     const [ys, cs, es, ss, fs, ch] = await Promise.all([
@@ -108,6 +120,7 @@ export default function FinancePanel({schoolId}) {
   return <section className="card" aria-label="Frais scolaires et caisse" style={{marginTop:"1rem"}}>
     <h2>Frais scolaires et caisse</h2>
     <p className="hint">Comptabilité interne : les paiements sont enregistrés manuellement et ne déclenchent aucun transfert bancaire ou Mobile Money.</p>
+    {canManage && <>
     <h3>Configurer les frais d'une année</h3>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       await financeApi(finance+"schedules",{
@@ -148,14 +161,15 @@ export default function FinancePanel({schoolId}) {
       </div>
       <button disabled={busy||!selectedYear} type="submit">Créer le tarif</button>
     </form>
-    <h3>Affecter des frais à un élève</h3>
+    </>}
+    <h3>Consulter les frais d’un élève</h3>
     <label className="field">Inscription de l'élève
       <select value={selectedStudent} onChange={e=>{setSelectedStudent(e.target.value);setSelectedSchedule("");setSelectedCharge("");}}>
         <option value="">Choisir une inscription…</option>
         {enrollments.filter(e=>e.active).map(e=><option key={e.id} value={e.id}>{students.find(s=>s.id===e.student)?.last_name||"Élève"} · {classes.find(c=>c.id===e.classroom)?.name||"Classe"}</option>)}
       </select>
     </label>
-    <form onSubmit={e=>{e.preventDefault();run(async()=>{
+    {canManage && <form onSubmit={e=>{e.preventDefault();run(async()=>{
       await financeApi(finance+"charges",{enrollment:selectedStudent,schedule:selectedSchedule});
       setSelectedSchedule("");setMessage("Frais affecté à l'inscription.");
     });}}>
@@ -167,20 +181,21 @@ export default function FinancePanel({schoolId}) {
       </label>
       <button type="submit" disabled={busy||!selectedStudent||!selectedSchedule}>Affecter ce frais</button>
     </form>
+    }
     {statement&&<div>
       <h3>Relevé de situation</h3>
       {Object.entries(statement.totals).map(([currency,total])=><p key={currency}>
         {currency} — Facturé : <strong>{total.billed}</strong> · Encaissé : <strong>{total.paid}</strong> · Restant : <strong>{total.balance}</strong>
       </p>)}
     </div>}
-    <h3>Enregistrer un encaissement</h3>
+    <h3>Frais et encaissements</h3>
     <label className="field">Frais dû
       <select value={selectedCharge} onChange={e=>{setSelectedCharge(e.target.value);setPaymentKey(crypto.randomUUID());}}>
         <option value="">Choisir un frais…</option>
         {visibleCharges.map(c=><option key={c.id} value={c.id}>{c.label} · Solde {c.balance} {c.currency}</option>)}
       </select>
     </label>
-    {current&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
+    {canReceive&&current&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
       const payment=await financeApi(finance+"payments",{
         charge:selectedCharge,amount:payAmount,method:payMethod,
         reference:payReference,paid_on:payDate,idempotency_key:paymentKey,
@@ -215,9 +230,9 @@ export default function FinancePanel({schoolId}) {
       {payments.length===0?<p className="hint">Aucun encaissement pour ce frais.</p>:payments.map(p=><p key={p.id}>
         <strong>{p.amount} {p.currency}</strong> · {p.paid_on} · {p.method} · {p.voided?"Annulé":"Enregistré"} ·
         {" "}<a href={"/api/v1/"+finance+"payments/"+p.id+"/receipt"}>Reçu PDF</a>
-        {!p.voided&&<button type="button" disabled={busy} style={{marginLeft:"0.5rem"}} onClick={()=>{setCancelPayment(p.id);setCancelReason("");}}>Demander une annulation</button>}
+        {canReverse&&!p.voided&&<button type="button" disabled={busy} style={{marginLeft:"0.5rem"}} onClick={()=>{setCancelPayment(p.id);setCancelReason("");}}>Demander une annulation</button>}
       </p>)}
-      {cancelPayment && <form onSubmit={e=>{e.preventDefault();run(async()=>{
+      {canReverse && cancelPayment && <form onSubmit={e=>{e.preventDefault();run(async()=>{
         await financeApi(finance+"payments/"+cancelPayment+"/void",{reason:cancelReason});
         setCancelPayment("");setCancelReason("");setMessage("Encaissement annulé avec trace d'audit.");
       });}}>
@@ -225,7 +240,7 @@ export default function FinancePanel({schoolId}) {
         <label className="field">Motif précis de l'annulation
           <textarea required minLength={10} maxLength={1000} value={cancelReason} onChange={e=>setCancelReason(e.target.value)} />
         </label>
-        <button disabled={busy} type="submit">Confirmer l'annulation (direction)</button>
+        <button disabled={busy} type="submit">Confirmer l'annulation</button>
         <button type="button" onClick={()=>setCancelPayment("")}>Ne pas annuler</button>
       </form>}
     </>}
