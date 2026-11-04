@@ -49,7 +49,7 @@ function mount(mfaEnabled=true) {return render(<PlatformConsole user={{username:
 
 test("affiche uniquement les vraies informations de la console super-administrateur",async()=>{
   mount();
-  expect(await screen.findByText("Lycée Test")).toBeTruthy();
+  expect((await screen.findAllByText("Lycée Test")).length).toBeGreaterThan(0);
   expect(screen.getByRole("heading",{name:"Console d'administration YEM"})).toBeTruthy();
   expect(screen.getByText("Structures propriétaires")).toBeTruthy();
   expect(screen.getByText("Comptes des écoles actives")).toBeTruthy();
@@ -59,7 +59,7 @@ test("affiche uniquement les vraies informations de la console super-administrat
 
 test("filtres, recherche et pagination pilotent réellement le répertoire",async()=>{
   mount();
-  await screen.findByText("Lycée Test");
+  await screen.findAllByText("Lycée Test");
   const u=userEvent.setup();
   await u.type(screen.getByRole("searchbox",{name:"Rechercher un établissement"}),"absente");
   await waitFor(()=>expect(screen.getByText(/Aucun établissement ne correspond/)).toBeTruthy());
@@ -68,7 +68,7 @@ test("filtres, recherche et pagination pilotent réellement le répertoire",asyn
 
 test("l'ouverture d'un établissement est explicite et séparée de la plateforme",async()=>{
   mount();
-  await screen.findByText("Lycée Test");
+  await screen.findAllByText("Lycée Test");
   const u=userEvent.setup();
   await u.click(screen.getByRole("button",{name:/Ouvrir l'école/}));
   await screen.findByTestId("school-workspace");
@@ -79,7 +79,7 @@ test("l'ouverture d'un établissement est explicite et séparée de la plateform
 
 test("un changement de statut exige un motif",async()=>{
   mount();
-  await screen.findByText("Lycée Test");
+  await screen.findAllByText("Lycée Test");
   const u=userEvent.setup();
   await u.click(screen.getByRole("button",{name:"Suspendre"}));
   const dialog=screen.getByRole("dialog");
