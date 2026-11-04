@@ -17,6 +17,7 @@ export default function SchoolPaymentSetup({schoolId,years=[],classes=[]}) {
   const root="schools/"+schoolId+"/";
   const [gateway,setGateway]=useState(null);
   const [fees,setFees]=useState([]);
+  const [payments,setPayments]=useState([]);
   const [key,setKey]=useState("");
   const [secret,setSecret]=useState("");
   const [year,setYear]=useState("");
@@ -37,8 +38,8 @@ export default function SchoolPaymentSetup({schoolId,years=[],classes=[]}) {
   useEffect(()=>{if(!level||!levels.some(l=>l.id===level))setLevel(levels[0]?.id||"");},[levels,level]);
   useEffect(()=>{setAmount(String(current?.amount_xaf??1000));setActive(current?.active??true);},[current?.id,current?.revision,year,level]);
   useEffect(()=>{let live=true;
-    Promise.all([api(root+"admission-gateway"),api(root+"admission-fees")])
-    .then(([g,f])=>{if(live){setGateway(g);setFees(f.fees||[]);}})
+    Promise.all([api(root+"admission-gateway"),api(root+"admission-fees"),api(root+"admission-payments")])
+    .then(([g,f,p])=>{if(live){setGateway(g);setFees(f.fees||[]);setPayments(p.payments||[]);}})
     .catch(e=>{if(live)setNotice(e.message)});
     return()=>{live=false};
   },[schoolId]);
@@ -106,6 +107,21 @@ export default function SchoolPaymentSetup({schoolId,years=[],classes=[]}) {
       {gateway.mode==="live"&&!gateway.live_enabled_by_platform&&<p className="yp-error">Paiement réel désactivé par sécurité au niveau plateforme.</p>}
       <button className="yp-button yp-primary" type="submit" disabled={busy}>Enregistrer la passerelle</button>
     </form>
+    <h3 style={{marginTop:22}}>Transactions de candidature</h3>
+    <p>Vérifiez toujours le statut de paiement auprès du prestataire. Les transactions en simulation ne représentent pas des encaissements réels.</p>
+    <button type="button" className="yp-button" disabled={busy} onClick={()=>run(async()=>{
+      const response=await api(root+"admission-payments");
+      setPayments(response.payments||[]);setNotice("Liste actualisée.");
+    })}>Actualiser les transactions</button>
+    {payments.length===0?<p>Aucune tentative de paiement en ligne.</p>:
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",marginTop:12}}>
+        <thead><tr><th>Référence</th><th>Montant</th><th>Canal</th><th>État</th><th>Mode</th></tr></thead>
+        <tbody>{payments.map(p=><tr key={p.id}>
+          <td><code>{p.merchant_reference}</code></td>
+          <td>{Number(p.amount_xaf).toLocaleString("fr-FR")} FCFA</td>
+          <td>{p.channel}</td><td>{p.state}</td><td>{p.provider_mode==="sandbox"?"SIMULATION":"Réel"}</td>
+        </tr>)}</tbody>
+      </table></div>}
     {notice&&<p role="status">{notice}</p>}
   </section>;
 }
