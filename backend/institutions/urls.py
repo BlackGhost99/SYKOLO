@@ -1,5 +1,5 @@
 from django.urls import path
-from . import finance_batch_views, finance_cash_views
+from . import finance_batch_views, finance_cash_views, finance_summary_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, overview_views, organization_views
 
 urlpatterns = [
@@ -54,6 +54,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/finance/schedules/<uuid:schedule_id>", finance_views.schedule_detail),
     path("schools/<uuid:school_id>/finance/charges", finance_views.charges),
     path("schools/<uuid:school_id>/finance/charges/<uuid:charge_id>", finance_views.charge_detail),
+    path("schools/<uuid:school_id>/finance/summary", finance_summary_views.summary),
     path("schools/<uuid:school_id>/finance/payments", finance_views.payments),
     path("schools/<uuid:school_id>/finance/cash/closings", finance_cash_views.cash_closings),
     path("schools/<uuid:school_id>/finance/cash/closings/<uuid:closing_id>/approve", finance_cash_views.approve_cash_closing),
