@@ -105,6 +105,44 @@ class AssistedPasswordRecoveryTests(TestCase):
         self.member.save(update_fields=["active"])
         self.assertEqual(self.post(self.request_body()).status_code, 409)
 
+    def test_verified_parent_can_get_admin_assisted_reset_without_smtp(self):
+        parent = get_user_model().objects.create_user(
+            username="parent_ga", email="parent_ga@example.test",
+            password="Parent Original Secret Password 2026!", is_active=True,
+        )
+        self.login_superadmin()
+        response = self.post({
+            "username": "parent_ga", "email": "parent_ga@example.test",
+            "reason": "Pièce présentée et identité du parent vérifiée",
+            "current_password": "Super Admin Access 2027! Strong",
+        }, "/api/v1/auth/password/admin-parent-reset")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIn("reset_url", response.json())
+        self.assertEqual(PlatformAudit.objects.filter(
+            school__isnull=True, event="password_reset_link_issued").count(), 1)
+
+        params = parse_qs(urlparse(response.json()["reset_url"]).fragment.split("?", 1)[1])
+        data = {"uid": params["uid"][0], "token": params["token"][0],
+                "password": "Parent New Secret Password 2027!"}
+        self.assertEqual(self.post(data, "/api/v1/auth/password/reset/confirm").status_code, 200)
+        parent.refresh_from_db()
+        self.assertTrue(parent.check_password(data["password"]))
+
+    def test_parent_assist_rejects_organization_members_and_mismatched_emails(self):
+        self.login_superadmin()
+        endpoint = "/api/v1/auth/password/admin-parent-reset"
+        self.assertEqual(self.post({
+            "username": "directrice", "email": "directrice@example.test",
+            "reason": "Identité vérifiée par le secrétariat",
+            "current_password": "Super Admin Access 2027! Strong",
+        }, endpoint).status_code, 404)
+        self.assertEqual(self.post({
+            "username": "directrice", "email": "different@example.test",
+            "reason": "Identité vérifiée par le secrétariat",
+            "current_password": "Super Admin Access 2027! Strong",
+        }, endpoint).status_code, 404)
+        self.assertEqual(PlatformAudit.objects.filter(event="password_reset_link_issued").count(), 0)
+
     def test_requires_real_reason_and_valid_csrf(self):
         self.login_superadmin()
         self.assertEqual(self.post(self.request_body(reason="x")).status_code, 422)
