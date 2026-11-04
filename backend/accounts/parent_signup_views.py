@@ -17,9 +17,10 @@ from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
 
 from .security import audit, failure, is_locked, throttle_key
+from .models import AuthAudit
 from .views import payload
 
 User = get_user_model()
@@ -27,9 +28,32 @@ USERNAME = re.compile(r"[A-Za-z0-9_.@+-]{3,50}\Z")
 GENERIC = "Si votre inscription est recevable, un courriel de confirmation sera envoyé."
 
 
+def registration_ready():
+    return bool(settings.PASSWORD_RESET_ENABLED and settings.AUTH_PUBLIC_BASE_URL.startswith("https://")) or (
+        bool(settings.PASSWORD_RESET_ENABLED and settings.ENVIRONMENT in ("development", "test"))
+    )
+
+
+@require_GET
+def registration_status(request):
+    return JsonResponse({"email_registration_available": registration_ready(),
+                         "confirmation_valid_minutes": settings.PASSWORD_RESET_TIMEOUT // 60})
+
+
+def send_verification_email(user):
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    url = settings.AUTH_PUBLIC_BASE_URL.rstrip("/") + "/#/verify?uid=" + uid + "&token=" + token
+    send_mail("YEM : vérifier votre compte parent",
+              "Confirmez votre adresse email pour accéder à YEM Parents :\n" + url +
+              "\n\nCe lien expire au bout de 30 minutes. Si vous n’avez pas demandé ce compte, ignorez ce message.",
+              settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False)
+
+
+
 @require_POST
 def register(request):
-    if not settings.PASSWORD_RESET_ENABLED or not settings.AUTH_PUBLIC_BASE_URL:
+    if not registration_ready():
         return JsonResponse({"error": "Inscription indisponible : messagerie non configurée."}, status=503)
     data, error = payload(request)
     if error is not None:
@@ -65,14 +89,7 @@ def register(request):
                 username=username, first_name=first.strip(), last_name=last.strip(),
                 email=email, password=password, is_active=False, is_staff=False, is_superuser=False,
             )
-            token=default_token_generator.make_token(user)
-            uid=urlsafe_base64_encode(force_bytes(user.pk))
-            base=settings.AUTH_PUBLIC_BASE_URL.rstrip("/")
-            url=f"{base}/#/verify?uid={uid}&token={token}"
-            send_mail("YEM : vérifier votre compte parent",
-                      "Confirmez votre adresse email pour accéder à YEM Parents :\n"+url+
-                      "\n\nSi vous n'avez pas demandé ce compte, ignorez ce message.",
-                      settings.DEFAULT_FROM_EMAIL, [email], fail_silently=False)
+            send_verification_email(user)
     except IntegrityError:
         return JsonResponse({"message": GENERIC})
     except Exception:
@@ -101,3 +118,36 @@ def verify(request):
         user.save(update_fields=["is_active"])
     audit(request,"parent_registration_verified",user)
     return JsonResponse({"verified":True})
+
+
+@require_POST
+def resend_verification(request):
+    """Reissue an expired mail only for identities created through parent signup."""
+    if not registration_ready():
+        return JsonResponse({"error":"Messagerie de confirmation indisponible."}, status=503)
+    data, error = payload(request)
+    if error is not None:
+        return error
+    email = data.get("email")
+    if set(data) != {"email"} or not isinstance(email, str) or len(email) > 254:
+        return JsonResponse({"error":"Adresse e-mail invalide."}, status=422)
+    email = email.strip().lower()
+    try:
+        validate_email(email)
+    except ValidationError:
+        return JsonResponse({"error":"Adresse e-mail invalide."}, status=422)
+    key = throttle_key(request, "parent-resend", email)
+    generic = JsonResponse({"message": GENERIC})
+    if is_locked(key):
+        return generic
+    failure(key, limit=3)
+    user = User.objects.filter(email__iexact=email, is_active=False).order_by("pk").first()
+    if user is None or not AuthAudit.objects.filter(actor=user, event="parent_registration_requested").exists():
+        return generic
+    try:
+        send_verification_email(user)
+    except Exception:
+        audit(request, "parent_registration_resend_failed", user)
+        return JsonResponse({"error": "Envoi indisponible. Réessayez plus tard."}, status=503)
+    audit(request, "parent_registration_resent", user)
+    return generic
