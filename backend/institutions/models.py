@@ -146,3 +146,4 @@ from .timetable_models import TimetableRoom, TimetableSlot, TimetableEntry  # no
 from .admission_models import AdmissionApplication, AdmissionEvent, AdmissionPolicy, AdmissionDocument  # noqa: E402,F401
 
 from .parent_models import GuardianAccountLink  # noqa: E402,F401
+from .parent_admission_models import SchoolPublicListing, FamilyChild, ParentAdmissionRequest  # noqa: E402,F401

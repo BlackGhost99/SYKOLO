@@ -100,7 +100,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [page,setPage]=useState("dashboard");
   const [sub,setSub]=useState("");
   const [params,setParams]=useState(null);
-  const [isParent,setIsParent]=useState(false);
+  const [isParent,setIsParent]=useState(true);
   const [message,setMessage]=useState("");
   useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
   useEffect(()=>{let live=true;fetch("/api/v1/parents/children",{credentials:"same-origin"}).then(r=>r.ok?r.json():null).then(d=>{if(live&&d?.parent_role)setIsParent(true);}).catch(()=>{});return()=>{live=false;};},[]);

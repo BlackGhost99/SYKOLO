@@ -33,12 +33,15 @@ export default function AuthPanel() {
   const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [registerFirst, setRegisterFirst] = useState("");
+  const [registerLast, setRegisterLast] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(null);
   const [recovery, setRecovery] = useState([]);
   const [busy, setBusy] = useState(false);
   const link = new URLSearchParams(window.location.hash.split("?")[1] || "");
   const isResetLink = window.location.hash.startsWith("#/reset?");
+  const isVerifyLink = window.location.hash.startsWith("#/verify?");
 
   useEffect(() => {
     let mounted = true;
@@ -146,8 +149,18 @@ export default function AuthPanel() {
           <div className="actions">
             <button type="button" onClick={() => { setTab("login"); setMessage(""); }}>Connexion</button>
             <button type="button" onClick={() => { setTab("reset"); setMessage(""); }}>Mot de passe oublié</button>
+            <button type="button" onClick={() => { setTab("register"); setMessage(""); }}>Créer un compte parent</button>
           </div>
-          {isResetLink ? (
+          {isVerifyLink ? (
+            <form onSubmit={(e) => { e.preventDefault(); run(async () => {
+              await authApi("parents/verify", { uid: link.get("uid"), token: link.get("token") });
+              setTab("login"); setMessage("Compte parent activé. Connectez-vous avec votre identifiant.");
+              window.history.replaceState(null, "", window.location.pathname);
+            }); }}>
+              <p>Confirmez votre adresse e-mail afin d’activer votre compte YEM Parents.</p>
+              <button disabled={busy} type="submit">Activer mon compte</button>
+            </form>
+          ) : isResetLink ? (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               await authApi("password/reset/confirm", {
                 uid: link.get("uid"), token: link.get("token"), password: newPassword,
@@ -160,6 +173,22 @@ export default function AuthPanel() {
                 <input type="password" autoComplete="new-password" minLength={12} required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
               </label>
               <button disabled={busy}>Réinitialiser le mot de passe</button>
+            </form>
+          ) : tab === "register" ? (
+            <form onSubmit={(e) => { e.preventDefault(); run(async () => {
+              const result = await authApi("parents/register", {
+                username, first_name: registerFirst, last_name: registerLast,
+                email, password: newPassword,
+              });
+              setMessage(result.message); setTab("login"); setNewPassword("");
+            }); }}>
+              <p>Un seul compte parent pour plusieurs enfants et plusieurs écoles. Vérification par e-mail obligatoire.</p>
+              <label className="field">Prénom<input required maxLength={120} autoComplete="given-name" value={registerFirst} onChange={e=>setRegisterFirst(e.target.value)}/></label>
+              <label className="field">Nom<input required maxLength={120} autoComplete="family-name" value={registerLast} onChange={e=>setRegisterLast(e.target.value)}/></label>
+              <label className="field">Identifiant<input required minLength={3} maxLength={50} autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label>
+              <label className="field">Adresse e-mail<input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)}/></label>
+              <label className="field">Mot de passe (au moins 12 caractères)<input required type="password" minLength={12} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></label>
+              <button disabled={busy} type="submit">Créer mon compte parent</button>
             </form>
           ) : tab === "reset" ? (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {

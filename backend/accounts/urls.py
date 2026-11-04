@@ -1,8 +1,10 @@
 from django.urls import path
-from . import views
+from . import views, parent_signup_views
 
 urlpatterns = [
     path("csrf", views.csrf),
+    path("parents/register", parent_signup_views.register),
+    path("parents/verify", parent_signup_views.verify),
     path("me", views.me),
     path("login", views.sign_in),
     path("logout", views.sign_out),
