@@ -61,7 +61,8 @@ export default function AdmissionsPanel({schoolId,canDecide=false}){
     if(!year)return;
     const params=new URLSearchParams({year,...(selectedLevel?{level:selectedLevel}:{})});
     admissionApi(base+"/policy?"+params.toString())
-      .then(result=>{if(live)setRoutePolicy(result)})
+      .then(result=>{if(live){setRoutePolicy(result);
+        setRoute(current=>result.enabled_routes.includes(current)?current:result.enabled_routes[0]);}})
       .catch(err=>{if(live)setMessage(err.message)});
     return()=>{live=false;};
   },[base,year,selectedLevel]);
@@ -76,11 +77,11 @@ export default function AdmissionsPanel({schoolId,canDecide=false}){
   return <section className="card" style={{marginTop:"1rem"}} aria-label="Admissions et préinscriptions">
     <h2>Admissions et préinscriptions</h2>
     <p className="hint">Trois voies possibles : inscription directe, concours/test ou affectation. Le secrétariat prépare les dossiers ; la direction statue. Une admission ne vaut ni inscription définitive ni paiement.</p>
-    {canDecide&&<details className="ar-settings">
+    <details className="ar-settings">
       <summary>Configurer les voies et pièces exigées par année / niveau</summary>
       <AdmissionPolicyEditor api={admissionApi} base={base} year={year} level={selectedLevel}
         canDecide={canDecide} onSaved={next=>{setRoutePolicy(next);if(!next.enabled_routes.includes(route))setRoute(next.enabled_routes[0]);}}/>
-    </details>}
+    </details>
     <h3>Nouvelle candidature</h3>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       const application=await admissionApi(base,{
