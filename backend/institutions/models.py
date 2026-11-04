@@ -79,6 +79,34 @@ class SchoolSetting(models.Model):
         ]
 
 
+class SchoolAdminPolicy(models.Model):
+    """Platform-managed commercial limits; null means unlimited.
+
+    This record is not an invoice or a payment subscription. It is kept separate
+    from pedagogical settings so school administrators cannot raise their caps.
+    """
+    school = models.OneToOneField(School, on_delete=models.CASCADE, related_name="admin_policy")
+    plan_name = models.CharField(max_length=80, default="Sans formule")
+    max_users = models.PositiveIntegerField(null=True, blank=True)
+    max_students = models.PositiveIntegerField(null=True, blank=True)
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class PlatformAudit(models.Model):
+    """Record high-impact platform actions without storing credentials."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    school = models.ForeignKey(School, on_delete=models.SET_NULL, null=True, blank=True)
+    event = models.CharField(max_length=48, db_index=True)
+    subject = models.CharField(max_length=180)
+    reason = models.CharField(max_length=240, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class SchoolAudit(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="audit_events")
