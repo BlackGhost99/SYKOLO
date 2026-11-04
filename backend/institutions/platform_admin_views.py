@@ -1,4 +1,5 @@
 """API de pilotage YEM. Reserved to MFA-verified platform super-admins."""
+from uuid import UUID
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Q
@@ -274,9 +275,12 @@ def platform_school_action(request, school_id):
                 if value is not None and (type(value) is not int or not 1 <= value <= 1000000):
                     return JsonResponse({"error": "Un plafond doit être un entier positif ou vide."}, status=422)
                 caps[key] = value
-            policy, _ = SchoolAdminPolicy.objects.select_for_update().get_or_create(school=school)
-            if policy.revision != (revision or 1):
-                return JsonResponse({"error": "Les paramètres ont changé. Rechargez la fiche.", "revision": policy.revision}, status=409)
+            policy = SchoolAdminPolicy.objects.select_for_update().filter(school=school).first()
+            current_revision = policy.revision if policy else 0
+            if current_revision != revision:
+                return JsonResponse({"error": "Les paramètres ont changé. Rechargez la fiche.", "revision": current_revision}, status=409)
+            if policy is None:
+                policy = SchoolAdminPolicy(school=school)
             policy.plan_name = label.strip()
             policy.max_users = caps["max_users"]
             policy.max_students = caps["max_students"]
@@ -312,7 +316,11 @@ def platform_member_action(request, school_id, member_id):
             return JsonResponse({"error": "Les comptes de plateforme ne se modifient pas ici."}, status=403)
         action = body.get("action")
         if action == "role":
-            role = SchoolRole.objects.filter(school=school, pk=body.get("role_id")).first()
+            try:
+                valid_role_id = UUID(str(body.get("role_id")))
+            except (ValueError, TypeError, AttributeError):
+                return JsonResponse({"error": "Identifiant de rôle invalide."}, status=422)
+            role = SchoolRole.objects.filter(school=school, pk=valid_role_id).first()
             if role is None:
                 return JsonResponse({"error": "Rôle inconnu pour cet établissement."}, status=422)
             member.role = role
@@ -345,7 +353,12 @@ def platform_audit(request):
     if not platform_only(request):
         return denied()
     school_id = request.GET.get("school_id") or None
-    if school_id and not School.objects.filter(pk=school_id).exists():
-        return JsonResponse({"error": "Établissement introuvable."}, status=404)
+    if school_id:
+        try:
+            school_id = UUID(str(school_id))
+        except (ValueError, TypeError, AttributeError):
+            return JsonResponse({"error": "Identifiant d'établissement invalide."}, status=422)
+        if not School.objects.filter(pk=school_id).exists():
+            return JsonResponse({"error": "Établissement introuvable."}, status=404)
     limit = size(request.GET.get("limit"), default=50, upper=100)
     return JsonResponse({"events": recent_events(limit, school_id)})
