@@ -14,7 +14,7 @@ from .admission_models import AdmissionApplication, AdmissionEvent
 from .academic_models import AcademicYear, AcademicClass
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import validate_enrollment_slot
-from .services import has_permission
+from .services import has_permission, quota_reached
 from .views import access, refuse, parse_body, log_event
 
 CODE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}\Z")
@@ -273,6 +273,10 @@ def convert(request, school_id, application_id):
                 if student_code and student_code != student.student_code:
                     return fail("Le matricule existant ne peut être remplacé ici.", 409)
             else:
+                from .models import School
+                School.objects.select_for_update().get(pk=school.pk)
+                if quota_reached(school, "students"):
+                    return fail("Plafond d'élèves atteint pour cet établissement.", 409)
                 student = Student(
                     school=school, student_code=student_code,
                     first_name=row.first_name, last_name=row.last_name,
