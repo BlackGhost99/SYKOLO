@@ -211,7 +211,7 @@ class MultiFeeReceiptTests(TestCase):
         self.assertEqual(data["difference"],"1000.00")
         director=self.create_director()
         self.login(director)
-        self.assertEqual(self.approve_closing(data["id"],"trop court").status_code,422)
+        self.assertEqual(self.approve_closing(data["id"],"court").status_code,422)
         approved=self.approve_closing(data["id"],"Écart vérifié, justification consignée dans le journal")
         self.assertEqual(approved.status_code,200,approved.content)
         self.assertEqual(approved.json()["status"],"approved")
