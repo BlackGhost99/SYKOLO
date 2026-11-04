@@ -168,6 +168,29 @@ class ParentPaymentTests(TestCase):
         self.assertEqual(FeePayment.objects.count(),0)
         self.assertEqual(Enrollment.objects.count(),0)
 
+    def test_signed_webhook_before_initiation_response_keeps_canonical_id_empty(self):
+        # A signed event can beat the initiation response. PayCentral's
+        # webhook data.id may be a UUID rather than the initiation ULID.
+        import uuid
+        app_id = self.apply()
+        attempt = ParentPaymentAttempt.objects.create(
+            request_id=app_id, school=self.school, payer=self.parent,
+            amount_xaf=2500, channel="airtel", payer_phone=PHONE,
+            provider_mode="sandbox", merchant_reference="YEM-" + uuid.uuid4().hex,
+        )
+        result = self.webhook(
+            attempt, webhook_txn_id="01a1918d-9bc8-7383-b422-79d779e1c1ea",
+        )
+        self.assertEqual(result.status_code, 200, result.content)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.state, "success")
+        self.assertIsNone(attempt.transaction_id)
+        # Later, the initiation response can safely establish the real ID.
+        attempt.transaction_id = MOCK_TXN
+        attempt.save(update_fields=["transaction_id"])
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.transaction_id, MOCK_TXN)
+
     def test_cross_tenant_and_cross_parent_are_forbidden(self):
         app_id=self.apply()
         self.login(self.other)
