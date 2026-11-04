@@ -7,7 +7,8 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 from .models import Organization, OrganizationMember, School, SchoolMember, SchoolRole
-from .services import ROLE_TEMPLATES, school_response, quota_reached
+from .services import ROLE_TEMPLATES, school_response, quota_reached, role_templates_for_profile
+from .school_profiles import profile_fields
 from .views import parse_body, log_event, string
 
 
@@ -55,6 +56,10 @@ def platform_schools(request):
         return JsonResponse({"error": "Responsable initial : propriétaire ou direction uniquement."}, status=422)
     if not isinstance(password, str):
         return JsonResponse({"error": "Mot de passe requis."}, status=422)
+    try:
+        school_type, enabled_cycles = profile_fields(data)
+    except ValidationError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
     User = get_user_model()
     candidate = User(username=username.strip(), email=email.strip(), first_name=first_name.strip(), last_name=last_name.strip())
     try:
@@ -71,8 +76,9 @@ def platform_schools(request):
             # Un propriétaire nommé pour une école existante ne devient pas propriétaire de tout le groupe.
             if role_code == "proprietaire" and existing_org is None:
                 OrganizationMember.objects.create(organization=org, user=user, role="founder")
-            school = School.objects.create(organization=org, name=school_name.strip())
-            templates = list(ROLE_TEMPLATES)
+            school = School.objects.create(organization=org, name=school_name.strip(),
+                                            school_type=school_type, enabled_cycles=enabled_cycles)
+            templates = role_templates_for_profile(school_type, enabled_cycles)
             if role_code == "proprietaire":
                 direction_perms = next(perms for code, _, perms in templates if code == "direction")
                 templates.append(("proprietaire", "Propriétaire", direction_perms))
