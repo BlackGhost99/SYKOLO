@@ -81,7 +81,7 @@ test("un changement de statut exige un motif",async()=>{
   mount();
   await screen.findAllByText("Lycée Test");
   const u=userEvent.setup();
-  await u.click(screen.getByRole("button",{name:"Suspendre"}));
+  await u.click(await screen.findByRole("button",{name:"Suspendre"}));
   const dialog=screen.getByRole("dialog");
   const confirm=within(dialog).getByRole("button",{name:"Confirmer"});
   expect(confirm.disabled).toBe(true);
