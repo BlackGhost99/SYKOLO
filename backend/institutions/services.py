@@ -69,10 +69,11 @@ def effective_permissions(user, school):
     member = SchoolMember.objects.select_related("role").prefetch_related("additional_roles").filter(
         school=school, user=user, active=True, role__school=school
     ).first()
+    founder_permissions = {"school.members.write"} if owns_organization(user, school.organization) else set()
     if not member:
-        return set()
+        return founder_permissions
     roles = [member.role, *member.additional_roles.filter(school=school)]
-    return set().union(*(set(role.permissions) for role in roles))
+    return founder_permissions | set().union(*(set(role.permissions) for role in roles))
 
 
 

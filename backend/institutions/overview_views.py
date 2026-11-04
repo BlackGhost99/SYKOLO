@@ -55,7 +55,7 @@ def primary_guardians(school, student_ids):
 
 
 def enrollment_balances(school, enrollment_ids, requested_currency=None):
-    """Billed, cleared payments and balance per enrollment, in the school's main currency."""
+    """Balances in the explicitly selected currency; other currencies stay selectable."""
     charges = list(FeeCharge.objects.filter(school=school, enrollment_id__in=enrollment_ids).values("id", "enrollment_id", "amount", "currency", "due_date"))
     currencies = sorted({c["currency"] for c in charges})
     currency = requested_currency or (currencies[0] if currencies else "XAF")
@@ -175,7 +175,7 @@ def finance_overview(request, school_id):
         return JsonResponse({"error": "Année scolaire introuvable."}, status=422)
     if request.GET.get("currency") and not CURRENCY_PATTERN.fullmatch(request.GET["currency"]):
         return JsonResponse({"error": "Devise ISO invalide."}, status=422)
-    enrollments = {e.pk: e for e in Enrollment.objects.select_related("student", "classroom").filter(school=school, active=True, **({"year": year} if year else {}))}
+    enrollments = {e.pk: e for e in Enrollment.objects.select_related("student", "classroom").filter(school=school, **({"year": year} if year else {}))}
     currency, balances = enrollment_balances(school, list(enrollments), request.GET.get("currency"))
     payments = FeePayment.objects.filter(school=school, void__isnull=True, charge__enrollment__year=year)
     if currency:
