@@ -8,6 +8,7 @@ urlpatterns = [
     path("platform/schools", platform_views.platform_schools),
     path("platform/schools/<uuid:school_id>/detail", platform_admin_views.platform_school_detail),
     path("platform/schools/<uuid:school_id>/action", platform_admin_views.platform_school_action),
+    path("platform/schools/<uuid:school_id>/members", platform_admin_views.platform_school_members),
     path("platform/schools/<uuid:school_id>/members/<uuid:member_id>/action", platform_admin_views.platform_member_action),
     path("platform/schools/<uuid:school_id>/users", platform_views.platform_add_user),
     path("platform/schools/<uuid:school_id>/admin-access", platform_views.platform_assume_school_administration),
