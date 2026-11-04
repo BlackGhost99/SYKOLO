@@ -10,12 +10,15 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from accounts.views import authorized
 
-from .admission_models import AdmissionApplication, AdmissionEvent
-from .academic_models import AcademicYear, AcademicClass
+from .admission_models import AdmissionApplication, AdmissionEvent, AdmissionPolicy, AdmissionDocument
+from .academic_models import AcademicYear, AcademicClass, AcademicLevel
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import validate_enrollment_slot
 from .services import has_permission, quota_reached
 from .views import access, refuse, parse_body, log_event
+from .admission_policy import (ROUTES, DOCUMENT_CODE, effective_policy, policy_view,
+                               policy_key, validate_policy, required_for_route,
+                               admission_blocker)
 
 CODE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}\Z")
 SOURCE_CODE = re.compile(r"[a-z0-9][a-z0-9_-]{0,47}\Z")
@@ -86,6 +89,9 @@ def render(row):
         "guardian_phone": row.guardian_phone,
         "guardian_email": row.guardian_email,
         "source": row.source, "status": row.status,
+        "route": row.route, "origin_school": row.origin_school,
+        "route_reference": row.route_reference, "orientation_authority": row.orientation_authority,
+        "external_result": row.external_result, "required_documents": row.required_documents,
         "decision_reason": row.decision_reason, "revision": row.revision,
         "submitted_at": row.submitted_at.isoformat(),
         "decided_at": row.decided_at.isoformat() if row.decided_at else None,
@@ -120,6 +126,11 @@ def applications(request, school_id):
             if classroom_id is None:
                 return fail("Classe invalide.")
             rows = rows.filter(classroom_id=classroom_id)
+        if "route" in request.GET:
+            route = request.GET.get("route")
+            if route not in ROUTES:
+                return fail("Voie d'admission inconnue.")
+            rows = rows.filter(route=route)
         if "status" in request.GET:
             code = request.GET.get("status")
             if code not in ("submitted", "review", "accepted", "rejected", "enrolled"):
@@ -132,7 +143,8 @@ def applications(request, school_id):
         return error
     required = {"year", "classroom", "first_name", "last_name", "guardian_name", "source"}
     allowed = required | {"date_of_birth", "guardian_relationship",
-                          "guardian_phone", "guardian_email", "existing_student"}
+                          "guardian_phone", "guardian_email", "existing_student",
+                          "route", "origin_school", "route_reference", "orientation_authority"}
     if not isinstance(data, dict) or set(data) - allowed or not required <= set(data):
         return fail("Champs de préinscription incorrects.")
     try:
@@ -151,18 +163,34 @@ def applications(request, school_id):
         source = data["source"]
         if not isinstance(source, str) or not SOURCE_CODE.fullmatch(source):
             raise ValueError("Source de candidature invalide.")
+        route = data.get("route", "direct")
+        if route not in ROUTES:
+            raise ValueError("Voie d'admission invalide.")
+        origin_school = name(data.get("origin_school", ""), 180)
+        route_reference = name(data.get("route_reference", ""), 140)
+        orientation_authority = name(data.get("orientation_authority", ""), 120)
+        if route != "orientation" and orientation_authority:
+            raise ValueError("L'autorité d'orientation concerne uniquement les affectations.")
         if not AcademicYear.objects.filter(school=school, pk=year_id, active=True).exists():
             raise ValueError("Année scolaire inactive ou étrangère.")
         if not AcademicClass.objects.filter(school=school, year_id=year_id, pk=class_id, active=True).exists():
             raise ValueError("Classe inactive ou étrangère.")
         if existing_id and not Student.objects.filter(school=school, pk=existing_id, active=True).exists():
             raise ValueError("Élève existant introuvable.")
+        target_class = AcademicClass.objects.select_related("level").get(pk=class_id, school=school)
+        policy = effective_policy(school, target_class.year, target_class.level)
+        if route not in (policy.enabled_routes if policy else ROUTES):
+            raise ValueError("Cette voie d'admission est désactivée pour le niveau.")
+        required_docs = required_for_route(route, policy)
         with transaction.atomic():
             row = AdmissionApplication(
                 school=school, year_id=year_id, classroom_id=class_id, existing_student_id=existing_id,
                 first_name=first, last_name=last, date_of_birth=birth, guardian_name=guardian,
                 guardian_relationship=relation, guardian_phone=phone, guardian_email=email,
-                source=source, submitted_by=request.user,
+                source=source, submitted_by=request.user, route=route,
+                origin_school=origin_school, route_reference=route_reference,
+                orientation_authority=orientation_authority,
+                required_documents=required_docs,
             )
             row.full_clean()
             row.save()
@@ -213,6 +241,10 @@ def decide(request, school_id, application_id):
             return JsonResponse({"error": "Conflit de version.", "revision": row.revision}, status=409)
         if status not in ALLOWED_TRANSITIONS.get(row.status, set()):
             return fail("Transition de candidature non autorisée.", 409)
+        if status == "accepted":
+            blocker = admission_blocker(row)
+            if blocker:
+                return fail(blocker, 409)
         previous = row.status
         row.status = status
         row.revision += 1
