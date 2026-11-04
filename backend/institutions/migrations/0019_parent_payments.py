@@ -6,6 +6,18 @@ from django.db.models import Q
 import django.db.models.deletion
 
 
+def secure_new_parent_tables(apps, schema_editor):
+    """RLS defence-in-depth for newly created tables on Supabase/PostgreSQL."""
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    for name in ("SchoolAdmissionFee", "SchoolPaymentGateway", "ParentPaymentAttempt"):
+        model = apps.get_model("institutions", name)
+        schema_editor.execute(
+            "ALTER TABLE %s ENABLE ROW LEVEL SECURITY"
+            % schema_editor.quote_name(model._meta.db_table)
+        )
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("institutions", "0018_school_appointments"),
@@ -93,4 +105,5 @@ class Migration(migrations.Migration):
             model_name="parentpaymentattempt",
             constraint=models.CheckConstraint(condition=Q(amount_xaf__gte=100, amount_xaf__lte=10000000), name="parent_payment_amount_range"),
         ),
+        migrations.RunPython(secure_new_parent_tables, migrations.RunPython.noop),
     ]
