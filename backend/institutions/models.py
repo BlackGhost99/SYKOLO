@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from .school_profiles import SCHOOL_TYPES, validate_profile
 
 
 class Organization(models.Model):
@@ -29,8 +30,15 @@ class School(models.Model):
     name = models.CharField(max_length=180)
     short_name = models.CharField(max_length=60, blank=True)
     primary_color = models.CharField(max_length=7, default="#1B664C")
+    school_type = models.CharField(max_length=24, choices=SCHOOL_TYPES, default="a_configurer")
+    enabled_cycles = models.JSONField(default=list)
+    profile_revision = models.PositiveIntegerField(default=1)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        super().clean()
+        validate_profile(self.school_type, self.enabled_cycles)
 
 
 class SchoolRole(models.Model):
