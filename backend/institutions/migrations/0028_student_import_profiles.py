@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="StudentImportProfile",
             fields=[
-                ("id", models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)),
+                ("id", models.UUIDField(primary_key=True, serialize=False, default=uuid.uuid4, editable=False)),
                 ("name", models.CharField(max_length=80)),
                 ("headers", models.JSONField(default=list)),
                 ("mapping", models.JSONField(default=dict)),
@@ -27,7 +27,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="StudentImportBatch",
             fields=[
-                ("id", models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)),
+                ("id", models.UUIDField(primary_key=True, serialize=False, default=uuid.uuid4, editable=False)),
                 ("fingerprint", models.CharField(max_length=64)),
                 ("row_count", models.PositiveIntegerField()),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
