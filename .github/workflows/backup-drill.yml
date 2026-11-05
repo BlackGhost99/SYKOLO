@@ -45,13 +45,10 @@ jobs:
               apk add --no-cache bash gnupg python3 coreutils >/dev/null
               export YEM_BACKUP_DIR=/tmp/yem-drill-encrypted
               bash scripts/yem_backup.sh
-              source scripts/yem_pg_env.sh
-              yem_set_pg_env "$YEM_BACKUP_DATABASE_URL"
-              psql -X -v ON_ERROR_STOP=1 -c "CREATE DATABASE yem_drill_ci"
+              psql --dbname="$YEM_BACKUP_DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "CREATE DATABASE yem_drill_ci"
               export YEM_RESTORE_ARCHIVE="$(find /tmp/yem-drill-encrypted -name "*.pgdump.gpg" | head -1)"
               bash scripts/yem_restore_drill.sh
-              yem_set_pg_env "$YEM_DRILL_DATABASE_URL"
-              test "$(psql -X -At -c "SELECT count(*) FROM institutions_student")" = 1
+              test "$(psql --dbname="$YEM_DRILL_DATABASE_URL" -X -At -c "SELECT count(*) FROM institutions_student")" = 1
               rm -rf /tmp/yem-drill-encrypted
             '
       - name: Confirmation
