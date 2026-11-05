@@ -19,3 +19,11 @@ Supprimer le CSV à colonnes fixes. Les écoles apportent leurs propres feuilles
 
 ## Limites connues et suites
 Cette livraison couvre le référentiel élèves, un responsable principal et l'inscription facultative dans une classe existante. Les importations personnel, enseignants, historiques de bulletins, soldes financiers et rapprochements seront des modules séparés afin de préserver les permissions et les responsabilités financières. Pas d'import direct de documents médicaux, pas de rapprochement probabiliste automatique, pas de fusion automatique de doublons. Une matrice de fichiers anonymisés provenant de plusieurs écoles doit encore faire l'objet d'une recette.
+
+
+## Export CSV (extension P0)
+Les gestionnaires détenteurs du droit school.students.manage peuvent télécharger sur demande explicite un export CSV de leur école, facultativement limité à une année scolaire. Il comprend identité élève, classe et année, responsable légal principal et champs personnalisés visibles à l'école. L'export ne comprend pas les paiements, mots de passe, comptes parents ou justificatifs.
+
+L'export est servi en téléchargement privé non mis en cache ; les champs texte qui pourraient être interprétés comme formules Excel sont neutralisés. Les opérations sont auditées, les fichiers restent sous la responsabilité de l'établissement et ne doivent pas être envoyés via des canaux non sécurisés. Limite 10 000 élèves par export, au-delà fractionner par année. L'API est POST /api/v1/schools/{school_id}/imports/students/export avec un corps JSON facultatif {"year":"uuid"}.
+
+Un registre élève sans colonne parent/tuteur reste importable. L'aperçu signale chaque dossier familial incomplet ; aucune identité familiale fictive ni aucun droit d'accès parent n'est créé. Une colonne téléphone du tuteur sans nom de tuteur est bloquée pour éviter une perte de donnée silencieuse. L'école régularise ces informations ensuite.

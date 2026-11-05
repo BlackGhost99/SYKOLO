@@ -4,7 +4,9 @@ No arbitrary workbook macros, remote fetches, generated finance or implicit pare
 The uploaded file is re-sent for commit, fingerprinted and validated again under
 the same school lock used by manual registrations. No server file staging.
 """
+import csv
 import hashlib
+import io
 import json
 import re
 from collections import Counter
@@ -15,7 +17,8 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
-from django.http import JsonResponse
+from django.db.models import Prefetch
+from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 from accounts.views import authorized
@@ -30,7 +33,7 @@ from .registration_views import next_student_code
 from .services import quota_reached
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import parse_fields, validate_enrollment_slot
-from .views import log_event
+from .views import log_event, parse_body
 
 TOKEN_SALT = "yem.students.import.preview.v1"
 STUDENT_KEYS = {"student_code", "first_name", "last_name", "date_of_birth", "admission_date",
@@ -101,11 +104,15 @@ def prepare_school_row(school, config, extracted, year_id):
         "phone": raw.get("guardian_phone", ""), "email": raw.get("guardian_email", ""),
         "profession": raw.get("guardian_profession", ""), "address": raw.get("guardian_address", "")
     }
-    guardian = parse_fields({k: v for k, v in guardian_values.items() if v != ""},
-                            GUARDIAN_KEYS, ("full_name",))
-    if guardian.get("email"):
-        validate_email(guardian["email"])
-    guardian["is_primary"] = True
+    guardian = None
+    if guardian_values["full_name"]:
+        guardian = parse_fields({k: v for k, v in guardian_values.items() if v != ""},
+                                GUARDIAN_KEYS, ("full_name",))
+        if guardian.get("email"):
+            validate_email(guardian["email"])
+        guardian["is_primary"] = True
+    elif any(v for k, v in guardian_values.items() if k != "full_name"):
+        raise ValueError("Coordonnées du responsable sans nom : corrigez ou ignorez ces colonnes.")
     extra = {}
     questions = {q["key"]: q for q in config.get("custom_fields", [])}
     for k, v in raw.items():
@@ -116,7 +123,7 @@ def prepare_school_row(school, config, extracted, year_id):
             raise ValueError("Ce champ personnalisé n'est pas une information d'élève.")
         if q["type"] == "number":
             try:
-                v = float(v) if "." in v.replace(",", ".") else int(v)
+                v = float(v.replace(",", ".")) if "." in v.replace(",", ".") else int(v)
             except ValueError:
                 raise ValueError("Nombre invalide pour « " + q["label"] + " ».") from None
         elif q["type"] == "yesno":
@@ -128,7 +135,13 @@ def prepare_school_row(school, config, extracted, year_id):
             v = parse_date(v)
         extra[q["key"]] = v
     extra, _ = clean_answers(config, extra, {})
-    check_base(config, student, guardian)
+    if guardian is None:
+        # A register containing only learners remains importable, without inventing relatives.
+        student_rules = {"fields": {k: v for k, v in config.get("fields", {}).items()
+                                    if not k.startswith("guardian_")}}
+        check_base(student_rules, student, {})
+    else:
+        check_base(config, student, guardian)
     classroom = pick_class(school, year_id, raw.get("classroom", ""))
     return {"student": student, "guardian": guardian, "extra": extra, "classroom": classroom}
 
@@ -173,8 +186,11 @@ def evaluate(school, table, mapping, year_id, config):
                     raise ValueError("Capacité de la classe dépassée.")
         except (ValueError, ValidationError, KeyError, TypeError) as exc:
             error = "; ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
+        warning = ("Responsable légal absent : compléter le dossier avant accès parent."
+                   if value and not value["guardian"] and not error else "")
         reports.append({"line": item["line"], "name": label, "valid": not bool(error),
-                        "error": error, "class": value["classroom"].name if value and value["classroom"] else ""})
+                        "error": error, "warning": warning,
+                        "class": value["classroom"].name if value and value["classroom"] else ""})
         assignments.append(value if not error else None)
     policy = SchoolAdminPolicy.objects.filter(school=school).first()
     if policy and policy.max_students is not None:
@@ -265,6 +281,7 @@ def preview(request, school_id):
     return JsonResponse({"token": token, "row_count": len(assignments),
                          "valid": sum(r["valid"] for r in reports),
                          "errors": sum(not r["valid"] for r in reports),
+                         "warnings": sum(bool(r.get("warning")) for r in reports),
                          "rows": reports, "notice": "Aucune donnée écrite. Les frais ne sont jamais créés par import."})
 
 
@@ -319,9 +336,10 @@ def commit(request, school_id):
                 student = Student(school=school, extra_fields=value["extra"], **student_fields)
                 student.full_clean()
                 student.save()
-                guardian = StudentGuardian(school=school, student=student, **value["guardian"])
-                guardian.full_clean()
-                guardian.save()
+                if value["guardian"] is not None:
+                    guardian = StudentGuardian(school=school, student=student, **value["guardian"])
+                    guardian.full_clean()
+                    guardian.save()
                 klass = value["classroom"]
                 if klass is not None:
                     klass = AcademicClass.objects.select_for_update().get(pk=klass.pk, school=school)
@@ -359,3 +377,85 @@ def commit(request, school_id):
                    if isinstance(exc, IntegrityError) else
                    "; ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc))
         return invalid(message, 409)
+
+
+def safe_spreadsheet_cell(value):
+    """Prevent spreadsheet formula execution when CSV is opened by Excel/LibreOffice."""
+    if value is None:
+        return ""
+    if type(value) is bool:
+        value = "Oui" if value else "Non"
+    value = str(value).replace("\x00", "")
+    if value.lstrip().startswith(("=", "+", "-", "@")) or value.startswith(("\t", "\r", "\n")):
+        return "'" + value
+    return value
+
+
+@require_POST
+@authorized
+def export_students(request, school_id):
+    """Private school-scoped CSV export, explicitly initiated by an authorized manager."""
+    school, error = gate(request, school_id, "school.students.manage")
+    if error is not None:
+        return error
+    data, error = parse_body(request)
+    if error is not None:
+        return error
+    if set(data) - {"year"}:
+        return invalid("Paramètres inconnus.")
+    requested_year = data.get("year") or ""
+    if not isinstance(requested_year, str) or len(requested_year) > 36:
+        return invalid("Année invalide.")
+    if requested_year:
+        try:
+            requested_year = str(UUID(requested_year))
+        except ValueError:
+            return invalid("Année invalide.")
+        if not AcademicYear.objects.filter(school=school, pk=requested_year).exists():
+            return invalid("Année étrangère ou introuvable.", 404)
+
+    students = Student.objects.filter(school=school).order_by("last_name", "first_name", "id")
+    if requested_year:
+        students = students.filter(enrollments__school=school, enrollments__year_id=requested_year).distinct()
+    total = students.count()
+    if total > 10000:
+        return invalid("Export supérieur à 10 000 élèves : fractionnez par année scolaire.", 409)
+    enrollments = Enrollment.objects.filter(school=school).select_related("year", "classroom").order_by("-year__start_date")
+    if requested_year:
+        enrollments = enrollments.filter(year_id=requested_year)
+    guardians = StudentGuardian.objects.filter(school=school, active=True).order_by("-is_primary", "full_name")
+    students = students.prefetch_related(
+        Prefetch("enrollments", queryset=enrollments, to_attr="export_enrollments"),
+        Prefetch("guardians", queryset=guardians, to_attr="export_guardians"))
+    config, _ = load_config(school)
+    custom = [q for q in config.get("custom_fields", []) if q.get("section", "eleve") == "eleve"]
+    headings = [
+        "Matricule", "Nom", "Prénoms", "Date de naissance", "Sexe", "Classe", "Année scolaire",
+        "Responsable", "Lien de parenté", "Téléphone parent", "Email parent", "Lieu de naissance",
+        "Nationalité", "Adresse élève", "Établissement précédent",
+    ] + [q["label"] for q in custom]
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, delimiter=";", quoting=csv.QUOTE_ALL, lineterminator="\r\n")
+    writer.writerow(headings)
+    for student in students:
+        enrollment = student.export_enrollments[0] if student.export_enrollments else None
+        guardian = student.export_guardians[0] if student.export_guardians else None
+        fields = [
+            student.student_code, student.last_name, student.first_name,
+            student.date_of_birth.isoformat() if student.date_of_birth else "",
+            student.gender, enrollment.classroom.name if enrollment else "",
+            enrollment.year.name if enrollment else "", guardian.full_name if guardian else "",
+            guardian.relationship if guardian else "", guardian.phone if guardian else "",
+            guardian.email if guardian else "", student.place_of_birth, student.nationality,
+            student.address, student.previous_school,
+        ] + [student.extra_fields.get(q["key"], "") for q in custom]
+        writer.writerow([safe_spreadsheet_cell(v) for v in fields])
+    payload = "\ufeff" + output.getvalue()
+    result = HttpResponse(payload, content_type="text/csv; charset=utf-8")
+    result["Content-Disposition"] = 'attachment; filename="yem-eleves-' + str(school.pk)[:8] + '.csv"'
+    result["Cache-Control"] = "private, no-store"
+    result["Pragma"] = "no-cache"
+    result["X-Content-Type-Options"] = "nosniff"
+    log_event(school, request, "students_exported", school.pk,
+              {"count": total, "year": requested_year or None})
+    return result

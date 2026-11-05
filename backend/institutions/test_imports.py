@@ -154,3 +154,19 @@ class StudentImportTests(TestCase):
         self.assertEqual(response.json()["sheets"], ["2026"])
         self.assertEqual(response.json()["row_count"], 1)
         self.assertEqual(self.request("inspect", file=SimpleUploadedFile("eleves.xlsm", output.getvalue())).status_code, 422)
+
+    def test_student_only_register_is_imported_without_fake_guardian(self):
+        self.client.force_login(self.secretary)
+        payload = "Nom;Prénoms;DDN;Classe\nNZE;Aaron;02/03/2015;6e A"
+        mapping = {"0": "last_name", "1": "first_name", "2": "date_of_birth", "3": "classroom"}
+        p = self.request("preview", file=SimpleUploadedFile("simple.csv", payload.encode()), mapping=mapping)
+        self.assertEqual(p.status_code, 200, p.content)
+        self.assertEqual(p.json()["errors"], 0, p.content)
+        self.assertEqual(p.json()["warnings"], 1, p.content)
+        self.assertEqual(Student.objects.count(), 0)
+        r = self.request("commit", file=SimpleUploadedFile("simple.csv", payload.encode()),
+                         mapping=mapping, token=p.json()["token"])
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(Student.objects.filter(school=self.school).count(), 1)
+        self.assertEqual(StudentGuardian.objects.count(), 0)
+        self.assertEqual(Enrollment.objects.count(), 1)

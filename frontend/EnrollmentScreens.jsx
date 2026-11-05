@@ -624,6 +624,28 @@ export function ImportStudents({ schoolId, onNavigate, tabs }) {
     } catch (e) { setError(e.message); setMeta(null); }
     finally { setBusy(""); }
   }
+  async function exportData() {
+    setBusy("export");setError("");
+    try {
+      await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
+      const csrf = document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1] || "";
+      const response = await fetch("/api/v1/schools/" + schoolId + "/imports/students/export", {
+        method:"POST", credentials:"same-origin",
+        headers:{"Content-Type":"application/json","X-CSRFToken":csrf},
+        body:JSON.stringify({year:year || ""}),
+      });
+      if(!response.ok) {
+        const result = await response.json();
+        throw Error(result.error || "Export refusé.");
+      }
+      const download = URL.createObjectURL(await response.blob());
+      const a = document.createElement("a");
+      a.href = download; a.download = "yem-eleves-" + (year ? "annee" : "tous") + ".csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(download);
+    } catch(e) {setError(e.message);}
+    finally {setBusy("");}
+  }
   async function dryRun() {
     setBusy("preview"); setError(""); setPreview(null); setFinished(null);
     try { setPreview(await transfer("preview", file)); }
@@ -691,10 +713,17 @@ export function ImportStudents({ schoolId, onNavigate, tabs }) {
           </label>
         </>}
         <Button icon="download" onClick={()=>downloadCsv("exemple-import-eleves.csv",[IMPORT_COLUMNS,["NZE","Aaron","02/03/2015","6e A","NZE Sylvie","077432108"]])}>Télécharger un exemple CSV (facultatif)</Button>
+        <div style={{marginTop:16,borderTop:"1px solid #ddd",paddingTop:14}}>
+          <p className="yd-card-sub"><b>Exporter vos élèves</b> : CSV privé, téléchargement autorisé aux gestionnaires de dossiers. Ne partagez pas ce fichier publiquement.</p>
+          <Button icon="download" disabled={!!busy} onClick={exportData}>
+            {busy==="export"?"Préparation du fichier…":"Exporter la liste des élèves en CSV"}
+          </Button>
+          <p className="yd-card-sub">Si une année scolaire est sélectionnée, seules ses inscriptions sont exportées ; sinon, tous les élèves de l'école.</p>
+        </div>
       </Card>
       <Card title="2. Associer vos colonnes à YEM" icon="settings">
         {!meta?<p className="yd-card-sub">Sélectionnez votre fichier pour détecter automatiquement les en-têtes et proposer les correspondances.</p>:<>
-          <p className="yd-card-sub">Vérifiez les suggestions. Les champs Nom, Prénom(s) et Responsable légal sont obligatoires ; les autres dépendent de votre formulaire.</p>
+          <p className="yd-card-sub">Vérifiez les suggestions. Nom et Prénom(s) sont indispensables. Sans responsable légal, le dossier sera créé comme incomplet et devra être régularisé avant tout accès parent.</p>
           <div style={{maxHeight:500,overflowY:"auto"}}>
             {columns.map((label,i)=><label key={i} style={{display:"block",marginBottom:12}}>
               <span>{label || "(Colonne sans titre)"} </span>
@@ -718,12 +747,12 @@ export function ImportStudents({ schoolId, onNavigate, tabs }) {
     </div>
     {!!error && <p role="alert" className="yd-form-msg" style={{color:"#b42318"}}>{error}</p>}
     {preview && <Card title="3. Prévisualisation de l'import" icon="check">
-      <p className="yd-card-sub">{preview.valid || 0} ligne(s) valides, {preview.errors || 0} erreur(s). Aucun dossier n'a été créé.</p>
+      <p className="yd-card-sub">{preview.valid || 0} ligne(s) valides, {preview.errors || 0} erreur(s), {preview.warnings || 0} dossier(s) à compléter. Aucun dossier n'a été créé.</p>
       {bad.length>0 && <p role="alert" className="yd-card-sub">Corrigez les erreurs dans le fichier, puis relancez l'analyse. L'import est entièrement bloqué tant qu'une ligne est invalide.</p>}
       <Table className="xs" headers={["Ligne","Élève","Résultat","Détail"]}
         rows={(preview.rows||[]).slice(0,80).map(r=>[r.line||"—",r.name,
           <Status tone={r.valid?"green":"red"}>{r.valid?"Prêt":"À corriger"}</Status>,
-          r.error || r.class || "Affectation sans classe"])}/>
+          r.error || r.warning || r.class || "Affectation sans classe"])}/>
       {(preview.rows||[]).length>80 && <p className="yd-card-sub">80 premières lignes affichées sur {preview.rows.length} ; les {bad.length} erreur(s) sont prises en compte même hors affichage.</p>}
       {!preview.errors && !finished && <Button primary icon="check" disabled={!!busy} onClick={confirm}>
         {busy==="commit"?"Enregistrement en cours…":"Confirmer l'import des "+preview.valid+" élèves"}
