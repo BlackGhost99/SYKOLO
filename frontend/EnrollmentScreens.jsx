@@ -415,14 +415,14 @@ export function ClassSetup({ schoolId, tabs }) {
         </Card>}
         <Card title={`Classes ${d.year.name}`} count={`(${d.classes.length})`} icon="school">
           {d.classes.length === 0 ? <Empty>Aucune classe pour cette année.</Empty> :
-            <TableScroll label="Classes de l’année"><table className="xs nowrap"><thead><tr>{["Classe", "Niveau", "Inscrits", "Capacité", "Statut", ""].map(h => <th key={h}>{h}</th>)}</tr></thead>
+            <div className="yd-table-wrap" role="region" aria-label="Classes de l’année" tabIndex={0}><table className="xs nowrap"><thead><tr>{["Classe", "Niveau", "Inscrits", "Capacité", "Statut", ""].map(h => <th key={h}>{h}</th>)}</tr></thead>
               <tbody>{d.classes.map(c => <tr key={c.id}>
                 <td><b>{c.name}</b></td><td>{c.level.name}</td><td>{c.enrolled}</td>
                 <td>{d.can_manage_academic ? <span className="yf-inline-form tight"><input type="number" min={Math.max(1, c.enrolled)} max={5000} className="yf-num" value={caps[c.id] ?? (c.capacity ?? "")} placeholder="libre" onChange={e => setCaps(x => ({ ...x, [c.id]: e.target.value }))}/>
                   {caps[c.id] !== undefined && String(caps[c.id]) !== String(c.capacity ?? "") && <button type="button" className="yf-link" disabled={busy} onClick={() => run(async () => { await req(`schools/${schoolId}/academic/classes/${c.id}`, { revision: c.revision, capacity: caps[c.id] === "" ? null : Number(caps[c.id]) }, "PATCH"); setCaps(x => { const n = { ...x }; delete n[c.id]; return n; }); return `Capacité de ${c.name} enregistrée.`; })}>Enregistrer</button>}</span> : (c.capacity ?? "libre")}</td>
                 <td><Status tone={c.active ? "green" : "gray"}>{c.active ? "Active" : "Archivée"}</Status></td>
                 <td>{d.can_manage_academic && <button type="button" className="yf-link" disabled={busy} onClick={() => run(async () => { await req(`schools/${schoolId}/academic/classes/${c.id}`, { revision: c.revision, active: !c.active }, "PATCH"); return c.active ? `${c.name} archivée.` : `${c.name} réactivée.`; })}>{c.active ? "Archiver" : "Réactiver"}</button>}</td>
-              </tr>)}</tbody></table></TableScroll>}
+              </tr>)}</tbody></table></div>}
           {d.can_manage_academic && <details className="yf-details"><summary>Créer une autre année scolaire</summary>{yearForm}</details>}
         </Card>
       </div>}
