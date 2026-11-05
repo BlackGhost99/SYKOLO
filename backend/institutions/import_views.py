@@ -104,11 +104,15 @@ def prepare_school_row(school, config, extracted, year_id):
         "phone": raw.get("guardian_phone", ""), "email": raw.get("guardian_email", ""),
         "profession": raw.get("guardian_profession", ""), "address": raw.get("guardian_address", "")
     }
-    guardian = parse_fields({k: v for k, v in guardian_values.items() if v != ""},
-                            GUARDIAN_KEYS, ("full_name",))
-    if guardian.get("email"):
-        validate_email(guardian["email"])
-    guardian["is_primary"] = True
+    guardian = None
+    if guardian_values["full_name"]:
+        guardian = parse_fields({k: v for k, v in guardian_values.items() if v != ""},
+                                GUARDIAN_KEYS, ("full_name",))
+        if guardian.get("email"):
+            validate_email(guardian["email"])
+        guardian["is_primary"] = True
+    elif any(v for k, v in guardian_values.items() if k != "full_name"):
+        raise ValueError("Coordonnées du responsable sans nom : corrigez ou ignorez ces colonnes.")
     extra = {}
     questions = {q["key"]: q for q in config.get("custom_fields", [])}
     for k, v in raw.items():
@@ -119,7 +123,7 @@ def prepare_school_row(school, config, extracted, year_id):
             raise ValueError("Ce champ personnalisé n'est pas une information d'élève.")
         if q["type"] == "number":
             try:
-                v = float(v) if "." in v.replace(",", ".") else int(v)
+                v = float(v.replace(",", ".")) if "." in v.replace(",", ".") else int(v)
             except ValueError:
                 raise ValueError("Nombre invalide pour « " + q["label"] + " ».") from None
         elif q["type"] == "yesno":
@@ -131,7 +135,13 @@ def prepare_school_row(school, config, extracted, year_id):
             v = parse_date(v)
         extra[q["key"]] = v
     extra, _ = clean_answers(config, extra, {})
-    check_base(config, student, guardian)
+    if guardian is None:
+        # A register containing only learners remains importable, without inventing relatives.
+        student_rules = {"fields": {k: v for k, v in config.get("fields", {}).items()
+                                    if not k.startswith("guardian_")}}
+        check_base(student_rules, student, {})
+    else:
+        check_base(config, student, guardian)
     classroom = pick_class(school, year_id, raw.get("classroom", ""))
     return {"student": student, "guardian": guardian, "extra": extra, "classroom": classroom}
 
@@ -176,8 +186,11 @@ def evaluate(school, table, mapping, year_id, config):
                     raise ValueError("Capacité de la classe dépassée.")
         except (ValueError, ValidationError, KeyError, TypeError) as exc:
             error = "; ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
+        warning = ("Responsable légal absent : compléter le dossier avant accès parent."
+                   if value and not value["guardian"] and not error else "")
         reports.append({"line": item["line"], "name": label, "valid": not bool(error),
-                        "error": error, "class": value["classroom"].name if value and value["classroom"] else ""})
+                        "error": error, "warning": warning,
+                        "class": value["classroom"].name if value and value["classroom"] else ""})
         assignments.append(value if not error else None)
     policy = SchoolAdminPolicy.objects.filter(school=school).first()
     if policy and policy.max_students is not None:
@@ -268,6 +281,7 @@ def preview(request, school_id):
     return JsonResponse({"token": token, "row_count": len(assignments),
                          "valid": sum(r["valid"] for r in reports),
                          "errors": sum(not r["valid"] for r in reports),
+                         "warnings": sum(bool(r.get("warning")) for r in reports),
                          "rows": reports, "notice": "Aucune donnée écrite. Les frais ne sont jamais créés par import."})
 
 
@@ -322,9 +336,10 @@ def commit(request, school_id):
                 student = Student(school=school, extra_fields=value["extra"], **student_fields)
                 student.full_clean()
                 student.save()
-                guardian = StudentGuardian(school=school, student=student, **value["guardian"])
-                guardian.full_clean()
-                guardian.save()
+                if value["guardian"] is not None:
+                    guardian = StudentGuardian(school=school, student=student, **value["guardian"])
+                    guardian.full_clean()
+                    guardian.save()
                 klass = value["classroom"]
                 if klass is not None:
                     klass = AcademicClass.objects.select_for_update().get(pk=klass.pk, school=school)

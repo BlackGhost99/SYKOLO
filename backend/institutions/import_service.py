@@ -167,8 +167,8 @@ def validate_mapping(mapping, headers, config):
         result[str(int(key))] = field
     if len(set(result.values())) != len(result):
         raise ValueError("Deux colonnes pointent vers le même champ YEM.")
-    if not {"first_name", "last_name", "guardian_name"}.issubset(result.values()):
-        raise ValueError("Associez obligatoirement Nom, Prénom(s) et Responsable légal.")
+    if not {"first_name", "last_name"}.issubset(result.values()):
+        raise ValueError("Associez obligatoirement Nom et Prénom(s). Le responsable légal peut être complété ensuite.")
     return result
 
 
