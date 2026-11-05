@@ -723,7 +723,7 @@ export function ImportStudents({ schoolId, onNavigate, tabs }) {
       </Card>
       <Card title="2. Associer vos colonnes à YEM" icon="settings">
         {!meta?<p className="yd-card-sub">Sélectionnez votre fichier pour détecter automatiquement les en-têtes et proposer les correspondances.</p>:<>
-          <p className="yd-card-sub">Vérifiez les suggestions. Les champs Nom, Prénom(s) et Responsable légal sont obligatoires ; les autres dépendent de votre formulaire.</p>
+          <p className="yd-card-sub">Vérifiez les suggestions. Nom et Prénom(s) sont indispensables. Sans responsable légal, le dossier sera créé comme incomplet et devra être régularisé avant tout accès parent.</p>
           <div style={{maxHeight:500,overflowY:"auto"}}>
             {columns.map((label,i)=><label key={i} style={{display:"block",marginBottom:12}}>
               <span>{label || "(Colonne sans titre)"} </span>
@@ -747,12 +747,12 @@ export function ImportStudents({ schoolId, onNavigate, tabs }) {
     </div>
     {!!error && <p role="alert" className="yd-form-msg" style={{color:"#b42318"}}>{error}</p>}
     {preview && <Card title="3. Prévisualisation de l'import" icon="check">
-      <p className="yd-card-sub">{preview.valid || 0} ligne(s) valides, {preview.errors || 0} erreur(s). Aucun dossier n'a été créé.</p>
+      <p className="yd-card-sub">{preview.valid || 0} ligne(s) valides, {preview.errors || 0} erreur(s), {preview.warnings || 0} dossier(s) à compléter. Aucun dossier n'a été créé.</p>
       {bad.length>0 && <p role="alert" className="yd-card-sub">Corrigez les erreurs dans le fichier, puis relancez l'analyse. L'import est entièrement bloqué tant qu'une ligne est invalide.</p>}
       <Table className="xs" headers={["Ligne","Élève","Résultat","Détail"]}
         rows={(preview.rows||[]).slice(0,80).map(r=>[r.line||"—",r.name,
           <Status tone={r.valid?"green":"red"}>{r.valid?"Prêt":"À corriger"}</Status>,
-          r.error || r.class || "Affectation sans classe"])}/>
+          r.error || r.warning || r.class || "Affectation sans classe"])}/>
       {(preview.rows||[]).length>80 && <p className="yd-card-sub">80 premières lignes affichées sur {preview.rows.length} ; les {bad.length} erreur(s) sont prises en compte même hors affichage.</p>}
       {!preview.errors && !finished && <Button primary icon="check" disabled={!!busy} onClick={confirm}>
         {busy==="commit"?"Enregistrement en cours…":"Confirmer l'import des "+preview.valid+" élèves"}
