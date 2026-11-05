@@ -15,10 +15,7 @@ class PublicTableRlsTests(SimpleTestCase):
                 SELECT c.relname FROM pg_class c
                 JOIN pg_namespace n ON n.oid = c.relnamespace
                 WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
-                  AND (c.relname LIKE 'institutions\_%' ESCAPE '\'
-                    OR c.relname LIKE 'accounts\_%' ESCAPE '\'
-                    OR c.relname LIKE 'django\_%' ESCAPE '\'
-                    OR c.relname LIKE 'auth\_%' ESCAPE '\')
+                  AND c.relname ~ '^(institutions_|accounts_|django_|auth_)'
                   AND NOT c.relrowsecurity ORDER BY c.relname
             """)
             missing = [row[0] for row in c.fetchall()]

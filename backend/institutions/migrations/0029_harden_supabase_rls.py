@@ -21,10 +21,7 @@ def enable_rls(apps, schema_editor):
               JOIN pg_namespace AS n ON n.oid = c.relnamespace
              WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
                AND NOT c.relrowsecurity
-               AND (c.relname LIKE 'institutions\\_%' ESCAPE '\\'
-                 OR c.relname LIKE 'accounts\\_%' ESCAPE '\\'
-                 OR c.relname LIKE 'django\\_%' ESCAPE '\\'
-                 OR c.relname LIKE 'auth\\_%' ESCAPE '\\')
+               AND c.relname ~ '^(institutions_|accounts_|django_|auth_)'
              ORDER BY c.relname
         """)
         for (name,) in cursor.fetchall():
