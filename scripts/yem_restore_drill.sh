@@ -25,20 +25,24 @@ if (src.hostname, src.port or 5432, src.path) == (dest.hostname, dest.port or 54
 PY
 (cd "$(dirname "$YEM_RESTORE_ARCHIVE")" &&
   sha256sum -c "$(basename "$YEM_RESTORE_ARCHIVE").sha256" >/dev/null)
-COUNT="$(PGDATABASE="$YEM_DRILL_DATABASE_URL" psql -X -A -t -v ON_ERROR_STOP=1 \
+source "$(dirname "$0")/yem_pg_env.sh"
+yem_set_pg_env "$YEM_DRILL_DATABASE_URL"
+COUNT="$(psql -X -A -t -v ON_ERROR_STOP=1 \
   -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
 if [[ "$COUNT" != "0" ]]; then
   echo "Refus : la base de restauration doit être vide." >&2; exit 2
 fi
 gpg --batch --yes --no-tty --pinentry-mode loopback --passphrase-fd 3 \
     --decrypt "$YEM_RESTORE_ARCHIVE" 3<<< "$YEM_BACKUP_PASSPHRASE" |
-  pg_restore --exit-on-error --no-owner --no-acl --dbname="$YEM_DRILL_DATABASE_URL"
+  pg_restore --exit-on-error --no-owner --no-acl --dbname="$PGDATABASE"
 for table in accounts_user institutions_school institutions_schoolmember \
              institutions_student institutions_enrollment institutions_schoolreport \
              institutions_feepayment institutions_cashclosing; do
   SQL="SELECT count(*) FROM public.$table;"
-  ORIGINAL="$(PGDATABASE="$YEM_BACKUP_DATABASE_URL" psql -X -A -t -v ON_ERROR_STOP=1 -c "$SQL")"
-  RESTORED="$(PGDATABASE="$YEM_DRILL_DATABASE_URL" psql -X -A -t -v ON_ERROR_STOP=1 -c "$SQL")"
+  yem_set_pg_env "$YEM_BACKUP_DATABASE_URL"
+  ORIGINAL="$(psql -X -A -t -v ON_ERROR_STOP=1 -c "$SQL")"
+  yem_set_pg_env "$YEM_DRILL_DATABASE_URL"
+  RESTORED="$(psql -X -A -t -v ON_ERROR_STOP=1 -c "$SQL")"
   if [[ "$ORIGINAL" != "$RESTORED" ]]; then
     echo "ECHEC pour $table : $ORIGINAL / $RESTORED lignes" >&2; exit 1
   fi

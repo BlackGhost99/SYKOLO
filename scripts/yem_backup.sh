@@ -8,7 +8,7 @@ done
 if [[ "$(printf %s "$YEM_BACKUP_PASSPHRASE" | wc -c)" -lt 24 ]]; then
   echo "Refus : phrase secrète trop courte (24 caractères minimum)." >&2; exit 2
 fi
-for cmd in pg_dump pg_restore gpg sha256sum mktemp; do
+for cmd in pg_dump pg_restore gpg sha256sum mktemp python3; do
   command -v "$cmd" >/dev/null || { echo "Outil absent : $cmd" >&2; exit 2; }
 done
 case "$YEM_BACKUP_DATABASE_URL" in
@@ -26,7 +26,9 @@ TMP="$(mktemp "$OUT/yem-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXXXX.pgdump.gpg.partial")
 FINAL="$(echo "$TMP" | sed 's/\.partial$//')"
 cleanup() { rm -f -- "$TMP"; }
 trap cleanup EXIT
-PGDATABASE="$YEM_BACKUP_DATABASE_URL" pg_dump --no-owner --no-acl --format=custom |
+source "$(dirname "$0")/yem_pg_env.sh"
+yem_set_pg_env "$YEM_BACKUP_DATABASE_URL"
+pg_dump --no-owner --no-acl --format=custom |
   gpg --batch --yes --no-tty --pinentry-mode loopback --passphrase-fd 3 \
       --symmetric --cipher-algo AES256 --compress-algo none --output "$TMP" \
       3<<< "$YEM_BACKUP_PASSPHRASE"
