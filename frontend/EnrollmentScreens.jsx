@@ -624,6 +624,28 @@ export function ImportStudents({ schoolId, onNavigate, tabs }) {
     } catch (e) { setError(e.message); setMeta(null); }
     finally { setBusy(""); }
   }
+  async function exportData() {
+    setBusy("export");setError("");
+    try {
+      await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
+      const csrf = document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1] || "";
+      const response = await fetch("/api/v1/schools/" + schoolId + "/imports/students/export", {
+        method:"POST", credentials:"same-origin",
+        headers:{"Content-Type":"application/json","X-CSRFToken":csrf},
+        body:JSON.stringify({year:year || ""}),
+      });
+      if(!response.ok) {
+        const result = await response.json();
+        throw Error(result.error || "Export refusé.");
+      }
+      const download = URL.createObjectURL(await response.blob());
+      const a = document.createElement("a");
+      a.href = download; a.download = "yem-eleves-" + (year ? "annee" : "tous") + ".csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(download);
+    } catch(e) {setError(e.message);}
+    finally {setBusy("");}
+  }
   async function dryRun() {
     setBusy("preview"); setError(""); setPreview(null); setFinished(null);
     try { setPreview(await transfer("preview", file)); }
@@ -691,6 +713,13 @@ export function ImportStudents({ schoolId, onNavigate, tabs }) {
           </label>
         </>}
         <Button icon="download" onClick={()=>downloadCsv("exemple-import-eleves.csv",[IMPORT_COLUMNS,["NZE","Aaron","02/03/2015","6e A","NZE Sylvie","077432108"]])}>Télécharger un exemple CSV (facultatif)</Button>
+        <div style={{marginTop:16,borderTop:"1px solid #ddd",paddingTop:14}}>
+          <p className="yd-card-sub"><b>Exporter vos élèves</b> : CSV privé, téléchargement autorisé aux gestionnaires de dossiers. Ne partagez pas ce fichier publiquement.</p>
+          <Button icon="download" disabled={!!busy} onClick={exportData}>
+            {busy==="export"?"Préparation du fichier…":"Exporter la liste des élèves en CSV"}
+          </Button>
+          <p className="yd-card-sub">Si une année scolaire est sélectionnée, seules ses inscriptions sont exportées ; sinon, tous les élèves de l'école.</p>
+        </div>
       </Card>
       <Card title="2. Associer vos colonnes à YEM" icon="settings">
         {!meta?<p className="yd-card-sub">Sélectionnez votre fichier pour détecter automatiquement les en-têtes et proposer les correspondances.</p>:<>
