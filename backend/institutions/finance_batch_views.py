@@ -59,6 +59,8 @@ def create_batch(request, school_id):
         return JsonResponse({"error": "Champs de paiement groupé invalides."}, status=422)
     enrollment_id, idem = uid(data["enrollment"]), uid(data["idempotency_key"])
     method, reference = data["method"], data["reference"]
+    if method == "singpay":
+        return JsonResponse({"error": "SingPay est réservé aux confirmations serveur du prestataire."}, status=422)
     if enrollment_id is None or idem is None or not isinstance(method, str) or not CODE_PATTERN.fullmatch(method):
         return JsonResponse({"error": "Inscription, méthode ou clé d'opération invalide."}, status=422)
     if not isinstance(reference, str) or len(reference) > 100:

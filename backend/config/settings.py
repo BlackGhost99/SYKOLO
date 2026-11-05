@@ -46,6 +46,8 @@ if DEPLOYED and len(MFA_ENCRYPTION_KEY) < 32:
 PASSWORD_RESET_TIMEOUT = 1800
 # Never enable real payments without a reviewed merchant contract and environment secrets.
 YEM_PAYMENTS_LIVE_ENABLED = os.environ.get("YEM_PAYMENTS_LIVE_ENABLED", "false").lower() == "true"
+# OFF until SingPay confirms callback authentication and school merchant acceptance.
+YEM_SINGPAY_ENABLED = os.environ.get("YEM_SINGPAY_ENABLED", "false").lower() == "true"
 YEM_PAYMENT_ENCRYPTION_KEY = os.environ.get("YEM_PAYMENT_ENCRYPTION_KEY", "")
 AUTH_PUBLIC_BASE_URL = os.environ.get("AUTH_PUBLIC_BASE_URL", "" if DEPLOYED else "http://localhost:3000")
 EMAIL_HOST = os.environ.get("YEM_SMTP_HOST", "localhost")

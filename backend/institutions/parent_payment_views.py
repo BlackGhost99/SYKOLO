@@ -246,6 +246,9 @@ def parent_pay(request, application_id):
         ).filter(pk=application_id, owner=request.user).first()
         if link is None:
             return fail("Demande introuvable.", 404)
+        from .singpay_models import SingPayIntent
+        if SingPayIntent.objects.filter(admission=link).exclude(state="failed").exists():
+            return fail("Paiement SingPay existant : rapprochez-le avant un paiement PayCentral.", 409)
         if link.payment_choice != "online" or not link.fee_amount_xaf:
             return fail("Cette candidature ne prévoit pas de paiement en ligne.", 409)
         if link.application.status in ("rejected", "enrolled"):

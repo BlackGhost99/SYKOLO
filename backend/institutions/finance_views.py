@@ -321,6 +321,8 @@ def payments(request, school_id):
     idem = uid(data["idempotency_key"])
     method = data["method"]
     reference = data["reference"]
+    if method == "singpay":
+        return JsonResponse({"error": "SingPay est réservé aux confirmations serveur du prestataire."}, status=422)
     if charge_id is None or idem is None or not isinstance(method, str) or not CODE_PATTERN.fullmatch(method):
         return JsonResponse({"error": "Frais, moyen ou identifiant d'opération invalide."}, status=422)
     if not isinstance(reference, str) or len(reference) > 100:
@@ -386,6 +388,8 @@ def void_payment(request, school_id, payment_id):
         row = FeePayment.objects.select_related("charge").filter(school=school, pk=payment_id).first()
         if row is None:
             return JsonResponse({"error": "Paiement introuvable."}, status=404)
+        if row.method == "singpay":
+            return JsonResponse({"error": "Paiement prestataire : remboursement et rapprochement requis, annulation manuelle interdite."}, status=409)
         if row.recorded_by_id == request.user.pk:
             return JsonResponse({"error": "Un autre agent doit autoriser cette annulation."}, status=403)
         if row.method == "especes" and cash_closed_for_recorder(school=school, day=row.paid_on, currency=row.currency, user=row.recorded_by):

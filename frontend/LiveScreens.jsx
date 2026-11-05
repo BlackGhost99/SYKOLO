@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import CashClosingPanel from "./CashClosingPanel.jsx";
+import SingPayControl from "./SingPayControl.jsx";
 import { Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Toggle, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
 
 /* Écrans réels branchés sur l'API, avec la présentation des maquettes (docs/maquettes). */
@@ -241,6 +242,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
       </div>
       <Card title="Clôture de caisse" icon="cash">
         <CashClosingPanel schoolId={schoolId} defaultDay={d.today.date}/>
+        <SingPayControl schoolId={schoolId}/>
       </Card>
     </>}</Loading>
   </>;
