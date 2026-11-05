@@ -325,7 +325,7 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
     <Msg {...message}/>
     <Loading state={overview}>{o && (!o.year || o.classes.length === 0 ? <Card title={o.year ? `Aucune classe en ${o.year.name}` : "Aucune année scolaire"} icon="school">
       <Empty>Créez d’abord {o.year ? "les classes" : "l’année scolaire puis les classes"} de l’établissement.</Empty>
-      {o.can_manage_academic && <Button primary icon="plus" onClick={() => onNavigate("settings", "classes")}>Créer les classes</Button>}
+      {(o.can_manage_classes ?? o.can_manage_academic) && <Button primary icon="plus" onClick={() => onNavigate("settings", "classes")}>Créer les classes</Button>}
     </Card> : <>
       <div className="yd-metrics four">
         <Metric icon="school" label="Classes" value={num(o.classes.filter(c => c.active).length)} trend="none" trendLabel={o.year.name}/>
@@ -374,6 +374,10 @@ export function ClassSetup({ schoolId, tabs }) {
   const [levelName, setLevelName] = useState("");
   const [cycleName, setCycleName] = useState("");
   const [names, setNames] = useState("");
+  const [quantity, setQuantity] = useState("3");
+  const [suffix, setSuffix] = useState("letters");
+  const [preview, setPreview] = useState([]);
+  const [rename, setRename] = useState(null);
   const [capacity, setCapacity] = useState("");
   const [caps, setCaps] = useState({});
   const [busy, setBusy] = useState(false);
@@ -389,25 +393,62 @@ export function ClassSetup({ schoolId, tabs }) {
     <Field label="Fin"><input type="date" required value={newYear.end_date} onChange={e => setNewYear(x => ({ ...x, end_date: e.target.value }))}/></Field>
     <Button primary type="submit" icon="plus" disabled={busy}>Créer l’année</Button>
   </form>;
-  const count = names.split(/[,;\n]/).map(x => x.trim()).filter(Boolean).length;
+  const cycleAllowed = code => !d?.class_management_cycles || d.class_management_cycles.includes(code);
+  const presets = Object.entries(d?.class_level_options || {}).filter(([, option]) =>
+    cycleAllowed(option.cycle) && !d.levels.some(l => l.cycle_code === option.cycle && l.code === option.code));
+  const preset = d?.class_level_options?.[level];
+  const selectedLevelName = preset?.name || d?.levels.find(l => l.id === level)?.name || levelName.trim();
+  const canManageClasses = d?.can_manage_classes ?? d?.can_manage_academic;
+  const count = preview.length || names.split(/[,;\n]/).map(x => x.trim()).filter(Boolean).length;
+  function proposeNames() {
+    const used = new Set(d.classes.map(c => c.name.toLowerCase()));
+    const proposed = [];
+    for (let i = 1; proposed.length < Number(quantity); i++) {
+      const label = suffix === "letters" ? (i <= 26 ? String.fromCharCode(64 + i)
+        : String.fromCharCode(64 + Math.floor((i - 1) / 26), 65 + (i - 1) % 26)) : String(i);
+      const name = `${selectedLevelName.slice(0, 120 - label.length - 1).trimEnd()} ${label}`;
+      if (!used.has(name.toLowerCase())) proposed.push(name);
+    }
+    setPreview(proposed);
+  }
   return <>
     <PageHeader title="Classes de l’établissement" subtitle="Créez les classes de l’année en quelques secondes, réglez leur capacité d’accueil" banner={false}
-      actions={d?.years.length > 0 && <label className="yd-select plain"><select aria-label="Année scolaire" value={year || d.year?.id || ""} onChange={e => setYear(e.target.value)}>{d.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>}/>
+      actions={d?.years.length > 0 && <label className="yd-select plain"><select aria-label="Année scolaire" value={year || d.year?.id || ""} onChange={e => { setYear(e.target.value); setPreview([]); setRename(null); }}>{d.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>}/>
     {tabs}
     <Msg {...message}/>
     <Loading state={o}>{d && <>
       {!d.year ? <Card title="Commencez par l’année scolaire" icon="calendar">{d.can_manage_academic ? yearForm : <Empty>La direction doit créer l’année scolaire.</Empty>}</Card> : <div className="yd-grid yf-two">
-        {d.can_manage_academic && <Card title={`Ajouter des classes en ${d.year.name}`} icon="plus" subtitle="Saisissez plusieurs noms séparés par des virgules pour créer toutes les classes d’un niveau d’un coup.">
+        {canManageClasses && d.year.active !== false && <Card title={`Ajouter des classes en ${d.year.name}`} icon="plus" subtitle="Générez des noms à partir d’un niveau ou saisissez-les directement.">
           <form onSubmit={e => { e.preventDefault(); run(async () => {
-            const r = await req(`schools/${schoolId}/academic/quick-classes`, { year: d.year.id, names, capacity: capacity === "" ? null : Number(capacity), ...(level && level !== "new" ? { level } : { level_name: levelName, cycle_name: cycleName }) });
-            setNames(""); if (level === "new") { setLevel(r.level.id); setLevelName(""); setCycleName(""); }
+            const target = preset ? { preset: level } : level === "new" ? { level_name: levelName, cycle_name: cycleName } : { level };
+            const r = await req(`schools/${schoolId}/academic/quick-classes`, {
+              year: d.year.id, names: preview.length ? preview : names,
+              capacity: capacity === "" ? null : Number(capacity), ...target,
+            });
+            setNames(""); setPreview([]); setLevel(r.level.id);
             return `${r.classes.length} classe(s) créée(s) : ${r.classes.map(c => c.name).join(", ")}.`;
           }); }}>
             <div className="yf-grid">
-              <Field label="Niveau" required><select required value={level} onChange={e => setLevel(e.target.value)}><option value="">Choisir…</option>{d.levels.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name} ({l.cycle})</option>)}<option value="new">+ Nouveau niveau…</option></select></Field>
-              {level === "new" && <><Field label="Nom du niveau" required hint="Ex. : CP, 6e, Terminale, Licence 1"><input required maxLength={120} value={levelName} onChange={e => setLevelName(e.target.value)}/></Field>
-                <Field label="Cycle" hint="Ex. : Primaire, Collège. Laissez vide si inutile."><input maxLength={120} value={cycleName} onChange={e => setCycleName(e.target.value)} list="yc-cycles"/><datalist id="yc-cycles">{[...new Set(d.levels.map(l => l.cycle))].map(c => <option key={c} value={c}/>)}</datalist></Field></>}
-              <Field label="Nom(s) des classes" required wide hint={count > 1 ? `${count} classes seront créées.` : "Ex. : 6e A, 6e B, 6e C"}><input required value={names} onChange={e => setNames(e.target.value)} placeholder="6e A, 6e B"/></Field>
+              <Field label="Niveau" required><select required value={level} onChange={e => { setLevel(e.target.value); setPreview([]); }}>
+                <option value="">Choisir…</option>
+                {d.levels.filter(l => l.active && cycleAllowed(l.cycle_code)).map(l => <option key={l.id} value={l.id}>{l.name} ({l.cycle})</option>)}
+                {presets.map(([key, option]) => <option key={key} value={key}>{option.name} ({option.cycle_name})</option>)}
+                {d.can_manage_academic && <option value="new">+ Nouveau niveau…</option>}
+              </select></Field>
+              {level === "new" && <><Field label="Nom du niveau" required hint="Ex. : CP, 6e, Terminale"><input required maxLength={120} value={levelName} onChange={e => { setLevelName(e.target.value); setPreview([]); }}/></Field>
+                <Field label="Cycle" hint="Ex. : Primaire, Collège."><input maxLength={120} value={cycleName} onChange={e => { setCycleName(e.target.value); setPreview([]); }} list="yc-cycles"/><datalist id="yc-cycles">{[...new Set(d.levels.map(l => l.cycle))].map(c => <option key={c} value={c}/>)}</datalist></Field></>}
+              <Field label="Nombre de classes"><input type="number" value={quantity} onChange={e => { setQuantity(e.target.value); setPreview([]); }}/></Field>
+              <Field label="Format des noms"><select value={suffix} onChange={e => { setSuffix(e.target.value); setPreview([]); }}>
+                <option value="letters">Lettres (A, B, C…)</option>
+                <option value="numbers">Chiffres (1, 2, 3…)</option>
+              </select></Field>
+              <Button type="button" icon="plus" disabled={busy || !selectedLevelName || !Number.isInteger(Number(quantity)) || Number(quantity) < 1 || Number(quantity) > 30} onClick={proposeNames}>Générer les noms</Button>
+              {preview.length > 0 ? <>
+                {preview.map((name, index) => <Field key={index} label={`Nom de la classe ${index + 1}`} required>
+                  <input required maxLength={120} value={name} onChange={e => setPreview(items => items.map((item, i) => i === index ? e.target.value : item))}/>
+                </Field>)}
+                <button type="button" className="yf-link" onClick={() => setPreview([])}>Saisir les noms manuellement</button>
+              </> : <Field label="Nom(s) des classes" required wide hint="Ex. : 6e A, 6e 13. Séparez les noms par des virgules."><input required value={names} onChange={e => setNames(e.target.value)}/></Field>}
               <Field label="Capacité par classe" hint="Facultatif : nombre maximal d’élèves."><input type="number" min={1} max={5000} value={capacity} onChange={e => setCapacity(e.target.value)}/></Field>
             </div>
             <Button primary type="submit" icon="check" disabled={busy || !count}>Créer {count > 1 ? `les ${count} classes` : "la classe"}</Button>
@@ -417,11 +458,19 @@ export function ClassSetup({ schoolId, tabs }) {
           {d.classes.length === 0 ? <Empty>Aucune classe pour cette année.</Empty> :
             <div className="yd-table-wrap"><table className="xs nowrap"><thead><tr>{["Classe", "Niveau", "Inscrits", "Capacité", "Statut", ""].map(h => <th key={h}>{h}</th>)}</tr></thead>
               <tbody>{d.classes.map(c => <tr key={c.id}>
-                <td><b>{c.name}</b></td><td>{c.level.name}</td><td>{c.enrolled}</td>
-                <td>{d.can_manage_academic ? <span className="yf-inline-form tight"><input type="number" min={Math.max(1, c.enrolled)} max={5000} className="yf-num" value={caps[c.id] ?? (c.capacity ?? "")} placeholder="libre" onChange={e => setCaps(x => ({ ...x, [c.id]: e.target.value }))}/>
+                <td>{rename?.id === c.id ? <form className="yf-inline-form tight" onSubmit={e => { e.preventDefault(); run(async () => {
+                  const saved = await req(`schools/${schoolId}/academic/classes/${c.id}`, { revision: rename.revision, name: rename.name }, "PATCH");
+                  setRename(null);
+                  return `Classe renommée : ${saved.name}.`;
+                }); }}>
+                  <input aria-label="Nouveau nom de la classe" required maxLength={120} value={rename.name} onChange={e => setRename(x => ({ ...x, name: e.target.value }))}/>
+                  <button type="submit" className="yf-link" disabled={busy || !rename.name.trim()}>Enregistrer</button>
+                  <button type="button" className="yf-link" disabled={busy} onClick={() => setRename(null)}>Annuler</button>
+                </form> : <><b>{c.name}</b>{canManageClasses && cycleAllowed(c.level.cycle_code) && <button type="button" className="yf-link" disabled={busy} onClick={() => setRename({ id: c.id, name: c.name, revision: c.revision })}>Renommer</button>}</>}</td><td>{c.level.name}</td><td>{c.enrolled}</td>
+                <td>{canManageClasses && cycleAllowed(c.level.cycle_code) ? <span className="yf-inline-form tight"><input type="number" min={Math.max(1, c.enrolled)} max={5000} className="yf-num" value={caps[c.id] ?? (c.capacity ?? "")} placeholder="libre" onChange={e => setCaps(x => ({ ...x, [c.id]: e.target.value }))}/>
                   {caps[c.id] !== undefined && String(caps[c.id]) !== String(c.capacity ?? "") && <button type="button" className="yf-link" disabled={busy} onClick={() => run(async () => { await req(`schools/${schoolId}/academic/classes/${c.id}`, { revision: c.revision, capacity: caps[c.id] === "" ? null : Number(caps[c.id]) }, "PATCH"); setCaps(x => { const n = { ...x }; delete n[c.id]; return n; }); return `Capacité de ${c.name} enregistrée.`; })}>Enregistrer</button>}</span> : (c.capacity ?? "libre")}</td>
                 <td><Status tone={c.active ? "green" : "gray"}>{c.active ? "Active" : "Archivée"}</Status></td>
-                <td>{d.can_manage_academic && <button type="button" className="yf-link" disabled={busy} onClick={() => run(async () => { await req(`schools/${schoolId}/academic/classes/${c.id}`, { revision: c.revision, active: !c.active }, "PATCH"); return c.active ? `${c.name} archivée.` : `${c.name} réactivée.`; })}>{c.active ? "Archiver" : "Réactiver"}</button>}</td>
+                <td>{canManageClasses && cycleAllowed(c.level.cycle_code) && <button type="button" className="yf-link" disabled={busy} onClick={() => run(async () => { await req(`schools/${schoolId}/academic/classes/${c.id}`, { revision: c.revision, active: !c.active }, "PATCH"); return c.active ? `${c.name} archivée.` : `${c.name} réactivée.`; })}>{c.active ? "Archiver" : "Réactiver"}</button>}</td>
               </tr>)}</tbody></table></div>}
           {d.can_manage_academic && <details className="yf-details"><summary>Créer une autre année scolaire</summary>{yearForm}</details>}
         </Card>
