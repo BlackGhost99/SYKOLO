@@ -19,7 +19,7 @@ from .models import (
 )
 from .services import (
     PERMISSIONS, ROLE_TEMPLATES, has_permission, effective_permissions, key_for_scope,
-    owns_organization, resolve_settings, school_access, school_response, quota_reached,
+    owns_organization, resolve_settings, school_access, school_response, quota_reached, public_role_label,
     validate_scope,
 )
 
@@ -264,7 +264,7 @@ def my_school_access(request, school_id):
     return JsonResponse({
         "school": school_response(school),
         "role": member.role.code if member else ("proprietaire" if founder else None),
-        "role_label": member.role.label if member else ("Propriétaire" if founder else ""),
+        "role_label": public_role_label(member.role) if member else ("Propriétaire" if founder else ""),
         "roles": [member.role.code, *member.additional_roles.filter(school=school).values_list("code", flat=True)] if member else [],
         "permissions": sorted(effective_permissions(request.user, school)) if member else (["school.view", "school.members.write"] if founder else []),
     })
@@ -337,7 +337,7 @@ def may_delegate_finance(user, school, permissions):
 
 
 def role_response(role):
-    return {"id": str(role.id), "code": role.code, "label": role.label,
+    return {"id": str(role.id), "code": role.code, "label": public_role_label(role),
             "permissions": role.permissions, "revision": role.revision}
 
 
