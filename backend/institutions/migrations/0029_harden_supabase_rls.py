@@ -1,35 +1,36 @@
-"""Defense in depth: secure YEM tables left without RLS by additive migrations.
+"""Secure every Django/YEM public table reproducibly on fresh and existing databases.
 
-YEM's Django server remains responsible for authorization and school isolation.
-Supabase anon/authenticated have no table grants and must never receive them.
-PostgreSQL table-owner connections (the Django runtime) keep existing behavior.
+Supabase's anon/authenticated roles have no grants to Django tables.
+The Django PostgreSQL table owner retains its existing behavior. Auth and
+tenant isolation are still enforced by the Django application.
 """
 from django.db import migrations
 
-TABLES = (
-    "institutions_cashclosing",
-    "institutions_cashtransfer",
-    "institutions_enrollmentformconfig",
-    "institutions_feepaymentbatch",
-    "institutions_permissiondelegation",
-    "institutions_schoollogin",
-    "institutions_schoolmember_additional_roles",
-    "institutions_singpayevent",
-    "institutions_singpayintent",
-    "institutions_singpaymerchant",
-    "institutions_singpaysettlement",
-    "institutions_studentimportbatch",
-    "institutions_studentimportprofile",
-)
+# Only app-owned tables in the standard Django public schema, never Supabase
+# managed internal schemas, extensions, or unrelated services.
+PREFIXES = ("institutions_", "accounts_", "django_", "auth_")
 
 
 def enable_rls(apps, schema_editor):
     if schema_editor.connection.vendor != "postgresql":
         return
     with schema_editor.connection.cursor() as cursor:
-        for name in TABLES:
-            # Names are a fixed, reviewed whitelist; no user input in SQL.
-            cursor.execute(f'ALTER TABLE "public"."{name}" ENABLE ROW LEVEL SECURITY')
+        cursor.execute("""
+            SELECT c.relname
+              FROM pg_class AS c
+              JOIN pg_namespace AS n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+               AND NOT c.relrowsecurity
+               AND (c.relname LIKE 'institutions\\_%' ESCAPE '\\'
+                 OR c.relname LIKE 'accounts\\_%' ESCAPE '\\'
+                 OR c.relname LIKE 'django\\_%' ESCAPE '\\'
+                 OR c.relname LIKE 'auth\\_%' ESCAPE '\\')
+             ORDER BY c.relname
+        """)
+        for (name,) in cursor.fetchall():
+            if not name.startswith(PREFIXES):
+                raise RuntimeError("Unrecognized Django table: " + name)
+            cursor.execute(f'ALTER TABLE "public".{schema_editor.quote_name(name)} ENABLE ROW LEVEL SECURITY')
 
 
 class Migration(migrations.Migration):
