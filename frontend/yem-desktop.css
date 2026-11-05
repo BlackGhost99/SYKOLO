@@ -719,7 +719,7 @@ a.yd-btn { text-decoration: none; }
 .yd-hero-text { flex: 1 1 auto; }
 .yd-hero :is(h1, p) { white-space: normal; overflow-wrap: anywhere; }
 .yd-hero-actions { flex-wrap: wrap; min-width: 0; }
-.yd-app :is(.yd-trend span, .yd-legend b) { white-space: normal; }
+.yd-app :is(.yd-metric strong, .yd-trend span, .yd-legend b) { white-space: normal; }
 .yd-legend span { min-width: 0; }
 .dash-main .quick .yd-btn { min-width: 0; white-space: normal; }
 .yd-view-filters { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 12px; }
@@ -731,6 +731,7 @@ a.yd-btn { text-decoration: none; }
   .yd-topbar .yd-global-search, .yd-topbar .yd-user-btn > span:nth-child(2) { display: none; }
   .yd-topbar .yd-bell { margin-left: auto; }
   .dash-main .quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cash-row { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media screen and (max-width: 760px) {
@@ -774,5 +775,10 @@ a.yd-btn { text-decoration: none; }
   .yd-app .yf-person { grid-template-columns: minmax(0, 1fr); }
   .yf-row-actions { grid-area: auto; flex-wrap: wrap; }
   .ym-phone { width: min(372px, 100%); }
+  .ym-screen header.ym-header { height: auto; padding: 10px 12px; gap: 8px; }
+  .ym-logo, .ym-logo .yd-logo { min-width: 0; }
+  .ym-logo .yd-logo svg { width: 42px; height: 42px; }
+  .ym-logo .yd-logo span { white-space: normal; }
+  .ym-burger { flex: 0 0 auto; place-items: center; min-width: 44px; min-height: 44px; margin-left: 0; }
   .ym-tabs button { flex-wrap: wrap; white-space: normal; }
 }
