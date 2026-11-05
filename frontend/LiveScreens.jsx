@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import CashClosingPanel from "./CashClosingPanel.jsx";
 import { Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Toggle, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
 
 /* Écrans réels branchés sur l'API, avec la présentation des maquettes (docs/maquettes). */
@@ -16,6 +17,11 @@ async function api(path, body) {
   if (!r.ok) throw Error(data.error || "Requête refusée.");
   return data;
 }
+function CurrencyChoice({data, value, onChange, year, onYearChange}) {
+  return <div><label>Année scolaire <select aria-label="Année scolaire" value={year || data?.year?.id || ""} onChange={e=>onYearChange(e.target.value)}>{(data?.years||[]).map(y=><option key={y.id} value={y.id}>{y.name}</option>)}</select></label><label>Devise de consultation <select aria-label="Devise de consultation" value={value || data?.currency || "XAF"} onChange={e=>onChange(e.target.value)}>
+    {(data?.currencies?.length ? data.currencies : [data?.currency || "XAF"]).map(c=><option key={c} value={c}>{c}</option>)}
+  </select></label></div>;
+}
 function useData(path, deps = []) {
   const [state, setState] = useState({ data: null, error: "", loading: true });
   const [tick, setTick] = useState(0);
@@ -31,11 +37,11 @@ function useData(path, deps = []) {
 const nf = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const num = v => nf.format(Math.round(Number(v) || 0)).replace(/ | /g, " ");
 const cur = c => (!c || c === "XAF" || c === "XOF") ? "FCFA" : c;
-export const fmtMoney = (v, c) => `${num(v)} ${cur(c)}`;
+export const fmtMoney = (v, c) => `${new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(Number(v) || 0).replace(/ | /g, " ")} ${cur(c)}`;
 const pct = (now, before) => { const a = Number(now) || 0, b = Number(before) || 0; if (!b) return null; const p = (a - b) / b * 100; return `${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(1).replace(".", ",")} %`; };
 const fmtDate = iso => iso ? new Date(iso + (iso.length === 10 ? "T00:00:00" : "")).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
-const METHODS = [["airtel_money", "Airtel Money", "mobile"], ["moov_money", "Moov Money", "mobile"], ["especes", "Espèces", "cash"], ["virement", "Virement", "transfer"]];
+const METHODS = [["airtel_money", "Airtel Money reçu (manuel)", "mobile"], ["moov_money", "Moov Money reçu (manuel)", "mobile"], ["especes", "Espèces", "cash"], ["virement", "Virement reçu (manuel)", "transfer"]];
 const methodLabel = m => METHODS.find(x => x[0] === m)?.[1] || (m === "mobile_money" ? "Mobile money" : m === "autre" ? "Autre" : m);
 const methodIcon = m => METHODS.find(x => x[0] === m)?.[2] || (m === "mobile_money" ? "mobile" : "coins");
 const isMobileMoney = m => m === "airtel_money" || m === "moov_money" || m === "mobile_money";
@@ -59,7 +65,9 @@ function Empty({ children }) { return <p className="yd-card-sub yd-empty">{child
 
 /* ---------- Élèves ---------- */
 export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs }) {
-  const state = useData(`schools/${schoolId}/overview/students`);
+  const [viewYear, setViewYear] = useState("");
+  const [viewCurrency, setViewCurrency] = useState("");
+  const state = useData(`schools/${schoolId}/overview/students?currency=${viewCurrency}&year=${viewYear}`);
   const [query, setQuery] = useState("");
   const [klass, setKlass] = useState("");
   const [status, setStatus] = useState("");
@@ -73,6 +81,7 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
   const current = rows.find(r => r.id === selected) || rows[0];
   const m = d?.metrics;
   return <>
+    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={setViewYear}/>
     <PageHeader title="Gestion des élèves" subtitle="Inscriptions, classes, responsables et suivi administratif"/>
     {tabs}
     <Loading state={state}>{d && <>
@@ -122,7 +131,9 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
 function newKey() { return (crypto.randomUUID && crypto.randomUUID()) || "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)); }
 
 export function LivePayments({ schoolId, canReceive, params, tabs }) {
-  const fin = useData(`schools/${schoolId}/overview/finance`);
+  const [viewYear, setViewYear] = useState("");
+  const [viewCurrency, setViewCurrency] = useState("");
+  const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
   const roster = useData(`schools/${schoolId}/overview/students`);
   const [enrollment, setEnrollment] = useState(params?.enrollment || "");
   const [charges, setCharges] = useState([]);
@@ -132,6 +143,8 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [pendingOperation, setPendingOperation] = useState(null);
+  const [receiptUrl, setReceiptUrl] = useState("");
   const enrolled = (roster.data?.students || []).filter(s => s.active && s.enrollment);
   const student = enrolled.find(s => s.enrollment.id === enrollment);
   useEffect(() => {
@@ -143,23 +156,39 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
   const selected = charges.filter(c => picked[c.id]);
   const due = selected.reduce((a, c) => a + Number(c.balance), 0);
   const entered = partial ? Number(String(amount).replace(/\s/g, "").replace(",", ".")) || 0 : due;
-  const remaining = charges.reduce((a, c) => a + Number(c.balance), 0) - entered;
-  const currency = charges[0]?.currency || fin.data?.currency;
+  const currency = charges.find(c => picked[c.id])?.currency || fin.data?.currency;
+  const remaining = charges.filter(c => c.currency === currency).reduce((a, c) => a + Number(c.balance), 0) - entered;
   async function submit() {
-    if (!entered || entered <= 0 || entered > due + 0.001) { setMessage("Montant invalide : il doit être positif et ne pas dépasser le total sélectionné."); return; }
-    setBusy(true); setMessage("");
+    if (!enrollment || !selected.length || !Number.isFinite(entered) || entered <= 0 || entered > due + 0.001) {
+      setMessage("Montant invalide : choisissez les frais et un montant positif qui ne dépasse pas le solde."); return;
+    }
+    if (new Set(selected.map(c => c.currency)).size !== 1) {
+      setMessage("Ces frais ont des devises différentes. Effectuez un encaissement par devise."); return;
+    }
+    setBusy(true); setMessage(""); setReceiptUrl("");
     try {
-      let left = entered;
-      const paidOn = fin.data?.today.date || new Date().toISOString().slice(0, 10);
-      for (const c of selected) {
-        if (left <= 0) break;
-        const part = Math.min(left, Number(c.balance));
-        await api(`schools/${schoolId}/finance/payments`, { charge: c.id, amount: part.toFixed(2), method, reference: "", paid_on: paidOn, idempotency_key: newKey() });
+      // Allocate integer cents, never floating-point payment fragments.
+      let left = Math.round(entered * 100);
+      const lines = selected.map(c => {
+        const part = Math.min(left, Math.round(Number(c.balance) * 100));
         left -= part;
-      }
-      setMessage(`Paiement de ${fmtMoney(entered, currency)} enregistré.`);
+        return {charge:c.id,amount:(part / 100).toFixed(2)};
+      }).filter(line => line.amount !== "0.00");
+      if (left !== 0 || !lines.length) throw Error("Répartition du paiement impossible.");
+      const paidOn = fin.data?.today.date || new Date().toISOString().slice(0, 10);
+      const operation = {enrollment,lines,method,reference:"",paid_on:paidOn};
+      const fingerprint = JSON.stringify(operation);
+      const key = pendingOperation?.fingerprint === fingerprint ? pendingOperation.key : newKey();
+      setPendingOperation({fingerprint,key});
+      const batch = await api(`schools/${schoolId}/finance/batches`, {...operation,idempotency_key:key});
+      setPendingOperation(null);
+      setReceiptUrl(batch.receipt_url);
+      setMessage(`Encaissement de ${fmtMoney(batch.total, batch.currency)} enregistré sous la référence ${batch.id.slice(0, 8).toUpperCase()}.`);
       setAmount(""); setPartial(false); fin.reload();
-    } catch (e) { setMessage(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      // Keep the same key on retry after an uncertain connection result.
+      setMessage(e.message);
+    } finally { setBusy(false); }
   }
   const d = fin.data;
   const byMethod = d?.today.by_method || {};
@@ -168,6 +197,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
   const share = v => total ? `${(v / total * 100).toFixed(1).replace(".", ",")} %` : "0,0 %";
   const donutRows = METHODS.map(([k, l]) => [l, Number(byMethod[k] || 0)]);
   return <>
+    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={setViewYear}/>
     <PageHeader title="Encaissements et caisse journalière" subtitle="Suivi des paiements, reçus et méthodes d’encaissement" badge="Économe" badgeIcon="coins"/>
     {tabs}
     <Loading state={fin}>{d && <>
@@ -185,13 +215,14 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
             <label className="yd-label">Parent <i>*</i></label>
             <div className="yd-input"><Icon name="users" size={20}/><span>{student?.guardian ? `${student.guardian.full_name}${student.guardian.relationship ? ` (${student.guardian.relationship})` : ""}` : "—"}</span>{student?.guardian?.phone && <em><Icon name="phone" size={16}/>{student.guardian.phone}</em>}</div>
             <label className="yd-label">Impayés sélectionnés <i>*</i></label>
-            <div className="yd-debts">{charges.length === 0 ? <p className="yd-card-sub yd-empty">{enrollment ? "Aucun frais restant dû pour cet élève." : "Choisissez d’abord un élève."}</p> : charges.map(c => <button type="button" key={c.id} className={picked[c.id] ? "active" : ""} onClick={() => setPicked(p => ({ ...p, [c.id]: !p[c.id] }))}><Check on={!!picked[c.id]}/><span>{c.label}{c.due_date ? ` · échéance ${fmtDate(c.due_date)}` : ""}</span><b>{fmtMoney(c.balance, c.currency)}</b></button>)}</div>
+            <div className="yd-debts">{charges.length === 0 ? <p className="yd-card-sub yd-empty">{enrollment ? "Aucun frais restant dû pour cet élève." : "Choisissez d’abord un élève."}</p> : charges.map(c => <button type="button" key={c.id} className={picked[c.id] ? "active" : ""} onClick={() => setPicked(p => selected.some(row => row.currency !== c.currency) ? {[c.id]:true} : ({ ...p, [c.id]: !p[c.id] }))}><Check on={!!picked[c.id]}/><span>{c.label}{c.due_date ? ` · échéance ${fmtDate(c.due_date)}` : ""}</span><b>{fmtMoney(c.balance, c.currency)}</b></button>)}</div>
             <label className="yd-label">Mode de paiement <i>*</i></label>
             <div className="yd-paymodes">{METHODS.map(([k, l, ic]) => <Button key={k} primary={method === k} icon={ic} onClick={() => setMethod(k)}>{l}</Button>)}</div>
             <label className="yd-label" htmlFor="pay-amount">Montant saisi <i>*</i></label>
-            <div className="yd-amount-row"><div className="yd-amount"><input id="pay-amount" inputMode="decimal" disabled={!partial} value={partial ? amount : num(due)} onChange={e => setAmount(e.target.value)}/><em>{cur(currency)}</em></div><button type="button" className="yd-toggle-btn" aria-pressed={partial} onClick={() => { setPartial(p => !p); setAmount(""); }}><Toggle on={partial}/>Paiement partiel</button></div>
+            <div className="yd-amount-row"><div className="yd-amount"><input id="pay-amount" inputMode="decimal" disabled={!partial} value={partial ? amount : new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(due).replace(/ | /g, " ")} onChange={e => setAmount(e.target.value)}/><em>{cur(currency)}</em></div><button type="button" className="yd-toggle-btn" aria-pressed={partial} onClick={() => { setPartial(p => !p); setAmount(""); }}><Toggle on={partial}/>Paiement partiel</button></div>
             <div className="yd-balance"><span><Icon name="coins" size={22}/>Solde après paiement</span><strong>{fmtMoney(Math.max(remaining, 0), currency)}</strong></div>
             {message && <p role="status" className="yd-form-msg">{message}</p>}
+            {receiptUrl && <p><a className="yd-link" href={receiptUrl} target="_blank" rel="noreferrer">Télécharger le reçu groupé PDF</a></p>}
             <Button primary icon="check" className="wide" disabled={busy || !selected.length || entered <= 0} onClick={submit}>Valider le paiement</Button>
           </>}
         </Card>
@@ -208,13 +239,18 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
           </Card>
         </div>
       </div>
+      <Card title="Clôture de caisse" icon="cash">
+        <CashClosingPanel schoolId={schoolId} defaultDay={d.today.date}/>
+      </Card>
     </>}</Loading>
   </>;
 }
 
 /* ---------- Impayés & relances ---------- */
 export function LiveArrears({ schoolId, schoolName, tabs }) {
-  const fin = useData(`schools/${schoolId}/overview/finance`);
+  const [viewYear, setViewYear] = useState("");
+  const [viewCurrency, setViewCurrency] = useState("");
+  const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
   const [selected, setSelected] = useState(0);
   const [channel, setChannel] = useState("WhatsApp");
   const d = fin.data;
@@ -228,6 +264,7 @@ export function LiveArrears({ schoolId, schoolName, tabs }) {
     const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "impayes.csv"; link.click(); URL.revokeObjectURL(link.href);
   }
   return <>
+    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={setViewYear}/>
     <PageHeader banner={false} title="Impayés & relances" subtitle="Suivi des échéances, retards et messages aux familles" actions={d && <>
       {sendHref ? <a className="yd-btn primary" href={sendHref} target="_blank" rel="noreferrer"><Icon name="send" size={20}/><span>Envoyer la relance</span></a> : <Button primary icon="send" disabled>Envoyer la relance</Button>}
       <Button icon="whatsapp" onClick={() => setChannel("WhatsApp")}>WhatsApp</Button><Button icon="message" onClick={() => setChannel("SMS")}>SMS</Button><Button icon="download" disabled={!d.arrears.length} onClick={exportCsv}>Exporter</Button></>}/>
@@ -262,7 +299,9 @@ export function LiveArrears({ schoolId, schoolName, tabs }) {
 
 /* ---------- Tableau de bord ---------- */
 export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs }) {
-  const fin = useData(`schools/${schoolId}/overview/finance`);
+  const [viewYear, setViewYear] = useState("");
+  const [viewCurrency, setViewCurrency] = useState("");
+  const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
   const d = fin.data;
   const monthly = d?.monthly.map(m => Number(m.total)) || [];
   const sc = scale(monthly);
@@ -271,6 +310,7 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
   const monthTotal = Number(d?.month.total || 0);
   const share = v => monthTotal ? `${Math.round(v / monthTotal * 100)} %` : "0 %";
   return <>
+    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={setViewYear}/>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName} — ${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`} badge={roleLabel || "Membre"} badgeIcon="crown"/>
     {tabs}
     <Loading state={fin}>{d && <>

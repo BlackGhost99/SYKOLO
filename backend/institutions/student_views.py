@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 from .views import access, refuse, parse_body, log_event
-from .services import has_permission
+from .services import has_permission, quota_reached
 from .academic_models import AcademicYear, AcademicClass
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 
@@ -123,6 +123,10 @@ def students(request, school_id):
     try:
         values = parse_fields(data, ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "active"), ("student_code", "first_name", "last_name"))
         with transaction.atomic():
+            from .models import School
+            School.objects.select_for_update().get(pk=school.pk)
+            if values.get("active", True) and quota_reached(school, "students"):
+                return JsonResponse({"error": "Plafond d'élèves atteint pour cet établissement."}, status=409)
             student = Student(school=school, **values)
             student.full_clean()
             student.save()
@@ -162,6 +166,11 @@ def student_detail(request, school_id, student_id):
             obj = Student.objects.select_for_update().filter(school=school, pk=student_id).first()
             if obj is None: return JsonResponse({"error": "Élève introuvable."}, status=404)
             if obj.revision != data["revision"]: return JsonResponse({"error": "Conflit de version.", "revision": obj.revision}, status=409)
+            if fields.get("active") is True and not obj.active:
+                from .models import School
+                School.objects.select_for_update().get(pk=school.pk)
+                if quota_reached(school, "students"):
+                    return JsonResponse({"error": "Plafond d'élèves atteint pour cet établissement."}, status=409)
             for field,value in fields.items(): setattr(obj, field, value)
             obj.full_clean()
             obj.revision += 1

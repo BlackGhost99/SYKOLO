@@ -1,9 +1,9 @@
 import React, {useEffect,useState} from "react";
 
-async function api(path,body) {
+async function api(path,body,method) {
   if (body!==undefined) await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
   const csrf=document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1]||"";
-  const response=await fetch("/api/v1/"+path,{method:body===undefined?"GET":"POST",credentials:"same-origin",
+  const response=await fetch("/api/v1/"+path,{method:method||(body===undefined?"GET":"POST"),credentials:"same-origin",
     headers:body===undefined?{}:{"Content-Type":"application/json","X-CSRFToken":csrf},
     body:body===undefined?undefined:JSON.stringify(body)});
   if(!response.headers.get("content-type")?.includes("application/json"))throw Error("Serveur indisponible.");
@@ -23,6 +23,8 @@ export default function StaffPanel({schoolId}){
   const [last,setLast]=useState("");
   const [position,setPosition]=useState("");
   const [username,setUsername]=useState("");
+  const [linkStaff,setLinkStaff]=useState("");
+  const [linkUsername,setLinkUsername]=useState("");
   const [selectedStaff,setSelectedStaff]=useState("");
   const [selectedYear,setSelectedYear]=useState("");
   const [selectedClass,setSelectedClass]=useState("");
@@ -79,6 +81,28 @@ export default function StaffPanel({schoolId}){
           </label>
         </div>
         <button disabled={busy} type="submit">Enregistrer le personnel</button>
+      </form>
+      <form onSubmit={e=>{e.preventDefault();run(async()=>{
+        const record=staff.find(p=>p.id===linkStaff);
+        if(!record)throw Error("Sélectionnez une fiche du personnel.");
+        await api(base+"staff/"+linkStaff,{revision:record.revision,username:linkUsername.trim()},"PATCH");
+        setLinkUsername("");
+        setError("Compte lié à la fiche du personnel.");
+      });}}>
+        <h3>Rattacher un compte YEM à un personnel existant</h3>
+        <p className="hint">Créez d'abord le compte dans « Comptes et accès ». Cette liaison est utile pour les nominations et pour afficher les fonctions après connexion.</p>
+        <div className="two">
+          <label className="field">Personnel
+            <select required value={linkStaff} onChange={e=>setLinkStaff(e.target.value)}>
+              <option value="">Choisir une fiche…</option>
+              {staff.filter(p=>p.active).map(p=><option key={p.id} value={p.id}>{p.last_name} {p.first_name} · {p.account_id?"Compte lié":"Sans compte"}</option>)}
+            </select>
+          </label>
+          <label className="field">Identifiant d'un compte actif de cette école
+            <input required maxLength={150} value={linkUsername} onChange={e=>setLinkUsername(e.target.value)} placeholder="Identifiant de connexion"/>
+          </label>
+        </div>
+        <button disabled={busy||!linkStaff||!linkUsername.trim()} type="submit">Associer le compte à cette fiche</button>
       </form>
       <form onSubmit={e=>{e.preventDefault();run(async()=>{
         await api(base+"staff-assignments",{staff:selectedStaff,year:selectedYear,classroom:selectedClass,duty});

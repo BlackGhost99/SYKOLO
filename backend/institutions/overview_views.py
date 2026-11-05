@@ -18,6 +18,7 @@ from .services import has_permission
 from .academic_models import AcademicYear, AcademicClass
 from .student_models import Student, StudentGuardian, Enrollment
 from .finance_models import FeeCharge, FeePayment
+from .finance_views import uid, CURRENCY_PATTERN
 
 ZERO = Decimal("0.00")
 
@@ -38,7 +39,7 @@ def gate(request, school_id, permission):
 def current_year(school, requested=None):
     years = AcademicYear.objects.filter(school=school)
     if requested:
-        return years.filter(pk=requested).first()
+        return years.filter(pk=uid(requested)).first() if uid(requested) else None
     today = timezone.localdate()
     return (years.filter(active=True, start_date__lte=today, end_date__gte=today).order_by("-start_date").first()
             or years.filter(active=True).order_by("-start_date").first()
@@ -53,10 +54,11 @@ def primary_guardians(school, student_ids):
     return result
 
 
-def enrollment_balances(school, enrollment_ids):
-    """Billed, cleared payments and balance per enrollment, in the school's main currency."""
+def enrollment_balances(school, enrollment_ids, requested_currency=None):
+    """Balances in the explicitly selected currency; other currencies stay selectable."""
     charges = list(FeeCharge.objects.filter(school=school, enrollment_id__in=enrollment_ids).values("id", "enrollment_id", "amount", "currency", "due_date"))
-    currency = Counter(c["currency"] for c in charges).most_common(1)[0][0] if charges else None
+    currencies = sorted({c["currency"] for c in charges})
+    currency = requested_currency or (currencies[0] if currencies else "XAF")
     paid_by_charge = dict(
         FeePayment.objects.filter(school=school, charge_id__in=[c["id"] for c in charges], void__isnull=True)
         .values_list("charge_id").annotate(total=Sum("amount")).values_list("charge_id", "total")
@@ -96,6 +98,10 @@ def students_overview(request, school_id):
     if error is not None:
         return error
     year = current_year(school, request.GET.get("year") or None)
+    if request.GET.get("year") and year is None:
+        return JsonResponse({"error": "Année scolaire introuvable."}, status=422)
+    if request.GET.get("currency") and not CURRENCY_PATTERN.fullmatch(request.GET["currency"]):
+        return JsonResponse({"error": "Devise ISO invalide."}, status=422)
     students = list(Student.objects.filter(school=school).order_by("last_name", "first_name")[:1000])
     ids = [s.pk for s in students]
     enrollments = {}
@@ -104,12 +110,17 @@ def students_overview(request, school_id):
             enrollments[e.student_id] = e
     guardians = primary_guardians(school, ids)
     finance_visible = has_permission(request.user, school, "school.finance.read")
-    currency, balances = enrollment_balances(school, [e.pk for e in enrollments.values()]) if finance_visible else (None, {})
+    currency, balances = enrollment_balances(school, [e.pk for e in enrollments.values()], request.GET.get("currency")) if finance_visible else (None, {})
     today = timezone.localdate()
     methods, last_paid = defaultdict(set), {}
     if finance_visible:
-        cleared = FeePayment.objects.filter(school=school, void__isnull=True, charge__enrollment_id__in=[e.pk for e in enrollments.values()])
-        for eid, method, paid_on in cleared.order_by("paid_on").values_list("charge__enrollment_id", "method", "paid_on"):
+        cleared = FeePayment.objects.filter(
+            school=school, void__isnull=True, charge__currency=currency,
+            charge__enrollment_id__in=[e.pk for e in enrollments.values()],
+        )
+        for eid, method, paid_on in cleared.order_by("paid_on").values_list(
+            "charge__enrollment_id", "method", "paid_on"
+        ):
             methods[eid].add(method)
             last_paid[eid] = paid_on
     from .enrollment_form import load_config, missing_documents
@@ -138,9 +149,10 @@ def students_overview(request, school_id):
 
     classes = AcademicClass.objects.filter(school=school, year=year).order_by("name") if year else []
     return JsonResponse({
+        "years": [{"id": str(y.pk), "name": y.name} for y in AcademicYear.objects.filter(school=school).order_by("-start_date")],
         "year": {"id": str(year.pk), "name": year.name} if year else None,
         "classes": [{"id": str(c.pk), "name": c.name} for c in classes],
-        "years": [{"id": str(y.pk), "name": y.name} for y in AcademicYear.objects.filter(school=school).order_by("-start_date")],
+        "currencies": sorted(set(FeeCharge.objects.filter(school=school, enrollment_id__in=[e.pk for e in enrollments.values()]).values_list("currency", flat=True))),
         "currency": currency,
         "finance_visible": finance_visible,
         "students": rows,
@@ -175,9 +187,13 @@ def finance_overview(request, school_id):
         return error
     today = timezone.localdate()
     year = current_year(school, request.GET.get("year") or None)
-    enrollments = {e.pk: e for e in Enrollment.objects.select_related("student", "classroom").filter(school=school, active=True, **({"year": year} if year else {}))}
-    currency, balances = enrollment_balances(school, list(enrollments))
-    payments = FeePayment.objects.filter(school=school, void__isnull=True)
+    if request.GET.get("year") and year is None:
+        return JsonResponse({"error": "Année scolaire introuvable."}, status=422)
+    if request.GET.get("currency") and not CURRENCY_PATTERN.fullmatch(request.GET["currency"]):
+        return JsonResponse({"error": "Devise ISO invalide."}, status=422)
+    enrollments = {e.pk: e for e in Enrollment.objects.select_related("student", "classroom").filter(school=school, **({"year": year} if year else {}))}
+    currency, balances = enrollment_balances(school, list(enrollments), request.GET.get("currency"))
+    payments = FeePayment.objects.filter(school=school, void__isnull=True, charge__enrollment__year=year)
     if currency:
         payments = payments.filter(currency=currency)
 
@@ -217,13 +233,15 @@ def finance_overview(request, school_id):
     by_class = Counter(a["classroom"] for a in arrears)
     outstanding = sum((b["billed"] - b["paid"] for b in balances.values()), ZERO)
     return JsonResponse({
+        "currencies": sorted(set(FeeCharge.objects.filter(school=school, enrollment__year=year).values_list("currency", flat=True))),
         "currency": currency or "XAF",
+        "years": [{"id": str(y.pk), "name": y.name} for y in AcademicYear.objects.filter(school=school).order_by("-start_date")],
         "year": {"id": str(year.pk), "name": year.name} if year else None,
         "today": {
             "date": today.isoformat(), "total": money(total(payments.filter(paid_on=today))),
             "count": payments.filter(paid_on=today).count(), "by_method": by_method(payments.filter(paid_on=today)),
             "payments": [{
-                "id": str(p.pk), "amount": money(p.amount), "method": p.method, "recorded_at": p.created_at.isoformat(),
+                "id": str(p.pk), "currency": p.currency, "amount": money(p.amount), "method": p.method, "recorded_at": p.created_at.isoformat(),
                 "student": f"{p.charge.enrollment.student.last_name} {p.charge.enrollment.student.first_name}",
                 "classroom": p.charge.enrollment.classroom.name, "label": p.charge.label,
             } for p in todays],

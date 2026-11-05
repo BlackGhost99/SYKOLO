@@ -1,7 +1,7 @@
 import json
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from .models import Organization, School, SchoolMember
+from .models import Organization, OrganizationMember, School, SchoolMember
 
 class PlatformProvisioningTests(TestCase):
     def setUp(self):
@@ -15,6 +15,7 @@ class PlatformProvisioningTests(TestCase):
             "username":"responsable","email":"responsable@example.org",
             "first_name":"Anne","last_name":"Test",
             "password":"Valid-responsable-2026!","role":"direction",
+            "school_type":"primaire","education_cycles":["primaire"],
         }
 
     def post(self, url=None, data=None):
@@ -39,15 +40,19 @@ class PlatformProvisioningTests(TestCase):
         self.assertTrue(user.check_password(self.input["password"]))
         self.assertEqual(SchoolMember.objects.filter(user=user, active=True).count(), 1)
 
-    def test_duplicate_username_does_not_create_orphan_school(self):
+    def test_duplicate_global_username_creates_distinct_school_account(self):
         get_user_model().objects.create_user(username="responsable", password="Not-this-password-2026!")
         session = self.client.session
         session["mfa_verified"] = True
         session.save()
         response = self.post()
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(School.objects.count(), 0)
-        self.assertEqual(Organization.objects.count(), 0)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(School.objects.count(), 1)
+        self.assertEqual(Organization.objects.count(), 1)
+        from .models import SchoolLogin
+        identity = SchoolLogin.objects.get(school_id=response.json()["id"], username="responsable")
+        self.assertNotEqual(identity.user.username, "responsable")
+        self.assertTrue(identity.user.check_password(self.input["password"]))
 
     def test_school_user_cannot_access_platform(self):
         session = self.client.session
@@ -87,6 +92,48 @@ class PlatformProvisioningTests(TestCase):
             **teacher, "username":"another", "email":"another@example.org"
         }), content_type="application/json")
         self.assertEqual(attempt.status_code, 403)
+
+    def test_reuses_existing_organization_for_new_school(self):
+        session = self.client.session
+        session["mfa_verified"] = True
+        session.save()
+        first = self.post()
+        self.assertEqual(first.status_code, 201, first.content)
+        organization = Organization.objects.get()
+        payload = {**self.input, "organization_name": "", "organization_id": str(organization.pk),
+                   "school_name": "Deuxième école", "username": "responsable_2",
+                   "email": "responsable2@example.org"}
+        second = self.post(data=payload)
+        self.assertEqual(second.status_code, 201, second.content)
+        self.assertEqual(Organization.objects.count(), 1)
+        self.assertEqual(School.objects.count(), 2)
+        self.assertEqual(School.objects.get(name="Deuxième école").organization_id, organization.pk)
+        listing = self.client.get(self.url).json()
+        self.assertEqual(len(listing["organization_options"]), 1)
+
+    def test_school_owner_in_existing_group_has_no_group_founder_rights(self):
+        session = self.client.session
+        session["mfa_verified"] = True
+        session.save()
+        first = self.post()
+        self.assertEqual(first.status_code, 201)
+        organization = Organization.objects.get()
+        second = self.post(data={**self.input, "organization_name": "", "organization_id": str(organization.pk),
+                                 "school_name": "Autre école", "username": "autre_proprio",
+                                 "email": "autre-proprio@example.org", "role": "proprietaire"})
+        self.assertEqual(second.status_code, 201, second.content)
+        user = get_user_model().objects.get(username="autre_proprio")
+        self.assertFalse(OrganizationMember.objects.filter(organization=organization, user=user).exists())
+        self.assertEqual(SchoolMember.objects.get(user=user).school.name, "Autre école")
+
+    def test_unknown_organization_is_rejected_without_creating_school(self):
+        session = self.client.session
+        session["mfa_verified"] = True
+        session.save()
+        payload = {**self.input, "organization_name": "", "organization_id": "00000000-0000-0000-0000-000000000000"}
+        response = self.post(data=payload)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(School.objects.count(), 0)
 
     def test_platform_explicit_school_administration_is_audited(self):
         session = self.client.session

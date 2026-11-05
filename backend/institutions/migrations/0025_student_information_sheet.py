@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("institutions", "0013_guardian_account_links"),
+        ("institutions", "0024_delegation_audit_details"),
     ]
 
     operations = [

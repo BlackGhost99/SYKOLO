@@ -36,6 +36,7 @@ export default function SchoolPanel() {
   const [orgId, setOrgId] = useState("");
   const [targetUser, setTargetUser] = useState("");
   const [roleCode, setRoleCode] = useState("direction");
+  const [extraRoles, setExtraRoles] = useState([]);
   const [roles, setRoles] = useState([]);
   const [configuration, setConfiguration] = useState("");
   const [revision, setRevision] = useState(0);
@@ -113,7 +114,7 @@ export default function SchoolPanel() {
       </label>
       {selected && <>
         <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-          await api("schools/" + selected + "/members", { username: targetUser, role: roleCode });
+          await api("schools/" + selected + "/members", { username: targetUser, role: roleCode, additional_roles: extraRoles });
           setTargetUser(""); setMessage("Affectation enregistrée pour cette école.");
         }); }}>
           <h3>Affecter un utilisateur existant</h3>
@@ -125,6 +126,10 @@ export default function SchoolPanel() {
               {roles.map((r) => <option key={r.id} value={r.code}>{r.label}</option>)}
             </select>
           </label>
+          <fieldset><legend>Fonctions supplémentaires (remplace les affectations précédentes)</legend>
+            {roles.filter(r=>r.code!==roleCode).map(r=><label key={r.id}><input type="checkbox" checked={extraRoles.includes(r.code)} onChange={e=>setExtraRoles(old=>e.target.checked?[...old,r.code]:old.filter(c=>c!==r.code))}/>{r.label}</label>)}
+            <p>Un contrôle indépendant reste obligatoire pour la caisse et les annulations.</p>
+          </fieldset>
           <button disabled={busy || !roles.length} type="submit">Affecter</button>
         </form>
         <div style={{ marginTop: "1rem" }}>

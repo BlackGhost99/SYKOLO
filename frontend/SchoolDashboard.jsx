@@ -1,7 +1,10 @@
+import DelegationManager from "./DelegationManager.jsx";
 import React, {useEffect,useState} from "react";
 import AcademicPanel from "./AcademicPanel.jsx";
 import StudentPanel from "./StudentPanel.jsx";
 import StaffPanel from "./StaffPanel.jsx";
+import OrganisationPanel, {MySchoolFunctions} from "./OrganisationPanel.jsx";
+import RoleManager from "./RoleManager.jsx";
 import CurriculumPanel from "./CurriculumPanel.jsx";
 import AssessmentPanel from "./AssessmentPanel.jsx";
 import ReportPanel from "./ReportPanel.jsx";
@@ -22,6 +25,8 @@ const modules = {
   academic:{label:"Années, cycles et classes",read:"school.academic.read",view:AcademicPanel},
   students:{label:"Élèves et inscriptions",read:"school.students.read",view:StudentPanel},
   staff:{label:"Personnel et enseignants",read:"school.staff.read",view:StaffPanel},
+  organization:{label:"Organigramme et fonctions",read:"school.organization.read",view:OrganisationPanel},
+  roles:{label:"Rôles et permissions",read:"school.roles.read",view:RoleManager},
   curriculum:{label:"Matières et programmes",read:"school.curriculum.read",view:CurriculumPanel},
   timetable:{label:"Emplois du temps",read:"school.timetable.read",view:TimetablePanel},
   assessments:{label:"Évaluations et notes",read:"school.assessments.read",view:AssessmentPanel},
@@ -44,7 +49,7 @@ const sections = {
   arrears:{title:"Impayés & relances",subtitle:"Suivi des échéances, retards et soldes des familles",modules:[],lives:[{key:"live",label:"Impayés",need:["school.finance.read"]}]},
   bulletins:{title:"Bulletins et résultats scolaires",subtitle:"Évaluations, préparation, contrôle et publication des bulletins",modules:["assessments","reports","council"]},
   absences:{title:"Absences et retards",subtitle:"Appels, absences, retards et justificatifs",modules:["attendance","timetable"]},
-  staff:{title:"Personnel",subtitle:"Équipe pédagogique et administrative, affectations et comptes",modules:["staff"],extra:"users"},
+  staff:{title:"Personnel",subtitle:"Équipe pédagogique et administrative, affectations et comptes",modules:["staff","organization","roles"],extra:"users"},
   settings:{title:"Paramétrage de l’établissement",subtitle:"Années, classes, fiche d’inscription, matières, barèmes et emplois du temps",modules:["academic","curriculum","timetable"],lives:[
     {key:"classes",label:"Classes",need:["school.academic.read"]},
     {key:"form",label:"Fiche d’inscription",need:["school.students.read"]}]},
@@ -57,11 +62,12 @@ async function get(path) {
   if (!r.ok) throw Error(data.error||"Accès refusé");
   return data;
 }
-const defaultPerson={username:"",email:"",first_name:"",last_name:"",password:"",role:"enseignant"};
-async function addUser(schoolId, body) {
+const defaultPerson={username:"",email:"",first_name:"",last_name:"",password:"",role:"enseignant",function_codes:[]};
+const DEFAULT_ROLE_OPTIONS=[["direction","Direction"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]];
+async function addUser(schoolId, body, endpoint="users") {
   await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
   const token=document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1]||"";
-  const r=await fetch("/api/v1/schools/"+schoolId+"/users",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-CSRFToken":token},body:JSON.stringify(body)});
+  const r=await fetch("/api/v1/schools/"+schoolId+"/"+endpoint,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-CSRFToken":token},body:JSON.stringify(body)});
   const data=await r.json();
   if(!r.ok)throw Error(data.error||"Création refusée");
   return data;
@@ -69,13 +75,40 @@ async function addUser(schoolId, body) {
 
 function UsersForm({schoolId,onMessage}) {
   const [person,setPerson]=useState(defaultPerson);
+  const [assignment,setAssignment]=useState({username:"",role:"enseignant",additional_roles:[],function_codes:[]});
   const [busy,setBusy]=useState(false);
+  const [roleOptions,setRoleOptions]=useState([]);
+  const [functions,setFunctions]=useState([]);
+  const [members,setMembers]=useState([]);
+  useEffect(()=>{
+    let alive=true;
+    get("schools/"+schoolId+"/members").then(result=>{if(alive)setMembers(result.members||[]);}).catch(err=>{if(alive)onMessage(err.message);});
+    get("schools/"+schoolId+"/roles").then(result=>{
+      if(!alive)return;
+      setFunctions(result.functions||[]);
+      const options=(result.roles||[]).map(r=>[r.code,r.label]);
+      if(options.length){
+        setRoleOptions(options);
+        setPerson(old=>options.some(([code])=>code===old.role)?old:{...old,role:options[0][0]});
+      }
+    }).catch(err=>{if(alive){setRoleOptions([]);onMessage(err.message);}});
+    return()=>{alive=false;};
+  },[schoolId]);
   return <Card title="Créer un compte pour l'établissement" icon="adduser" subtitle="Le compte est rattaché uniquement à cette école. Les droits dépendent de son rôle.">
-    <form onSubmit={async e=>{e.preventDefault();setBusy(true);onMessage("");try{const result=await addUser(schoolId,person);setPerson(defaultPerson);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
+    <form onSubmit={async e=>{e.preventDefault();setBusy(true);onMessage("");try{const result=await addUser(schoolId,person);setPerson(defaultPerson);setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
       {["first_name","last_name","username","email"].map(key=><label key={key}>{{first_name:"Prénom",last_name:"Nom",username:"Identifiant de connexion",email:"Email"}[key]}<input required value={person[key]} type={key==="email"?"email":"text"} onChange={e=>setPerson(x=>({...x,[key]:e.target.value}))}/></label>)}
-      <label>Rôle<select value={person.role} onChange={e=>setPerson(x=>({...x,role:e.target.value}))}>{[["direction","Direction"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]].map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+      <label>Rôle<select value={person.role} onChange={e=>setPerson(x=>({...x,role:e.target.value}))}>{roleOptions.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
       <label>Mot de passe initial<input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>setPerson(x=>({...x,password:e.target.value}))}/></label>
-    </div><button className="pc-primary" type="submit" disabled={busy}>Créer le compte</button></form>
+    </div><fieldset><legend>Fonctions exercées (facultatives, sans droits automatiques)</legend>{functions.map(f=><label key={f.code}><input type="checkbox" checked={person.function_codes.includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...old.function_codes,f.code]:old.function_codes.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset><button className="pc-primary" type="submit" disabled={busy||!roleOptions.length}>Créer le compte</button></form>
+    <form aria-label="Fonctions d'un compte existant" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await addUser(schoolId,assignment,"members");setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Fonctions mises à jour.");}catch(err){onMessage(err.message);}finally{setBusy(false);}}}>
+      <h3>Fonctions d'un compte existant</h3>
+      <label>Compte existant<select required value={assignment.username} onChange={e=>{const m=members.find(x=>x.username===e.target.value);if(m)setAssignment({username:m.username,role:m.role,additional_roles:m.additional_roles||[],function_codes:m.function_codes||[]});}}><option value="">Choisir…</option>{members.map(m=><option key={m.user_id} value={m.username}>{m.username}</option>)}</select></label>
+      <label>Rôle principal<select value={assignment.role} onChange={e=>setAssignment({...assignment,role:e.target.value})}>{roleOptions.map(([code,label])=><option key={code} value={code}>{label}</option>)}</select></label>
+      <fieldset><legend>Fonctions supplémentaires (remplace la sélection précédente)</legend>{roleOptions.filter(([code])=>code!==assignment.role).map(([code,label])=><label key={code}><input type="checkbox" checked={assignment.additional_roles.includes(code)} onChange={e=>setAssignment(old=>({...old,additional_roles:e.target.checked?[...old.additional_roles,code]:old.additional_roles.filter(x=>x!==code)}))}/>{label}</label>)}</fieldset>
+      <fieldset><legend>Fonctions exercées (remplace la sélection précédente)</legend>{functions.map(f=><label key={f.code}><input type="checkbox" checked={assignment.function_codes.includes(f.code)} onChange={e=>setAssignment(old=>({...old,function_codes:e.target.checked?[...old.function_codes,f.code]:old.function_codes.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset>
+      <button disabled={busy}>Enregistrer les fonctions</button>
+    </form>
+    <DelegationManager schoolId={schoolId} onFunctions={setFunctions}/>
   </Card>;
 }
 
@@ -100,7 +133,7 @@ function UserMenu({user,roleLabel,onAccount,onLogout}) {
   </div>;
 }
 
-export default function SchoolDashboard({user,accountView,onLogout}) {
+export default function SchoolDashboard({user,accountView,onLogout,initialSchoolId=""}) {
   const [schools,setSchools]=useState([]);
   const [loaded,setLoaded]=useState(false);
   const [chosen,setChosen]=useState("");
@@ -108,9 +141,10 @@ export default function SchoolDashboard({user,accountView,onLogout}) {
   const [page,setPage]=useState("dashboard");
   const [sub,setSub]=useState("");
   const [params,setParams]=useState(null);
-  const [isParent,setIsParent]=useState(false);
+  const [isParent,setIsParent]=useState(true);
+  const [showWorkspace,setShowWorkspace]=useState(false);
   const [message,setMessage]=useState("");
-  useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
+  useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
   useEffect(()=>{let live=true;fetch("/api/v1/parents/children",{credentials:"same-origin"}).then(r=>r.ok?r.json():null).then(d=>{if(live&&d?.parent_role)setIsParent(true);}).catch(()=>{});return()=>{live=false;};},[]);
   useEffect(()=>{
     if (!chosen) {setAccess(null);return;}
@@ -134,6 +168,21 @@ export default function SchoolDashboard({user,accountView,onLogout}) {
   const selector=<div className="yd-school-select-wrap"><label className="yd-school-select"><Icon name="school" size={24}/>
     {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>setChosen(e.target.value)}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:<b>{schoolName}</b>}
     {schools.length>1&&<Icon name="chevron" size={18} className="chev"/>}</label></div>;
+  // Une famille connectée arrive directement dans YEM Parents, sans tableau de bord scolaire.
+  // Un même compte peut aussi travailler dans un établissement : la bascule reste accessible.
+  const parentLanding = loaded && (schools.length === 0 || (access?.role === "parent" && !showWorkspace));
+  if (parentLanding) return <div className="yd-parent-standalone" style={{maxWidth:1040,margin:"0 auto",padding:"1rem"}}>
+    <nav aria-label="Navigation du compte parent" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:14}}>
+      <strong style={{fontSize:21,color:"#175c46"}}>YEM Parents</strong>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {schools.length>0&&<button type="button" className="yd-btn" onClick={()=>setShowWorkspace(true)}>Espace établissement</button>}
+        <button type="button" className="yd-btn" onClick={()=>setPage(page==="account"?"parents":"account")}>{page==="account"?"Mes enfants":"Mon compte"}</button>
+        <button type="button" className="yd-btn" onClick={onLogout}>Se déconnecter</button>
+      </div>
+    </nav>
+    {page==="account"?accountView:<ParentPortal/>}
+    <footer className="yd-brand-footer"><span>YEM · Espace familles</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
+  </div>;
   let content;
   if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
   else if (page==="parents") content=<div className="yd-real-body"><ParentPortal/></div>;
@@ -158,14 +207,16 @@ export default function SchoolDashboard({user,accountView,onLogout}) {
   else if (section) content=<>
     <PageHeader title={section.title} subtitle={section.subtitle}/>
     {tabBar}
-    <div className="yd-real-body">{tab==="users"?<UsersForm schoolId={chosen} onMessage={setMessage}/>:View&&<View key={chosen+"-"+tab} schoolId={chosen}/>}</div>
+    <div className="yd-real-body">{tab==="users"?<UsersForm schoolId={chosen} onMessage={setMessage}/>:View&&<View key={chosen+"-"+tab} schoolId={chosen} canDecide={perms.includes("school.admissions.decide")} canConfigurePayment={perms.includes("school.admissions.manage")&&perms.includes("school.finance.manage")} canManage={perms.includes("school.organization.manage")} canManageRoles={perms.includes("school.roles.manage")}/>}</div>
   </>;
   else if (perms.includes("school.finance.read")) content=<>
     <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={access.role_label} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")}/>
+    <MySchoolFunctions schoolId={chosen}/>
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   else content=<>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={access.role_label||"Membre"} badgeIcon="crown"/>
+    <MySchoolFunctions schoolId={chosen}/>
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}

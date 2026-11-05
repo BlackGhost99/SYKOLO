@@ -44,15 +44,30 @@ MFA_ENCRYPTION_KEY = os.environ.get("MFA_ENCRYPTION_KEY", SECRET_KEY if not DEPL
 if DEPLOYED and len(MFA_ENCRYPTION_KEY) < 32:
     raise ImproperlyConfigured("MFA_ENCRYPTION_KEY (32 caractères minimum) est requise.")
 PASSWORD_RESET_TIMEOUT = 1800
+# Never enable real payments without a reviewed merchant contract and environment secrets.
+YEM_PAYMENTS_LIVE_ENABLED = os.environ.get("YEM_PAYMENTS_LIVE_ENABLED", "false").lower() == "true"
+YEM_PAYMENT_ENCRYPTION_KEY = os.environ.get("YEM_PAYMENT_ENCRYPTION_KEY", "")
 AUTH_PUBLIC_BASE_URL = os.environ.get("AUTH_PUBLIC_BASE_URL", "" if DEPLOYED else "http://localhost:3000")
 EMAIL_HOST = os.environ.get("YEM_SMTP_HOST", "localhost")
 EMAIL_PORT = int(os.environ.get("YEM_SMTP_PORT", "587"))
 EMAIL_HOST_USER = os.environ.get("YEM_SMTP_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("YEM_SMTP_PASSWORD", "")
 EMAIL_USE_TLS = not os.environ.get("YEM_SMTP_TLS", "true").lower() == "false"
-EMAIL_BACKEND = os.environ.get("YEM_EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend" if DEPLOYED else "django.core.mail.backends.console.EmailBackend")
+YEM_RESEND_API_KEY = os.environ.get("YEM_RESEND_API_KEY", "")
 DEFAULT_FROM_EMAIL = os.environ.get("YEM_FROM_EMAIL", "no-reply@localhost")
-PASSWORD_RESET_ENABLED = not DEPLOYED or bool(os.environ.get("YEM_SMTP_HOST") and os.environ.get("YEM_FROM_EMAIL") and AUTH_PUBLIC_BASE_URL.startswith("https://"))
+EMAIL_BACKEND = os.environ.get(
+    "YEM_EMAIL_BACKEND",
+    "accounts.email_backends.ResendEmailBackend" if YEM_RESEND_API_KEY else
+    ("django.core.mail.backends.smtp.EmailBackend" if DEPLOYED else "django.core.mail.backends.console.EmailBackend"),
+)
+# Two supported production transports: HTTPS email API or SMTP on hosting
+# that permits outbound mail ports. Do not claim availability on key alone:
+# actual delivery must be tested with the user's verified sender domain.
+PASSWORD_RESET_ENABLED = not DEPLOYED or bool(
+    AUTH_PUBLIC_BASE_URL.startswith("https://")
+    and os.environ.get("YEM_FROM_EMAIL")
+    and (YEM_RESEND_API_KEY or os.environ.get("YEM_SMTP_HOST"))
+)
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -60,6 +75,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "config.middleware.SchoolSessionMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "config.middleware.ResponseHeadersMiddleware",
 ]

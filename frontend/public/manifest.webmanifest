@@ -1,0 +1,31 @@
+{
+  "name": "YEM · Gestion scolaire",
+  "short_name": "YEM",
+  "description": "Suivi des enfants, écoles et inscriptions — Gabon",
+  "id": "/",
+  "start_url": "/?install=yem",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7fbf8",
+  "theme_color": "#1b664c",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": [
+    "education",
+    "productivity"
+  ],
+  "lang": "fr"
+}

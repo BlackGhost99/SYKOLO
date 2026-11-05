@@ -1,0 +1,35 @@
+/* Mobile-first YEM Parents. Class names isolated from school admin styles. */
+.yp-app{--yp-green:#175c46;--yp-pale:#edf7f0;--yp-line:#e4ece8;color:#17382d;max-width:900px;margin:0 auto;padding:12px 4px 30px;font-size:15px}
+.yp-head{display:flex;justify-content:space-between;gap:18px;align-items:center;background:linear-gradient(115deg,#155b43,#298264);color:white;border-radius:20px;padding:24px;margin-bottom:16px}
+.yp-head h2{margin:6px 0 8px;font-size:clamp(23px,5vw,31px);color:white;line-height:1.17}
+.yp-head p{color:#e9f6ef;margin:0;max-width:580px}.yp-eyebrow{font-weight:750;letter-spacing:.08em;font-size:12px;text-transform:uppercase}
+.yp-stat{min-width:80px;text-align:center;font-size:32px;font-weight:850;padding:12px;background:#ffffff24;border:1px solid #ffffff50;border-radius:15px}
+.yp-stat small{display:block;font-size:10px;font-weight:550}
+.yp-tabs{display:flex;gap:7px;overflow-x:auto;margin:12px 0 18px;padding-bottom:4px}
+.yp-tabs button{border:1px solid var(--yp-line);border-radius:24px;padding:10px 14px;background:white;color:#1e4d3a;white-space:nowrap;cursor:pointer;font-weight:650}
+.yp-tabs button[aria-current="page"]{background:var(--yp-green);border-color:var(--yp-green);color:#fff}
+.yp-field{display:flex;flex-direction:column;gap:6px;font-weight:600;margin:8px 0 13px;color:#1d4536}
+.yp-field input,.yp-field select,.yp-field textarea{width:100%;max-width:100%;box-sizing:border-box;font:inherit;color:#183d2d;background:white;border:1px solid #cbded2;border-radius:10px;padding:10px 12px;min-height:44px}
+.yp-field :is(input,select,textarea):focus-visible,.yp-button:focus-visible,.yp-tabs button:focus-visible{outline:3px solid #8abca5;outline-offset:2px}
+.yp-schools{display:grid;gap:13px}.yp-school,.yp-pane,.yp-settings{border:1px solid var(--yp-line);background:white;border-radius:17px;padding:18px;box-shadow:0 3px 13px #124c3420}
+.yp-school.active{border-color:#79b89c}.yp-school-title{display:flex;align-items:center;gap:12px}
+.yp-school-title h3,.yp-pane h3{margin:0 0 4px;font-size:19px;color:#194b37}
+.yp-school-title small,.yp-muted,.yp-child small,.yp-request small{color:#5d796a}.yp-school>p{margin:10px 0}
+.yp-emblem{width:45px;height:45px;flex:0 0 45px;display:grid;place-items:center;border-radius:13px;background:#e0f0e6;color:#166045;font-weight:850;font-size:26px}
+.yp-button{cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border:1px solid #91bca5;border-radius:10px;background:white;color:#175c46;padding:10px 16px;min-height:44px;font-weight:750}
+.yp-button.yp-primary{background:var(--yp-green);color:#fff;border-color:var(--yp-green)}.yp-button:disabled{opacity:.48;cursor:not-allowed}
+.yp-apply{margin-top:18px;padding:17px;background:#f7fbf8;border:1px solid #d5e6dc;border-radius:14px}
+.yp-apply h4,.yp-pane h4{font-size:16px;margin:0 0 8px}.yp-apply p{color:#527060}
+.yp-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
+.yp-payment{border:1px solid #c8dfd1;border-radius:12px;padding:12px 15px;margin:12px 0 16px}
+.yp-payment legend{font-weight:700;padding:0 5px}.yp-payment label{display:flex;align-items:center;gap:10px;margin:9px 0}
+.yp-payment input{accent-color:#207250}.yp-payment .yp-disabled{opacity:.5}.yp-payment small{display:block;color:#5b7967;line-height:1.45}
+.yp-child{display:flex;flex-direction:column;gap:4px;border-bottom:1px solid var(--yp-line);padding:12px 0}
+.yp-pane form{border-top:1px solid var(--yp-line);margin-top:14px;padding-top:15px}
+.yp-request{padding:14px;border:1px solid var(--yp-line);border-radius:12px;margin:12px 0}
+.yp-request b{display:block;font-size:16px}.yp-request p{margin:5px 0 9px}.yp-request strong{color:#176344;display:block}
+.yp-request small{display:block;margin-top:8px}.yp-error,.yp-success{padding:12px;border-radius:10px}
+.yp-error{background:#fff0ef;color:#8e322b;border:1px solid #eac7c1}.yp-success{background:#eef8f0;color:#195c36;border:1px solid #c9e1d0}
+.yp-settings{margin:20px 0}.yp-toggle{display:flex;align-items:flex-start;gap:10px;margin:14px 0;font-weight:650}
+.yp-toggle input{accent-color:#1b664c;width:18px;height:18px}
+@media(max-width:600px){.yp-app{padding:0 1px 24px}.yp-head{padding:18px;border-radius:16px}.yp-stat{min-width:58px;font-size:23px}.yp-stat small{font-size:9px}.yp-two{grid-template-columns:1fr}.yp-school,.yp-pane,.yp-settings{padding:14px}.yp-apply{padding:12px}}

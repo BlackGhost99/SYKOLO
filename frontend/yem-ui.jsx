@@ -1,3 +1,4 @@
+import officialLogo from "./assets/yem-brand.webp";
 import React from "react";
 
 /* Composants visuels communs à toutes les pages YEM (maquettes de référence : docs/maquettes). */
@@ -70,7 +71,7 @@ export function Icon({ name, size = 20, className = "", strokeWidth = 1.7 }) {
   return <svg className={`yd-icon ${className}`} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ICONS[name] || ICONS.file}</svg>;
 }
 
-/* Logo YEM : livre ouvert vert + mot-symbole, identique aux maquettes. */
+/* Logo officiel YEM : identité plateforme indépendante du logo de chaque école. */
 export function BookMark({ size = 56, className = "" }) {
   return <svg className={className} width={size} height={size * 0.78} viewBox="0 0 64 50" aria-hidden="true">
     <path d="M4 9.5c9-1.5 18 .5 26.5 6.8V47C22 41 13 39.4 4 40.6Z" fill="#2f7a35"/>
@@ -83,7 +84,7 @@ export function BookMark({ size = 56, className = "" }) {
 }
 export function YemLogo({ compact = false }) {
   return <div className={`yd-logo ${compact ? "compact" : ""}`} role="img" aria-label="YEM – Gestion scolaire et universitaire">
-    <BookMark size={compact ? 44 : 60}/>
+    <img className="yd-brand-emblem" src={officialLogo} alt=""/>
     <div><b>YEM</b><span>Gestion scolaire &amp; universitaire</span></div>
   </div>;
 }

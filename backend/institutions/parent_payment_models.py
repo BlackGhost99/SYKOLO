@@ -1,0 +1,86 @@
+"""Payment configuration and immutable-attempt snapshots for pre-enrollment.
+
+This ledger is NOT the tuition ledger. An admission payment never creates an
+official Enrollment or a FeePayment, even after a verified gateway success.
+"""
+import uuid
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.db.models import Q
+
+from .models import School
+from .academic_models import AcademicYear, AcademicLevel
+from .parent_admission_models import ParentAdmissionRequest
+
+
+class SchoolAdmissionFee(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="parent_admission_fees")
+    year = models.ForeignKey(AcademicYear, on_delete=models.PROTECT, related_name="parent_admission_fees")
+    level = models.ForeignKey(AcademicLevel, on_delete=models.PROTECT, related_name="parent_admission_fees")
+    amount_xaf = models.PositiveIntegerField()
+    active = models.BooleanField(default=True)
+    revision = models.PositiveIntegerField(default=1)
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["school", "year", "level"], name="unique_parent_admission_fee_scope"),
+            models.CheckConstraint(condition=Q(amount_xaf__gte=100, amount_xaf__lte=10000000), name="parent_admission_fee_range"),
+        ]
+    def clean(self):
+        if self.year_id and self.school_id and self.year.school_id != self.school_id:
+            raise ValidationError("Année étrangère à l'établissement.")
+        if self.level_id and self.school_id and self.level.school_id != self.school_id:
+            raise ValidationError("Niveau étranger à l'établissement.")
+
+
+class SchoolPaymentGateway(models.Model):
+    """Keys are encrypted at rest, never returned by an API, and scoped to ONE school."""
+    school = models.OneToOneField(School, primary_key=True, on_delete=models.PROTECT, related_name="admission_gateway")
+    provider = models.CharField(max_length=24, default="paycentral")
+    mode = models.CharField(max_length=8, choices=[("sandbox", "Simulation"), ("live", "Production")], default="sandbox")
+    encrypted_api_key = models.TextField(blank=True)
+    encrypted_webhook_secret = models.TextField(blank=True)
+    enabled = models.BooleanField(default=False)
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class ParentPaymentAttempt(models.Model):
+    STATES = [
+        ("initiating", "En cours d'initiation"),
+        ("pending", "En attente de confirmation"),
+        ("unknown", "À rapprocher"),
+        ("success", "Confirmé par le prestataire"),
+        ("failed", "Échoué"),
+        ("cancelled", "Annulé"),
+        ("refunded", "Remboursé"),
+    ]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request = models.ForeignKey(ParentAdmissionRequest, on_delete=models.PROTECT, related_name="payment_attempts")
+    school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="parent_payment_attempts")
+    payer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="parent_payment_attempts")
+    amount_xaf = models.PositiveIntegerField()
+    currency = models.CharField(max_length=3, default="XAF")
+    provider = models.CharField(max_length=24, default="paycentral")
+    provider_mode = models.CharField(max_length=8, default="sandbox")
+    channel = models.CharField(max_length=16, choices=[("airtel", "Airtel Money"), ("moov", "Moov Money")])
+    payer_phone = models.CharField(max_length=24)
+    merchant_reference = models.CharField(max_length=48, unique=True)
+    transaction_id = models.CharField(max_length=120, null=True, blank=True, unique=True)
+    state = models.CharField(max_length=16, choices=STATES, default="initiating")
+    provider_reference = models.CharField(max_length=140, blank=True)
+    last_checked_at = models.DateTimeField(blank=True, null=True)
+    finalized_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    class Meta:
+        indexes = [models.Index(fields=["school", "state"], name="yem_parentpay_school_state")]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount_xaf__gte=100, amount_xaf__lte=10000000), name="parent_payment_amount_range"),
+        ]
+    def clean(self):
+        if self.request_id and self.school_id and self.request.application.school_id != self.school_id:
+            raise ValidationError("Paiement incompatible avec l'établissement.")
+        if self.request_id and self.payer_id and self.request.owner_id != self.payer_id:
+            raise ValidationError("Paiement incompatible avec le compte parent.")

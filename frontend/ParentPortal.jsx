@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+import ParentDiscovery from "./ParentDiscovery.jsx";
+import PWAInstall from "./PWAInstall.jsx";
 
 async function portalApi(path, body, method) {
   if (body !== undefined) await fetch("/api/v1/auth/csrf", { credentials: "same-origin" });
@@ -111,6 +113,8 @@ export default function ParentPortal() {
       <div><h1>Espace parents</h1>
       <p>Consultation privée de vos enfants — informations réellement publiées par l'établissement.</p></div>
     </div>
+    <PWAInstall />
+    <ParentDiscovery />
     {!connected&&<Card title="Connexion requise">
       <p>Connectez-vous à un compte autorisé pour accéder à l'espace parents.</p><Message>{message}</Message>
     </Card>}

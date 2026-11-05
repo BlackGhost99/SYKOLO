@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Icon, BookMark, YemLogo, QrCode, Button } from "./yem-ui.jsx";
+import { Icon, YemLogo, QrCode, Button } from "./yem-ui.jsx";
 import banner from "./assets/yem-school-banner.jpg";
 
 /* Expérience mobile de référence : docs/maquettes/08-mobile-parent-appel-recu.jpg. Données fictives. */
@@ -20,7 +20,7 @@ export function useIsMobile(breakpoint = 760) {
 
 function MobileHeader({ onMenu }) {
   return <header className="ym-header">
-    <div className="ym-logo"><BookMark size={42}/><div><b>YEM</b><span>Gestion scolaire &amp; universitaire</span></div></div>
+    <div className="ym-logo"><YemLogo compact/></div>
     <span className="ym-bell" aria-label="3 notifications"><Icon name="bell" size={26} strokeWidth={1.6}/><i>3</i></span>
     <button type="button" className="ym-burger" aria-label="Menu" onClick={onMenu}><Icon name="menu" size={28} strokeWidth={1.8}/></button>
   </header>;

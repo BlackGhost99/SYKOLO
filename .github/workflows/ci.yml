@@ -4,6 +4,11 @@ on:
     branches: [main, staging, "feat/**"]
   pull_request:
     branches: [main]
+# Multiple YEM conversations can push the same branch repeatedly.
+# Keep the newest verification, never cancel another branch's workflow.
+concurrency:
+  group: yem-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

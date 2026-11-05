@@ -5,9 +5,10 @@ import re
 from itertools import combinations
 
 from django.db.models import Q
+from django.utils import timezone
 from django.http import JsonResponse
 
-from .models import OrganizationMember, School, SchoolMember, SchoolSetting
+from .models import OrganizationMember, School, SchoolMember, SchoolSetting, SchoolAdminPolicy, Student
 
 PERMISSIONS = frozenset({
     "school.view", "school.members.read", "school.members.write",
@@ -18,6 +19,7 @@ PERMISSIONS = frozenset({
     "school.parents.manage",
     "school.students.read", "school.students.manage",
     "school.staff.read", "school.staff.manage",
+    "school.organization.read", "school.organization.manage",
     "school.curriculum.read", "school.curriculum.manage",
     "school.assessments.read", "school.assessments.manage",
     "school.reports.read", "school.reports.manage", "school.reports.publish",
@@ -25,15 +27,17 @@ PERMISSIONS = frozenset({
     "school.reports.amend",
     "school.timetable.read", "school.timetable.manage",
     "school.attendance.read", "school.attendance.write", "school.attendance.finalize",
-    "school.finance.read", "school.finance.manage", "school.finance.receive", "school.finance.reverse",
+    "school.finance.read", "school.finance.manage", "school.finance.receive", "school.finance.reverse", "school.finance.approve", "school.finance.deposit",
 })
 
 # Initial editable role templates, not institution-wide immutable business rules.
 ROLE_TEMPLATES = [
-    ("direction", "Direction", sorted(PERMISSIONS)),
-    ("secretariat", "Secrétariat", ["school.view", "school.members.read", "school.settings.read", "school.academic.read", "school.students.read", "school.students.manage", "school.admissions.read", "school.admissions.manage", "school.admissions.enroll", "school.staff.read", "school.staff.manage", "school.curriculum.read", "school.curriculum.manage", "school.reports.read", "school.deliberations.read", "school.attendance.read", "school.attendance.write", "school.timetable.read", "school.timetable.manage"]),
+    ("direction", "Direction", sorted(PERMISSIONS - {"school.finance.receive", "school.finance.reverse", "school.finance.manage", "school.finance.deposit"})),
+    ("secretariat", "Secrétariat", ["school.view", "school.members.read", "school.settings.read", "school.academic.read", "school.students.read", "school.students.manage", "school.admissions.read", "school.admissions.manage", "school.admissions.enroll", "school.staff.read", "school.staff.manage", "school.organization.read", "school.curriculum.read", "school.curriculum.manage", "school.reports.read", "school.deliberations.read", "school.attendance.read", "school.attendance.write", "school.timetable.read", "school.timetable.manage"]),
     ("enseignant", "Enseignant", ["school.view", "school.settings.read", "school.academic.read", "school.curriculum.read", "school.timetable.read"]),
-    ("comptabilite", "Comptabilité", ["school.view", "school.students.read", "school.academic.read", "school.finance.read", "school.finance.manage", "school.finance.receive"]),
+    ("comptabilite", "Comptabilité", ["school.view", "school.students.read", "school.academic.read", "school.finance.read", "school.finance.approve", "school.finance.reverse"]),
+    ("econome", "Économe / Caissier", ["school.view", "school.students.read", "school.academic.read", "school.finance.read", "school.finance.receive", "school.finance.deposit"]),
+    ("tarification", "Responsable des tarifs", ["school.view", "school.finance.read", "school.finance.manage"]),
     ("parent", "Parent", ["school.view"]),
     ("eleve", "Élève", ["school.view"]),
 ]
@@ -59,17 +63,45 @@ def has_permission(user, school, permission):
     if permission == "school.members.write" and owns_organization(user, school.organization):
         # A founder can appoint a director but is not automatically that director.
         return True
-    member = SchoolMember.objects.select_related("role").filter(
+    return permission in effective_permissions(user, school)
+
+
+def effective_permissions(user, school):
+    member = SchoolMember.objects.select_related("role").prefetch_related("additional_roles").filter(
         school=school, user=user, active=True, role__school=school
     ).first()
-    return bool(member and permission in member.role.permissions)
+    founder_permissions = {"school.members.write"} if owns_organization(user, school.organization) else set()
+    if not member:
+        return founder_permissions
+    roles = [member.role, *member.additional_roles.filter(school=school)]
+    delegated = member.delegations.filter(school=school, revoked_at__isnull=True).filter(
+        Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+    )
+    return founder_permissions | set().union(*(set(role.permissions) for role in roles),
+                                             *(set(d.permissions) for d in delegated))
+
+
+
+def quota_reached(school, resource):
+    """Used within a transaction locking the school row for serial capacity checks."""
+    policy = SchoolAdminPolicy.objects.filter(school=school).first()
+    if not policy:
+        return False
+    if resource == "users" and policy.max_users is not None:
+        return SchoolMember.objects.filter(school=school, active=True, user__is_active=True, user__is_superuser=False).count() >= policy.max_users
+    if resource == "students" and policy.max_students is not None:
+        return Student.objects.filter(school=school, active=True).count() >= policy.max_students
+    return False
 
 
 def school_response(school):
     return {
-        "id": str(school.pk), "organization_id": str(school.organization_id),
+        "login_code": str(school.pk), "id": str(school.pk), "organization_id": str(school.organization_id),
         "name": school.name, "short_name": school.short_name,
         "primary_color": school.primary_color,
+        "school_type": school.school_type,
+        "school_type_label": school.get_school_type_display(),
+        "education_cycles": school.education_cycles,
     }
 
 

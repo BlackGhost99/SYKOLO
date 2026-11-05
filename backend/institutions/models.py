@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from .school_profiles import SCHOOL_TYPE_CHOICES
 
 
 class Organization(models.Model):
@@ -28,6 +29,9 @@ class School(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="schools")
     name = models.CharField(max_length=180)
     short_name = models.CharField(max_length=60, blank=True)
+    school_type = models.CharField(max_length=32, choices=SCHOOL_TYPE_CHOICES, default="non_classe")
+    education_cycles = models.JSONField(default=list, blank=True)
+    enabled_functions = models.JSONField(null=True, default=None, blank=True)
     primary_color = models.CharField(max_length=7, default="#1B664C")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -52,7 +56,9 @@ class SchoolMember(models.Model):
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="members")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     role = models.ForeignKey(SchoolRole, on_delete=models.PROTECT)
+    additional_roles = models.ManyToManyField(SchoolRole, blank=True, related_name="additional_members")
     active = models.BooleanField(default=True)
+    function_codes = models.JSONField(default=list, blank=True)
 
     class Meta:
         constraints = [
@@ -79,12 +85,41 @@ class SchoolSetting(models.Model):
         ]
 
 
+class SchoolAdminPolicy(models.Model):
+    """Platform-managed commercial limits; null means unlimited.
+
+    This record is not an invoice or a payment subscription. It is kept separate
+    from pedagogical settings so school administrators cannot raise their caps.
+    """
+    school = models.OneToOneField(School, on_delete=models.CASCADE, related_name="admin_policy")
+    plan_name = models.CharField(max_length=80, default="Sans formule")
+    max_users = models.PositiveIntegerField(null=True, blank=True)
+    max_students = models.PositiveIntegerField(null=True, blank=True)
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class PlatformAudit(models.Model):
+    """Record high-impact platform actions without storing credentials."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    school = models.ForeignKey(School, on_delete=models.SET_NULL, null=True, blank=True)
+    event = models.CharField(max_length=48, db_index=True)
+    subject = models.CharField(max_length=180)
+    reason = models.CharField(max_length=240, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class SchoolAudit(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="audit_events")
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     event = models.CharField(max_length=48)
     subject = models.CharField(max_length=100, blank=True)
+    details = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -112,6 +147,37 @@ from .attendance_models import AttendanceSession, AttendanceMark, AttendanceChan
 
 from .timetable_models import TimetableRoom, TimetableSlot, TimetableEntry  # noqa: E402,F401
 
-from .admission_models import AdmissionApplication, AdmissionEvent  # noqa: E402,F401
+from .admission_models import AdmissionApplication, AdmissionEvent, AdmissionPolicy, AdmissionDocument  # noqa: E402,F401
 
 from .parent_models import GuardianAccountLink  # noqa: E402,F401
+from .parent_admission_models import SchoolPublicListing, FamilyChild, ParentAdmissionRequest  # noqa: E402,F401
+from .parent_payment_models import SchoolAdmissionFee, SchoolPaymentGateway, ParentPaymentAttempt  # noqa: E402,F401
+
+from .organization_models import SchoolAppointment  # noqa: E402,F401
+
+
+class SchoolLogin(models.Model):
+    school = models.ForeignKey(School, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    username = models.CharField(max_length=150)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["school", "username"], name="unique_school_login"),
+            models.UniqueConstraint(fields=["school", "user"], name="unique_school_login_user"),
+        ]
+
+
+class PermissionDelegation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.PROTECT)
+    member = models.ForeignKey(SchoolMember, on_delete=models.PROTECT, related_name="delegations")
+    permissions = models.JSONField(default=list)
+    reason = models.CharField(max_length=240)
+    source_function = models.CharField(max_length=48, blank=True)
+    granted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="+")
+    revocation_reason = models.CharField(max_length=240, blank=True)

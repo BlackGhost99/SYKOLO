@@ -154,7 +154,7 @@ class IdentityTests(TestCase):
         self.assertEqual(self.client.get("/api/v1/auth/audit").status_code, 200)
         self.post("/api/v1/auth/logout", {})
         self.assertEqual(self.post("/api/v1/auth/login", {
-            "username": "platform", "password": "Platform Strong Password 2026!",
+            "scope": "platform", "username": "platform", "password": "Platform Strong Password 2026!",
             "code": confirmed.json()["recovery_codes"][0],
         }).status_code, 200)
         self.assertEqual(self.client.get("/api/v1/auth/audit").status_code, 200)

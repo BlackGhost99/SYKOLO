@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import brand from "./assets/yem-brand.webp";
 import PlatformConsole from "./PlatformConsole.jsx";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 
@@ -27,18 +28,31 @@ async function authApi(path, body) {
 export default function AuthPanel() {
   const [account, setAccount] = useState(null);
   const [tab, setTab] = useState("login");
+  const [loginScope, setLoginScope] = useState(window.location.hash === "#/admin" ? "platform" : "school");
+  const [schoolCode, setSchoolCode] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [registerFirst, setRegisterFirst] = useState("");
+  const [registerLast, setRegisterLast] = useState("");
+  const [registrationReady, setRegistrationReady] = useState(null);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(null);
   const [recovery, setRecovery] = useState([]);
   const [busy, setBusy] = useState(false);
   const link = new URLSearchParams(window.location.hash.split("?")[1] || "");
   const isResetLink = window.location.hash.startsWith("#/reset?");
+  const isVerifyLink = window.location.hash.startsWith("#/verify?");
 
+  useEffect(() => {
+    let live = true;
+    authApi("parents/registration-status").then(data=>{
+      if(live)setRegistrationReady(data.email_registration_available);
+    }).catch(()=>{if(live)setRegistrationReady(false)});
+    return()=>{live=false};
+  },[]);
   useEffect(() => {
     let mounted = true;
     authApi("me").then((data) => {
@@ -64,9 +78,9 @@ export default function AuthPanel() {
   }
 
   const accountCard = (
-    <section className="card" id="compte" aria-label="Sécurité du compte" style={{ marginBottom: "1rem" }}>
+    <section className="card pc-account-card" id="compte" aria-label="Sécurité du compte" style={{ marginBottom: "1rem" }}>
       <h2>Compte YEM · Accès sécurisé</h2>
-      <p className="hint">Les comptes sont créés par un administrateur. Le laboratoire ci-dessous reste une démonstration publique avec données fictives.</p>
+      <p className="hint">Gérez votre mot de passe, votre double authentification et vos codes de récupération. Les informations affichées ici concernent votre compte réel.</p>
       {account?.authenticated ? (
         <>
           <p>Connecté : <strong>{account.user.username}</strong> · MFA : {account.mfa_enabled ? "activé" : "désactivé"}</p>
@@ -145,8 +159,19 @@ export default function AuthPanel() {
           <div className="actions">
             <button type="button" onClick={() => { setTab("login"); setMessage(""); }}>Connexion</button>
             <button type="button" onClick={() => { setTab("reset"); setMessage(""); }}>Mot de passe oublié</button>
+            <button type="button" onClick={() => { setTab("register"); setMessage(""); }}>Créer un compte parent</button>
+            <button type="button" onClick={() => { setTab("resend"); setMessage(""); }}>Renvoyer mon lien d'activation</button>
           </div>
-          {isResetLink ? (
+          {isVerifyLink ? (
+            <form onSubmit={(e) => { e.preventDefault(); run(async () => {
+              await authApi("parents/verify", { uid: link.get("uid"), token: link.get("token") });
+              setTab("login"); setMessage("Compte parent activé. Connectez-vous avec votre identifiant.");
+              window.history.replaceState(null, "", window.location.pathname);
+            }); }}>
+              <p>Confirmez votre adresse e-mail afin d’activer votre compte YEM Parents.</p>
+              <button disabled={busy} type="submit">Activer mon compte</button>
+            </form>
+          ) : isResetLink ? (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               await authApi("password/reset/confirm", {
                 uid: link.get("uid"), token: link.get("token"), password: newPassword,
@@ -160,6 +185,35 @@ export default function AuthPanel() {
               </label>
               <button disabled={busy}>Réinitialiser le mot de passe</button>
             </form>
+          ) : tab === "resend" ? (
+            <form onSubmit={e=>{e.preventDefault();run(async()=>{
+              const response=await authApi("parents/resend-verification",{email});
+              setMessage(response.message);
+              setTab("login");
+            });}}>
+              <p>Si votre compte parent a été créé et n'est pas encore activé, un nouveau lien de confirmation vous sera envoyé.</p>
+              <label className="field">Adresse e-mail
+                <input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/>
+              </label>
+              <button disabled={busy||registrationReady===false} type="submit">Renvoyer le lien</button>
+            </form>
+          ) : tab === "register" ? (
+            <form onSubmit={(e) => { e.preventDefault(); run(async () => {
+              const result = await authApi("parents/register", {
+                username, first_name: registerFirst, last_name: registerLast,
+                email, password: newPassword,
+              });
+              setMessage(result.message); setTab("login"); setNewPassword("");
+            }); }}>
+              <p>Un seul compte parent pour plusieurs enfants et plusieurs écoles. Vérification par e-mail obligatoire.</p>
+              {registrationReady===false&&<p role="status">L'envoi d'e-mails n'est pas encore configuré sur YEM. L'ouverture des nouveaux comptes est momentanément suspendue.</p>}
+              <label className="field">Prénom<input required maxLength={120} autoComplete="given-name" value={registerFirst} onChange={e=>setRegisterFirst(e.target.value)}/></label>
+              <label className="field">Nom<input required maxLength={120} autoComplete="family-name" value={registerLast} onChange={e=>setRegisterLast(e.target.value)}/></label>
+              <label className="field">Identifiant<input required minLength={3} maxLength={50} autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label>
+              <label className="field">Adresse e-mail<input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)}/></label>
+              <label className="field">Mot de passe (au moins 12 caractères)<input required type="password" minLength={12} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></label>
+              <button disabled={busy||registrationReady===false} type="submit">Créer mon compte parent</button>
+            </form>
           ) : tab === "reset" ? (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               const result = await authApi("password/reset/request", { email });
@@ -172,11 +226,20 @@ export default function AuthPanel() {
             </form>
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-              const result = await authApi("login", { username, password, code });
+              const result = await authApi("login", { username, password, code, scope: loginScope, school_code: schoolCode.trim() });
               setAccount(await authApi("me")); window.dispatchEvent(new Event("yem:auth-change")); setPassword(""); setCode(""); setMessage("Connexion réussie.");
             }); }}>
+              <h3>{loginScope === "platform" ? "Administration YEM" : loginScope === "parent" ? "Espace parents" : "Connexion établissement"}</h3>
+              <div className="actions">
+                <button type="button" onClick={()=>{setLoginScope("school");setPassword("");window.history.replaceState(null,"","#/ecole");}}>Établissement</button>
+                <button type="button" onClick={()=>{setLoginScope("parent");setPassword("");window.history.replaceState(null,"","#/parents");}}>Parents</button>
+                <button type="button" onClick={()=>{setLoginScope("platform");setPassword("");window.history.replaceState(null,"","#/admin");}}>Administration plateforme</button>
+              </div>
+              {loginScope === "school" && <label className="field">Code de l'établissement
+                <input required value={schoolCode} onChange={e=>setSchoolCode(e.target.value)} placeholder="Code fourni par votre établissement" autoComplete="organization"/>
+              </label>}
               <label className="field">Identifiant
-                <input autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} />
+                <input disabled={loginScope === "school" && !schoolCode.trim()} autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} />
               </label>
               <label className="field">Mot de passe
                 <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -196,10 +259,8 @@ export default function AuthPanel() {
   if (account?.authenticated && !account.user?.is_platform_admin) {
     return <SchoolDashboard user={account.user} accountView={accountCard} onLogout={() => run(logout)} />;
   }
-  return (
-    <div className={account?.authenticated ? "yem-logged-in" : ""}>
-      {account?.authenticated && <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} />}
-      {accountCard}
-    </div>
-  );
+  if (account?.authenticated && account.user?.is_platform_admin) {
+    return <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} accountView={accountCard} onLogout={() => run(logout)}/>;
+  }
+  return <div className="yem-login-screen"><header className="yem-login-brand"><img src={brand} alt="Logo officiel YEM"/><div><strong>YEM</strong><span>Gestion scolaire &amp; universitaire</span></div></header>{accountCard}</div>;
 }
