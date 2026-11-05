@@ -32,7 +32,7 @@ PERMISSIONS = frozenset({
 
 # Initial editable role templates, not institution-wide immutable business rules.
 ROLE_TEMPLATES = [
-    ("direction", "Direction", sorted(PERMISSIONS - {"school.finance.receive", "school.finance.reverse", "school.finance.manage", "school.finance.deposit"})),
+    ("direction", "Directeur / Directrice", sorted(PERMISSIONS - {"school.finance.receive", "school.finance.reverse", "school.finance.manage", "school.finance.deposit"})),
     ("secretariat", "Secrétariat", ["school.view", "school.members.read", "school.settings.read", "school.academic.read", "school.students.read", "school.students.manage", "school.admissions.read", "school.admissions.manage", "school.admissions.enroll", "school.staff.read", "school.staff.manage", "school.organization.read", "school.curriculum.read", "school.curriculum.manage", "school.reports.read", "school.deliberations.read", "school.attendance.read", "school.attendance.write", "school.timetable.read", "school.timetable.manage"]),
     ("enseignant", "Enseignant", ["school.view", "school.settings.read", "school.academic.read", "school.curriculum.read", "school.timetable.read"]),
     ("comptabilite", "Comptabilité", ["school.view", "school.students.read", "school.academic.read", "school.finance.read", "school.finance.approve", "school.finance.reverse"]),
@@ -43,6 +43,13 @@ ROLE_TEMPLATES = [
 ]
 
 SCOPE_FIELDS = ("year", "cycle", "level", "class")
+
+
+def public_role_label(role):
+    """Use the inclusive title for legacy built-in roles, retain school custom labels."""
+    if role.code == "direction" and role.label == "Direction":
+        return "Directeur / Directrice"
+    return role.label
 
 
 def owns_organization(user, organization):
