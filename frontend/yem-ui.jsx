@@ -1,5 +1,5 @@
 import officialLogo from "./assets/yem-brand.webp";
-import React from "react";
+import React, {useId, useRef, useState} from "react";
 
 /* Composants visuels communs à toutes les pages YEM (maquettes de référence : docs/maquettes). */
 
@@ -107,9 +107,13 @@ export function Card({ title, icon, children, className = "", right, subtitle, c
     {children}
   </section>;
 }
+export function TableScroll({children, label = "Tableau", className = ""}) {
+  return <div className={`yd-table-wrap ${className}`} role="region" aria-label={label} tabIndex={0}>{children}</div>;
+}
+
 export function Table({ headers, rows, className = "", selected, align = {} }) {
-  return <div className="yd-table-wrap"><table className={className}><thead><tr>{headers.map((h, i) => <th key={i} className={align[i] || ""}>{h}</th>)}</tr></thead>
-    <tbody>{rows.map((r, i) => <tr key={i} className={selected === i ? "selected" : ""}>{r.map((c, j) => <td key={j} className={align[j] || ""}>{c}</td>)}</tr>)}</tbody></table></div>;
+  return <TableScroll><table className={className}><thead><tr>{headers.map((h, i) => <th key={i} className={align[i] || ""}>{h}</th>)}</tr></thead>
+    <tbody>{rows.map((r, i) => <tr key={i} className={selected === i ? "selected" : ""}>{r.map((c, j) => <td key={j} className={align[j] || ""}>{c}</td>)}</tr>)}</tbody></table></TableScroll>;
 }
 export function InfoRow({ k, v, icon, highlight, vIcon }) {
   return <div className={`yd-info-row ${highlight ? "highlight" : ""}`}><span>{icon && <Icon name={icon} size={20}/>}{k}</span><b>{vIcon && <Icon name={vIcon} size={18} className="wa"/>}<span>{v}</span></b></div>;
@@ -206,7 +210,15 @@ export const NAV = [
 
 /* Cadre commun : barre supérieure + menu latéral + zone de contenu. */
 export function Shell({ schoolSelector, search, userName = "Mme la Directrice", userMenu, notifications = 3, nav = NAV, active, onNavigate, children, className = "" }) {
-  return <div className={`yd-app ${className}`}>
+  const [menuOpen, setMenuOpen] = useState(false);
+  const navId = useId();
+  const menuButton = useRef(null);
+  function closeMenu(event) {
+    if (event.key !== "Escape" || !menuOpen || !menuButton.current?.getClientRects().length) return;
+    setMenuOpen(false);
+    menuButton.current.focus();
+  }
+  return <div className={`yd-app ${className}`} onKeyDown={closeMenu}>
     <header className="yd-topbar">
       <YemLogo/>
       <div className="yd-topbar-sep"/>
@@ -214,9 +226,13 @@ export function Shell({ schoolSelector, search, userName = "Mme la Directrice", 
       {search || <SearchBox placeholder="Rechercher un élève, une famille, un paiement..." className="yd-global-search"/>}
       <div className="yd-bell" aria-label={notifications ? `${notifications} notifications` : "Notifications"}><Icon name="bell" size={26} strokeWidth={1.6}/>{notifications ? <i>{notifications}</i> : null}</div>
       <div className="yd-topbar-sep small"/>
+      <button ref={menuButton} type="button" className="yd-mobile-toggle" aria-label="Menu de l’établissement"
+        aria-controls={navId} aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}>
+        <Icon name="menu" size={22}/> Menu
+      </button>
       {userMenu || <div className="yd-user"><div className="yd-avatar"><Icon name="user" size={22} strokeWidth={0} className="filled"/></div><b>{userName}</b><Icon name="chevron" size={18}/></div>}
     </header>
-    <aside className="yd-sidebar" aria-label="Navigation principale">{nav.map(([id, icon, label]) => <button type="button" key={id} className={active === id ? "active" : ""} aria-current={active === id ? "page" : undefined} onClick={() => onNavigate?.(id)}><Icon name={icon} size={24} strokeWidth={1.6}/><span>{label}</span></button>)}</aside>
+    <nav id={navId} className={`yd-sidebar ${menuOpen ? "is-open" : ""}`} aria-label="Navigation principale">{nav.map(([id, icon, label]) => <button type="button" key={id} aria-label={label} className={active === id ? "active" : ""} aria-current={active === id ? "page" : undefined} onClick={() => { setMenuOpen(false); onNavigate?.(id); }}><Icon name={icon} size={24} strokeWidth={1.6}/><span>{label}</span></button>)}</nav>
     <main className="yd-content">{children}</main>
   </div>;
 }

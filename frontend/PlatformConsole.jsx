@@ -137,7 +137,7 @@ function Directory({dashboard,filters,setFilters,onSchool,selected,onNew,compact
         <option value="all">Tous les statuts</option><option value="active">Actifs</option><option value="inactive">Suspendus</option>
       </select>
     </div>
-    <div className="ya-table-overflow"><table className="ya-table"><thead><tr>
+    <div className="ya-table-overflow" role="region" aria-label="Annuaire des établissements" tabIndex={0}><table className="ya-table"><thead><tr>
       <th><button onClick={()=>change("sort",filters.sort==="name"?"-name":"name")}>Établissement ↕</button></th>
       <th>Organisation</th><th>Utilisateurs</th><th>Statut</th><th>Actions</th>
     </tr></thead><tbody>{rows.map(s=><tr key={s.id} className={s.id===selected?"ya-selected":""}>
@@ -421,8 +421,12 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   return <div className="ya-root">
     <aside className={"ya-sidebar"+(menuOpen?" ya-expanded":"")} aria-label="Navigation de super-administration">
       <div className="ya-brand"><img src={brand} alt="Logo officiel YEM"/><div><b>YEM</b><span>Console de super-administration<br/>de la plateforme</span></div></div>
+      <button type="button" className="ya-mobile-toggle" aria-label="Menu de super-administration"
+        aria-controls="ya-platform-navigation" aria-expanded={menuOpen} onClick={()=>setMenuOpen(open=>!open)}>
+        <Icon name="menu" size={23}/>
+      </button>
       <div className="ya-sidebar-rule"/>
-      <nav className="ya-nav" aria-label="Administration YEM">{menu.map(([key,label,icon])=><button type="button" key={key} className={view===key?"active":""} aria-current={view===key?"page":undefined} onClick={()=>goto(key)}><Icon name={icon} size={23}/><span>{label}</span></button>)}</nav>
+      <nav id="ya-platform-navigation" className="ya-nav" aria-label="Administration YEM">{menu.map(([key,label,icon])=><button type="button" key={key} className={view===key?"active":""} aria-current={view===key?"page":undefined} onClick={()=>goto(key)}><Icon name={icon} size={23}/><span>{label}</span></button>)}</nav>
       <div className="ya-sidebar-bottom"><span className="ya-online"/> Session protégée par MFA <button onClick={onLogout}><Icon name="logout" size={17}/> Déconnexion</button></div>
     </aside>
     <main className="ya-main">
@@ -433,9 +437,8 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
         }[view]||"Console d'administration YEM")}</h1><span>Administration globale de YEM — organisations, établissements, utilisateurs et droits.</span></div>
         <div className="ya-top-actions"><div className="ya-global-search"><Icon name="search" size={20}/><input ref={searchRef} type="search" aria-label="Recherche globale" placeholder="Rechercher un établissement…" value={filters.q} onChange={e=>setFilters(o=>({...o,q:e.target.value,page:1}))}/><kbd>Ctrl + K</kbd></div>
           <button className="ya-icon-button" title="Historique des opérations" aria-label="Historique des opérations" onClick={()=>goto("audit")}><Icon name="bell" size={23}/></button>
-          <div className="ya-profile-wrap"><button className="ya-profile" onClick={()=>setProfileOpen(o=>!o)} aria-expanded={profileOpen}><span className="ya-avatar"><Icon name="users" size={21}/></span><span><b>{user?.username||"Super-admin"}</b><small>Super-administrateur</small></span><Icon name="chevron" size={17}/></button>
+          <div className="ya-profile-wrap"><button type="button" className="ya-profile" aria-label="Compte super-admin" onClick={()=>setProfileOpen(o=>!o)} aria-expanded={profileOpen}><span className="ya-avatar"><Icon name="users" size={21}/></span><span><b>{user?.username||"Super-admin"}</b><small>Super-administrateur</small></span><Icon name="chevron" size={17}/></button>
           {profileOpen&&<div className="ya-profile-menu"><button onClick={()=>goto("settings")}>Sécurité de mon compte</button><button onClick={onLogout}>Se déconnecter</button></div>}</div>
-          <button className="ya-mobile-toggle" onClick={()=>setMenuOpen(o=>!o)} aria-label="Ouvrir le menu"><Icon name="menu" size={25}/></button>
         </div>
       </header>
       {notice&&<div role="status" className={"ya-notice ya-"+notice.type}><Icon name={notice.type==="success"?"check":"info"} size={18}/>{notice.message}<button onClick={()=>setNotice(null)} aria-label="Fermer le message">×</button></div>}

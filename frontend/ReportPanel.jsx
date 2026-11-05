@@ -1,4 +1,5 @@
 import React, {useEffect,useState} from "react";
+import {TableScroll} from "./yem-ui.jsx";
 
 async function call(path,body){
   if(body!==undefined)await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
@@ -138,15 +139,14 @@ export default function ReportPanel({schoolId}){
       <h3>{snapshot.template.title} · {preview.status==="published"?"Publié":"Brouillon"}</h3>
       <p><strong>{snapshot.student.last_name} {snapshot.student.first_name}</strong> — {snapshot.student.code}</p>
       <p>{snapshot.class.name} · {snapshot.year.name} · {snapshot.period?.name||"Année complète"}</p>
-      <div style={{overflowX:"auto"}}>
+      <TableScroll label="Notes du bulletin">
         <table style={{width:"100%"}}>
           <thead><tr><th>Matière</th><th>Coefficient</th><th>Résultat</th></tr></thead>
           <tbody>{snapshot.subjects.map(s=><tr key={s.course}>
             <td>{s.subject}</td><td>{s.coefficient}</td>
             <td>{s.result.score||"—"} {s.result.label||""}</td>
           </tr>)}</tbody>
-        </table>
-      </div>
+        </table></TableScroll>
       <p><strong>Résultat général :</strong> {snapshot.overall.score??"—"} · {snapshot.overall.label??"Non calculé"}</p>
       <div className="actions">
         <a href={"/api/v1/"+base+"reports/"+preview.id+"/pdf"}>Exporter le bulletin PDF (A4)</a>

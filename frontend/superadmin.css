@@ -279,3 +279,32 @@
  .ya-detail-buttons{grid-template-columns:1fr}
  .ya-profile-wrap{display:none}
 }
+
+@media screen and (max-width: 760px) {
+ .ya-sidebar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px}
+ .ya-nav{grid-column:1/-1}
+ .ya-sidebar.ya-expanded .ya-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,138px),1fr));margin-top:0}
+ .ya-mobile-toggle,.ya-profile,.ya-icon-button{min-width:44px;min-height:44px}
+ .ya-profile-wrap{display:block}
+ .ya-main,.ya-modal,.ya-return{overflow-wrap:anywhere}
+ .ya-top-title,.ya-metric,.ya-panel,.ya-box,.ya-return>div{min-width:0}
+ .ya-top-actions{flex-wrap:wrap;justify-content:flex-end}
+ .ya-global-search{flex:1 1 145px}
+ .ya-directory-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .ya-root :is(input,select,textarea),.ya-modal :is(input,select,textarea){font-size:16px!important}
+ .ya-member-actions{flex-wrap:wrap;padding-left:0}
+ .ya-box-head>button{flex:1 1 100%}
+ .ya-detail-top{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px}
+ .ya-detail-top>.ya-status{grid-column:2;justify-self:start}
+ .ya-detail-building{width:44px;height:44px}
+ .ya-detail-building svg{width:25px;height:25px}
+ .ya-modal-footer{flex-wrap:wrap}
+}
+.ya-modal-backdrop{overflow-y:auto}
+.ya-modal{max-height:calc(100dvh - 36px);overflow-y:auto;overscroll-behavior:contain}
+.ya-root header.ya-top{height:auto;padding:0;border:0;background:none}
+@media screen and (max-width: 1000px) {
+ .ya-top{flex-wrap:wrap}
+ .ya-top-title{min-width:0}
+ .ya-top-actions{max-width:100%}
+}

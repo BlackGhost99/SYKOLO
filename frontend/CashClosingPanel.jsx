@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from "react";
+import {TableScroll} from "./yem-ui.jsx";
 
 // The established YEM theme is inherited from the dashboard; no mock balances.
 const todayLocal = () => {
@@ -86,7 +87,7 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
       <p className="yd-card-sub">Montants déclarés manuellement par l'établissement, hors confirmations automatiques des banques et opérateurs mobiles.</p>
       {Object.keys(summary.currencies).length===0
         ?<p className="yd-card-sub">Aucun frais encore facturé.</p>
-        :<div className="yd-table-wrap"><table className="dense">
+        :<TableScroll label="Totaux par devise"><table className="dense">
           <thead><tr><th>Devise</th><th>Facturé</th><th>Encaissé</th><th>Restant dû</th><th>Échu et impayé</th></tr></thead>
           <tbody>{Object.entries(summary.currencies).map(([devise,row])=><tr key={devise}>
             <td>{devise}</td>
@@ -95,7 +96,7 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
             <td>{formatMoney(row.balance,devise)}</td>
             <td>{formatMoney(row.overdue,devise)}</td>
           </tr>)}</tbody>
-        </table></div>}
+        </table></TableScroll>}
     </div>}
     <p className="yd-card-sub">Seuls les encaissements en espèces effectivement enregistrés sont comptés. Les paiements Mobile Money et virements ne sont pas de l'argent en caisse.</p>
     {canReceive&&<form onSubmit={e=>{e.preventDefault();act(async()=>{
@@ -125,7 +126,7 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
     {canRead&&<div style={{marginTop:14}}>
       <h4>Déclarations récentes</h4>
       {rows.length===0?<p className="yd-card-sub">Aucune clôture de caisse enregistrée.</p>:
-       <div className="yd-table-wrap"><table className="dense">
+       <TableScroll label="Historique des clôtures"><table className="dense">
          <thead><tr><th>Jour</th><th>Agent</th><th>Attendu</th><th>Compté</th><th>Écart</th><th>Contrôle</th></tr></thead>
          <tbody>{rows.slice(0,12).map(row=><tr key={row.id}>
            <td>{row.day}</td><td>{row.submitted_by}</td>
@@ -142,7 +143,7 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
                "Clôture vérifiée et validée.")}>Valider</button>
              </div>:"En attente"}</td>
          </tr>)}</tbody>
-       </table></div>}
+       </table></TableScroll>}
     </div>}
   </section>;
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import CashClosingPanel from "./CashClosingPanel.jsx";
 import SingPayControl from "./SingPayControl.jsx";
-import { Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Toggle, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
+import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Toggle, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
 
 /* Écrans réels branchés sur l'API, avec la présentation des maquettes (docs/maquettes). */
 
@@ -19,7 +19,7 @@ async function api(path, body) {
   return data;
 }
 function CurrencyChoice({data, value, onChange, year, onYearChange}) {
-  return <div><label>Année scolaire <select aria-label="Année scolaire" value={year || data?.year?.id || ""} onChange={e=>onYearChange(e.target.value)}>{(data?.years||[]).map(y=><option key={y.id} value={y.id}>{y.name}</option>)}</select></label><label>Devise de consultation <select aria-label="Devise de consultation" value={value || data?.currency || "XAF"} onChange={e=>onChange(e.target.value)}>
+  return <div className="yd-view-filters"><label>Année scolaire <select aria-label="Année scolaire" value={year || data?.year?.id || ""} onChange={e=>onYearChange(e.target.value)}>{(data?.years||[]).map(y=><option key={y.id} value={y.id}>{y.name}</option>)}</select></label><label>Devise de consultation <select aria-label="Devise de consultation" value={value || data?.currency || "XAF"} onChange={e=>onChange(e.target.value)}>
     {(data?.currencies?.length ? data.currencies : [data?.currency || "XAF"]).map(c=><option key={c} value={c}>{c}</option>)}
   </select></label></div>;
 }
@@ -102,11 +102,11 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
       <div className="yd-grid students-grid">
         <Card title="Liste des élèves" count={`(${rows.length})`} icon="users">
           {rows.length === 0 ? <Empty>Aucun élève ne correspond. Créez une fiche depuis « Nouvel élève » ou importez votre liste Excel.</Empty> :
-            <div className="yd-table-wrap"><table className="clickable nowrap dense"><thead><tr>{["#", "Élève", "Classe", "Parent / Tuteur", "Téléphone", <>Situation<br/>financière</>, "Statut", "Actions"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+            <TableScroll label="Liste des élèves"><table className="clickable nowrap dense"><thead><tr>{["#", "Élève", "Classe", "Parent / Tuteur", "Téléphone", <>Situation<br/>financière</>, "Statut", "Actions"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>{rows.map((s, i) => { const f = s.finance && FIN[s.finance.status]; return <tr key={s.id} className={current?.id === s.id ? "selected" : ""} onClick={() => setSelected(s.id)}>
                 <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.enrollment?.classroom.name || "—"}</td><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td>
                 <td>{f ? f[1] : "—"}</td><td>{s.enrollment ? (f ? <Status tone={f[0]}>{f[1]}</Status> : <Status>Inscrit</Status>) : <Status tone="gray">Non inscrit</Status>}</td>
-                <td><button type="button" className="yd-dots" aria-label="Ouvrir la fiche" onClick={e => { e.stopPropagation(); onNavigate("students", "fiche", { student: s.id }); }}><Icon name="dots" size={22}/></button></td></tr>; })}</tbody></table></div>}
+                <td><button type="button" className="yd-dots" aria-label="Ouvrir la fiche" onClick={e => { e.stopPropagation(); onNavigate("students", "fiche", { student: s.id }); }}><Icon name="dots" size={22}/></button></td></tr>; })}</tbody></table></TableScroll>}
         </Card>
         {current ? <Card title="Aperçu de l’élève" icon="user" className="student-preview">
           <div className="yd-person"><div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div><div><h3>{current.last_name} {current.first_name}</h3><span>Classe : {current.enrollment?.classroom.name || "non inscrit"}</span><span>Matricule : {current.student_code}</span></div></div>
@@ -281,9 +281,9 @@ export function LiveArrears({ schoolId, schoolName, tabs }) {
         </div>
         <Card title="Liste des familles en impayé" count={`(${d.families_late})`} icon="users">
           {d.arrears.length === 0 ? <Empty>Aucune famille en retard de paiement.</Empty> :
-            <div className="yd-table-wrap"><table className="xs clickable"><thead><tr>{["", "Élève", "Classe", "Responsable", "Échéance", "Montant dû", <>Dernier<br/>paiement</>, "Canal", "Statut"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+            <TableScroll label="Impayés par élève"><table className="xs clickable"><thead><tr>{["", "Élève", "Classe", "Responsable", "Échéance", "Montant dû", <>Dernier<br/>paiement</>, "Canal", "Statut"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>{d.arrears.map((x, i) => <tr key={x.enrollment} className={a === x ? "selected" : ""} onClick={() => setSelected(i)}><td>{i + 1}</td><td className="nowrap"><b>{x.student}</b></td><td>{x.classroom}</td><td>{x.guardian || "—"}</td><td className="nowrap">{fmtDate(x.due_date)}</td><td className="nowrap"><b>{fmtMoney(x.amount_due, d.currency)}</b></td><td className="nowrap">{fmtDate(x.last_payment)}</td>
-                <td>{waLink(x.phone) ? <Icon name="whatsapp" size={22} className="channel"/> : "—"}</td><td><Status tone={x.last_payment ? "yellow" : "red"}>{x.last_payment ? "À relancer" : "En retard"}</Status></td></tr>)}</tbody></table></div>}
+                <td>{waLink(x.phone) ? <Icon name="whatsapp" size={22} className="channel"/> : "—"}</td><td><Status tone={x.last_payment ? "yellow" : "red"}>{x.last_payment ? "À relancer" : "En retard"}</Status></td></tr>)}</tbody></table></TableScroll>}
         </Card>
       </div>
       <div className="yd-stack">

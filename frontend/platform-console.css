@@ -136,3 +136,16 @@
 }
 
 .yem-login-brand{display:flex;align-items:center;justify-content:center;gap:15px;padding:0 0 25px}.yem-login-brand img{width:84px;height:84px;object-fit:contain}.yem-login-brand strong{display:block;font-size:37px;color:#184f32}.yem-login-brand span{display:block;color:#546f5b;font-size:13px}
+
+@media screen and (max-width: 760px) {
+ .yem-live-workspace:not(.yem-auth-app){margin:12px auto;padding:0 12px}
+ .yem-login-screen{margin:18px auto;padding:0}
+ .yem-login-brand{padding:0 0 14px}
+ .yem-login-brand img{width:60px;height:60px}
+ .pc-account-card{padding:14px;min-width:0;overflow-wrap:anywhere}
+ .pc-account-card .actions{display:flex;gap:8px;flex-wrap:wrap}
+ .pc-account-card .actions button,.pc-account-card button[type=submit]{min-height:44px;white-space:normal}
+ .pc-account-card :is(input,select,textarea){max-width:100%;min-width:0;font-size:16px}
+ .pc-account-card img{max-width:100%;height:auto}
+}
+.yem-login-screen header.yem-login-brand{height:auto}

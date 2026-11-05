@@ -1,4 +1,5 @@
 import React,{useEffect,useState} from "react";
+import {TableScroll} from "./yem-ui.jsx";
 async function api(path,body,method){
   if(body!==undefined)await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
   const csrf=document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1]||"";
@@ -85,7 +86,7 @@ export default function TimetablePanel({schoolId}){
         {classes.filter(c=>c.active&&(!year||c.year===year)).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
       </select></label>
     </div>
-    <div style={{overflowX:"auto"}}>
+    <TableScroll label="Créneaux de l’emploi du temps">
       <table style={{width:"100%",borderCollapse:"collapse"}}>
         <thead><tr>{DAYS.map(d=><th key={d} style={{padding:8,textAlign:"left"}}>{d}</th>)}</tr></thead>
         <tbody><tr>{DAYS.map((_,i)=><td key={i} style={{verticalAlign:"top",padding:6,minWidth:145}}>
@@ -98,8 +99,7 @@ export default function TimetablePanel({schoolId}){
               <button type="button" disabled={busy} onClick={()=>edit(x)}>Modifier</button>
             </div>)}
         </td>)}</tr></tbody>
-      </table>
-    </div>
+      </table></TableScroll>
     <h3>{editing?"Déplacer une séance":"Programmer une séance"}</h3>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       if(editing){
