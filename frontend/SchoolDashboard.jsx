@@ -63,7 +63,7 @@ async function get(path) {
   return data;
 }
 const defaultPerson={username:"",email:"",first_name:"",last_name:"",password:"",role:"enseignant",function_codes:[]};
-const DEFAULT_ROLE_OPTIONS=[["direction","Direction"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]];
+const DEFAULT_ROLE_OPTIONS=[["direction","Directeur / Directrice"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]];
 async function addUser(schoolId, body, endpoint="users") {
   await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
   const token=document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1]||"";
