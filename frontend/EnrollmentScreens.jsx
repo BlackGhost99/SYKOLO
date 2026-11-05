@@ -566,78 +566,174 @@ export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs }) {
   </>;
 }
 
-/* ---------- Import d'une liste d'élèves (CSV, exporté depuis Excel) ---------- */
-const IMPORT_COLUMNS = ["Nom", "Prénom", "Date de naissance (AAAA-MM-JJ)", "Sexe (F/M)", "Classe", "Responsable", "Lien", "Téléphone", "Email"];
-function parseCsv(textValue) {
-  const sep = (textValue.split("\n")[0].match(/;/g) || []).length >= (textValue.split("\n")[0].match(/,/g) || []).length ? ";" : ",";
-  const rows = []; let row = [], cell = "", quoted = false;
-  for (let i = 0; i < textValue.length; i++) {
-    const ch = textValue[i];
-    if (quoted) { if (ch === '"' && textValue[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') quoted = false; else cell += ch; }
-    else if (ch === '"') quoted = true;
-    else if (ch === sep) { row.push(cell.trim()); cell = ""; }
-    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && textValue[i + 1] === "\n") i++; row.push(cell.trim()); if (row.some(Boolean)) rows.push(row); row = []; cell = ""; }
-    else cell += ch;
-  }
-  row.push(cell.trim()); if (row.some(Boolean)) rows.push(row);
-  return rows;
-}
-const frDate = v => { const m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(v || ""); return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : v; };
+/* ---------- Import Excel / CSV adaptatif (aucune écriture avant confirmation) ---------- */
+const IMPORT_COLUMNS = ["Nom", "Prénoms", "DDN", "Classe", "Nom parent", "Téléphone parent"];
 export function ImportStudents({ schoolId, onNavigate, tabs }) {
-  const classes = useLoad(`schools/${schoolId}/overview/classes`);
-  const [rows, setRows] = useState([]);
-  const [results, setResults] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [fees, setFees] = useState(true);
-  async function load(file) {
-    const raw = (await file.text()).replace(/^﻿/, "");
-    const all = parseCsv(raw);
-    setRows(all.length && /nom/i.test(all[0][0] || "") ? all.slice(1) : all); setResults([]);
-  }
-  async function run() {
-    setBusy(true);
-    const byName = Object.fromEntries((classes.data?.classes || []).map(c => [c.name.toLowerCase().replace(/\s+/g, " "), c.id]));
-    const out = [];
-    for (const [last, first, dob, gender, klass, gname, rel, phone, email] of rows) {
-      const name = `${last || ""} ${first || ""}`.trim();
-      try {
-        const classroom = klass ? byName[klass.toLowerCase().replace(/\s+/g, " ")] : "";
-        if (klass && !classroom) throw Error(`classe « ${klass} » introuvable`);
-        const r = await req(`schools/${schoolId}/students/register`, {
-          student: Object.fromEntries(Object.entries({ last_name: (last || "").toUpperCase(), first_name: first, date_of_birth: frDate(dob), gender: (gender || "").toUpperCase().slice(0, 1) }).filter(([, v]) => v)),
-          guardians: gname ? [Object.fromEntries(Object.entries({ full_name: gname, relationship: rel, phone, email }).filter(([, v]) => v))] : [],
-          enrollment: classroom ? { classroom } : null, apply_fees: fees,
-        });
-        out.push([name, true, `matricule ${r.student.student_code}`]);
-      } catch (e) { out.push([name, false, e.message]); }
-      setResults([...out]);
+  const profiles = useLoad("schools/" + schoolId + "/imports/students/profiles");
+  const [file, setFile] = useState(null);
+  const [meta, setMeta] = useState(null);
+  const [mapping, setMapping] = useState({});
+  const [year, setYear] = useState("");
+  const [sheet, setSheet] = useState("");
+  const [headerRow, setHeaderRow] = useState(1);
+  const [profileName, setProfileName] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [finished, setFinished] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+
+  async function transfer(action, selectedFile, values = {}) {
+    if (!selectedFile) throw Error("Choisissez un fichier Excel ou CSV.");
+    const data = new FormData();
+    data.append("file", selectedFile);
+    data.append("sheet", values.sheet === undefined ? sheet : values.sheet);
+    data.append("header_row", String(values.headerRow === undefined ? headerRow : values.headerRow));
+    if (action !== "inspect") {
+      data.append("mapping", JSON.stringify(values.mapping === undefined ? mapping : values.mapping));
+      data.append("year", values.year === undefined ? year : values.year);
+      if (action === "commit") {
+        data.append("token", values.token || "");
+        if (profileName.trim()) data.append("template_name", profileName.trim());
+      }
     }
-    setBusy(false); classes.reload();
+    await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
+    const csrf = document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1] || "";
+    const response = await fetch("/api/v1/schools/" + schoolId + "/imports/students/" + action, {
+      method: "POST", credentials: "same-origin", headers: {"X-CSRFToken": csrf}, body: data,
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      const err = Error(result.error || "L'import a été refusé.");
+      err.rows = result.rows;
+      throw err;
+    }
+    return result;
   }
-  const ok = results.filter(r => r[1]).length;
+  async function analyze(selectedFile = file, newSheet = sheet, newHeader = headerRow) {
+    if (!selectedFile) return;
+    setBusy("inspect"); setError(""); setPreview(null); setFinished(null);
+    try {
+      const data = await transfer("inspect", selectedFile, {sheet:newSheet,headerRow:newHeader});
+      const saved = (profiles.data?.profiles || []).find(p=>JSON.stringify(p.headers)===JSON.stringify(data.headers));
+      setMeta(data);
+      setSheet(data.sheet);
+      setHeaderRow(data.header_row);
+      setMapping(saved?.mapping || data.suggested_mapping);
+      if (saved) setProfileName(saved.name);
+      setYear(current => data.years.some(y=>y.id===current) ? current : (data.years[0]?.id || ""));
+    } catch (e) { setError(e.message); setMeta(null); }
+    finally { setBusy(""); }
+  }
+  async function dryRun() {
+    setBusy("preview"); setError(""); setPreview(null); setFinished(null);
+    try { setPreview(await transfer("preview", file)); }
+    catch(e) { setError(e.message); if(e.rows) setPreview({errors:e.rows.length,rows:e.rows,valid:0}); }
+    finally { setBusy(""); }
+  }
+  async function confirm() {
+    if (!preview?.token || preview.errors) return;
+    setBusy("commit"); setError("");
+    try {
+      const result = await transfer("commit", file, {token:preview.token});
+      setFinished(result); profiles.reload();
+    } catch(e) { setError(e.message); if (e.rows) setPreview({...preview,errors:e.rows.filter(r=>!r.valid).length,rows:e.rows}); }
+    finally { setBusy(""); }
+  }
+  function mapped(i, value) {
+    setMapping(old => { const next = {...old}; if(value) next[String(i)]=value; else delete next[String(i)]; return next; });
+    setPreview(null);setFinished(null);
+  }
+  const columns = meta?.headers || [];
+  const bad = preview?.rows?.filter(r=>!r.valid) || [];
+  const seenTargets = Object.values(mapping);
   return <>
-    <PageHeader title="Importer une liste d’élèves" subtitle="Depuis Excel : « Enregistrer sous » › CSV, puis choisissez le fichier" banner={false}
-      actions={<Button icon="back" onClick={() => onNavigate("students", "live")}>Retour à la liste</Button>}/>
+    <PageHeader title="Importer des élèves" subtitle="Vos fichiers Excel et CSV, même avec des colonnes différentes" banner={false}
+      actions={<Button icon="back" onClick={()=>onNavigate("students","live")}>Retour à la liste</Button>}/>
     {tabs}
     <div className="yd-grid yf-two">
-      <Card title="1. Préparer le fichier" icon="excel">
-        <p className="yd-card-sub">Une ligne par élève, dans cet ordre de colonnes :</p>
-        <ol className="yf-cols">{IMPORT_COLUMNS.map(c => <li key={c}>{c}</li>)}</ol>
-        <p className="yd-card-sub">Les champs obligatoires de votre fiche d’inscription s’appliquent : complétez ensuite chaque dossier si besoin. Le nom de la classe doit être identique à celui de YEM.</p>
-        <Button icon="download" onClick={() => downloadCsv("modele-import-eleves.csv", [IMPORT_COLUMNS, ["NZE", "Aaron", "2015-03-02", "M", classes.data?.classes[0]?.name || "6e A", "NZE Sylvie", "Mère", "+241 77 43 21 08", ""]])}>Télécharger le modèle</Button>
-      </Card>
-      <Card title="2. Importer" icon="download">
-        <input type="file" accept=".csv,text/csv" onChange={e => e.target.files[0] && load(e.target.files[0])}/>
-        {rows.length > 0 && <>
-          <p className="yd-card-sub">{rows.length} élève(s) détecté(s). Aperçu : {rows.slice(0, 3).map(r => `${r[0]} ${r[1]}`).join(", ")}{rows.length > 3 ? "…" : ""}</p>
-          {classes.data?.can_manage_finance && <button type="button" className="yd-toggle-btn yf-inline" aria-pressed={fees} onClick={() => setFees(f => !f)}><Check on={fees}/>Affecter les frais des classes</button>}
-          <Button primary icon="check" disabled={busy || results.length === rows.length} onClick={run}>{busy ? `Import en cours (${results.length}/${rows.length})…` : `Importer ${rows.length} élève(s)`}</Button>
+      <Card title="1. Analyser le fichier" icon="excel">
+        <p className="yd-card-sub">Jusqu'à 500 élèves et 3 Mio par import. Votre fichier reste privé : il n'est pas enregistré pour préparer l'aperçu.</p>
+        <label>Fichier de l'établissement (.xlsx ou .csv)
+          <input type="file" accept=".xlsx,.csv" disabled={!!busy}
+            onChange={e=>{const f=e.target.files?.[0];setFile(f||null);setSheet("");setHeaderRow(1);setProfileName("");setMeta(null);setPreview(null);if(f)analyze(f,"",1);}}/>
+        </label>
+        {file && <p className="yd-card-sub">{file.name}</p>}
+        {meta && <>
+          <p className="yd-card-sub">{meta.row_count} ligne(s) détectée(s), {meta.headers.length} colonne(s).</p>
+          {meta.sheets.length>1 && <label>Feuille Excel
+            <select value={sheet} onChange={e=>{setSheet(e.target.value);analyze(file,e.target.value,headerRow);}} disabled={!!busy}>
+              {meta.sheets.map(name=><option key={name} value={name}>{name}</option>)}
+            </select>
+          </label>}
+          <label>Ligne contenant les titres
+            <select value={headerRow} disabled={!!busy}
+              onChange={e=>{const v=Number(e.target.value);setHeaderRow(v);analyze(file,sheet,v);}}>
+              {Array.from({length:10},(_,i)=><option key={i+1} value={i+1}>Ligne {i+1}</option>)}
+            </select>
+          </label>
+          <label>Année scolaire pour les inscriptions
+            <select value={year} onChange={e=>{setYear(e.target.value);setPreview(null);setFinished(null);}}>
+              <option value="">Sans année (élèves non affectés à une classe)</option>
+              {meta.years.map(y=><option key={y.id} value={y.id}>{y.name}</option>)}
+            </select>
+          </label>
+          <label>Réutiliser une configuration d'import
+            <select value="" onChange={e=>{
+              const p=(profiles.data?.profiles||[]).find(x=>x.id===e.target.value);
+              if(p){
+                if(JSON.stringify(p.headers)===JSON.stringify(columns)){setMapping(p.mapping);setProfileName(p.name);setPreview(null);setFinished(null);setError("");}
+                else setError("Ce modèle concerne des colonnes différentes : réajustez les correspondances manuellement.");
+              }
+            }}>
+              <option value="">Choisir un modèle enregistré…</option>
+              {(profiles.data?.profiles||[]).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
         </>}
-        {results.length > 0 && <>
-          <p className="yd-form-msg">{ok} dossier(s) créé(s), {results.length - ok} refusé(s).</p>
-          <Table className="xs" headers={["Élève", "Résultat", "Détail"]} rows={results.map(([n, good, m]) => [n, <Status tone={good ? "green" : "red"}>{good ? "Créé" : "Refusé"}</Status>, m])}/>
+        <Button icon="download" onClick={()=>downloadCsv("exemple-import-eleves.csv",[IMPORT_COLUMNS,["NZE","Aaron","02/03/2015","6e A","NZE Sylvie","077432108"]])}>Télécharger un exemple CSV (facultatif)</Button>
+      </Card>
+      <Card title="2. Associer vos colonnes à YEM" icon="settings">
+        {!meta?<p className="yd-card-sub">Sélectionnez votre fichier pour détecter automatiquement les en-têtes et proposer les correspondances.</p>:<>
+          <p className="yd-card-sub">Vérifiez les suggestions. Les champs Nom, Prénom(s) et Responsable légal sont obligatoires ; les autres dépendent de votre formulaire.</p>
+          <div style={{maxHeight:500,overflowY:"auto"}}>
+            {columns.map((label,i)=><label key={i} style={{display:"block",marginBottom:12}}>
+              <span>{label || "(Colonne sans titre)"} </span>
+              <small style={{opacity:.7}}>Exemple : {meta.samples[0]?.[i] || "—"}</small>
+              <select style={{display:"block",width:"100%"}} value={mapping[String(i)]||""} onChange={e=>mapped(i,e.target.value)}>
+                <option value="">— Ne pas importer cette colonne —</option>
+                {meta.choices.map(x=><option key={x.value} value={x.value}
+                  disabled={seenTargets.includes(x.value)&&mapping[String(i)]!==x.value}>{x.label}</option>)}
+              </select>
+            </label>)}
+          </div>
+          <label>Enregistrer cette correspondance pour les prochaines années (facultatif)
+            <input value={profileName} maxLength={80} placeholder="Ex. Registre des inscriptions 2026"
+              onChange={e=>setProfileName(e.target.value)}/>
+          </label>
+          <Button primary icon="check" disabled={!!busy||!file} onClick={dryRun}>
+            {busy==="preview"?"Vérification en cours…":"Vérifier les données avant import"}
+          </Button>
         </>}
       </Card>
     </div>
+    {!!error && <p role="alert" className="yd-form-msg" style={{color:"#b42318"}}>{error}</p>}
+    {preview && <Card title="3. Prévisualisation de l'import" icon="check">
+      <p className="yd-card-sub">{preview.valid || 0} ligne(s) valides, {preview.errors || 0} erreur(s). Aucun dossier n'a été créé.</p>
+      {bad.length>0 && <p role="alert" className="yd-card-sub">Corrigez les erreurs dans le fichier, puis relancez l'analyse. L'import est entièrement bloqué tant qu'une ligne est invalide.</p>}
+      <Table className="xs" headers={["Ligne","Élève","Résultat","Détail"]}
+        rows={(preview.rows||[]).slice(0,80).map(r=>[r.line||"—",r.name,
+          <Status tone={r.valid?"green":"red"}>{r.valid?"Prêt":"À corriger"}</Status>,
+          r.error || r.class || "Affectation sans classe"])}/>
+      {(preview.rows||[]).length>80 && <p className="yd-card-sub">80 premières lignes affichées sur {preview.rows.length} ; les {bad.length} erreur(s) sont prises en compte même hors affichage.</p>}
+      {!preview.errors && !finished && <Button primary icon="check" disabled={!!busy} onClick={confirm}>
+        {busy==="commit"?"Enregistrement en cours…":"Confirmer l'import des "+preview.valid+" élèves"}
+      </Button>}
+      <p className="yd-card-sub">Les frais et paiements ne sont jamais créés automatiquement. Un réimport du même fichier validé ne crée pas de doublon.</p>
+    </Card>}
+    {finished && <Card title="Importation terminée" icon="check">
+      <p role="status">{finished.already_imported?"Ce lot était déjà enregistré.":finished.imported+" dossier(s) créé(s) avec succès."}</p>
+      <p className="yd-card-sub">{finished.notice}</p>
+      <Button primary icon="users" onClick={()=>onNavigate("students","live")}>Voir la liste des élèves</Button>
+    </Card>}
   </>;
 }
