@@ -197,12 +197,12 @@ class StudentImportTests(TestCase):
 
         SchoolMember.objects.create(school=self.foreign_school, user=self.secretary,
                                     role=SchoolRole.objects.get(school=self.foreign_school, code="secretariat"))
-        second = ["Classe actuelle;Patronyme;First name;Birth date;Tuteur"]
-        second += [f"CM1 A;{last};{first_name};02/03/2015;Parent fictif"
+        second = ["Classe actuelle;Patronyme;First name;Birth date;Tuteur;Téléphone responsable"]
+        second += [f"CM1 A;{last};{first_name};02/03/2015;Parent fictif;077432108"
                    for last, first_name in names]
         file2_data = "\n".join(second).encode()
         file2 = lambda: SimpleUploadedFile("primaire-pilote.csv", file2_data)
-        mapping2 = {"1": "last_name", "2": "first_name", "3": "date_of_birth", "4": "guardian_name"}
+        mapping2 = {"1": "last_name", "2": "first_name", "3": "date_of_birth", "4": "guardian_name", "5": "guardian_phone"}
         preview2 = self.request("preview", file=file2(), mapping=mapping2, year=False, school=self.foreign_school.pk)
         self.assertEqual(preview2.status_code, 200, preview2.content)
         self.assertEqual(preview2.json()["valid"], 10, preview2.content)
