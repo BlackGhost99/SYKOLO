@@ -22,7 +22,8 @@ from accounts.views import authorized
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment
 from .overview_views import gate, current_year, enrollment_balances, finance_status, money, ZERO
-from .services import has_permission
+from .services import has_permission, quota_reached
+from .models import School
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import (
     parse_fields, describe, validate_enrollment_slot, validation_response, STUDENT_INFO, GUARDIAN_INFO,
@@ -154,6 +155,11 @@ def register_student(request, school_id):
         if not config["fields"].get("second_guardian", {}).get("visible", True):
             guardians = [first_guardian]
         with transaction.atomic():
+            # Hold the per-school lock used by all student creation paths.
+            # The combined registration endpoint must not bypass platform quotas.
+            School.objects.select_for_update().get(pk=school.pk)
+            if quota_reached(school, "students"):
+                raise Refused("Plafond d'élèves atteint pour cet établissement.", 409)
             if not info.get("student_code"):
                 info["student_code"] = next_student_code(school)
             values = parse_fields(info, STUDENT_FIELDS, ("student_code", "first_name", "last_name"))

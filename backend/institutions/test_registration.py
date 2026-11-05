@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment
-from .models import Organization, School, SchoolRole, SchoolMember
+from .models import Organization, School, SchoolRole, SchoolMember, SchoolAdminPolicy
 from .services import ROLE_TEMPLATES
 from .student_models import Student, StudentGuardian, Enrollment
 
@@ -21,6 +21,7 @@ class RegistrationTests(TestCase):
         self.director = User.objects.create_user(username="dir-reg", password="Strong director password 2026!")
         self.secretary = User.objects.create_user(username="sec-reg", password="Strong secretary password 2026!")
         self.teacher = User.objects.create_user(username="tea-reg", password="Strong teacher password 2026!")
+        self.biller = User.objects.create_user(username="billing-reg", password="Strong billing password 2026!")
         org = Organization.objects.create(name="Groupe inscriptions")
         self.school = School.objects.create(organization=org, name="École A")
         self.other = School.objects.create(organization=org, name="École B")
@@ -29,6 +30,12 @@ class RegistrationTests(TestCase):
                 SchoolRole.objects.create(school=school, code=code, label=name, permissions=perms)
         for user, role in ((self.director, "direction"), (self.secretary, "secretariat"), (self.teacher, "enseignant")):
             SchoolMember.objects.create(school=self.school, user=user, role=SchoolRole.objects.get(school=self.school, code=role))
+        # Fee assessment is authorized for a tariff manager, not for direction by default.
+        billing_member = SchoolMember.objects.create(
+            school=self.school, user=self.biller,
+            role=SchoolRole.objects.get(school=self.school, code="secretariat"),
+        )
+        billing_member.additional_roles.add(SchoolRole.objects.get(school=self.school, code="tarification"))
         today = timezone.localdate()
         self.year = AcademicYear.objects.create(school=self.school, code="y", name="2026-2027",
                                                 start_date=today - timedelta(days=30), end_date=today + timedelta(days=300))
@@ -57,7 +64,7 @@ class RegistrationTests(TestCase):
         return body
 
     def test_full_registration_creates_student_guardian_enrollment_and_fees(self):
-        self.client.force_login(self.director)
+        self.client.force_login(self.biller)
         r = self.post("students/register", self.register_body())
         self.assertEqual(r.status_code, 201, r.content)
         d = r.json()
@@ -98,6 +105,14 @@ class RegistrationTests(TestCase):
         self.client.force_login(self.director)
         self.assertEqual(self.client.post(other, json.dumps(self.register_body()), content_type="application/json").status_code, 404)
 
+    def test_registration_respects_platform_student_limit(self):
+        SchoolAdminPolicy.objects.create(school=self.school, max_students=0)
+        self.client.force_login(self.secretary)
+        response = self.post("students/register", self.register_body())
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertEqual(Student.objects.filter(school=self.school).count(), 0)
+        self.assertEqual(StudentGuardian.objects.filter(school=self.school).count(), 0)
+
     def test_quick_classes_creates_level_and_codes(self):
         self.client.force_login(self.director)
         r = self.post("academic/quick-classes", {"year": str(self.year.pk), "level_name": "CM1", "cycle_name": "Primaire",
@@ -118,7 +133,7 @@ class RegistrationTests(TestCase):
         self.assertEqual(len(r.json()["enrolled"]), 2)
         self.assertEqual(len(r.json()["failed"]), 1)
         self.assertEqual(self.post(f"classes/{self.c6a.pk}/apply-fees", {}).status_code, 403)
-        self.client.force_login(self.director)
+        self.client.force_login(self.biller)
         r = self.post(f"classes/{self.c6a.pk}/apply-fees", {})
         self.assertEqual(r.json()["charges_created"], 4)
         self.assertEqual(self.post(f"classes/{self.c6a.pk}/apply-fees", {}).json()["charges_created"], 0)
