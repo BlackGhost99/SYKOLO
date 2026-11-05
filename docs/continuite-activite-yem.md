@@ -5,8 +5,8 @@
 ## Infrastructure vérifiée
 - API : Render yem-api, déploiement manuel de main.
 - Base réellement utilisée : projet **YEM Supabase** (kxkifsrlkwhedqraojvj), région **eu-west-1**, PostgreSQL 17. Ne pas confondre avec la base Gaboshop du compte Render.
-- Formule d'abonnement, sauvegardes, horaire, rétention et droit de restauration **non vérifiés** avec les accès disponibles. Tableau de bord : https://supabase.com/dashboard/project/kxkifsrlkwhedqraojvj/database/backups
-- Référence Supabase : https://supabase.com/docs/guides/platform/backups. Sur Free, il ne faut pas se reposer sur une garantie de sauvegarde quotidienne. Aucune souscription payante n'a été engagée.
+- **Formule confirmée via Supabase : Free (`tier_free`)** pour l'organisation du projet YEM le 05/11/2026. La capacité de restauration de sauvegardes réelles, la fréquence et la rétention ne sont pas attestées. Tableau de bord : https://supabase.com/dashboard/project/kxkifsrlkwhedqraojvj/database/backups
+- Référence Supabase : https://supabase.com/docs/guides/platform/backups. Les sauvegardes quotidiennes garanties et téléchargeables ne sont pas incluses dans ce plan Free. Aucune souscription payante n'a été engagée ; sauvegardes chiffrées externes indispensables.
 
 ## Procédure indépendante, chiffrée, sur un poste d'administration fiable
 Prérequis : client PostgreSQL 17 (ou plus récent), Bash, GnuPG, sha256sum. La sauvegarde ne doit jamais être conservée dans le dépôt Git, ni les logs Render/GitHub, ni envoyée dans un chat.
