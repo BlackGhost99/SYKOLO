@@ -182,3 +182,6 @@ class PermissionDelegation(models.Model):
     revoked_at = models.DateTimeField(null=True, blank=True)
     revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="+")
     revocation_reason = models.CharField(max_length=240, blank=True)
+
+
+from .import_models import StudentImportProfile, StudentImportBatch  # noqa: E402,F401
