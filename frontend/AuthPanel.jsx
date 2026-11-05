@@ -28,6 +28,8 @@ async function authApi(path, body) {
 export default function AuthPanel() {
   const [account, setAccount] = useState(null);
   const [tab, setTab] = useState("login");
+  const [loginScope, setLoginScope] = useState(window.location.hash === "#/admin" ? "platform" : "school");
+  const [schoolCode, setSchoolCode] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -224,11 +226,20 @@ export default function AuthPanel() {
             </form>
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-              const result = await authApi("login", { username, password, code });
+              const result = await authApi("login", { username, password, code, scope: loginScope, school_code: schoolCode.trim() });
               setAccount(await authApi("me")); window.dispatchEvent(new Event("yem:auth-change")); setPassword(""); setCode(""); setMessage("Connexion réussie.");
             }); }}>
+              <h3>{loginScope === "platform" ? "Administration YEM" : loginScope === "parent" ? "Espace parents" : "Connexion établissement"}</h3>
+              <div className="actions">
+                <button type="button" onClick={()=>{setLoginScope("school");setPassword("");window.history.replaceState(null,"","#/ecole");}}>Établissement</button>
+                <button type="button" onClick={()=>{setLoginScope("parent");setPassword("");window.history.replaceState(null,"","#/parents");}}>Parents</button>
+                <button type="button" onClick={()=>{setLoginScope("platform");setPassword("");window.history.replaceState(null,"","#/admin");}}>Administration plateforme</button>
+              </div>
+              {loginScope === "school" && <label className="field">Code de l'établissement
+                <input required value={schoolCode} onChange={e=>setSchoolCode(e.target.value)} placeholder="Code fourni par votre établissement" autoComplete="organization"/>
+              </label>}
               <label className="field">Identifiant
-                <input autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} />
+                <input disabled={loginScope === "school" && !schoolCode.trim()} autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} />
               </label>
               <label className="field">Mot de passe
                 <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />

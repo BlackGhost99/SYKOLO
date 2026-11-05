@@ -57,7 +57,7 @@ function dateText(value) {
 const fmt = n => (typeof n === "number" ? new Intl.NumberFormat("fr-GA").format(n) : "—");
 const orgBlank = {name:""};
 const schoolBlank = {organization_name:"",organization_id:"",school_name:"",school_type:"",education_cycles:[],username:"",email:"",first_name:"",last_name:"",password:"",role:"direction"};
-const userBlank = {username:"",email:"",first_name:"",last_name:"",password:"",role:""};
+const userBlank = {username:"",email:"",first_name:"",last_name:"",password:"",role:"",function_codes:[]};
 const icons = {
   home:<><path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-6h6v6"/></>,
   layers:<><path d="m12 2 9 5-9 5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/></>,
@@ -516,6 +516,8 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           <div className="ya-form-grid">
             {[["first_name","Prénom"],["last_name","Nom"],["username","Identifiant de connexion"],["email","E-mail"]].map(([k,l])=><Field key={k} label={l}><input required type={k==="email"?"email":"text"} value={person[k]} onChange={e=>update(setPerson,k,e.target.value)}/></Field>)}
             <Field label="Rôle dans l'établissement"><select required value={person.role||selectedDetail?.roles?.[0]?.code||""} onChange={e=>update(setPerson,"role",e.target.value)}>{(selectedDetail?.roles||[]).map(r=><option key={r.id} value={r.code}>{r.label}</option>)}</select></Field>
+            <p>Code de connexion : <strong>{selectedDetail?.login_code||""}</strong></p>
+            <fieldset><legend>Fonctions facultatives (sans droits automatiques)</legend>{(selectedDetail?.functions||[]).map(f=><label key={f.code}><input type="checkbox" checked={(person.function_codes||[]).includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...(old.function_codes||[]),f.code]:(old.function_codes||[]).filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset>
             <Field label="Mot de passe initial"><input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>update(setPerson,"password",e.target.value)}/></Field>
           </div><button type="submit" disabled={busy||!schoolId||!selectedDetail?.school?.active} className="ya-btn ya-btn-primary"><Icon name="userplus" size={18}/> Créer le compte</button>
         </form></section>

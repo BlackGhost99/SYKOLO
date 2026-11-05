@@ -71,7 +71,7 @@ def me(request):
     if not request.user.is_authenticated or not request.user.is_active:
         return JsonResponse({"authenticated": False})
     device = MFADevice.objects.filter(user=request.user, confirmed_at__isnull=False).first()
-    return JsonResponse({"authenticated": True, "user": public_user(request.user), "mfa_enabled": bool(device)})
+    return JsonResponse({"authenticated": True, "user": {**public_user(request.user), "username": request.session.get("school_username", request.user.username)}, "school_id": request.session.get("school_id"), "mfa_enabled": bool(device)})
 
 
 @require_POST
@@ -82,11 +82,43 @@ def sign_in(request):
     username, password = data.get("username"), data.get("password")
     if not isinstance(username, str) or not isinstance(password, str) or len(username) > 150 or len(password) > 1024:
         return JsonResponse({"error": "Identifiants invalides."}, status=401)
-    key = throttle_key(request, "login", username)
+    scope = data.get("scope", "parent")
+    school_code = data.get("school_code", "")
+    if scope not in {"school", "platform", "parent"} or not isinstance(school_code, str):
+        return JsonResponse({"error": "Accès invalide."}, status=401)
+    if scope == "school":
+        try:
+            from uuid import UUID
+            school_code = str(UUID(school_code))
+        except ValueError:
+            school_code = "00000000-0000-0000-0000-000000000000"
+    else:
+        school_code = ""
+    key = throttle_key(request, "login", scope + ":" + school_code + ":" + username)
     if is_locked(key):
         audit(request, "login_throttled")
         return JsonResponse({"error": "Connexion temporairement indisponible."}, status=429)
-    user = authenticate(request, username=username, password=password)
+    from institutions.models import SchoolLogin, SchoolMember, OrganizationMember
+    from institutions.services import school_access, effective_permissions
+    school = None
+    if scope == "school":
+        try:
+            identity = SchoolLogin.objects.select_related("user", "school").filter(
+                school_id=school_code, username=username, school__is_active=True).first()
+        except (ValueError, ValidationError):
+            identity = None
+        user = authenticate(request, username=identity.user.username if identity else "__invalid_school__", password=password)
+        if not identity or not user or user.is_superuser or not school_access(user, identity.school_id):
+            user = None
+        else:
+            school = identity.school
+    else:
+        user = authenticate(request, username=username, password=password)
+        if user and ((scope == "platform" and not user.is_superuser) or
+                     (scope == "parent" and (user.is_superuser or
+                      any(effective_permissions(user, m.school) - {"school.view"} for m in SchoolMember.objects.select_related("school").filter(user=user, active=True)) or
+                      OrganizationMember.objects.filter(user=user).exists()))):
+            user = None
     if user is None or not user.is_active:
         failure(key)
         audit(request, "login_failed")
@@ -100,7 +132,12 @@ def sign_in(request):
             failure(key)
             audit(request, "mfa_failed", user)
             return JsonResponse({"error": "Code de vérification invalide.", "mfa_required": True}, status=401)
+    request.session.flush()
     login(request, user)
+    request.session["login_scope"] = scope
+    if school:
+        request.session["school_id"] = str(school.pk)
+        request.session["school_username"] = username
     request.session["mfa_verified"] = bool(device)
     request.session.set_expiry(8 * 3600)
     clear_throttle(key)

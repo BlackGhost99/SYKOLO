@@ -5,6 +5,7 @@ import re
 from itertools import combinations
 
 from django.db.models import Q
+from django.utils import timezone
 from django.http import JsonResponse
 
 from .models import OrganizationMember, School, SchoolMember, SchoolSetting, SchoolAdminPolicy, Student
@@ -73,7 +74,11 @@ def effective_permissions(user, school):
     if not member:
         return founder_permissions
     roles = [member.role, *member.additional_roles.filter(school=school)]
-    return founder_permissions | set().union(*(set(role.permissions) for role in roles))
+    delegated = member.delegations.filter(school=school, revoked_at__isnull=True).filter(
+        Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+    )
+    return founder_permissions | set().union(*(set(role.permissions) for role in roles),
+                                             *(set(d.permissions) for d in delegated))
 
 
 
@@ -91,7 +96,7 @@ def quota_reached(school, resource):
 
 def school_response(school):
     return {
-        "id": str(school.pk), "organization_id": str(school.organization_id),
+        "login_code": str(school.pk), "id": str(school.pk), "organization_id": str(school.organization_id),
         "name": school.name, "short_name": school.short_name,
         "primary_color": school.primary_color,
         "school_type": school.school_type,

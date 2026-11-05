@@ -1,8 +1,12 @@
 from django.urls import path
+from . import delegation_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views
 
 urlpatterns = [
+    path("schools/<uuid:school_id>/functions", delegation_views.functions),
+    path("schools/<uuid:school_id>/delegations", delegation_views.delegations),
+    path("schools/<uuid:school_id>/delegations/<uuid:delegation_id>", delegation_views.delegations),
     path("platform/dashboard", platform_admin_views.platform_dashboard),
     path("platform/organizations", platform_admin_views.platform_organizations),
     path("platform/audit", platform_admin_views.platform_audit),

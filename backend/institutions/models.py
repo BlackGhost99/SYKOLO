@@ -31,6 +31,7 @@ class School(models.Model):
     short_name = models.CharField(max_length=60, blank=True)
     school_type = models.CharField(max_length=32, choices=SCHOOL_TYPE_CHOICES, default="non_classe")
     education_cycles = models.JSONField(default=list, blank=True)
+    enabled_functions = models.JSONField(null=True, default=None, blank=True)
     primary_color = models.CharField(max_length=7, default="#1B664C")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -57,6 +58,7 @@ class SchoolMember(models.Model):
     role = models.ForeignKey(SchoolRole, on_delete=models.PROTECT)
     additional_roles = models.ManyToManyField(SchoolRole, blank=True, related_name="additional_members")
     active = models.BooleanField(default=True)
+    function_codes = models.JSONField(default=list, blank=True)
 
     class Meta:
         constraints = [
@@ -117,6 +119,7 @@ class SchoolAudit(models.Model):
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     event = models.CharField(max_length=48)
     subject = models.CharField(max_length=100, blank=True)
+    details = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -151,3 +154,30 @@ from .parent_admission_models import SchoolPublicListing, FamilyChild, ParentAdm
 from .parent_payment_models import SchoolAdmissionFee, SchoolPaymentGateway, ParentPaymentAttempt  # noqa: E402,F401
 
 from .organization_models import SchoolAppointment  # noqa: E402,F401
+
+
+class SchoolLogin(models.Model):
+    school = models.ForeignKey(School, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    username = models.CharField(max_length=150)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["school", "username"], name="unique_school_login"),
+            models.UniqueConstraint(fields=["school", "user"], name="unique_school_login_user"),
+        ]
+
+
+class PermissionDelegation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.PROTECT)
+    member = models.ForeignKey(SchoolMember, on_delete=models.PROTECT, related_name="delegations")
+    permissions = models.JSONField(default=list)
+    reason = models.CharField(max_length=240)
+    source_function = models.CharField(max_length=48, blank=True)
+    granted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="+")
+    revocation_reason = models.CharField(max_length=240, blank=True)

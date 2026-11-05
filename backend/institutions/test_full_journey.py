@@ -54,10 +54,13 @@ class CompleteSchoolJourneyTest(TestCase):
         return response.json() if response["Content-Type"].startswith("application/json") else response
 
     def sign_in(self, username):
+        from .models import SchoolLogin
+        identity = SchoolLogin.objects.filter(username=username).first()
+        context = {"scope": "school", "school_code": str(identity.school_id)} if identity else {}
         self.client.get("/api/v1/auth/csrf")
         self.token = self.client.cookies["csrftoken"].value
         self.post("/api/v1/auth/login", {
-            "username": username, "password": self.passwords[username],
+            "username": username, "password": self.passwords[username], **context,
         }, expected=200)
         self.client.get("/api/v1/auth/csrf")
         self.token = self.client.cookies["csrftoken"].value
@@ -86,7 +89,7 @@ class CompleteSchoolJourneyTest(TestCase):
         self.post(base + "members", {"username": "journey-director", "role": "direction"})
         self.switch("journey-director")
         self.post(base + "members", {"username": "journey-teacher", "role": "enseignant"})
-        self.assertEqual(self.client.get(other_base + "academic/years").status_code, 404)
+        self.assertEqual(self.client.get(other_base + "academic/years").status_code, 403)
 
         policy = deepcopy(next(x["policy"] for x in PRESETS if x["id"] == "numeric-20"))
         settings = self.post(base + "settings", {

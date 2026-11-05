@@ -12,7 +12,7 @@ const ACTION_LABELS = {
   read:"Consulter", manage:"Administrer", write:"Modifier / enregistrer",
   view:"Accéder", publish:"Publier", decide:"Décider", enroll:"Inscrire",
   finalize:"Clôturer", amend:"Rectifier", receive:"Encaisser",
-  reverse:"Annuler un encaissement",
+  reverse:"Annuler un encaissement", approve:"Contrôler / approuver", deposit:"Déposer les fonds",
 };
 
 async function api(path,payload,method){
@@ -31,7 +31,7 @@ async function api(path,payload,method){
   if(!r.ok)throw Error(data.error||"Opération refusée.");
   return data;
 }
-function permissionLabel(value){
+export function permissionLabel(value){
   const parts=value.split(".");
   const domain=DOMAIN_LABELS[parts[1]]||parts[1];
   const action=ACTION_LABELS[parts[2]]||parts[2]||"";

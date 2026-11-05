@@ -1,4 +1,5 @@
 """Platform-only provisioning; never exposed to school administrators."""
+from uuid import uuid4
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
@@ -6,7 +7,7 @@ from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
-from .models import Organization, OrganizationMember, School, SchoolMember, SchoolRole
+from .models import Organization, OrganizationMember, School, SchoolMember, SchoolRole, SchoolLogin
 from .services import ROLE_TEMPLATES, school_response, quota_reached
 from .school_profiles import CYCLE_LABELS, profile_options, validate_school_profile
 from .views import parse_body, log_event, string
@@ -73,7 +74,7 @@ def platform_schools(request):
         with transaction.atomic():
             # One explicit organization per provisioning request; no accidental cross-school sharing.
             org = existing_org if existing_org is not None else Organization.objects.create(name=org_name.strip())
-            user = User.objects.create_user(username=candidate.username, email=candidate.email,
+            user = User.objects.create_user(username=(candidate.username if not User.objects.filter(username=candidate.username).exists() else "school-" + uuid4().hex), email=candidate.email,
                                             first_name=candidate.first_name, last_name=candidate.last_name,
                                             password=password)
             # Un propriétaire nommé pour une école existante ne devient pas propriétaire de tout le groupe.
@@ -92,11 +93,12 @@ def platform_schools(request):
                 for code, label, perms in templates
             ])}
             SchoolMember.objects.create(school=school, user=user, role=roles[role_code])
+            SchoolLogin.objects.create(school=school, user=user, username=username.strip())
             log_event(school, request, "school_provisioned", str(user.pk))
     except IntegrityError:
         return JsonResponse({"error": "Cet identifiant existe déjà."}, status=409)
     return JsonResponse({**school_response(school), "organization": org.name,
-                         "username": user.username, "role": role_code}, status=201)
+                         "username": username.strip(), "role": role_code}, status=201)
 
 
 @require_http_methods(["POST"])
@@ -119,6 +121,11 @@ def platform_add_user(request, school_id):
     role = SchoolRole.objects.filter(school=school, code=code).first()
     if role is None:
         return JsonResponse({"error": "Rôle non disponible pour cette école."}, status=422)
+    from .school_functions import validate_account_functions
+    try:
+        functions = validate_account_functions(school, data.get("function_codes", []))
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
     User = get_user_model()
     candidate = User(username=username.strip(), email=email.strip(), first_name=first_name.strip(), last_name=last_name.strip())
     try:
@@ -130,14 +137,15 @@ def platform_add_user(request, school_id):
             School.objects.select_for_update().get(pk=school.pk)
             if quota_reached(school, "users"):
                 return JsonResponse({"error": "Plafond d'utilisateurs atteint pour cet établissement."}, status=409)
-            user = User.objects.create_user(username=candidate.username, email=candidate.email,
+            user = User.objects.create_user(username=(candidate.username if not User.objects.filter(username=candidate.username).exists() else "school-" + uuid4().hex), email=candidate.email,
                                             first_name=candidate.first_name, last_name=candidate.last_name,
                                             password=password)
-            SchoolMember.objects.create(school=school, user=user, role=role)
+            SchoolMember.objects.create(school=school, user=user, role=role, function_codes=functions)
+            SchoolLogin.objects.create(school=school, user=user, username=username.strip())
             log_event(school, request, "member_account_created", str(user.pk))
     except IntegrityError:
         return JsonResponse({"error": "Cet identifiant existe déjà."}, status=409)
-    return JsonResponse({"username": user.username, "role": role.code}, status=201)
+    return JsonResponse({"username": username.strip(), "role": role.code}, status=201)
 
 
 @require_http_methods(["POST"])
