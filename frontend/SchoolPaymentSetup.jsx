@@ -1,4 +1,5 @@
 import React,{useEffect,useMemo,useState} from "react";
+import {TableScroll} from "./yem-ui.jsx";
 
 async function api(path,body) {
   if(body!==undefined)await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
@@ -114,14 +115,14 @@ export default function SchoolPaymentSetup({schoolId,years=[],classes=[]}) {
       setPayments(response.payments||[]);setNotice("Liste actualisée.");
     })}>Actualiser les transactions</button>
     {payments.length===0?<p>Aucune tentative de paiement en ligne.</p>:
-      <div style={{overflowX:"auto"}}><table style={{width:"100%",marginTop:12}}>
+      <TableScroll label="Configuration des paiements"><table style={{width:"100%",marginTop:12}}>
         <thead><tr><th>Référence</th><th>Montant</th><th>Canal</th><th>État</th><th>Mode</th></tr></thead>
         <tbody>{payments.map(p=><tr key={p.id}>
           <td><code>{p.merchant_reference}</code></td>
           <td>{Number(p.amount_xaf).toLocaleString("fr-FR")} FCFA</td>
           <td>{p.channel}</td><td>{p.state}</td><td>{p.provider_mode==="sandbox"?"SIMULATION":"Réel"}</td>
         </tr>)}</tbody>
-      </table></div>}
+      </table></TableScroll>}
     {notice&&<p role="status">{notice}</p>}
   </section>;
 }

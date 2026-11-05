@@ -122,7 +122,7 @@ function UserMenu({user,roleLabel,onAccount,onLogout}) {
   const [open,setOpen]=useState(false);
   const name=[user?.first_name,user?.last_name].filter(Boolean).join(" ")||user?.username||"Mon compte";
   return <div className="yd-user-wrap">
-    <button type="button" className="yd-user-btn" aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>
+    <button type="button" className="yd-user-btn" aria-label={`Compte de ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>
       <span className="yd-avatar"><Icon name="user" size={22} strokeWidth={0} className="filled"/></span>
       <span><b>{name}</b>{roleLabel&&<small>{roleLabel}</small>}</span><Icon name="chevron" size={18}/>
     </button>

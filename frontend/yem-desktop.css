@@ -710,3 +710,67 @@ a.yd-btn { text-decoration: none; }
 .yf-track .yd-legend b { white-space: normal; }
 .yd-hero-actions .yd-select.plain { min-width: 160px; }
 .yd-hero-actions .yd-select.plain select { min-width: 110px; }
+
+/* Keep operational screens usable at narrow widths and when zoomed. */
+.yd-mobile-toggle { display: none; }
+.yd-topbar .yd-global-search { min-width: 0; }
+.yd-topbar .yd-user-btn > span:nth-child(2) { min-width: 0; max-width: clamp(96px, 15vw, 220px); }
+.yd-topbar .yd-user-btn :is(b, small) { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.yd-hero-text { flex: 1 1 auto; }
+.yd-hero :is(h1, p) { white-space: normal; overflow-wrap: anywhere; }
+.yd-hero-actions { flex-wrap: wrap; min-width: 0; }
+.yd-app :is(.yd-trend span, .yd-legend b) { white-space: normal; }
+.yd-legend span { min-width: 0; }
+.yd-view-filters { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 12px; }
+.yd-view-filters label { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.yd-table-wrap { max-width: 100%; overscroll-behavior-inline: contain; }
+.yd-table-wrap:focus-visible, .ya-table-overflow:focus-visible { outline: 2px solid var(--yd-green); outline-offset: 2px; }
+
+@media screen and (max-width: 1000px) {
+  .yd-topbar .yd-global-search, .yd-topbar .yd-user-btn > span:nth-child(2) { display: none; }
+  .yd-topbar .yd-bell { margin-left: auto; }
+}
+
+@media screen and (max-width: 760px) {
+  .yd-app header.yd-topbar { display: flex; justify-content: space-between; padding: 10px 12px; }
+  .yd-topbar .yd-logo svg { width: 40px; height: 40px; }
+  .yd-topbar .yd-logo span { white-space: normal; }
+  .yd-topbar .yd-bell, .yd-topbar .yd-user-btn > span:nth-child(2), .yd-topbar .yd-user > b { display: none; }
+  .yd-mobile-toggle, .yd-topbar .yd-user-btn { min-height: 44px; padding: 0 8px; gap: 5px; }
+  .yd-mobile-toggle { display: inline-flex; align-items: center; border: 1px solid var(--yd-line); border-radius: 7px; background: white; color: var(--yd-text); margin-left: auto; }
+  .yd-school-select-wrap { min-width: 0; }
+  .yd-school-select { height: auto; min-height: 44px; padding-block: 6px; }
+  .yd-school-select b { white-space: normal; overflow-wrap: anywhere; font-size: 15px; }
+  .yd-sidebar { display: none; }
+  .yd-sidebar.is-open { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 138px), 1fr)); }
+  .yd-sidebar button { height: auto; min-height: 44px; justify-content: flex-start; white-space: normal; }
+  .yd-content { padding: 12px; overflow-wrap: anywhere; }
+  .yd-hero, .yd-hero.nobanner { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-height: 0; }
+  .yd-hero-text, .yd-hero.nobanner .yd-hero-text, .yd-hero-actions { padding: 0; }
+  .yd-hero h1 { font-size: clamp(22px, 5.5vw, 28px); }
+  .yd-hero p { font-size: 15px; }
+  .yd-hero-actions > *, .yd-toolbar > *, .yd-real-tabs > *, .yd-card-title > * { min-width: 0; max-width: 100%; }
+  .yd-toolbar.students :is(.yd-search, .yd-select), .yd-toolbar.bulletins .yd-select, .yd-toolbar.config .yd-select { flex: 1 1 100%; }
+  .yd-toolbar.students .yd-btn:first-of-type { margin-left: 0; }
+  .yd-toolbar .vsep, .yd-toolbar .grow { display: none; }
+  .yd-real-tabs button { flex: 1 1 auto; min-height: 44px; }
+  .yd-view-filters select { min-height: 44px; font-size: 16px; }
+  .yd-card-title, .yd-panel-head, .yd-person, .yf-question { flex-wrap: wrap; }
+  .yd-card, .report-sheet, .yd-app .yd-real-body .card, .yd-app .yd-real-body .pc-panel { padding: 12px; }
+  .yd-app .yd-real-body .pc-module-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
+  .yd-app :is(.yd-btn, .yd-btn.primary, .yd-page-badge, .yd-status, .yd-metric strong, .yd-trend span, .yd-legend b, .yd-debts b, .cash-total strong) { white-space: normal; }
+  .yd-app .yd-btn { min-height: 44px; padding: 6px 10px; font-size: 15px; }
+  .yd-app :is(.yd-real-body, .yf-field, .yd-select, .yd-input, .yd-search) :is(input, select, textarea) { font-size: 16px; }
+  .yd-app :is(fieldset, input, select, textarea) { min-inline-size: 0; max-inline-size: 100%; }
+  .yd-app input[type="file"] { width: 100%; }
+  .yd-app .three, .report-summary, .report-foot { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .yd-table-wrap table { min-width: max-content; }
+  .yd-table-wrap :is(th, td) { overflow-wrap: normal; }
+  .yd-table-wrap :is(th, td):not(.nowrap) { max-width: 18rem; }
+  .yd-app .yd-table-wrap table.nowrap td { white-space: normal; }
+  .yd-app :is(.yf-link, .yd-dots, .yf-icon) { min-height: 44px; min-width: 44px; }
+  .yd-app .yf-person { grid-template-columns: minmax(0, 1fr); }
+  .yf-row-actions { grid-area: auto; flex-wrap: wrap; }
+  .ym-phone { width: min(372px, 100%); }
+  .ym-tabs button { flex-wrap: wrap; white-space: normal; }
+}

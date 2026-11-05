@@ -50,9 +50,16 @@ test("school branding editor keeps YEM and BWETEK visible", async () => {
 test("sidebar matches the ten entries of the approved mockups", async () => {
   render(<App />);
   await userEvent.setup().click(screen.getByRole("button", { name: /Maquettes PC/ }));
-  const nav = screen.getByRole("complementary", { name: "Navigation principale" });
+  const nav = screen.getByRole("navigation", { name: "Navigation principale" });
+  const toggle = screen.getByRole("button", { name: "Menu de l’établissement" });
+  const user = userEvent.setup();
+  expect(toggle.getAttribute("aria-controls")).toBe(nav.id);
+  await user.click(toggle);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
   const labels = [...nav.querySelectorAll("button")].map(b => b.textContent);
   expect(labels).toEqual(["Tableau de bord", "Élèves", "Admissions", "Paiements", "Impayés & relances", "Bulletins", "Absences", "Parents", "Personnel", "Paramètres"]);
+  await user.click(screen.getByRole("button", { name: "Personnel", exact: true }));
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
 });
 
 test("shows the three mobile screens of the approved mockup", async () => {

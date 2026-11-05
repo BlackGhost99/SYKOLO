@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Check, Donut, PageHeader } from "./yem-ui.jsx";
+import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Check, Donut, PageHeader } from "./yem-ui.jsx";
 
 /* Parcours du secrétariat branchés sur l'API : fiche de renseignement modulable, dossier élève,
    inscriptions par classe, création des classes et suivi des paiements. */
@@ -352,13 +352,13 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
             <div className="yf-checks list">{unassigned.slice(0, 200).map(s => <button type="button" key={s.id} className={picked[s.id] ? "active" : ""} onClick={() => setPicked(p => ({ ...p, [s.id]: !p[s.id] }))}><Check on={!!picked[s.id]}/><span>{s.last_name} {s.first_name} <small>· {s.student_code}</small></span></button>)}</div>}
         </div>}
         <Loading state={roster}>{members.length === 0 ? <Empty>Aucun élève inscrit dans cette classe.</Empty> :
-          <div className="yd-table-wrap"><table className="xs nowrap clickable"><thead><tr>{["#", "Élève", "Responsable", "Téléphone", ...(o.finance_visible ? ["Payé", "Reste", "Situation", "Moyens"] : []), "Pièces", ""].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+          <TableScroll label="Élèves de la classe"><table className="xs nowrap clickable"><thead><tr>{["#", "Élève", "Responsable", "Téléphone", ...(o.finance_visible ? ["Payé", "Reste", "Situation", "Moyens"] : []), "Pièces", ""].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
             <tbody>{members.map((s, i) => <tr key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}>
               <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td>
               {o.finance_visible && <><td>{money(s.finance?.paid, roster.data.currency)}</td><td><b>{money(s.finance?.balance, roster.data.currency)}</b></td><td>{s.finance && <Status tone={FIN[s.finance.status][0]}>{FIN[s.finance.status][1]}</Status>}</td><td>{(s.finance?.methods || []).map(methodLabel).join(", ") || "—"}</td></>}
               <td>{s.missing_documents ? <Status tone="yellow">{s.missing_documents} manquante(s)</Status> : <Status>Complet</Status>}</td>
               <td>{canReceive && Number(s.finance?.balance) > 0 ? <button type="button" className="yf-link" onClick={e => { e.stopPropagation(); onNavigate("payments", "live", { enrollment: s.enrollment.id }); }}>Encaisser</button> : <Icon name="chevronright" size={18}/>}</td>
-            </tr>)}</tbody></table></div>}</Loading>
+            </tr>)}</tbody></table></TableScroll>}</Loading>
       </Card>}
     </>)}</Loading>
   </>;
@@ -415,14 +415,14 @@ export function ClassSetup({ schoolId, tabs }) {
         </Card>}
         <Card title={`Classes ${d.year.name}`} count={`(${d.classes.length})`} icon="school">
           {d.classes.length === 0 ? <Empty>Aucune classe pour cette année.</Empty> :
-            <div className="yd-table-wrap"><table className="xs nowrap"><thead><tr>{["Classe", "Niveau", "Inscrits", "Capacité", "Statut", ""].map(h => <th key={h}>{h}</th>)}</tr></thead>
+            <TableScroll label="Classes de l’année"><table className="xs nowrap"><thead><tr>{["Classe", "Niveau", "Inscrits", "Capacité", "Statut", ""].map(h => <th key={h}>{h}</th>)}</tr></thead>
               <tbody>{d.classes.map(c => <tr key={c.id}>
                 <td><b>{c.name}</b></td><td>{c.level.name}</td><td>{c.enrolled}</td>
                 <td>{d.can_manage_academic ? <span className="yf-inline-form tight"><input type="number" min={Math.max(1, c.enrolled)} max={5000} className="yf-num" value={caps[c.id] ?? (c.capacity ?? "")} placeholder="libre" onChange={e => setCaps(x => ({ ...x, [c.id]: e.target.value }))}/>
                   {caps[c.id] !== undefined && String(caps[c.id]) !== String(c.capacity ?? "") && <button type="button" className="yf-link" disabled={busy} onClick={() => run(async () => { await req(`schools/${schoolId}/academic/classes/${c.id}`, { revision: c.revision, capacity: caps[c.id] === "" ? null : Number(caps[c.id]) }, "PATCH"); setCaps(x => { const n = { ...x }; delete n[c.id]; return n; }); return `Capacité de ${c.name} enregistrée.`; })}>Enregistrer</button>}</span> : (c.capacity ?? "libre")}</td>
                 <td><Status tone={c.active ? "green" : "gray"}>{c.active ? "Active" : "Archivée"}</Status></td>
                 <td>{d.can_manage_academic && <button type="button" className="yf-link" disabled={busy} onClick={() => run(async () => { await req(`schools/${schoolId}/academic/classes/${c.id}`, { revision: c.revision, active: !c.active }, "PATCH"); return c.active ? `${c.name} archivée.` : `${c.name} réactivée.`; })}>{c.active ? "Archiver" : "Réactiver"}</button>}</td>
-              </tr>)}</tbody></table></div>}
+              </tr>)}</tbody></table></TableScroll>}
           {d.can_manage_academic && <details className="yf-details"><summary>Créer une autre année scolaire</summary>{yearForm}</details>}
         </Card>
       </div>}
@@ -457,12 +457,12 @@ export function FormSettings({ schoolId, canEdit, tabs }) {
     <Loading state={state}>{config && <div className="yd-grid yf-two">
       <div className="yd-stack">
         <Card title="Renseignements de base" icon="idcard" subtitle="Nom, prénom et responsable principal sont toujours demandés. Réglez les autres champs.">
-          <div className="yd-table-wrap"><table className="xs"><thead><tr><th>Champ</th><th>Section</th><th>Demandé</th><th>Obligatoire</th></tr></thead>
+          <TableScroll label="Champs d’inscription"><table className="xs"><thead><tr><th>Champ</th><th>Section</th><th>Demandé</th><th>Obligatoire</th></tr></thead>
             <tbody>{state.data.base_fields.map(b => { const r = config.fields[b.key] || {}; return <tr key={b.key}>
               <td>{b.label}</td><td>{b.section === "eleve" ? "Élève" : "Responsable"}</td>
               <td><button type="button" className="yf-switch" disabled={!canEdit} aria-pressed={r.visible !== false} onClick={() => setRule(b.key, { visible: r.visible === false })}><Check on={r.visible !== false}/></button></td>
               <td>{b.key !== "second_guardian" && <button type="button" className="yf-switch" disabled={!canEdit || r.visible === false} aria-pressed={!!r.required} onClick={() => setRule(b.key, { required: !r.required })}><Check on={!!r.required}/></button>}</td>
-            </tr>; })}</tbody></table></div>
+            </tr>; })}</tbody></table></TableScroll>
         </Card>
         <Card title="Pièces à fournir" icon="paperclip" count={`(${config.documents.length})`}>
           {config.documents.map((d, i) => <div key={d.key} className="yf-listrow">
@@ -542,7 +542,7 @@ export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs }) {
       <div className="yd-grid yf-track">
         <Card title="Situation par élève" count={`(${rows.length})`} icon="users">
           {rows.length === 0 ? <Empty>Aucun élève ne correspond aux filtres.</Empty> :
-            <div className="yd-table-wrap"><table className="xs nowrap clickable"><thead><tr>{["Élève", "Classe", "Total dû", "Payé", "Reste", "Situation", "Moyens utilisés", "Dernier paiement", ""].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+            <TableScroll label="Suivi des paiements"><table className="xs nowrap clickable"><thead><tr>{["Élève", "Classe", "Total dû", "Payé", "Reste", "Situation", "Moyens utilisés", "Dernier paiement", ""].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>{rows.map(s => <tr key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}>
                 <td><b>{s.last_name} {s.first_name}</b><br/><small>{s.guardian?.full_name || "—"}</small></td><td>{s.enrollment.classroom.name}</td>
                 <td>{money(s.finance.billed, currency)}</td><td>{money(s.finance.paid, currency)}</td><td><b>{money(s.finance.balance, currency)}</b></td>
@@ -550,7 +550,7 @@ export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs }) {
                 <td>{s.finance.methods.length ? s.finance.methods.map(m => <span key={m} className="yf-chip">{methodLabel(m)}</span>) : "—"}</td>
                 <td>{fmtDate(s.finance.last_payment)}</td>
                 <td>{canReceive && Number(s.finance.balance) > 0 ? <button type="button" className="yf-link" onClick={e => { e.stopPropagation(); onNavigate("payments", "live", { enrollment: s.enrollment.id }); }}>Encaisser</button> : <Icon name="chevronright" size={18}/>}</td>
-              </tr>)}</tbody></table></div>}
+              </tr>)}</tbody></table></TableScroll>}
         </Card>
         <div className="yd-stack">
           <Card title="Encaissé par moyen de paiement" icon="wallet" subtitle={fin.data?.year ? `Année ${fin.data.year.name}` : ""}>
