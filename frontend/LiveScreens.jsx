@@ -90,22 +90,23 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
         <SearchBox placeholder="Rechercher un élève (nom, prénom, matricule...)" value={query} onChange={e => setQuery(e.target.value)}/>
         <label className="yd-select plain"><select aria-label="Classe" value={klass} onChange={e => setKlass(e.target.value)}><option value="">Toutes les classes</option>{d.classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>
         <label className="yd-select plain"><select aria-label="Statut" value={status} onChange={e => setStatus(e.target.value)}><option value="">Tous les statuts</option>{d.finance_visible && Object.entries(FIN).map(([k, v]) => <option key={k} value={k}>{v[1]}</option>)}<option value="non_inscrit">Non inscrit cette année</option></select><Icon name="chevron" size={18} className="chev"/></label>
-        {canManage && <Button primary icon="adduser" onClick={() => onNavigate("students", "students")}>Nouvel élève</Button>}
+        {canManage && <Button primary icon="adduser" onClick={() => onNavigate("students", "new")}>Nouvel élève</Button>}
+        {canManage && <Button icon="excel" onClick={() => onNavigate("students", "import")}>Importer Excel</Button>}
       </div>
       <div className="yd-metrics four">
         <Metric icon="users" label="Élèves actifs" value={num(m.active)} trend="none" trendValue={num(m.enrolled)} trendLabel={`inscrits en ${d.year?.name || "cours"}`}/>
         <Metric icon="cap" label="Nouveaux inscrits" value={num(m.new_30d)} trend={m.new_30d >= m.new_prev_30d ? "up" : "down"} trendValue={pct(m.new_30d, m.new_prev_30d) || `${m.new_prev_30d}`} trendLabel="vs. 30 jours précédents"/>
-        <Metric icon="alert" label="Dossiers incomplets" value={num(m.incomplete)} trend="none" trendLabel="sans responsable ou sans classe"/>
+        <Metric icon="alert" label="Dossiers incomplets" value={num(m.incomplete)} trend="none" trendLabel={m.missing_documents ? `${num(m.missing_documents)} avec pièces manquantes` : "sans responsable ou sans classe"}/>
         <Metric icon="whatsapp" label="Parents sans numéro WhatsApp" value={num(m.missing_phone)} trend="none" trendLabel="responsables sans téléphone"/>
       </div>
       <div className="yd-grid students-grid">
         <Card title="Liste des élèves" count={`(${rows.length})`} icon="users">
-          {rows.length === 0 ? <Empty>Aucun élève ne correspond. Créez une fiche depuis « Nouvel élève ».</Empty> :
+          {rows.length === 0 ? <Empty>Aucun élève ne correspond. Créez une fiche depuis « Nouvel élève » ou importez votre liste Excel.</Empty> :
             <div className="yd-table-wrap"><table className="clickable nowrap dense"><thead><tr>{["#", "Élève", "Classe", "Parent / Tuteur", "Téléphone", <>Situation<br/>financière</>, "Statut", "Actions"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>{rows.map((s, i) => { const f = s.finance && FIN[s.finance.status]; return <tr key={s.id} className={current?.id === s.id ? "selected" : ""} onClick={() => setSelected(s.id)}>
                 <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.enrollment?.classroom.name || "—"}</td><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td>
                 <td>{f ? f[1] : "—"}</td><td>{s.enrollment ? (f ? <Status tone={f[0]}>{f[1]}</Status> : <Status>Inscrit</Status>) : <Status tone="gray">Non inscrit</Status>}</td>
-                <td><button type="button" className="yd-dots" aria-label="Ouvrir la fiche" onClick={e => { e.stopPropagation(); onNavigate("students", "students"); }}><Icon name="dots" size={22}/></button></td></tr>; })}</tbody></table></div>}
+                <td><button type="button" className="yd-dots" aria-label="Ouvrir la fiche" onClick={e => { e.stopPropagation(); onNavigate("students", "fiche", { student: s.id }); }}><Icon name="dots" size={22}/></button></td></tr>; })}</tbody></table></div>}
         </Card>
         {current ? <Card title="Aperçu de l’élève" icon="user" className="student-preview">
           <div className="yd-person"><div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div><div><h3>{current.last_name} {current.first_name}</h3><span>Classe : {current.enrollment?.classroom.name || "non inscrit"}</span><span>Matricule : {current.student_code}</span></div></div>
@@ -117,7 +118,7 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
               <InfoRow icon="scale" k="Reste à payer" v={fmtMoney(current.finance.balance, d.currency)} highlight/></>}
           </div>
           <div className="yd-btn-stack">
-            <Button primary icon="file" onClick={() => onNavigate("students", "students")}>Voir la fiche</Button>
+            <Button primary icon="file" onClick={() => onNavigate("students", "fiche", { student: current.id })}>Voir la fiche</Button>
             {canReceive && current.enrollment && <Button icon="coins" onClick={() => onNavigate("payments", "live", { enrollment: current.enrollment.id })}>Encaisser</Button>}
             {waLink(current.guardian?.phone) ? <a className="yd-btn" href={waLink(current.guardian.phone)} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={20}/><span>Contacter le parent</span></a> : <Button icon="whatsapp" disabled>Contacter le parent</Button>}
           </div>
@@ -332,7 +333,8 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
         <Card title="Actions rapides" icon="bolt" className="quick">
           {canReceive && <Button primary icon="card" onClick={() => onNavigate("payments", "live")}>Nouvel encaissement</Button>}
           <Button icon="mail" onClick={() => onNavigate("arrears")}>Préparer les relances</Button>
-          <Button icon="users" onClick={() => onNavigate("students")}>Voir les élèves</Button>
+          <Button icon="adduser" onClick={() => onNavigate("students", "new")}>Inscrire un élève</Button>
+          <Button icon="users" onClick={() => onNavigate("students", "byclass")}>Inscriptions par classe</Button>
           <Button icon="file" onClick={() => onNavigate("bulletins")}>Générer les bulletins</Button>
         </Card>
       </div>

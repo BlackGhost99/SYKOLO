@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('institutions', '0023_singpay_school_direct'),
+        ('institutions', '0026_singpay_school_direct'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

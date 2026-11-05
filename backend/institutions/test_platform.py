@@ -40,15 +40,19 @@ class PlatformProvisioningTests(TestCase):
         self.assertTrue(user.check_password(self.input["password"]))
         self.assertEqual(SchoolMember.objects.filter(user=user, active=True).count(), 1)
 
-    def test_duplicate_username_does_not_create_orphan_school(self):
+    def test_duplicate_global_username_creates_distinct_school_account(self):
         get_user_model().objects.create_user(username="responsable", password="Not-this-password-2026!")
         session = self.client.session
         session["mfa_verified"] = True
         session.save()
         response = self.post()
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(School.objects.count(), 0)
-        self.assertEqual(Organization.objects.count(), 0)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(School.objects.count(), 1)
+        self.assertEqual(Organization.objects.count(), 1)
+        from .models import SchoolLogin
+        identity = SchoolLogin.objects.get(school_id=response.json()["id"], username="responsable")
+        self.assertNotEqual(identity.user.username, "responsable")
+        self.assertTrue(identity.user.check_password(self.input["password"]))
 
     def test_school_user_cannot_access_platform(self):
         session = self.client.session

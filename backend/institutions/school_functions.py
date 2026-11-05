@@ -19,6 +19,8 @@ FUNCTIONS = {
     "principal": ("Principal du collège", "Direction", "cycle", ("college",), ()),
     "proviseur": ("Proviseur du lycée", "Direction", "cycle", LYCEE, ()),
     "directeur_etudes": ("Directeur des études", "Pédagogie", "cycle", SECONDARY, ()),
+    "censeur_principal": ("Censeur principal", "Pédagogie", "cycle", LYCEE, ()),
+    "censeur_etudes": ("Censeur des études", "Pédagogie", "cycle", LYCEE, ()),
     "censeur_pedagogique": ("Censeur pédagogique", "Pédagogie", "cycle", LYCEE, ()),
     "responsable_pedagogique": ("Responsable pédagogique", "Pédagogie", "cycle", ALL_CYCLES, ()),
     "responsable_discipline": ("Responsable de discipline", "Pédagogie", "cycle", SECONDARY, ()),
@@ -71,3 +73,18 @@ def validate_position(school, code, cycle):
     elif cycle not in position["allowed_cycles"]:
         raise ValueError("Choisissez un cycle enseigné compatible avec cette fonction.")
     return position
+
+
+def account_functions(school):
+    options = positions_for_school(school)
+    if school.enabled_functions is None:
+        return options
+    return [p for p in options if p["code"] in school.enabled_functions]
+
+
+def validate_account_functions(school, codes):
+    if not isinstance(codes, list) or len(codes) > 40 or any(not isinstance(c, str) for c in codes):
+        raise ValueError("Fonctions invalides.")
+    if not set(codes) <= {p["code"] for p in account_functions(school)}:
+        raise ValueError("Fonction non activée dans cet établissement.")
+    return sorted(set(codes))

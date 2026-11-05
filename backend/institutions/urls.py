@@ -1,7 +1,8 @@
 from django.urls import path
 from . import singpay_views
+from . import delegation_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views
-from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views
+from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
 
 urlpatterns = [
     path("parents/singpay/webhook", singpay_views.webhook),
@@ -12,6 +13,9 @@ urlpatterns = [
     path("schools/<uuid:school_id>/singpay/merchant", singpay_views.merchant_config),
     path("schools/<uuid:school_id>/singpay/reconciliation", singpay_views.staff_reconciliation),
     path("schools/<uuid:school_id>/singpay/payments/<uuid:intent_id>/settlement", singpay_views.settlement),
+    path("schools/<uuid:school_id>/functions", delegation_views.functions),
+    path("schools/<uuid:school_id>/delegations", delegation_views.delegations),
+    path("schools/<uuid:school_id>/delegations/<uuid:delegation_id>", delegation_views.delegations),
     path("platform/dashboard", platform_admin_views.platform_dashboard),
     path("platform/organizations", platform_admin_views.platform_organizations),
     path("platform/audit", platform_admin_views.platform_audit),
@@ -119,6 +123,14 @@ urlpatterns = [
     path("schools/<uuid:school_id>/staff-assignments", staff_views.assignments),
     path("schools/<uuid:school_id>/staff-assignments/<uuid:assignment_id>", staff_views.assignment_detail),
     path("schools/<uuid:school_id>/overview/students", overview_views.students_overview),
+    path("schools/<uuid:school_id>/overview/classes", registration_views.classes_overview),
+    path("schools/<uuid:school_id>/enrollment-form", enrollment_form.enrollment_form),
+    path("schools/<uuid:school_id>/students/register", registration_views.register_student),
+    path("schools/<uuid:school_id>/students/next-code", registration_views.next_code),
+    path("schools/<uuid:school_id>/students/<uuid:student_id>/dossier", registration_views.student_dossier),
+    path("schools/<uuid:school_id>/classes/<uuid:class_id>/enroll", registration_views.class_enroll),
+    path("schools/<uuid:school_id>/classes/<uuid:class_id>/apply-fees", registration_views.class_apply_fees),
+    path("schools/<uuid:school_id>/academic/quick-classes", registration_views.quick_classes),
     path("schools/<uuid:school_id>/overview/finance", overview_views.finance_overview),
     path("schools/<uuid:school_id>/students", student_views.students),
     path("schools/<uuid:school_id>/students/<uuid:student_id>", student_views.student_detail),

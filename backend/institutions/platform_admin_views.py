@@ -180,6 +180,7 @@ def platform_organizations(request):
 
 
 def detail_dict(s):
+    from .school_functions import account_functions
     policy = SchoolAdminPolicy.objects.filter(school=s).first()
     members = SchoolMember.objects.filter(school=s).select_related("user", "role").order_by(
         "user__last_name", "user__username"
@@ -195,6 +196,8 @@ def detail_dict(s):
             "organization_id": str(s.organization_id),
             "created_at": s.created_at.isoformat(),
         },
+        "functions": account_functions(s),
+        "login_code": str(s.pk),
         "members_count": members.filter(active=True, user__is_active=True, user__is_superuser=False).count(),
         "students_count": Student.objects.filter(school=s, active=True).count(),
         "roles": [
@@ -203,7 +206,7 @@ def detail_dict(s):
         ],
         "members": [
             {
-                "id": str(m.pk), "username": m.user.username,
+                "id": str(m.pk), "username": m.user.schoollogin_set.filter(school=m.school).values_list("username", flat=True).first() or m.user.username,
                 "name": f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username,
                 "email": m.user.email, "active": m.active and m.user.is_active,
                 "membership_active": m.active, "role_id": str(m.role_id),
@@ -405,7 +408,7 @@ def platform_school_members(request, school_id):
     qs = SchoolMember.objects.filter(school=school).select_related("user", "role")
     if search:
         qs = qs.filter(
-            Q(user__username__icontains=search)
+            Q(user__username__icontains=search) | Q(user__schoollogin__school=school, user__schoollogin__username__icontains=search)
             | Q(user__first_name__icontains=search)
             | Q(user__last_name__icontains=search)
             | Q(user__email__icontains=search)
@@ -418,7 +421,7 @@ def platform_school_members(request, school_id):
     return JsonResponse({
         "members": [
             {
-                "id": str(m.id), "username": m.user.username,
+                "id": str(m.id), "username": m.user.schoollogin_set.filter(school=m.school).values_list("username", flat=True).first() or m.user.username,
                 "name": f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username,
                 "email": m.user.email, "active": m.active and m.user.is_active,
                 "membership_active": m.active,

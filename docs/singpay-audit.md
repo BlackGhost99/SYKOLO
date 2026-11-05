@@ -65,7 +65,7 @@ La clé de chiffrement doit être conservée dans un stockage de secrets sauvega
 - Les listes des fichiers de ces deux PR ont été lues. Les points de recouvrement
   de ce chantier sont surtout `models.py` et `urls.py` (ajouts). Les modèles
   élèves, barèmes et migrations existantes restent inchangés.
-- Ajouts `0023_singpay_school_direct` et `0024_singpay_settlement_evidence`,
+- Ajouts `0026_singpay_school_direct` et `0027_singpay_settlement_evidence`,
   après `0022_finance_role_separation`. Recontrôler main et les nouvelles migrations
   avant toute fusion ; ne jamais renuméroter une migration déjà appliquée.
 
@@ -158,3 +158,7 @@ code sans suppression des écritures ni inversion destructive des migrations.
 
 Les résultats exécutés et les limites de l'environnement sont rapportés dans la PR.
 Ne pas confondre tests simulés réussis et certification financière du prestataire.
+
+
+## Réconciliation inter-PR (5 novembre 2026)
+Cette branche dépend de #43 (délégations et sécurité) puis de #26 (inscriptions). Les migrations SingPay portent désormais les numéros 0026 et 0027, après la migration 0025 des dossiers élèves. La fonctionnalité demeure désactivée et la PR en brouillon : aucune activation ou fusion sans validation prestataire, callbacks authentifiés et recette financière.

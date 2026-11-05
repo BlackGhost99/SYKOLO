@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('institutions', '0022_finance_role_separation'),
+        ('institutions', '0025_student_information_sheet'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
