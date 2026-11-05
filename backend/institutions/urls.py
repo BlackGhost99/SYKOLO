@@ -7,6 +7,7 @@ from . import views, platform_views, platform_admin_views, academic_views, stude
 
 urlpatterns = [
     path("schools/<uuid:school_id>/imports/students/profiles", import_views.profiles),
+    path("schools/<uuid:school_id>/imports/students/export", import_views.export_students),
     path("schools/<uuid:school_id>/imports/students/inspect", import_views.inspect),
     path("schools/<uuid:school_id>/imports/students/preview", import_views.preview),
     path("schools/<uuid:school_id>/imports/students/commit", import_views.commit),
