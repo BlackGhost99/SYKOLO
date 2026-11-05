@@ -22,6 +22,11 @@ def check(request, school_id, permission):
     return school, None
 
 
+TEXT_LIMITS = {"place_of_birth": 120, "nationality": 80, "address": 255, "previous_school": 180, "profession": 120}
+STUDENT_INFO = ("gender", "place_of_birth", "nationality", "address", "previous_school")
+GUARDIAN_INFO = ("profession", "address")
+
+
 def parse_fields(data, allowed, required=(), *, revision=False):
     if set(data) - set(allowed) - ({"revision"} if revision else set()):
         raise ValueError("Champs inconnus ou non modifiables.")
@@ -44,6 +49,13 @@ def parse_fields(data, allowed, required=(), *, revision=False):
             if not isinstance(value, str) or not 1 <= len(value.strip()) <= (180 if key == "full_name" else 120):
                 raise ValueError("Nom invalide.")
             value = value.strip()
+        elif key in TEXT_LIMITS:
+            if not isinstance(value, str) or len(value) > TEXT_LIMITS[key] or any(ord(c) < 32 for c in value):
+                raise ValueError("Texte invalide ou trop long.")
+            value = value.strip()
+        elif key == "gender":
+            if value not in ("", "F", "M"):
+                raise ValueError("Sexe invalide.")
         elif key == "relationship":
             if not isinstance(value, str) or len(value) > 80:
                 raise ValueError("Lien de parenté invalide.")
@@ -80,9 +92,9 @@ def parse_fields(data, allowed, required=(), *, revision=False):
 def describe(obj):
     result = {"id": str(obj.pk), "revision": obj.revision}
     if isinstance(obj, Student):
-        fields = ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", "active")
+        fields = ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "extra_fields", "documents", "active")
     elif isinstance(obj, StudentGuardian):
-        fields = ("full_name", "relationship", "phone", "email", "is_primary", "active")
+        fields = ("full_name", "relationship", "phone", "email", *GUARDIAN_INFO, "is_primary", "active")
     else:
         fields = ("student_id", "year_id", "classroom_id", "enrolled_on", "status", "active")
     for field in fields:
@@ -109,7 +121,7 @@ def students(request, school_id):
     data, error = parse_body(request)
     if error is not None: return error
     try:
-        values = parse_fields(data, ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", "active"), ("student_code", "first_name", "last_name"))
+        values = parse_fields(data, ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "active"), ("student_code", "first_name", "last_name"))
         with transaction.atomic():
             from .models import School
             School.objects.select_for_update().get(pk=school.pk)
@@ -135,7 +147,19 @@ def student_detail(request, school_id, student_id):
         return JsonResponse(describe(student)) if student else JsonResponse({"error": "Élève introuvable."}, status=404)
     data,error = parse_body(request)
     if error is not None: return error
-    try: fields = parse_fields(data, ("first_name", "last_name", "date_of_birth", "admission_date", "active"), revision=True)
+    if not isinstance(data, dict): return JsonResponse({"error": "Objet JSON attendu."}, status=422)
+    answers = {k: data.pop(k) for k in ("extra_fields", "documents") if k in data}
+    try:
+        if answers and set(data) == {"revision"}:
+            if type(data["revision"]) is not int or data["revision"] < 1: raise ValueError("Révision requise.")
+            fields = {}
+        else:
+            fields = parse_fields(data, ("first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "active"), revision=True)
+        if answers:
+            from .enrollment_form import load_config, clean_answers
+            extra, docs = clean_answers(load_config(school)[0], answers.get("extra_fields"), answers.get("documents"), partial=True)
+            if "extra_fields" in answers: fields["extra_fields"] = extra
+            if "documents" in answers: fields["documents"] = docs
     except ValueError as exc: return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
@@ -168,7 +192,7 @@ def guardians(request, school_id, student_id):
     data,error = parse_body(request)
     if error is not None: return error
     try:
-        fields=parse_fields(data,("full_name","relationship","phone","email","is_primary","active"),("full_name",))
+        fields=parse_fields(data,("full_name","relationship","phone","email",*GUARDIAN_INFO,"is_primary","active"),("full_name",))
         with transaction.atomic():
             g=StudentGuardian(school=school,student=student,**fields)
             g.full_clean();g.save();log_event(school,request,"guardian_added",student.pk)
@@ -184,7 +208,7 @@ def guardian_detail(request, school_id, student_id, guardian_id):
     if error is not None: return error
     data,error=parse_body(request)
     if error is not None: return error
-    try: fields=parse_fields(data,("full_name","relationship","phone","email","is_primary","active"),revision=True)
+    try: fields=parse_fields(data,("full_name","relationship","phone","email",*GUARDIAN_INFO,"is_primary","active"),revision=True)
     except ValueError as exc: return JsonResponse({"error":str(exc)},status=422)
     try:
         with transaction.atomic():
