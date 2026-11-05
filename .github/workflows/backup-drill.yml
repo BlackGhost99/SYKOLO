@@ -1,0 +1,55 @@
+name: YEM Disaster Recovery Drill (synthetic only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/yem_backup.sh"
+      - "scripts/yem_restore_drill.sh"
+      - ".github/workflows/backup-drill.yml"
+      - "backend/institutions/migrations/**"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-drill:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: yem_test
+          POSTGRES_USER: yem_test
+          POSTGRES_PASSWORD: synthetic-ci-only
+        ports: ["5432:5432"]
+        options: --health-cmd="pg_isready -U yem_test -d yem_test" --health-interval=5s --health-timeout=3s --health-retries=10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://yem_test:synthetic-ci-only@localhost:5432/yem_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build synthetic database
+        run: |
+          pip install -r backend/requirements.txt
+          python backend/manage.py migrate --noinput
+          python backend/manage.py shell -c 'from django.contrib.auth import get_user_model; from institutions.models import Organization,School; from institutions.student_models import Student; u=get_user_model().objects.create_user(username="yem-drill-fake",password="Only-for-ephemeral-CI-db-2026!"); o=Organization.objects.create(name="FAKE PILOT"); s=School.objects.create(organization=o,name="Fake School"); Student.objects.create(school=s,student_code="FAKE-0001",last_name="DEMO",first_name="Fictif")'
+      - name: Full encrypted backup and restore on isolated PostgreSQL 17
+        run: |
+          docker run --rm --network host -v "$PWD:/workspace:ro" -w /workspace \
+            -e YEM_BACKUP_DATABASE_URL="postgres://yem_test:synthetic-ci-only@127.0.0.1:5432/yem_test" \
+            -e YEM_DRILL_DATABASE_URL="postgres://yem_test:synthetic-ci-only@127.0.0.1:5432/yem_drill_ci" \
+            -e YEM_BACKUP_PASSPHRASE="CI-SYNTHETIC-NO-REAL-SECRETS-2026-DRILL" \
+            postgres:17-alpine sh -ec '
+              apk add --no-cache bash gnupg python3 coreutils >/dev/null
+              export YEM_BACKUP_DIR=/tmp/yem-drill-encrypted
+              bash scripts/yem_backup.sh
+              psql --dbname="$YEM_BACKUP_DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "CREATE DATABASE yem_drill_ci"
+              export YEM_RESTORE_ARCHIVE="$(find /tmp/yem-drill-encrypted -name "*.pgdump.gpg" | head -1)"
+              bash scripts/yem_restore_drill.sh
+              test "$(psql --dbname="$YEM_DRILL_DATABASE_URL" -X -At -c "SELECT count(*) FROM institutions_student")" = 1
+              rm -rf /tmp/yem-drill-encrypted
+            '
+      - name: Confirmation
+        run: echo "PASS — Synthetic, encrypted, local-only backup and restore. Production YEM NOT tested."

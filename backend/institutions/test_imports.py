@@ -170,3 +170,47 @@ class StudentImportTests(TestCase):
         self.assertEqual(Student.objects.filter(school=self.school).count(), 1)
         self.assertEqual(StudentGuardian.objects.count(), 0)
         self.assertEqual(Enrollment.objects.count(), 1)
+
+    def test_pilot_two_distinct_school_registers_ten_students_each(self):
+        """Pilot using variable headers, separate schools, and 10 learners per register."""
+        self.client.force_login(self.secretary)
+        names = [("NZE", "Aaron"), ("OBAME", "Inès"), ("MBOUMBA", "Kevin"),
+                 ("NDONG", "Clara"), ("ESSONO", "Jules"), ("MOUSSAVOU", "Léa"),
+                 ("NKOULOU", "Nathan"), ("MBADINGA", "Amina"),
+                 ("NZAMBA", "Dylan"), ("OYONO", "Mélissa")]
+        first = ["Nom;Prénoms;DDN;Classe;Nom parent;Téléphone parent"]
+        first += [f"{last};{first_name};02/03/2015;6e A;Responsable fictif;077432108"
+                  for last, first_name in names]
+        original = "\n".join(first).encode()
+        file1 = lambda: SimpleUploadedFile("college-pilote.csv", original)
+        info = self.request("inspect", file=file1()).json()
+        self.assertEqual(info["row_count"], 10)
+        self.assertEqual(info["suggested_mapping"]["0"], "last_name")
+        self.assertEqual(info["suggested_mapping"]["1"], "first_name")
+        p = self.request("preview", file=file1()).json()
+        self.assertEqual(p["valid"], 10, p)
+        r = self.request("commit", file=file1(), token=p["token"])
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(Student.objects.filter(school=self.school).count(), 10)
+        self.assertEqual(Enrollment.objects.filter(school=self.school).count(), 10)
+        self.assertEqual(self.request("commit", file=file1(), token=p["token"]).json()["already_imported"], True)
+
+        SchoolMember.objects.create(school=self.foreign_school, user=self.secretary,
+                                    role=SchoolRole.objects.get(school=self.foreign_school, code="secretariat"))
+        second = ["Classe actuelle;Patronyme;First name;Birth date;Tuteur;Téléphone responsable"]
+        second += [f"CM1 A;{last};{first_name};02/03/2015;Parent fictif;077432108"
+                   for last, first_name in names]
+        file2_data = "\n".join(second).encode()
+        file2 = lambda: SimpleUploadedFile("primaire-pilote.csv", file2_data)
+        mapping2 = {"1": "last_name", "2": "first_name", "3": "date_of_birth", "4": "guardian_name", "5": "guardian_phone"}
+        preview2 = self.request("preview", file=file2(), mapping=mapping2, year=False, school=self.foreign_school.pk)
+        self.assertEqual(preview2.status_code, 200, preview2.content)
+        self.assertEqual(preview2.json()["valid"], 10, preview2.content)
+        result2 = self.request("commit", file=file2(), mapping=mapping2, year=False,
+                               school=self.foreign_school.pk, token=preview2.json()["token"])
+        self.assertEqual(result2.status_code, 201, result2.content)
+        self.assertEqual(Student.objects.filter(school=self.foreign_school).count(), 10)
+        self.assertEqual(Student.objects.count(), 20)
+        self.assertEqual(StudentGuardian.objects.count(), 20)
+        self.assertEqual(FeeCharge.objects.count(), 0)
+        self.assertEqual(StudentImportBatch.objects.count(), 2)
