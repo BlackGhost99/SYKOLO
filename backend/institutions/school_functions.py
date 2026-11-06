@@ -45,27 +45,53 @@ FUNCTIONS = {
 
 
 # Les anciens codes restent lisibles et sont regroupés lors de la saisie.
-MATERNELLE_ALIASES = {
-    "direction_etablissement": "directeur_maternelle",
-    "enseignant": "educateur_prescolaire",
-    "econome": "caissier",
+FUNCTION_ALIASES = {
+    "maternelle": {
+        "direction_etablissement": "directeur_maternelle",
+        "enseignant": "educateur_prescolaire",
+        "econome": "caissier",
+    },
+    "primaire": {
+        "direction_etablissement": "directeur_primaire",
+        "enseignant": "instituteur",
+        "econome": "caissier",
+    },
 }
-MATERNELLE_POSITIONS = (
-    "directeur_maternelle", "secretaire", "educateur_prescolaire",
-    "assistant_scolaire", "responsable_pedagogique", "comptable", "caissier", "intendant",
-)
+PROFILE_POSITIONS = {
+    "maternelle": (
+        "directeur_maternelle", "secretaire", "educateur_prescolaire",
+        "assistant_scolaire", "responsable_pedagogique", "comptable", "caissier", "intendant",
+    ),
+    "primaire": (
+        "directeur_primaire", "secretaire", "instituteur", "responsable_pedagogique",
+        "assistant_scolaire", "surveillant", "comptable", "caissier", "intendant",
+    ),
+}
+PROFILE_FUNCTION_LABELS = {
+    "maternelle": {"caissier": "Caisse / Économat"},
+    "primaire": {
+        "directeur_primaire": "Direction du primaire",
+        "instituteur": "Enseignant / Enseignante du primaire",
+        "secretaire": "Secrétariat du primaire",
+        "surveillant": "Vie scolaire / Surveillance",
+        "caissier": "Caisse / Économat",
+    },
+}
+
+
+def function_aliases(school):
+    return FUNCTION_ALIASES.get(school.school_type, {})
 
 
 def account_function_codes(school, codes):
-    aliases = MATERNELLE_ALIASES if school.school_type == "maternelle" else {}
+    aliases = function_aliases(school)
     return sorted({aliases.get(code, code) for code in codes})
 
 
 def function_label(school, code):
     canonical = account_function_codes(school, [code])[0]
-    if school.school_type == "maternelle" and canonical == "caissier":
-        return "Caisse / Économat"
-    return FUNCTIONS.get(canonical, (canonical,))[0]
+    labels = PROFILE_FUNCTION_LABELS.get(school.school_type, {})
+    return labels.get(canonical, FUNCTIONS.get(canonical, (canonical,))[0])
 
 
 def positions_for_school(school):
@@ -74,16 +100,16 @@ def positions_for_school(school):
     if school.school_type == "non_classe" or not cycles:
         return []
     positions = []
-    codes = MATERNELLE_POSITIONS if school.school_type == "maternelle" else FUNCTIONS
+    codes = PROFILE_POSITIONS.get(school.school_type, FUNCTIONS)
     for code in codes:
-        label, family, scope, compatible, types = FUNCTIONS[code]
+        _, family, scope, compatible, types = FUNCTIONS[code]
         if types and school.school_type not in types:
             continue
         eligible = sorted(cycles.intersection(compatible))
         if scope == "cycle" and not eligible:
             continue
         positions.append({
-            "code": code, "label": function_label(school, code) if school.school_type == "maternelle" else label, "family": family,
+            "code": code, "label": function_label(school, code), "family": family,
             "scope": scope, "allowed_cycles": eligible if scope == "cycle" else [],
         })
     return positions
@@ -91,7 +117,7 @@ def positions_for_school(school):
 
 def validate_position(school, code, cycle):
     position = next((p for p in positions_for_school(school) if p["code"] == code), None)
-    if position is None and school.school_type == "maternelle" and code in MATERNELLE_ALIASES:
+    if position is None and code in function_aliases(school):
         # Les nominations existantes gardent leur périmètre et restent modifiables.
         _, _, scope, compatible, _ = FUNCTIONS[code]
         position = {"scope": scope, "allowed_cycles": set(compatible).intersection(school.education_cycles)}
@@ -114,10 +140,11 @@ def account_functions(school):
 
 
 def suggested_account_function(school, role_code, options):
-    if school.school_type != "maternelle":
+    aliases = function_aliases(school)
+    if not aliases:
         return ""
     code = {
-        "direction": "directeur_maternelle", "enseignant": "educateur_prescolaire",
+        "direction": aliases["direction_etablissement"], "enseignant": aliases["enseignant"],
         "secretariat": "secretaire", "econome": "caissier", "comptabilite": "comptable",
     }.get(role_code, "")
     return code if any(option["code"] == code for option in options) else ""
