@@ -4,12 +4,13 @@ from uuid import UUID
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_http_methods
 from accounts.views import authorized
 
 from .models import SchoolAppointment, SchoolMember
-from .school_functions import FUNCTIONS, positions_for_school, validate_position
+from .school_functions import MATERNELLE_ALIASES, function_label, positions_for_school, validate_position
 from .school_profiles import CYCLE_LABELS
 from .staff_models import StaffRecord
 from .services import has_permission
@@ -47,7 +48,7 @@ def _validation_error(exc):
     return JsonResponse({"error": " ".join(items)[:500]}, status=422)
 
 
-def _represent(appointment):
+def _represent(appointment, school):
     record = appointment.staff
     return {
         "id": str(appointment.pk),
@@ -56,7 +57,7 @@ def _represent(appointment):
         "staff_code": record.staff_code,
         "has_account": bool(record.account_id),
         "function_code": appointment.function_code,
-        "function_label": FUNCTIONS.get(appointment.function_code, (appointment.function_code,))[0],
+        "function_label": function_label(school, appointment.function_code),
         "cycle_code": appointment.cycle_code,
         "cycle_label": CYCLE_LABELS.get(appointment.cycle_code) if appointment.cycle_code else "Établissement entier",
         "starts_on": appointment.starts_on.isoformat() if appointment.starts_on else None,
@@ -95,7 +96,7 @@ def appointments(request, school_id):
         ).order_by("function_code", "cycle_code", "staff__last_name")
         records = StaffRecord.objects.filter(school=school).order_by("last_name", "first_name")[:500]
         return JsonResponse({
-            "appointments": [_represent(row) for row in qs[:500]],
+            "appointments": [_represent(row, school) for row in qs[:500]],
             "staff_options": [{
                 "id": str(row.pk),
                 "name": " ".join((row.first_name, row.last_name)).strip(),
@@ -123,6 +124,8 @@ def appointments(request, school_id):
         return JsonResponse({"error": "Fonction ou cycle trop long."}, status=422)
     code, cycle = code.strip(), cycle.strip()
     try:
+        if school.school_type == "maternelle" and code in MATERNELLE_ALIASES:
+            raise ValueError("Choisissez la fonction regroupée proposée dans l’organigramme.")
         validate_position(school, code, cycle)
         start, end = _date(body.get("starts_on")), _date(body.get("ends_on"))
         if start and end and start > end:
@@ -137,9 +140,12 @@ def appointments(request, school_id):
             record = StaffRecord.objects.filter(school=school, pk=staff_id, active=True).first()
             if record is None:
                 return JsonResponse({"error": "Personnel absent ou archivé dans cette école."}, status=422)
-            if SchoolAppointment.objects.filter(
-                school=school, staff=record, function_code=code, cycle_code=cycle
-            ).exists():
+            equivalents = Q(function_code=code, cycle_code=cycle)
+            if school.school_type == "maternelle":
+                equivalents |= Q(function_code__in=[
+                    alias for alias, canonical in MATERNELLE_ALIASES.items() if canonical == code
+                ])
+            if SchoolAppointment.objects.filter(equivalents, school=school, staff=record).exists():
                 return JsonResponse({"error": "Nomination déjà enregistrée ; modifiez-la plutôt."}, status=409)
             obj = SchoolAppointment(
                 school=school, staff=record, function_code=code, cycle_code=cycle,
@@ -152,7 +158,7 @@ def appointments(request, school_id):
         return _validation_error(exc)
     except IntegrityError:
         return JsonResponse({"error": "Nomination déjà existante."}, status=409)
-    return JsonResponse(_represent(obj), status=201)
+    return JsonResponse(_represent(obj, school), status=201)
 
 
 @require_http_methods(["GET", "PATCH"])
@@ -164,7 +170,7 @@ def appointment_detail(request, school_id, appointment_id):
         return error
     if request.method == "GET":
         obj = SchoolAppointment.objects.select_related("staff").filter(school=school, pk=appointment_id).first()
-        return JsonResponse(_represent(obj)) if obj else JsonResponse({"error": "Nomination introuvable."}, status=404)
+        return JsonResponse(_represent(obj, school)) if obj else JsonResponse({"error": "Nomination introuvable."}, status=404)
     body, error = parse_body(request)
     if error is not None:
         return error
@@ -200,7 +206,7 @@ def appointment_detail(request, school_id, appointment_id):
             log_event(school, request, "school_post_updated", obj.pk)
     except ValidationError as exc:
         return _validation_error(exc)
-    return JsonResponse(_represent(obj))
+    return JsonResponse(_represent(obj, school))
 
 
 @require_GET
@@ -217,5 +223,5 @@ def my_appointments(request, school_id):
         school=school, staff__account=request.user, staff__active=True, active=True,
     ).order_by("function_code", "cycle_code")
     return JsonResponse({
-        "appointments": [_represent(row) for row in qs[:100] if row.is_effective],
+        "appointments": [_represent(row, school) for row in qs[:100] if row.is_effective],
     })
