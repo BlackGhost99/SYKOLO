@@ -8,13 +8,13 @@ from django.db.models import Q
 from django.utils import timezone
 from django.http import JsonResponse
 
-from .models import OrganizationMember, School, SchoolMember, SchoolSetting, SchoolAdminPolicy, Student
+from .models import OrganizationMember, School, SchoolMember, SchoolSetting, SchoolAdminPolicy, Student, PermissionDelegation
 
 PERMISSIONS = frozenset({
     "school.view", "school.members.read", "school.members.write",
     "school.roles.read", "school.roles.manage",
     "school.settings.read", "school.settings.write", "school.audit.read",
-    "school.academic.read", "school.academic.manage",
+    "school.academic.read", "school.academic.manage", "school.classes.manage",
     "school.admissions.read", "school.admissions.manage", "school.admissions.decide", "school.admissions.enroll",
     "school.parents.manage",
     "school.students.read", "school.students.manage",
@@ -73,6 +73,22 @@ def has_permission(user, school, permission):
     return permission in effective_permissions(user, school)
 
 
+def class_management_scope(user, school):
+    """None means all cycles; a set contains explicitly delegated academic cycle codes."""
+    if effective_permissions(user, school) & {"school.academic.manage", "school.classes.manage"}:
+        return None
+    grants = PermissionDelegation.objects.filter(
+        school=school, member__school=school, member__role__school=school, member__user=user,
+        member__active=True, revoked_at__isnull=True,
+    ).exclude(class_cycle="").filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
+    return {grant.class_cycle for grant in grants if "school.classes.manage" in grant.permissions}
+
+
+def can_manage_classes(user, school, cycle=None):
+    scope = class_management_scope(user, school)
+    return scope is None or (cycle in scope if cycle is not None else bool(scope))
+
+
 def effective_permissions(user, school):
     member = SchoolMember.objects.select_related("role").prefetch_related("additional_roles").filter(
         school=school, user=user, active=True, role__school=school
@@ -81,7 +97,7 @@ def effective_permissions(user, school):
     if not member:
         return founder_permissions
     roles = [member.role, *member.additional_roles.filter(school=school)]
-    delegated = member.delegations.filter(school=school, revoked_at__isnull=True).filter(
+    delegated = member.delegations.filter(school=school, revoked_at__isnull=True, class_cycle="").filter(
         Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
     )
     return founder_permissions | set().union(*(set(role.permissions) for role in roles),

@@ -43,6 +43,18 @@ def parse_body(request):
     return data, None
 
 
+def delete_unused(request, school, obj, data, event):
+    """The caller locks the object and checks the school and write permission."""
+    if set(data) != {"revision"} or type(data["revision"]) is not int:
+        return JsonResponse({"error": "Révision obligatoire."}, status=422)
+    if data["revision"] != obj.revision:
+        return JsonResponse({"error": "Conflit de version. Actualisez la page."}, status=409)
+    subject = obj.pk
+    obj.delete()
+    log_event(school, request, event, subject)
+    return JsonResponse({"deleted": True})
+
+
 def refuse():
     return JsonResponse({"error": "Permission insuffisante."}, status=403)
 
