@@ -125,6 +125,74 @@ class RegistrationTests(TestCase):
         self.client.force_login(self.secretary)
         self.assertEqual(self.post("academic/quick-classes", {"year": str(self.year.pk), "level": str(self.level.pk), "names": ["6e C"]}).status_code, 403)
 
+    def test_class_presets_are_atomic_and_delegation_is_limited_to_one_cycle(self):
+        self.school.school_type = "groupe_scolaire"
+        self.school.education_cycles = ["college", "lycee_general"]
+        self.school.save(update_fields=["school_type", "education_cycles"])
+        self.client.force_login(self.director)
+        grant = self.post("delegations", {
+            "user_id": str(self.secretary.pk), "permissions": ["school.classes.manage"],
+            "class_cycle": "college", "reason": "Préparation de la rentrée du collège",
+        })
+        self.assertEqual(grant.status_code, 201, grant.content)
+        self.client.force_login(self.secretary)
+        overview = self.client.get(self.base + "overview/classes").json()
+        self.assertEqual(overview["class_management_cycles"], ["college"])
+        self.assertFalse(overview["can_manage_academic"])
+        self.assertNotIn("primaire:1re-annee", overview["class_level_options"])
+
+        path = "academic/quick-classes"
+        batch = {"year": str(self.year.pk), "preset": "college:5e", "names": ["5e B", "5e 13"]}
+        self.assertEqual(self.post(path, {**batch, "names": ["5e B", "5e b"]}).status_code, 422)
+        self.assertEqual(self.post(path, {**batch, "names": ["5e B", "6e A"]}).status_code, 409)
+        self.assertFalse(AcademicLevel.objects.filter(school=self.school, code="5e").exists())
+        self.assertEqual(self.post(path, {**batch, "preset": "lycee_general:seconde"}).status_code, 403)
+        self.assertFalse(AcademicCycle.objects.filter(school=self.school, code="lycee_general").exists())
+        created = self.post(path, batch)
+        self.assertEqual(created.status_code, 201, created.content)
+        self.assertEqual(self.post(path, batch).status_code, 409)
+        rows = created.json()["classes"]
+
+        def rename(class_id, name):
+            return self.client.patch(
+                self.base + f"academic/classes/{class_id}", {"revision": 1, "name": name},
+                content_type="application/json",
+            )
+        self.assertEqual(rename(rows[0]["id"], "5e 13").status_code, 409)
+        self.assertEqual(rename(rows[0]["id"], "5e Horizon").status_code, 200)
+        self.assertEqual(rename(self.c6a.pk, "Autre cycle technique").status_code, 403)
+        self.assertEqual(self.post("academic/years", {}).status_code, 403)
+        self.assertEqual(self.post("academic/classes", {
+            "year": str(self.year.pk), "level": str(self.level.pk), "code": "6b", "name": "6e B",
+        }).status_code, 403)
+
+        self.client.force_login(self.director)
+        revoked = self.client.delete(
+            self.base + "delegations/" + grant.json()["id"], {"reason": "Fin de la mission"},
+            content_type="application/json",
+        )
+        self.assertEqual(revoked.status_code, 200, revoked.content)
+        self.client.force_login(self.secretary)
+        self.assertEqual(self.post(path, {**batch, "names": ["5e C"]}).status_code, 403)
+
+    def test_class_deletion_keeps_enrollment_history(self):
+        self.client.force_login(self.biller)
+        self.assertEqual(self.post("students/register", self.register_body()).status_code, 201)
+        path = f"academic/classes/{self.c6a.pk}"
+        self.client.force_login(self.director)
+        response = self.client.delete(self.base + path, {"revision": 1}, content_type="application/json")
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertTrue(Enrollment.objects.filter(classroom=self.c6a).exists())
+        batch = self.post("academic/quick-classes", {
+            "year": str(self.year.pk), "level": str(self.level.pk), "names": ["6e B"],
+        })
+        unused_id = batch.json()["classes"][0]["id"]
+        response = self.client.delete(
+            self.base + f"academic/classes/{unused_id}", {"revision": 1}, content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(AcademicClass.objects.filter(pk=unused_id).exists())
+
     def test_class_enroll_and_apply_fees_and_overview(self):
         students = [Student.objects.create(school=self.school, student_code=f"S{i}", first_name="T", last_name=f"N{i}") for i in range(3)]
         self.client.force_login(self.secretary)

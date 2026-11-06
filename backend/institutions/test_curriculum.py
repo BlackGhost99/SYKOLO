@@ -104,3 +104,32 @@ class CurriculumTests(TestCase):
         self.assertEqual(self.write("courses/"+c["id"],{"revision":1,"active":False},method="patch").status_code,200)
         self.assertFalse(CourseOffering.objects.get(pk=c["id"]).active)
         self.assertEqual(self.write("courses",{},method="delete").status_code,405)
+
+    def test_generate_reuses_catalog_and_preserves_existing_coefficients(self):
+        course = self.course()
+        body = {"classroom": str(self.classroom.pk), "names": ["mathématiques", "Anglais", " anglais "]}
+        first = self.write("courses/generate", body)
+        self.assertEqual(first.status_code, 201, first.content)
+        self.assertEqual(first.json()["created"], ["Anglais"])
+        self.assertEqual(CourseOffering.objects.get(pk=course["id"]).coefficient, 2.75)
+        self.assertEqual(self.write("courses/generate", body).status_code, 200)
+        self.assertEqual(Subject.objects.filter(school=self.school).count(), 2)
+        self.assertEqual(self.write("courses/generate", {**body, "names": ["Sciences", " "]}).status_code, 422)
+        self.assertFalse(Subject.objects.filter(name="Sciences").exists())
+        self.login(self.teacher)
+        self.assertEqual(self.write("courses/generate", body).status_code, 403)
+
+    def test_only_unused_curriculum_objects_can_be_deleted(self):
+        course = self.course()
+        subject_path = "subjects/" + course["subject"]
+        course_path = "courses/" + course["id"]
+        self.assertEqual(self.write(subject_path, {"revision": 1}, method="delete").status_code, 409)
+        self.assertEqual(self.write(course_path, {"revision": 2}, method="delete").status_code, 409)
+        self.assertEqual(self.write(course_path, {"revision": 1}, method="delete").status_code, 200)
+        self.assertEqual(self.write(subject_path, {"revision": 1}, method="delete").status_code, 200)
+
+        course = self.course()
+        course_path = "courses/" + course["id"]
+        self.assertEqual(self.write(course_path + "/units", {"code": "unite", "title": "Unité"}).status_code, 201)
+        self.assertEqual(self.write(course_path, {"revision": 1}, method="delete").status_code, 409)
+        self.assertTrue(CourseUnit.objects.filter(course_id=course["id"]).exists())

@@ -114,6 +114,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/subjects", curriculum_views.subjects),
     path("schools/<uuid:school_id>/subjects/<uuid:subject_id>", curriculum_views.subject_detail),
     path("schools/<uuid:school_id>/courses", curriculum_views.courses),
+    path("schools/<uuid:school_id>/courses/generate", curriculum_views.generate_courses),
     path("schools/<uuid:school_id>/courses/<uuid:course_id>", curriculum_views.course_detail),
     path("schools/<uuid:school_id>/courses/<uuid:course_id>/units", curriculum_views.units),
     path("schools/<uuid:school_id>/courses/<uuid:course_id>/units/<uuid:unit_id>", curriculum_views.unit_detail),

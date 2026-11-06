@@ -176,6 +176,7 @@ class PermissionDelegation(models.Model):
     permissions = models.JSONField(default=list)
     reason = models.CharField(max_length=240)
     source_function = models.CharField(max_length=48, blank=True)
+    class_cycle = models.SlugField(max_length=40, blank=True, default="")
     granted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)

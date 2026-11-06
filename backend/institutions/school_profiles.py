@@ -12,6 +12,26 @@ CYCLE_LABELS = {
     "lycee_technique": "Lycée technique ou professionnel",
 }
 
+SECOND_CYCLE_LEVELS = (("seconde", "Seconde"), ("premiere", "Première"), ("terminale", "Terminale"))
+CLASS_LEVELS = {
+    "prescolaire": (("ps", "Petite section"), ("ms", "Moyenne section"), ("gs", "Grande section")),
+    "primaire": (("1re-annee", "1re année"), ("2e-annee", "2e année"),
+                 ("3e-annee", "3e année"), ("4e-annee", "4e année"), ("5e-annee", "5e année")),
+    "college": (("6e", "6e"), ("5e", "5e"), ("4e", "4e"), ("3e", "3e")),
+    "lycee_general": SECOND_CYCLE_LEVELS,
+    "lycee_technique": SECOND_CYCLE_LEVELS,
+}
+
+
+def class_level_options(school):
+    return {
+        f"{cycle}:{code}": {"cycle": cycle, "cycle_name": CYCLE_LABELS[cycle], "code": code,
+                            "name": name, "order": order}
+        for cycle in school.education_cycles or []
+        for order, (code, name) in enumerate(CLASS_LEVELS.get(cycle, ()), start=1)
+    }
+
+
 SCHOOL_PROFILES = {
     "maternelle": {
         "label": "Maternelle",
