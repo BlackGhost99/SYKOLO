@@ -57,7 +57,7 @@ function dateText(value) {
 const fmt = n => (typeof n === "number" ? new Intl.NumberFormat("fr-GA").format(n) : "—");
 const orgBlank = {name:""};
 const schoolBlank = {organization_name:"",organization_id:"",school_name:"",school_type:"",education_cycles:[],username:"",email:"",first_name:"",last_name:"",password:"",role:"direction"};
-const userBlank = {username:"",email:"",first_name:"",last_name:"",password:"",role:"",function_codes:[]};
+const userBlank = {username:"",email:"",first_name:"",last_name:"",password:"",role:"",function_codes:null};
 const icons = {
   home:<><path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-6h6v6"/></>,
   layers:<><path d="m12 2 9 5-9 5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/></>,
@@ -379,12 +379,15 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     const result=await execute(()=>api("platform/schools",schoolForm),"Établissement et responsable créés.");
     if(result){setSchoolId(result.id);setSchoolForm(schoolBlank);goto("schools");setNotice({type:"success",message:"Établissement "+result.name+" créé, compte "+result.username+" opérationnel."});}
   }
+  const selectedRole = selectedDetail?.roles?.find(role => role.code === person.role) || selectedDetail?.roles?.[0];
+  const proposedFunction = selectedRole?.suggested_function;
+  const personFunctions = person.function_codes ?? (proposedFunction ? [proposedFunction] : []);
   async function newUser(e) {
     e.preventDefault();
     if(!schoolId)return;
-    const role=person.role||selectedDetail?.roles?.[0]?.code;
+    const role=selectedRole?.code;
     if(!role){setNotice({type:"error",message:"Aucun rôle disponible pour cette école."});return;}
-    const result=await execute(()=>api("platform/schools/"+schoolId+"/users",{...person,role}),"Compte scolaire créé.");
+    const result=await execute(()=>api("platform/schools/"+schoolId+"/users",{...person,role,function_codes:personFunctions}),"Compte scolaire créé.");
     if(result)setPerson(userBlank);
   }
   async function savePlan(e) {
@@ -455,7 +458,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
         </div>
         <div className="ya-bottom-grid">
           <section className="ya-box ya-quick"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="activity" size={23}/></div><div><h2>Création rapide</h2><p>Actions courantes de super-administration.</p></div></div>
-            <div className="ya-quick-grid">{[["school","Nouvel établissement","newSchool"],["layers","Nouvelle organisation","organizations"],["mail","Créer un directeur","users"],["userplus","Créer un compte","users"]].map(([icon,label,key])=><button type="button" key={label} onClick={()=>{if(label==="Créer un directeur")setPerson(old=>({...old,role:"direction"}));goto(key);}}><Icon name={icon} size={29}/><strong>{label}</strong><Icon name="right" size={19}/></button>)}</div>
+            <div className="ya-quick-grid">{[["school","Nouvel établissement","newSchool"],["layers","Nouvelle organisation","organizations"],["mail","Créer un directeur","users"],["userplus","Créer un compte","users"]].map(([icon,label,key])=><button type="button" key={label} onClick={()=>{if(label==="Créer un directeur")setPerson(old=>({...old,role:"direction",function_codes:null}));goto(key);}}><Icon name={icon} size={29}/><strong>{label}</strong><Icon name="right" size={19}/></button>)}</div>
           </section>
           <AuditFeed events={dashboard.recent_events||[]} onAll={()=>goto("audit")}/>
         </div>
@@ -480,7 +483,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           {schoolForm.school_type&&<div className="ya-field"><span>Cycles réellement enseignés</span><div role="group" aria-label="Cycles enseignés" style={{display:"grid",gap:8}}>{(schoolProfiles.find(p=>p.code===schoolForm.school_type)?.allowed_cycles||[]).map(c=><label key={c}><input type="checkbox" checked={schoolForm.education_cycles.includes(c)} onChange={()=>toggleCycle(c,setSchoolForm)}/> {cycleLabels[c]||c}</label>)}</div><small>Les classes ne sont pas créées automatiquement.</small></div>}
         </div><h3>02 — Compte du responsable</h3><div className="ya-form-grid">
           {[["first_name","Prénom"],["last_name","Nom"],["username","Identifiant"],["email","Adresse e-mail"]].map(([k,l])=><Field key={k} label={l}><input type={k==="email"?"email":"text"} required maxLength={k==="email"?254:150} value={schoolForm[k]} onChange={e=>update(setSchoolForm,k,e.target.value)}/></Field>)}
-          <Field label="Fonction du responsable"><select value={schoolForm.role} onChange={e=>update(setSchoolForm,"role",e.target.value)}><option value="direction">Direction</option><option value="proprietaire">Propriétaire de l'école</option></select></Field>
+          <Field label="Fonction du responsable"><select value={schoolForm.role} onChange={e=>update(setSchoolForm,"role",e.target.value)}><option value="direction">{schoolForm.school_type==="maternelle"?"Direction de la maternelle":"Direction"}</option><option value="proprietaire">Propriétaire de l'école</option></select></Field>
           <Field label="Mot de passe initial (12 caractères minimum)"><input type="password" required minLength={12} autoComplete="new-password" value={schoolForm.password} onChange={e=>update(setSchoolForm,"password",e.target.value)}/></Field>
         </div><div className="ya-form-footer"><button className="ya-btn ya-btn-primary" type="submit" disabled={busy||!schoolForm.school_type||!schoolForm.education_cycles.length}>{busy?"Création…":"Créer l’établissement et son responsable"}</button><button className="ya-btn ya-btn-outline" type="button" onClick={()=>goto("schools")}>Annuler</button></div>
         </form>
@@ -518,9 +521,9 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           <p className="ya-selected-school">Établissement : <b>{selectedName}</b></p>
           <div className="ya-form-grid">
             {[["first_name","Prénom"],["last_name","Nom"],["username","Identifiant de connexion"],["email","E-mail"]].map(([k,l])=><Field key={k} label={l}><input required type={k==="email"?"email":"text"} value={person[k]} onChange={e=>update(setPerson,k,e.target.value)}/></Field>)}
-            <Field label="Rôle dans l'établissement"><select required value={person.role||selectedDetail?.roles?.[0]?.code||""} onChange={e=>update(setPerson,"role",e.target.value)}>{(selectedDetail?.roles||[]).map(r=><option key={r.id} value={r.code}>{r.label}</option>)}</select></Field>
+            <Field label="Rôle dans l'établissement"><select required value={selectedRole?.code||""} onChange={e=>setPerson(old=>({...old,role:e.target.value,function_codes:null}))}>{(selectedDetail?.roles||[]).map(r=><option key={r.id} value={r.code}>{r.label}</option>)}</select></Field>
             <p>Code de connexion : <strong>{selectedDetail?.login_code||""}</strong></p>
-            <fieldset><legend>Fonctions facultatives (sans droits automatiques)</legend>{(selectedDetail?.functions||[]).map(f=><label key={f.code}><input type="checkbox" checked={(person.function_codes||[]).includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...(old.function_codes||[]),f.code]:(old.function_codes||[]).filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset>
+            <fieldset><legend>Fonctions facultatives (sans droits automatiques)</legend>{(selectedDetail?.functions||[]).map(f=><label key={f.code}><input type="checkbox" checked={personFunctions.includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...personFunctions,f.code]:personFunctions.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset>
             <Field label="Mot de passe initial"><input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>update(setPerson,"password",e.target.value)}/></Field>
           </div><button type="submit" disabled={busy||!schoolId||!selectedDetail?.school?.active} className="ya-btn ya-btn-primary"><Icon name="userplus" size={18}/> Créer le compte</button>
         </form></section>

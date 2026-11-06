@@ -42,11 +42,33 @@ ROLE_TEMPLATES = [
     ("eleve", "Élève", ["school.view"]),
 ]
 
+MATERNELLE_ROLE_LABELS = {
+    "direction": "Direction de la maternelle",
+    "enseignant": "Éducateur / Éducatrice de maternelle",
+    "secretariat": "Secrétariat de la maternelle",
+    "econome": "Caisse / Économat",
+}
+
+
+def role_templates_for(school):
+    if school.school_type != "maternelle":
+        return ROLE_TEMPLATES
+    return [
+        (code, MATERNELLE_ROLE_LABELS.get(code, label), permissions)
+        for code, label, permissions in ROLE_TEMPLATES
+        if code != "eleve"
+    ]
+
+
 SCOPE_FIELDS = ("year", "cycle", "level", "class")
 
 
-def public_role_label(role):
+def public_role_label(role, school=None):
     """Use the inclusive title for legacy built-in roles, retain school custom labels."""
+    if role.code in MATERNELLE_ROLE_LABELS and (school or role.school).school_type == "maternelle":
+        default_labels = {label for code, label, _ in ROLE_TEMPLATES if code == role.code}
+        if role.label in default_labels or (role.code == "direction" and role.label == "Direction"):
+            return MATERNELLE_ROLE_LABELS[role.code]
     if role.code == "direction" and role.label == "Direction":
         return "Directeur / Directrice"
     return role.label
