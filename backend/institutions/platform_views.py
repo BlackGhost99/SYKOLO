@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 from .models import Organization, OrganizationMember, School, SchoolMember, SchoolRole, SchoolLogin
 from .services import role_templates_for, school_response, quota_reached
+from .school_functions import account_functions, suggested_account_function
 from .school_profiles import CYCLE_LABELS, profile_options, validate_school_profile
 from .views import parse_body, log_event, string
 
@@ -92,9 +93,10 @@ def platform_schools(request):
                 SchoolRole(school=school, code=code, label=label, permissions=perms)
                 for code, label, perms in templates
             ])}
+            initial_function = suggested_account_function(school, role_code, account_functions(school))
             SchoolMember.objects.create(
                 school=school, user=user, role=roles[role_code],
-                function_codes=["directeur_maternelle"] if school_type == "maternelle" and role_code == "direction" else [],
+                function_codes=[initial_function] if initial_function else [],
             )
             SchoolLogin.objects.create(school=school, user=user, username=username.strip())
             log_event(school, request, "school_provisioned", str(user.pk))

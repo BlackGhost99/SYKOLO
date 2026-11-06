@@ -42,21 +42,28 @@ ROLE_TEMPLATES = [
     ("eleve", "Élève", ["school.view"]),
 ]
 
-MATERNELLE_ROLE_LABELS = {
-    "direction": "Direction de la maternelle",
-    "enseignant": "Éducateur / Éducatrice de maternelle",
-    "secretariat": "Secrétariat de la maternelle",
-    "econome": "Caisse / Économat",
+PROFILE_ROLE_LABELS = {
+    "maternelle": {
+        "direction": "Direction de la maternelle",
+        "enseignant": "Éducateur / Éducatrice de maternelle",
+        "secretariat": "Secrétariat de la maternelle",
+        "econome": "Caisse / Économat",
+    },
+    "primaire": {
+        "direction": "Direction du primaire",
+        "enseignant": "Enseignant / Enseignante du primaire",
+        "secretariat": "Secrétariat du primaire",
+        "econome": "Caisse / Économat",
+    },
 }
 
 
 def role_templates_for(school):
-    if school.school_type != "maternelle":
-        return ROLE_TEMPLATES
+    labels = PROFILE_ROLE_LABELS.get(school.school_type, {})
     return [
-        (code, MATERNELLE_ROLE_LABELS.get(code, label), permissions)
+        (code, labels.get(code, label), permissions)
         for code, label, permissions in ROLE_TEMPLATES
-        if code != "eleve"
+        if code != "eleve" or school.school_type != "maternelle"
     ]
 
 
@@ -65,10 +72,11 @@ SCOPE_FIELDS = ("year", "cycle", "level", "class")
 
 def public_role_label(role, school=None):
     """Use the inclusive title for legacy built-in roles, retain school custom labels."""
-    if role.code in MATERNELLE_ROLE_LABELS and (school or role.school).school_type == "maternelle":
+    labels = PROFILE_ROLE_LABELS.get((school or role.school).school_type, {})
+    if role.code in labels:
         default_labels = {label for code, label, _ in ROLE_TEMPLATES if code == role.code}
         if role.label in default_labels or (role.code == "direction" and role.label == "Direction"):
-            return MATERNELLE_ROLE_LABELS[role.code]
+            return labels[role.code]
     if role.code == "direction" and role.label == "Direction":
         return "Directeur / Directrice"
     return role.label

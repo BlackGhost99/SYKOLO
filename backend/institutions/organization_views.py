@@ -10,7 +10,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from accounts.views import authorized
 
 from .models import SchoolAppointment, SchoolMember
-from .school_functions import MATERNELLE_ALIASES, function_label, positions_for_school, validate_position
+from .school_functions import function_aliases, function_label, positions_for_school, validate_position
 from .school_profiles import CYCLE_LABELS
 from .staff_models import StaffRecord
 from .services import has_permission
@@ -123,8 +123,9 @@ def appointments(request, school_id):
     if len(code) > 48 or len(cycle) > 32:
         return JsonResponse({"error": "Fonction ou cycle trop long."}, status=422)
     code, cycle = code.strip(), cycle.strip()
+    aliases = function_aliases(school)
     try:
-        if school.school_type == "maternelle" and code in MATERNELLE_ALIASES:
+        if code in aliases:
             raise ValueError("Choisissez la fonction regroupée proposée dans l’organigramme.")
         validate_position(school, code, cycle)
         start, end = _date(body.get("starts_on")), _date(body.get("ends_on"))
@@ -141,10 +142,9 @@ def appointments(request, school_id):
             if record is None:
                 return JsonResponse({"error": "Personnel absent ou archivé dans cette école."}, status=422)
             equivalents = Q(function_code=code, cycle_code=cycle)
-            if school.school_type == "maternelle":
-                equivalents |= Q(function_code__in=[
-                    alias for alias, canonical in MATERNELLE_ALIASES.items() if canonical == code
-                ])
+            equivalents |= Q(function_code__in=[
+                alias for alias, canonical in aliases.items() if canonical == code
+            ])
             if SchoolAppointment.objects.filter(equivalents, school=school, staff=record).exists():
                 return JsonResponse({"error": "Nomination déjà enregistrée ; modifiez-la plutôt."}, status=409)
             obj = SchoolAppointment(

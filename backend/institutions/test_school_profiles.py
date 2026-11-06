@@ -91,6 +91,36 @@ class SchoolProfilesTests(TestCase):
                                         school_type="primaire", education_cycles=["primaire"])
         self.assertNotIn("educateur_prescolaire", {position["code"] for position in positions_for_school(primary)})
 
+    def test_primary_profile_provisions_accounts_and_groups_legacy_functions(self):
+        result = self.post("/api/v1/platform/schools", {
+            **self.payload, "school_type": "primaire", "education_cycles": ["primaire"],
+        })
+        self.assertEqual(result.status_code, 201, result.content)
+        school = School.objects.get(pk=result.json()["id"])
+        url = f"/api/v1/platform/schools/{school.pk}"
+        detail = self.client.get(url + "/detail").json()
+        roles = {role["code"]: role for role in detail["roles"]}
+        self.assertEqual(roles["direction"]["label"], "Direction du primaire")
+        self.assertEqual(roles["enseignant"]["label"], "Enseignant / Enseignante du primaire")
+        self.assertEqual(roles["enseignant"]["suggested_function"], "instituteur")
+        self.assertIn("eleve", roles)
+        functions = {position["code"] for position in detail["functions"]}
+        self.assertIn("surveillant", functions)
+        self.assertTrue({"enseignant", "educateur_prescolaire", "proviseur"}.isdisjoint(functions))
+        self.assertEqual(school.members.get().function_codes, ["directeur_primaire"])
+
+        teacher = {
+            "role": "enseignant", "username": "classe-primaire", "email": "classe@example.org",
+            "first_name": "Alex", "last_name": "Test", "password": "Primary-profile-2026!",
+        }
+        rejected = self.post(url + "/users", {**teacher, "function_codes": ["educateur_prescolaire"]})
+        self.assertEqual(rejected.status_code, 422, rejected.content)
+        created = self.post(url + "/users", {**teacher, "function_codes": ["enseignant", "instituteur"]})
+        self.assertEqual(created.status_code, 201, created.content)
+        self.assertEqual(school.members.get(role__code="enseignant").function_codes, ["instituteur"])
+        validate_position(school, "enseignant", "primaire")
+        validate_position(school, "direction_etablissement", "")
+
     def test_legacy_school_can_be_classified_with_audit(self):
         org = Organization.objects.create(name="Groupe existant")
         school = School.objects.create(organization=org, name="Lycée existant")
