@@ -1,4 +1,4 @@
-import React, {useMemo,useState} from "react";
+import React, {useState} from "react";
 import {Shell,Icon,Card,Metric,PageHeader,Status,Button,YemLogo} from "./yem-ui.jsx";
 import {createDemoState,ROUTE_LABELS,fcfa,remaining,schoolOf,availableRoutes,fakeId} from "./demo-data.js";
 import "./yem-desktop.css";
@@ -64,14 +64,21 @@ function DemoModal({mode,form,setForm,school,schools,student,invoice,onClose,onS
       <form className="demo-dialog-form" onSubmit={e=>{e.preventDefault();onSubmit(mode,form);}}>
         {mode==="student"||mode==="edit"?<div className="demo-fields">
           {input("name","Nom et prénoms","Ex. Ndong Marc")}
-          {selects("level","Classe / niveau",[...(school?.levels||selectedSchool.levels)].map(l=>l+" A"))}
+          {selects("level","Classe / niveau",[
+            ...new Set([
+              ...form.state.classes.filter(c=>c.school===school.id).map(c=>c.name),
+              ...school.levels.map(l=>l+" A"),
+            ]),
+          ])}
           {input("guardian","Responsable légal","Ex. Mme Ndong")}
           {input("phone","Téléphone du responsable","+241 ...","tel",false)}
         </div>:null}
         {mode==="admission"&&<div className="demo-fields">
           {input("name","Nom et prénoms du candidat","Ex. Nguema Léa")}
           <F label="Établissement"><select value={form.school||school?.id||schools[0].id}
-            onChange={e=>{change("school",e.target.value);change("level","");}}>
+            onChange={e=>setForm(old=>({...old,school:e.target.value,
+              level:schools.find(s=>s.id===e.target.value)?.levels[0]||"",
+              route:"direct"}))}>
             {schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></F>
           {selects("level","Niveau demandé",selectedSchool.levels)}
           <F label="Voie d'admission"><select value={form.route||"direct"} onChange={e=>change("route",e.target.value)}>
@@ -93,7 +100,8 @@ function DemoModal({mode,form,setForm,school,schools,student,invoice,onClose,onS
         {mode==="payment"&&<div className="demo-fields">
           <p>Élève : <b>{student?.name}</b><br/>Frais : <b>{invoice?.label}</b></p>
           <p>Solde à payer : <strong>{fcfa(invoice?remaining(invoice):0)}</strong></p>
-          {input("amount","Montant à simuler (FCFA)","","number")}
+          <F label="Montant à simuler (FCFA)"><input type="number" required min={1} max={remaining(invoice)}
+            step={1} value={form.amount||""} onChange={e=>change("amount",e.target.value)}/></F>
           {selects("method","Mode simulé",channels)}
           <p className="demo-emphasis">Simulation uniquement. Aucun appel à SingPay, aucun débit ni reçu réel.</p>
         </div>}
@@ -199,9 +207,10 @@ export default function DemoExperience(){
     if(kind==="admission"){
       const name=values.name?.trim();if(!name){message("Nom du candidat requis.");return;}
       const id=fakeId("a",state.applications);
-      const item={id,school:values.school||school.id,name,level:values.level||school.levels[0],
+      const chosenSchool=schoolOf(state,values.school||school.id)||school;
+      const item={id,school:chosenSchool.id,name,level:values.level||chosenSchool.levels[0],
         route:values.route||"direct",status:"En attente",eligible:values.route==="direct",
-        documents:values.route==="direct",origin:values.origin||""};
+        documents:values.route==="direct",origin:values.origin||"",parentDemo:Boolean(values.parentDemo)};
       setState(old=>({...old,applications:[...old.applications,item],
         events:[{kind:"Candidature créée",who:name},...old.events]}));
       setSelectedAdmission(id);message("Candidature créée en mode démonstration.");setModal(null);return;
@@ -493,7 +502,9 @@ export default function DemoExperience(){
     <div className="demo-ribbon" role="status">
       <strong><Icon name="shield" size={17}/> MODE DÉMONSTRATION</strong>
       <span>Tout est fictif. Aucune donnée réelle, aucun paiement, aucun e-mail.</span>
-      <button type="button" onClick={()=>{setState(createDemoState());setNotice("Scénario réinitialisé.");setModal(null);}}>
+      <button type="button" onClick={()=>{setState(createDemoState());setNotice("Scénario réinitialisé.");setModal(null);
+        setSchoolId("lycee");setSelectedStudent("s1");setSelectedAdmission("a1");
+        setSelectedChild("s1");setSearch("");setPage(defaultPage[role]);}}>
         <Icon name="back" size={17}/> Réinitialiser
       </button>
       <a href="#/" aria-label="Revenir à l'application réelle">Retour à YEM réel <Icon name="chevronright" size={16}/></a>
