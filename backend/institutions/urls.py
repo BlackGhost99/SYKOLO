@@ -1,7 +1,7 @@
 from django.urls import path
 from . import import_views
 from . import singpay_views
-from . import delegation_views
+from . import delegation_views, student_transfers
 from . import finance_batch_views, finance_cash_views, finance_summary_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
 
@@ -133,6 +133,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/enrollment-form", enrollment_form.enrollment_form),
     path("schools/<uuid:school_id>/students/register", registration_views.register_student),
     path("schools/<uuid:school_id>/students/next-code", registration_views.next_code),
+    path("schools/<uuid:school_id>/students/<uuid:student_id>/transfer", student_transfers.issue),
     path("schools/<uuid:school_id>/students/<uuid:student_id>/dossier", registration_views.student_dossier),
     path("schools/<uuid:school_id>/classes/<uuid:class_id>/enroll", registration_views.class_enroll),
     path("schools/<uuid:school_id>/classes/<uuid:class_id>/apply-fees", registration_views.class_apply_fees),

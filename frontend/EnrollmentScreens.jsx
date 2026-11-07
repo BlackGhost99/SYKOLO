@@ -76,8 +76,9 @@ export function StudentForm({ schoolId, params, onNavigate, tabs }) {
   const form = useLoad(`schools/${schoolId}/enrollment-form`);
   const [year, setYear] = useState("");
   const classes = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
-  const [student, setStudent] = useState({ last_name: "", first_name: "", student_code: "", date_of_birth: "", gender: "", place_of_birth: "", nationality: "", address: "", previous_school: "" });
+  const [student, setStudent] = useState({ last_name: "", first_name: "", date_of_birth: "", gender: "", place_of_birth: "", nationality: "", address: "", previous_school: "" });
   const [extra, setExtra] = useState({});
+  const [transferCode, setTransferCode] = useState("");
   const [docs, setDocs] = useState({});
   const [guardians, setGuardians] = useState([{ ...emptyGuardian, relationship: "Mère" }]);
   const [classroom, setClassroom] = useState(params?.classroom || "");
@@ -85,7 +86,6 @@ export function StudentForm({ schoolId, params, onNavigate, tabs }) {
   const [fees, setFees] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState({ text: "", error: false });
-  useEffect(() => { req(`schools/${schoolId}/students/next-code`).then(r => setStudent(s => s.student_code ? s : { ...s, student_code: r.student_code })).catch(() => {}); }, [schoolId]);
   const config = form.data?.config;
   const cd = classes.data;
   const set = (k, v) => setStudent(s => ({ ...s, [k]: v }));
@@ -100,9 +100,10 @@ export function StudentForm({ schoolId, params, onNavigate, tabs }) {
         guardians: guardians.filter(g => g.full_name.trim()).map(g => Object.fromEntries(Object.entries(g).filter(([, v]) => v !== ""))),
         enrollment: classroom ? { classroom, enrolled_on: enrolledOn || undefined } : null,
         apply_fees: fees,
+        ...(transferCode.trim() ? {transfer_code: transferCode.trim()} : {}),
       };
       const r = await req(`schools/${schoolId}/students/register`, body);
-      const parts = [`Dossier de ${r.student.last_name} ${r.student.first_name} créé (matricule ${r.student.student_code}).`];
+      const parts = [`Dossier de ${r.student.last_name} ${r.student.first_name} créé (matricule ${r.student.matricule_yem || r.student.student_code}).`];
       if (r.enrollment) parts.push("Élève inscrit dans sa classe.");
       if (r.charges_created) parts.push(`${r.charges_created} frais affecté(s).`);
       if (r.fees_skipped) parts.push("Les frais seront affectés par la comptabilité.");
@@ -120,7 +121,12 @@ export function StudentForm({ schoolId, params, onNavigate, tabs }) {
         <div className="yf-grid">
           <Field label="Nom" required><input required maxLength={120} value={student.last_name} onChange={e => set("last_name", e.target.value.toUpperCase())}/></Field>
           <Field label="Prénom(s)" required><input required maxLength={120} value={student.first_name} onChange={e => set("first_name", e.target.value)}/></Field>
-          <Field label="Matricule" hint="Proposé automatiquement, modifiable."><input maxLength={50} pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]*" value={student.student_code} onChange={e => set("student_code", e.target.value)}/></Field>
+          <p className="hint">Le matricule YEM est attribué automatiquement à l’enregistrement.</p>
+          <details className="yf-details"><summary>Élève transféré depuis une école YEM</summary>
+            <Field label="Code de transfert" hint="Remis par l’établissement précédent.">
+              <input value={transferCode} onChange={event=>setTransferCode(event.target.value)} maxLength={512}/>
+            </Field>
+          </details>
           {optional("date_of_birth", "Date de naissance", <input type="date" required={needed(config, "date_of_birth")} value={student.date_of_birth} onChange={e => set("date_of_birth", e.target.value)}/>)}
           {optional("gender", "Sexe", <select required={needed(config, "gender")} value={student.gender} onChange={e => set("gender", e.target.value)}><option value="">—</option><option value="F">Féminin</option><option value="M">Masculin</option></select>)}
           {optional("place_of_birth", "Lieu de naissance", <input maxLength={120} required={needed(config, "place_of_birth")} value={student.place_of_birth} onChange={e => set("place_of_birth", e.target.value)}/>)}
@@ -168,7 +174,7 @@ export function StudentForm({ schoolId, params, onNavigate, tabs }) {
 }
 
 /* ---------- Dossier élève ---------- */
-export function StudentFile({ schoolId, params, canManage, canReceive, onNavigate, tabs }) {
+export function StudentFile({ schoolId, params, canManage, canIssueTransfer, canReceive, onNavigate, tabs }) {
   const id = params?.student;
   const dossier = useLoad(id ? `schools/${schoolId}/students/${id}/dossier` : "");
   const classes = useLoad(canManage ? `schools/${schoolId}/overview/classes` : "");
@@ -178,6 +184,8 @@ export function StudentFile({ schoolId, params, canManage, canReceive, onNavigat
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState({ text: params?.notice || "", error: false });
+  const [destination, setDestination] = useState("");
+  const [transfer, setTransfer] = useState("");
   const d = dossier.data;
   async function run(fn, ok) {
     setBusy(true); setMessage({ text: "" });
@@ -201,7 +209,7 @@ export function StudentFile({ schoolId, params, canManage, canReceive, onNavigat
   const info = [["date_of_birth", "Date de naissance", v => fmtDate(v)], ["gender", "Sexe", v => ({ F: "Féminin", M: "Masculin" }[v] || "—")], ["place_of_birth", "Lieu de naissance"], ["nationality", "Nationalité"], ["address", "Adresse / quartier"], ["previous_school", "Établissement précédent"]];
   const f = current?.finance;
   return <>
-    <PageHeader title={s ? `${s.last_name} ${s.first_name}` : "Fiche élève"} subtitle={s ? `Matricule ${s.student_code}${current ? ` · ${current.classroom_name} (${current.year_name})` : " · non inscrit"}` : "Dossier administratif"} banner={false}
+    <PageHeader title={s ? `${s.last_name} ${s.first_name}` : "Fiche élève"} subtitle={s ? `Matricule ${s.matricule_yem || s.student_code}${current ? ` · ${current.classroom_name} (${current.year_name})` : " · non inscrit"}` : "Dossier administratif"} banner={false}
       actions={<>
         <Button icon="back" onClick={() => onNavigate("students", "live")}>Liste des élèves</Button>
         <Button icon="printer" onClick={() => window.print()}>Imprimer la fiche</Button>
@@ -211,6 +219,25 @@ export function StudentFile({ schoolId, params, canManage, canReceive, onNavigat
     <Msg {...message}/>
     <Loading state={dossier}>{d && <div className="yd-grid yf-file">
       <div className="yd-stack">
+        {canIssueTransfer&&<Card title="Transfert vers un autre établissement YEM" icon="transfer">
+          <details><summary>Préparer un transfert</summary>
+            <form onSubmit={event=>{
+              event.preventDefault();setTransfer("");
+              run(async()=>{
+                const result=await req(`schools/${schoolId}/students/${s.id}/transfer`,{destination:destination.trim()});
+                setTransfer(result.transfer_code);
+              },"Code de transfert généré. Il est valable sept jours.");
+            }}>
+              <Field label="Code de l’établissement de destination" required>
+                <input required value={destination} onChange={event=>{setDestination(event.target.value);setTransfer("");}}/>
+              </Field>
+              <Button type="submit" disabled={busy}>Générer le code de transfert</Button>
+            </form>
+            {transfer&&<Field label="Code à remettre à l’établissement de destination">
+              <textarea readOnly value={transfer} onFocus={event=>event.target.select()} rows={3}/>
+            </Field>}
+          </details>
+        </Card>}
         <Card title="Renseignements" icon="idcard" right={canManage && !editing && <Button className="small" icon="edit" onClick={startEdit}>Modifier</Button>}>
           {!editing ? <div className="yd-info-list">
             {info.filter(([k]) => shown(form, k) || s[k]).map(([k, l, fmt]) => <InfoRow key={k} k={l} v={(fmt ? fmt(s[k]) : s[k]) || "—"}/>)}

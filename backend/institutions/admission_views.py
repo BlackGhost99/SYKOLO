@@ -5,6 +5,7 @@ from uuid import UUID
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -20,7 +21,6 @@ from .admission_policy import (ROUTES, DOCUMENT_CODE, effective_policy, policy_v
                                policy_key, validate_policy, required_for_route,
                                admission_blocker)
 
-CODE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}\Z")
 SOURCE_CODE = re.compile(r"[a-z0-9][a-z0-9_-]{0,47}\Z")
 ALLOWED_TRANSITIONS = {
     "submitted": {"review", "accepted", "rejected"},
@@ -260,6 +260,35 @@ def decide(request, school_id, application_id):
     return JsonResponse(render(row))
 
 
+
+def verified_family_identity(application):
+    """Reuse an identity only through the same immutable family profile and a verified link."""
+    from .parent_admission_models import FamilyChild, ParentAdmissionRequest
+    from .parent_models import GuardianAccountLink
+
+    submission = ParentAdmissionRequest.objects.select_related("owner").filter(application=application).first()
+    if submission is None:
+        return None
+    FamilyChild.objects.select_for_update().get(pk=submission.child_id, owner_id=submission.owner_id)
+    prior = ParentAdmissionRequest.objects.filter(
+        child_id=submission.child_id, owner_id=submission.owner_id,
+        application__status="enrolled", application__enrollment__isnull=False,
+    ).values("application__enrollment__student_id")
+    identities = list(GuardianAccountLink.objects.filter(
+        user_id=submission.owner_id, active=True, guardian__active=True,
+        guardian__school_id=F("school_id"), guardian__student__school_id=F("school_id"),
+        guardian__student_id__in=prior,
+        guardian__student__first_name__iexact=application.first_name,
+        guardian__student__last_name__iexact=application.last_name,
+        guardian__student__date_of_birth=application.date_of_birth,
+    ).order_by().values_list("guardian__student__identity_id", flat=True).distinct()[:2])
+    if len(identities) == 1:
+        return identities[0]
+    if prior.exists():
+        raise ValueError("Vérifiez le rattachement du responsable légal à l’ancien dossier avant la réinscription.")
+    return None
+
+
 @require_POST
 @authorized
 def convert(request, school_id, application_id):
@@ -271,14 +300,11 @@ def convert(request, school_id, application_id):
     data, error = parse_body(request)
     if error is not None:
         return error
-    if not isinstance(data, dict) or set(data) != {"revision", "enrolled_on", "student_code"}:
-        return fail("Révision, date et matricule obligatoires.")
+    if not {"revision", "enrolled_on"} <= set(data) or set(data) - {"revision", "enrolled_on", "student_code"}:
+        return fail("Révision et date d’inscription obligatoires.")
     try:
         revision = positive_revision(data["revision"])
         enrolled_on = day(data["enrolled_on"])
-        student_code = data["student_code"]
-        if not isinstance(student_code, str) or (student_code and not CODE.fullmatch(student_code)):
-            raise ValueError("Matricule élève invalide.")
     except ValueError as exc:
         return fail(str(exc))
     try:
@@ -294,33 +320,33 @@ def convert(request, school_id, application_id):
                 return JsonResponse({"error": "Conflit de version.", "revision": row.revision}, status=409)
             if row.status != "accepted":
                 return fail("L'admission doit être validée avant inscription.", 409)
-            if not row.existing_student_id and not student_code:
-                return fail("Matricule requis pour un nouvel élève.")
-            # The regular enrollment API locks the same class row before checking capacity.
+            from .models import School
+            School.objects.select_for_update().get(pk=school.pk)
+            identity = verified_family_identity(row)
             classroom = AcademicClass.objects.select_for_update().get(pk=row.classroom_id, school=school)
-            if row.existing_student_id:
-                student = row.existing_student
-                if not student.active:
-                    return fail("Dossier élève inactif.", 409)
-                if student_code and student_code != student.student_code:
-                    return fail("Le matricule existant ne peut être remplacé ici.", 409)
-            else:
-                from .models import School
-                School.objects.select_for_update().get(pk=school.pk)
+            student = row.existing_student
+            if student is not None and identity is not None and student.identity_id != identity:
+                return fail("Le dossier local sélectionné ne correspond pas au matricule YEM vérifié.", 409)
+            if student is None and identity is not None:
+                student = Student.objects.filter(school=school, identity_id=identity).first()
+            new_student = student is None
+            if new_student:
                 if quota_reached(school, "students"):
                     return fail("Plafond d'élèves atteint pour cet établissement.", 409)
                 student = Student(
-                    school=school, student_code=student_code,
+                    school=school, identity_id=identity,
                     first_name=row.first_name, last_name=row.last_name,
                     date_of_birth=row.date_of_birth, admission_date=enrolled_on,
                 )
                 student.full_clean()
+            elif not student.active:
+                return fail("Dossier élève inactif.", 409)
             validate_enrollment_slot(classroom, student, row.year)
             if not row.year.start_date <= enrolled_on <= row.year.end_date:
                 return fail("Inscription hors des dates de l'année scolaire.")
             if Enrollment.objects.filter(school=school, student=student, year=row.year).exists():
                 return fail("Élève déjà inscrit pour cette année.", 409)
-            if not row.existing_student_id:
+            if new_student:
                 student.save()
             enrolled = Enrollment(
                 school=school, student=student, year=row.year, classroom=classroom,
@@ -328,7 +354,7 @@ def convert(request, school_id, application_id):
             )
             enrolled.full_clean()
             enrolled.save()
-            if not row.existing_student_id:
+            if new_student:
                 guardian = StudentGuardian(
                     school=school, student=student, full_name=row.guardian_name,
                     relationship=row.guardian_relationship, phone=row.guardian_phone,

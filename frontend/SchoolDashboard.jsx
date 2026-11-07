@@ -189,7 +189,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p>{isParent&&<Button primary icon="users" onClick={()=>navigate("parents")}>Ouvrir l'espace parents</Button>}</Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
   else if (section&&(hiddenTab||section.lives.some(l=>l.key===tab))) {
-    const props={schoolId:chosen,schoolName,tabs:tabBar,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canReceive:perms.includes("school.finance.receive")};
+    const props={schoolId:chosen,schoolName,tabs:tabBar,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canIssueTransfer:perms.includes("school.students.manage")&&perms.includes("school.admissions.decide"),canReceive:perms.includes("school.finance.receive")};
     const k=chosen+JSON.stringify(params);
     content={
       "students:live":<LiveStudents key={chosen} {...props}/>,
@@ -219,9 +219,19 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     <MySchoolFunctions schoolId={chosen}/>
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
+  const schoolCode = access?.school?.id === chosen && access.school.login_code;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
     userMenu={<UserMenu user={user} roleLabel={access?.role_label} onAccount={()=>navigate("account")} onLogout={onLogout}/>}>
     {message&&<p role="status" className="pc-alert">{message}</p>}
+    {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school">
+      <label className="field">Code à communiquer au personnel
+        <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
+      </label>
+      <Button type="button" onClick={async()=>{
+        try {await navigator.clipboard.writeText(schoolCode);setMessage("Code établissement copié.");}
+        catch {setMessage("Sélectionnez le code puis copiez-le.");}
+      }}>Copier le code</Button>
+    </Card>}
     {content}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
   </Shell>;

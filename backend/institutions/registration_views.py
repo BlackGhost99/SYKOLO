@@ -29,6 +29,7 @@ from .student_views import (
     parse_fields, describe, validate_enrollment_slot, validation_response, STUDENT_INFO, GUARDIAN_INFO,
 )
 from .views import parse_body, log_event
+from .student_transfers import transfer_identity
 from .enrollment_form import load_config, clean_answers, check_base, missing_documents
 
 STUDENT_FIELDS = ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO)
@@ -46,16 +47,6 @@ def as_uuid(value):
         return UUID(str(value))
     except (TypeError, ValueError, AttributeError):
         raise Refused("Identifiant incorrect.") from None
-
-
-def next_student_code(school):
-    """Matricule lisible et unique : ELE26-0001, ELE26-0002…"""
-    prefix = f"ELE{timezone.localdate():%y}-"
-    taken = set(Student.objects.filter(school=school, student_code__startswith=prefix).values_list("student_code", flat=True))
-    n = len(taken) + 1
-    while f"{prefix}{n:04d}" in taken:
-        n += 1
-    return f"{prefix}{n:04d}"
 
 
 def unique_code(base, taken, limit=40):
@@ -131,7 +122,7 @@ def register_student(request, school_id):
         return error
 
     def run():
-        if not isinstance(data, dict) or set(data) - {"student", "guardians", "enrollment", "apply_fees"}:
+        if not isinstance(data, dict) or set(data) - {"student", "guardians", "enrollment", "apply_fees", "transfer_code"}:
             raise Refused("Champs inconnus.")
         info = data.get("student")
         if not isinstance(info, dict):
@@ -160,15 +151,16 @@ def register_student(request, school_id):
             School.objects.select_for_update().get(pk=school.pk)
             if quota_reached(school, "students"):
                 raise Refused("Plafond d'élèves atteint pour cet établissement.", 409)
-            if not info.get("student_code"):
-                info["student_code"] = next_student_code(school)
-            values = parse_fields(info, STUDENT_FIELDS, ("student_code", "first_name", "last_name"))
-            if Student.objects.filter(school=school, student_code=values["student_code"]).exists():
-                raise Refused("Ce matricule est déjà utilisé.", 409)
-            student = Student(school=school, extra_fields=extra, documents=documents, **values)
+            info.pop("student_code", None)  # Legacy client input, never used to issue a matricule.
+            values = parse_fields(info, STUDENT_FIELDS, ("first_name", "last_name"))
+            transfer_code = data.get("transfer_code")
+            identity_id = transfer_identity(transfer_code, school, values) if transfer_code is not None else None
+            if identity_id and Student.objects.filter(school=school, identity_id=identity_id).exists():
+                raise Refused("L’élève a déjà un dossier dans cet établissement. Recherchez son matricule YEM.", 409)
+            student = Student(school=school, identity_id=identity_id, extra_fields=extra, documents=documents, **values)
             student.full_clean()
             student.save()
-            log_event(school, request, "student_created", student.pk)
+            log_event(school, request, "student_transferred" if identity_id else "student_created", student.pk)
             saved_guardians = []
             cleaned = [parse_fields({k: v for k, v in g.items() if v is not None}, GUARDIAN_FIELDS, ("full_name",))
                        for g in guardians if str(g.get("full_name") or "").strip()]
@@ -211,7 +203,7 @@ def next_code(request, school_id):
     school, error = gate(request, school_id, "school.students.manage")
     if error is not None:
         return error
-    return JsonResponse({"student_code": next_student_code(school)})
+    return JsonResponse({"student_code": None, "message": "Matricule attribué à l’enregistrement."})
 
 
 @require_GET

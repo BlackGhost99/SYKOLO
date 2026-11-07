@@ -102,7 +102,10 @@ class StudentAdmissionsTests(TestCase):
 
     def test_reject_foreign_relationships_and_duplicate(self):
         s=self.add_student()
-        self.assertEqual(self.write("students",{"student_code":"EL001","first_name":"B","last_name":"N"}).status_code,422)
+        created = self.write("students",{"student_code":"EL001","first_name":"B","last_name":"N"})
+        self.assertEqual(created.status_code, 201, created.content)
+        self.assertNotEqual(created.json()["student_code"], "EL001")
+        self.assertNotEqual(created.json()["matricule_yem"], s["matricule_yem"])
         self.assertEqual(self.write("enrollments",{"student":str(self.school.id),"year":str(self.year.id),"classroom":str(self.classroom.id),"enrolled_on":"2026-10-01"}).status_code,422)
         other_year=AcademicYear.objects.create(school=self.other,code="2026-2027",name="Other",start_date="2026-09-01",end_date="2027-07-31")
         self.assertEqual(self.write("enrollments",{"student":s["id"],"year":str(other_year.id),"classroom":str(self.classroom.id),"enrolled_on":"2026-10-01"}).status_code,422)

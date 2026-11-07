@@ -92,7 +92,7 @@ def parse_fields(data, allowed, required=(), *, revision=False):
 def describe(obj):
     result = {"id": str(obj.pk), "revision": obj.revision}
     if isinstance(obj, Student):
-        fields = ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "extra_fields", "documents", "active")
+        fields = ("student_code", "matricule_yem", "first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "extra_fields", "documents", "active")
     elif isinstance(obj, StudentGuardian):
         fields = ("full_name", "relationship", "phone", "email", *GUARDIAN_INFO, "is_primary", "active")
     else:
@@ -117,11 +117,18 @@ def students(request, school_id):
     school, error = check(request, school_id, "school.students.read" if request.method == "GET" else "school.students.manage")
     if error is not None: return error
     if request.method == "GET":
-        return JsonResponse({"students": [describe(s) for s in Student.objects.filter(school=school).order_by("last_name","first_name")[:500]]})
+        rows = Student.objects.filter(school=school)
+        matricule = request.GET.get("matricule")
+        if matricule is not None:
+            if not re.fullmatch(r"YEM-[0-9A-F]{32}", matricule.strip().upper()):
+                return JsonResponse({"error": "Matricule YEM invalide."}, status=422)
+            rows = rows.filter(identity_id=UUID(hex=matricule.strip()[4:]))
+        return JsonResponse({"students": [describe(s) for s in rows.order_by("last_name","first_name")[:500]]})
     data, error = parse_body(request)
     if error is not None: return error
     try:
-        values = parse_fields(data, ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "active"), ("student_code", "first_name", "last_name"))
+        data.pop("student_code", None)  # Compatibility with clients that still send the old field.
+        values = parse_fields(data, ("first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "active"), ("first_name", "last_name"))
         with transaction.atomic():
             from .models import School
             School.objects.select_for_update().get(pk=school.pk)

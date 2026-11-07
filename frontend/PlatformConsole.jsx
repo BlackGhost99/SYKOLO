@@ -165,6 +165,9 @@ function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onP
   const director=people.find(m=>m.active&&!m.is_platform_admin&&["direction","proprietaire"].includes(m.role_code));
   return <section className="ya-box ya-detail">
     <div className="ya-detail-top"><span className="ya-detail-building"><Icon name="school" size={34}/></span><div className="ya-detail-title"><h2>{s.name}</h2><p>{s.organization}</p><small>ID : {s.id.slice(0,8).toUpperCase()}</small></div><Status active={s.active}/></div>
+    {detail.login_code&&<Field label="Code de connexion de l’établissement">
+      <input readOnly value={detail.login_code} onFocus={event=>event.target.select()}/>
+    </Field>}
     <div className="ya-detail-tabs" role="tablist" aria-label="Détails de l'établissement">
       {[["info","Informations"],["roles","Accès & rôles"],["limits","Limites & abonnement"],["history","Historique"]].map(([key,label])=><button key={key} role="tab" aria-selected={tab===key} className={tab===key?"active":""} onClick={()=>setTab(key)}>{label}</button>)}
     </div>

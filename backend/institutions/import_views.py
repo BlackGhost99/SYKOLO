@@ -29,7 +29,6 @@ from .import_models import StudentImportBatch, StudentImportProfile
 from .import_service import FIELDS, normalized, parse_upload, parse_date, parse_gender, suggested_mapping, validate_mapping
 from .models import School, SchoolAdminPolicy
 from .overview_views import gate
-from .registration_views import next_student_code
 from .services import quota_reached
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import parse_fields, validate_enrollment_slot
@@ -331,8 +330,6 @@ def commit(request, school_id):
             created = []
             for value in assignments:
                 student_fields = dict(value["student"])
-                if not student_fields.get("student_code"):
-                    student_fields["student_code"] = next_student_code(school)
                 student = Student(school=school, extra_fields=value["extra"], **student_fields)
                 student.full_clean()
                 student.save()
@@ -433,7 +430,7 @@ def export_students(request, school_id):
         "Matricule", "Nom", "Prénoms", "Date de naissance", "Sexe", "Classe", "Année scolaire",
         "Responsable", "Lien de parenté", "Téléphone parent", "Email parent", "Lieu de naissance",
         "Nationalité", "Adresse élève", "Établissement précédent",
-    ] + [q["label"] for q in custom]
+    ] + [q["label"] for q in custom] + ["Matricule YEM"]
     output = io.StringIO(newline="")
     writer = csv.writer(output, delimiter=";", quoting=csv.QUOTE_ALL, lineterminator="\r\n")
     writer.writerow(headings)
@@ -448,7 +445,7 @@ def export_students(request, school_id):
             guardian.relationship if guardian else "", guardian.phone if guardian else "",
             guardian.email if guardian else "", student.place_of_birth, student.nationality,
             student.address, student.previous_school,
-        ] + [student.extra_fields.get(q["key"], "") for q in custom]
+        ] + [student.extra_fields.get(q["key"], "") for q in custom] + [student.matricule_yem]
         writer.writerow([safe_spreadsheet_cell(v) for v in fields])
     payload = "\ufeff" + output.getvalue()
     result = HttpResponse(payload, content_type="text/csv; charset=utf-8")

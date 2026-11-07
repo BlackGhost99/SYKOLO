@@ -207,7 +207,7 @@ def children(request):
             "student": str(student.pk), "school": str(row.school_id),
             "school_name": row.school.name,
             "first_name": student.first_name, "last_name": student.last_name,
-            "student_code": student.student_code,
+            "student_code": student.student_code, "matricule_yem": student.matricule_yem,
         }
     has_parent_role = SchoolMember.objects.filter(
         user=request.user, active=True, school__is_active=True,

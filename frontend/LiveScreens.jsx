@@ -73,9 +73,19 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
   const [klass, setKlass] = useState("");
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState(null);
+  const [lookupMessage, setLookupMessage] = useState("");
+  async function openByMatricule() {
+    try {
+      const result = await api(`schools/${schoolId}/students?matricule=${encodeURIComponent(query.trim())}`);
+      if (result.students.length === 0) setLookupMessage("Aucun dossier portant ce matricule dans cet établissement.");
+      else onNavigate("students", "fiche", {student: result.students[0].id});
+    } catch (error) {
+      setLookupMessage(error.message);
+    }
+  }
   const d = state.data;
   const rows = useMemo(() => (d?.students || []).filter(s => s.active).filter(s => {
-    const text = `${s.last_name} ${s.first_name} ${s.student_code} ${s.guardian?.full_name || ""}`.toLowerCase();
+    const text = `${s.last_name} ${s.first_name} ${s.student_code} ${s.matricule_yem || ""} ${s.guardian?.full_name || ""}`.toLowerCase();
     return text.includes(query.toLowerCase()) && (!klass || s.enrollment?.classroom.id === klass)
       && (!status || (status === "non_inscrit" ? !s.enrollment : s.finance?.status === status));
   }), [d, query, klass, status]);
@@ -87,12 +97,14 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
     {tabs}
     <Loading state={state}>{d && <>
       <div className="yd-toolbar students">
-        <SearchBox placeholder="Rechercher un élève (nom, prénom, matricule...)" value={query} onChange={e => setQuery(e.target.value)}/>
+        <SearchBox placeholder="Rechercher un élève (nom, prénom, matricule...)" value={query} onChange={e => {setQuery(e.target.value);setLookupMessage("");}}/>
+        {/^YEM-[0-9A-F]{32}$/i.test(query.trim()) && <Button onClick={openByMatricule}>Ouvrir par matricule</Button>}
         <label className="yd-select plain"><select aria-label="Classe" value={klass} onChange={e => setKlass(e.target.value)}><option value="">Toutes les classes</option>{d.classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>
         <label className="yd-select plain"><select aria-label="Statut" value={status} onChange={e => setStatus(e.target.value)}><option value="">Tous les statuts</option>{d.finance_visible && Object.entries(FIN).map(([k, v]) => <option key={k} value={k}>{v[1]}</option>)}<option value="non_inscrit">Non inscrit cette année</option></select><Icon name="chevron" size={18} className="chev"/></label>
         {canManage && <Button primary icon="adduser" onClick={() => onNavigate("students", "new")}>Nouvel élève</Button>}
         {canManage && <Button icon="excel" onClick={() => onNavigate("students", "import")}>Importer Excel</Button>}
       </div>
+      {lookupMessage && <p role="status" className="yd-form-msg">{lookupMessage}</p>}
       <div className="yd-metrics four">
         <Metric icon="users" label="Élèves actifs" value={num(m.active)} trend="none" trendValue={num(m.enrolled)} trendLabel={`inscrits en ${d.year?.name || "cours"}`}/>
         <Metric icon="cap" label="Nouveaux inscrits" value={num(m.new_30d)} trend={m.new_30d >= m.new_prev_30d ? "up" : "down"} trendValue={pct(m.new_30d, m.new_prev_30d) || `${m.new_prev_30d}`} trendLabel="vs. 30 jours précédents"/>
@@ -109,7 +121,7 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
                 <td><button type="button" className="yd-dots" aria-label="Ouvrir la fiche" onClick={e => { e.stopPropagation(); onNavigate("students", "fiche", { student: s.id }); }}><Icon name="dots" size={22}/></button></td></tr>; })}</tbody></table></TableScroll>}
         </Card>
         {current ? <Card title="Aperçu de l’élève" icon="user" className="student-preview">
-          <div className="yd-person"><div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div><div><h3>{current.last_name} {current.first_name}</h3><span>Classe : {current.enrollment?.classroom.name || "non inscrit"}</span><span>Matricule : {current.student_code}</span></div></div>
+          <div className="yd-person"><div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div><div><h3>{current.last_name} {current.first_name}</h3><span>Classe : {current.enrollment?.classroom.name || "non inscrit"}</span><span>Matricule YEM : {current.matricule_yem || current.student_code}</span></div></div>
           <div className="yd-info-list">
             <InfoRow icon="user" k="Parent / Tuteur" v={current.guardian?.full_name || "—"}/>
             <InfoRow icon="whatsapp" k="Téléphone" v={current.guardian?.phone || "—"} vIcon={current.guardian?.phone ? "whatsapp" : undefined}/>
