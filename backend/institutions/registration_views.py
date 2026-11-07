@@ -19,6 +19,7 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 from accounts.views import authorized
 
+from .student_transfers import transfer_identity
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment
 from .overview_views import gate, current_year, enrollment_balances, finance_status, money, ZERO
@@ -29,7 +30,6 @@ from .student_views import (
     parse_fields, describe, validate_enrollment_slot, validation_response, STUDENT_INFO, GUARDIAN_INFO,
 )
 from .views import parse_body, log_event
-from .student_transfers import transfer_identity
 from .enrollment_form import load_config, clean_answers, check_base, missing_documents
 
 STUDENT_FIELDS = ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO)
