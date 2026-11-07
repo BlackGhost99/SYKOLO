@@ -55,7 +55,7 @@ export default function StaffOnboarding({schoolId}) {
     request(base).then(data=>{
       if (active) {
         setContext(data);
-        setAccount(old=>({...old,role:data.roles[0]?.code||""}));
+        setAccount(old=>({...old,role:""}));
       }
     }).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
@@ -129,7 +129,7 @@ export default function StaffOnboarding({schoolId}) {
 
   const reset = ()=>{
     setStaff(EMPTY_STAFF);setAppointments([]);setClasses([]);
-    setCreateAccess(false);setAccount({...EMPTY_ACCOUNT,role:roles[0]?.code||""});
+    setCreateAccess(false);setAccount(EMPTY_ACCOUNT);
     setAck(false);setSuccess(null);setError("");setStep(0);
   };
 
@@ -150,7 +150,7 @@ export default function StaffOnboarding({schoolId}) {
       <h3>Collaborateur créé</h3>
       <p><strong>{staff.first_name} {staff.last_name}</strong> · Matricule {success.staff.staff_code}</p>
       <p>{success.appointments_count} fonction(s) officielle(s) et {success.assignments_count} affectation(s) de classe enregistrée(s).</p>
-      <p>{success.account_created?<>Compte YEM activé : <strong>{success.username}</strong>. L'utilisateur doit changer son mot de passe initial et sécuriser son compte.</>:"Aucun accès YEM créé : la fiche du personnel existe sans compte."}</p>
+      <p>{success.account_created?<>Compte YEM activé : <strong>{success.username}</strong>. Invitez cette personne à changer son mot de passe initial et à sécuriser son compte.</>:"Aucun accès YEM créé : la fiche du personnel existe sans compte."}</p>
       <button type="button" onClick={reset}>Ajouter un autre collaborateur</button>
     </div>:<form onSubmit={submit}>
       {step===0&&<div>
