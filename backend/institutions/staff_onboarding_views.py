@@ -116,6 +116,10 @@ def _account(school, actor, owner, data, appointments):
             or any(not isinstance(c, str) for c in roles) or len(roles) != len(set(roles))
             or data["role"] in roles):
         raise ValueError("Rôles supplémentaires invalides.")
+    if data["role"] in {"parent", "eleve", "proprietaire"} or any(
+        code in {"parent", "eleve", "proprietaire"} for code in roles
+    ):
+        raise ValueError("Rôle non destiné au personnel scolaire.")
     primary = SchoolRole.objects.filter(school=school, code=data["role"]).first()
     extra = list(SchoolRole.objects.filter(school=school, code__in=roles))
     if not primary or len(extra) != len(roles):
@@ -151,13 +155,13 @@ def onboard_staff(request, school_id):
     if request.method == "GET":
         allowed = effective_permissions(request.user, school)
         roles = SchoolRole.objects.filter(school=school).order_by("label")
-        roles = [r for r in roles if owner or (
+        roles = [r for r in roles if r.code not in {"parent", "eleve", "proprietaire"} and (owner or (
             can_account and set(r.permissions) <= allowed
             and not any(p in r.permissions for p in (
                 "school.finance.manage", "school.finance.receive", "school.finance.reverse",
                 "school.finance.approve", "school.finance.deposit"
             ))
-        )]
+        ))]
         years = AcademicYear.objects.filter(school=school, active=True).order_by("-start_date")
         classes = AcademicClass.objects.filter(school=school, active=True, year__active=True).order_by("name")
         return JsonResponse({
@@ -206,7 +210,19 @@ def onboard_staff(request, school_id):
     try:
         with transaction.atomic():
             # Même verrou que le reste de l'administration : quotas et matricules cohérents.
-            School.objects.select_for_update().get(pk=school.pk)
+            school = School.objects.select_for_update().get(pk=school.pk)
+            owner = owns_organization(request.user, school.organization)
+            if not (owner or has_permission(request.user, school, "school.staff.manage")):
+                return refuse()
+            if body["account"] is not None and not (owner or has_permission(request.user, school, "school.members.write")):
+                return refuse()
+            if body["appointments"] and not (owner or has_permission(request.user, school, "school.organization.manage")):
+                return refuse()
+            if body["account"] is not None and len(school.education_cycles or []) > 1 and not body["ack_school_wide_permissions"]:
+                raise ValueError("Confirmez les droits applicatifs à tout le complexe.")
+            appointments = _appointments(school, body["appointments"])
+            assignments = _class_assignments(school, body["class_assignments"])
+            account_info = _account(school, request.user, owner, body["account"], appointments)
             if account_info and quota_reached(school, "users"):
                 return JsonResponse({"error": "Plafond de comptes atteint pour cette école."}, status=409)
             if StaffRecord.objects.filter(school=school, staff_code=staff_fields["staff_code"]).exists():
@@ -255,6 +271,8 @@ def onboard_staff(request, school_id):
             })
     except PermissionError as exc:
         return JsonResponse({"error": str(exc)}, status=403)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
     except ValidationError as exc:
         return JsonResponse({"error": _validation_message(exc)}, status=422)
     except IntegrityError:
