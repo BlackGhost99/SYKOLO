@@ -13,7 +13,7 @@ from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, Academi
 from .import_models import StudentImportBatch, StudentImportProfile
 from .models import Organization, School, SchoolRole, SchoolMember, SchoolAdminPolicy
 from .services import ROLE_TEMPLATES
-from .student_models import Student, Enrollment, StudentGuardian, EnrollmentFormConfig
+from .student_models import Student, Enrollment, StudentGuardian, EnrollmentFormConfig, StudentNumbering
 from .finance_models import FeeCharge
 from .enrollment_form import default_config
 
@@ -84,6 +84,39 @@ class StudentImportTests(TestCase):
         self.assertEqual(repeated.status_code, 200, repeated.content)
         self.assertTrue(repeated.json()["already_imported"])
         self.assertEqual(Student.objects.count(), 1)
+
+    def test_import_reserves_existing_numbers_before_numbering_blank_rows(self):
+        self.client.force_login(self.secretary)
+        rule = StudentNumbering.objects.create(school=self.school, enabled=True, template="{n}/A")
+        mapping = {"0": "last_name", "1": "first_name", "2": "student_code", "3": "date_of_birth"}
+        data = ("Nom;Prénoms;Matricule;DDN\nÉlève;Nouveau;;2015-01-01\n"
+                "Élève;Ancien;0500/A;2015-01-02\nÉlève;Autre;Ancienne série 9000;2015-01-03").encode()
+
+        def upload():
+            return SimpleUploadedFile("serie.csv", data, content_type="text/csv")
+
+        preview = self.request("preview", file=upload(), mapping=mapping, year=False)
+        self.assertEqual(preview.json()["errors"], 0, preview.content)
+        response = self.request("commit", file=upload(), mapping=mapping, year=False, token=preview.json()["token"])
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(dict(Student.objects.filter(school=self.school).values_list("first_name", "student_code")), {
+            "Ancien": "0500/A", "Nouveau": "0501/A", "Autre": "Ancienne série 9000",
+        })
+        rule.refresh_from_db()
+        self.assertEqual(rule.next_number, 502)
+
+    def test_xlsx_keeps_formatted_leading_zeroes(self):
+        from .import_service import parse_upload
+
+        book = Workbook()
+        sheet = book.active
+        sheet.append(["Nom", "Prénoms", "Matricule"])
+        sheet.append(["Test", "Élève", 500])
+        sheet["C2"].number_format = "0000"
+        output = io.BytesIO()
+        book.save(output)
+        data = parse_upload(SimpleUploadedFile("matricules.xlsx", output.getvalue()))
+        self.assertEqual(data["rows"][0]["cells"][2], "0500")
 
     def test_duplicate_in_file_and_existing_duplicate_blocked(self):
         self.client.force_login(self.secretary)

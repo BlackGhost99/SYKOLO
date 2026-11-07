@@ -40,11 +40,12 @@ def parse_fields(data, allowed, required=(), *, revision=False):
     for key, value in data.items():
         if key == "revision":
             continue
-        if key in ("student_code", "status"):
-            if not isinstance(value, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}", value):
-                raise ValueError("Code ou statut invalide.")
-            if key == "status" and len(value) > 40:
-                raise ValueError("Statut trop long.")
+        if key == "student_code":
+            if not isinstance(value, str) or not 1 <= len(value) <= 50 or not value.isprintable():
+                raise ValueError("Matricule local invalide (50 caractères imprimables au maximum).")
+        elif key == "status":
+            if not isinstance(value, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}", value):
+                raise ValueError("Statut invalide.")
         elif key in ("first_name", "last_name", "full_name"):
             if not isinstance(value, str) or not 1 <= len(value.strip()) <= (180 if key == "full_name" else 120):
                 raise ValueError("Nom invalide.")

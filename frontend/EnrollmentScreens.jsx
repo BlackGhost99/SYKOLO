@@ -103,7 +103,7 @@ export function StudentForm({ schoolId, params, onNavigate, tabs }) {
         ...(transferCode.trim() ? {transfer_code: transferCode.trim()} : {}),
       };
       const r = await req(`schools/${schoolId}/students/register`, body);
-      const parts = [`Dossier de ${r.student.last_name} ${r.student.first_name} créé (matricule ${r.student.matricule_yem || r.student.student_code}).`];
+      const parts = [`Dossier de ${r.student.last_name} ${r.student.first_name} créé (matricule ${r.student.student_code}).`];
       if (r.enrollment) parts.push("Élève inscrit dans sa classe.");
       if (r.charges_created) parts.push(`${r.charges_created} frais affecté(s).`);
       if (r.fees_skipped) parts.push("Les frais seront affectés par la comptabilité.");
@@ -121,7 +121,7 @@ export function StudentForm({ schoolId, params, onNavigate, tabs }) {
         <div className="yf-grid">
           <Field label="Nom" required><input required maxLength={120} value={student.last_name} onChange={e => set("last_name", e.target.value.toUpperCase())}/></Field>
           <Field label="Prénom(s)" required><input required maxLength={120} value={student.first_name} onChange={e => set("first_name", e.target.value)}/></Field>
-          <p className="hint">Le matricule YEM est attribué automatiquement à l’enregistrement.</p>
+          <p className="hint">Le matricule local est attribué automatiquement selon la règle de l’établissement.</p>
           <details className="yf-details"><summary>Élève transféré depuis une école YEM</summary>
             <Field label="Code de transfert" hint="Remis par l’établissement précédent.">
               <input value={transferCode} onChange={event=>setTransferCode(event.target.value)} maxLength={512}/>
@@ -209,7 +209,7 @@ export function StudentFile({ schoolId, params, canManage, canIssueTransfer, can
   const info = [["date_of_birth", "Date de naissance", v => fmtDate(v)], ["gender", "Sexe", v => ({ F: "Féminin", M: "Masculin" }[v] || "—")], ["place_of_birth", "Lieu de naissance"], ["nationality", "Nationalité"], ["address", "Adresse / quartier"], ["previous_school", "Établissement précédent"]];
   const f = current?.finance;
   return <>
-    <PageHeader title={s ? `${s.last_name} ${s.first_name}` : "Fiche élève"} subtitle={s ? `Matricule ${s.matricule_yem || s.student_code}${current ? ` · ${current.classroom_name} (${current.year_name})` : " · non inscrit"}` : "Dossier administratif"} banner={false}
+    <PageHeader title={s ? `${s.last_name} ${s.first_name}` : "Fiche élève"} subtitle={s ? `Matricule ${s.student_code}${current ? ` · ${current.classroom_name} (${current.year_name})` : " · non inscrit"}` : "Dossier administratif"} banner={false}
       actions={<>
         <Button icon="back" onClick={() => onNavigate("students", "live")}>Liste des élèves</Button>
         <Button icon="printer" onClick={() => window.print()}>Imprimer la fiche</Button>
@@ -240,6 +240,7 @@ export function StudentFile({ schoolId, params, canManage, canIssueTransfer, can
         </Card>}
         <Card title="Renseignements" icon="idcard" right={canManage && !editing && <Button className="small" icon="edit" onClick={startEdit}>Modifier</Button>}>
           {!editing ? <div className="yd-info-list">
+            {s.matricule_yem && s.matricule_yem !== s.student_code && <InfoRow k="Identifiant permanent YEM" v={s.matricule_yem}/>}
             {info.filter(([k]) => shown(form, k) || s[k]).map(([k, l, fmt]) => <InfoRow key={k} k={l} v={(fmt ? fmt(s[k]) : s[k]) || "—"}/>)}
             {form.custom_fields.map(q => <InfoRow key={q.key} k={q.label} v={q.type === "yesno" ? (s.extra_fields[q.key] === true ? "Oui" : s.extra_fields[q.key] === false ? "Non" : "—") : q.type === "date" ? fmtDate(s.extra_fields[q.key]) : String(s.extra_fields[q.key] ?? "—")}/>)}
           </div> : <form onSubmit={e => { e.preventDefault(); saveEdit(); }}>

@@ -13,6 +13,7 @@ import FinancePanel from "./FinancePanel.jsx";
 import AttendancePanel from "./AttendancePanel.jsx";
 import TimetablePanel from "./TimetablePanel.jsx";
 import AdmissionsPanel from "./AdmissionsPanel.jsx";
+import StudentNumberingSettings from "./StudentNumberingSettings.jsx";
 import ParentPortal from "./ParentPortal.jsx";
 import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens.jsx";
 import {StudentForm,StudentFile,ClassEnrollments,ClassSetup,FormSettings,PaymentTracking,ImportStudents} from "./EnrollmentScreens.jsx";
@@ -52,7 +53,8 @@ const sections = {
   staff:{title:"Personnel",subtitle:"Équipe pédagogique et administrative, affectations et comptes",modules:["staff","organization","roles"],extra:"users"},
   settings:{title:"Paramétrage de l’établissement",subtitle:"Années, classes, fiche d’inscription, matières, barèmes et emplois du temps",modules:["academic","curriculum","timetable"],lives:[
     {key:"classes",label:"Classes",need:["school.academic.read"]},
-    {key:"form",label:"Fiche d’inscription",need:["school.students.read"]}]},
+    {key:"form",label:"Fiche d’inscription",need:["school.students.read"]},
+    {key:"numbering",label:"Matricules",need:["school.settings.write"]}]},
 };
 const sectionIcon=Object.fromEntries(NAV.map(([id,icon])=>[id,icon]));
 
@@ -201,6 +203,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
       "arrears:live":<LiveArrears key={chosen} {...props}/>,
       "settings:classes":<ClassSetup key={chosen} {...props}/>,
+      "settings:numbering":<StudentNumberingSettings key={chosen} {...props}/>,
       "settings:form":<FormSettings key={chosen} {...props} canEdit={perms.includes("school.students.manage")}/>,
     }[page+":"+tab];
   }

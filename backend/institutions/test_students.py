@@ -100,6 +100,30 @@ class StudentAdmissionsTests(TestCase):
         self.login(self.director)
         self.assertEqual(self.client.get("/api/v1/schools/"+str(self.other.id)+"/students").status_code,404)
 
+    def test_school_rule_previews_allocates_and_never_rewinds_existing_series(self):
+        Student.objects.create(school=self.school, student_code="A/0500-G", first_name="Élève", last_name="Ancien")
+        url = self.base + "student-numbering"
+        body = {"enabled": True, "template": "A/{n}-G", "digits": 4, "start_number": 1, "revision": 0}
+        preview = self.client.post(url, json.dumps(body), content_type="application/json", HTTP_X_CSRFTOKEN=self.token)
+        self.assertEqual(preview.status_code, 200, preview.content)
+        self.assertEqual(preview.json()["largest_number"], "500")
+        self.assertEqual(preview.json()["next_code"], "A/0501-G")
+        self.assertFalse(self.client.get(url).json()["enabled"])
+
+        def save(values):
+            return self.client.put(url, json.dumps(values), content_type="application/json", HTTP_X_CSRFTOKEN=self.token)
+
+        result = save(body)
+        self.assertEqual(result.status_code, 200, result.content)
+        first = self.add_student()
+        self.assertEqual(first["student_code"], "A/0501-G")
+        self.assertNotEqual(first["student_code"], first["matricule_yem"])
+        self.assertEqual(save(body).status_code, 409)
+        result = save({**body, "revision": 1, "digits": 5})
+        self.assertEqual(result.json()["next_code"], "A/00502-G")
+        self.assertEqual(self.add_student()["student_code"], "A/00502-G")
+        self.assertTrue(Student.objects.filter(school=self.school, student_code="A/0500-G").exists())
+
     def test_reject_foreign_relationships_and_duplicate(self):
         s=self.add_student()
         created = self.write("students",{"student_code":"EL001","first_name":"B","last_name":"N"})

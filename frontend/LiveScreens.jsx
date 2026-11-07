@@ -121,7 +121,7 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
                 <td><button type="button" className="yd-dots" aria-label="Ouvrir la fiche" onClick={e => { e.stopPropagation(); onNavigate("students", "fiche", { student: s.id }); }}><Icon name="dots" size={22}/></button></td></tr>; })}</tbody></table></TableScroll>}
         </Card>
         {current ? <Card title="Aperçu de l’élève" icon="user" className="student-preview">
-          <div className="yd-person"><div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div><div><h3>{current.last_name} {current.first_name}</h3><span>Classe : {current.enrollment?.classroom.name || "non inscrit"}</span><span>Matricule YEM : {current.matricule_yem || current.student_code}</span></div></div>
+          <div className="yd-person"><div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div><div><h3>{current.last_name} {current.first_name}</h3><span>Classe : {current.enrollment?.classroom.name || "non inscrit"}</span><span>Matricule : {current.student_code}</span>{current.matricule_yem && current.matricule_yem !== current.student_code && <small>Identifiant YEM : {current.matricule_yem}</small>}</div></div>
           <div className="yd-info-list">
             <InfoRow icon="user" k="Parent / Tuteur" v={current.guardian?.full_name || "—"}/>
             <InfoRow icon="whatsapp" k="Téléphone" v={current.guardian?.phone || "—"} vIcon={current.guardian?.phone ? "whatsapp" : undefined}/>

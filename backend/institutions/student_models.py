@@ -16,11 +16,20 @@ class StudentIdentity(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
 
+class StudentNumbering(models.Model):
+    school = models.OneToOneField(School, on_delete=models.CASCADE)
+    enabled = models.BooleanField(default=False)
+    template = models.CharField(max_length=38, default="{n}")
+    digits = models.PositiveSmallIntegerField(default=4)
+    next_number = models.PositiveBigIntegerField(default=1)
+    revision = models.PositiveIntegerField(default=1)
+
+
 class Student(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="students")
     identity = models.ForeignKey(StudentIdentity, on_delete=models.PROTECT, editable=False, blank=True)
-    student_code = models.SlugField(max_length=50, blank=True)
+    student_code = models.CharField(max_length=50, blank=True)
     first_name = models.CharField(max_length=120)
     last_name = models.CharField(max_length=120)
     date_of_birth = models.DateField(null=True, blank=True)
@@ -56,7 +65,8 @@ class Student(models.Model):
             if self.identity_id is None:
                 self.identity = StudentIdentity.objects.using(database).create()
             if not self.student_code:
-                self.student_code = self.matricule_yem
+                from .student_numbering import allocate_local_code
+                self.student_code = allocate_local_code(self.school_id, self.matricule_yem, database)
             return super().save(*args, **kwargs)
 
 

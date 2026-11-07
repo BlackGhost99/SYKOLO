@@ -30,6 +30,7 @@ from .import_service import FIELDS, normalized, parse_upload, parse_date, parse_
 from .models import School, SchoolAdminPolicy
 from .overview_views import gate
 from .services import quota_reached
+from .student_numbering import synchronize_import
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import parse_fields, validate_enrollment_slot
 from .views import log_event, parse_body
@@ -327,6 +328,9 @@ def commit(request, school_id):
                                      "rows": reports}, status=409)
             if quota_reached(school, "students"):
                 return invalid("Quota élèves atteint.", 409)
+            synchronize_import(school, (
+                value["student"]["student_code"] for value in assignments if value["student"].get("student_code")
+            ))
             created = []
             for value in assignments:
                 student_fields = dict(value["student"])

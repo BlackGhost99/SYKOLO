@@ -134,7 +134,8 @@ export default function ParentPortal() {
           </label>}
       </Card>
       {current&&<Card title={current.last_name+" "+current.first_name}>
-        <p>{current.school_name} · matricule {current.matricule_yem || current.student_code}</p>
+        <p>{current.school_name} · matricule {current.student_code}</p>
+        {current.matricule_yem&&current.matricule_yem!==current.student_code&&<p>Identifiant permanent YEM · {current.matricule_yem}</p>}
         {relatedSchools.length>1&&<label className="field">Établissements du parcours
           <select value={selected} onChange={e=>{setSelected(e.target.value);setMessage("");}}>
             {relatedSchools.map(child=><option key={child.student} value={child.student}>{child.school_name}</option>)}

@@ -174,11 +174,14 @@ def pdf_bytes(r):
     ]
     status="PUBLIÉ" if r.status=="published" else "BROUILLON — NON OFFICIEL"
     labels=[
-        f"{data['student']['last_name']} {data['student']['first_name']} ({data['student'].get('matricule_yem') or data['student']['code']})",
+        f"{data['student']['last_name']} {data['student']['first_name']} ({data['student']['code']})",
         f"Classe : {data['class']['name']} | Année : {data['year']['name']}",
         f"Période : {data['period']['name'] if data['period'] else 'Année entière'}",
         status,
     ]
+    identity = data["student"].get("matricule_yem")
+    if identity and identity != data["student"]["code"]:
+        labels.insert(1, "Identifiant permanent YEM : " + identity)
     if data.get("amendment"):
         labels.append("RECTIFICATIF N° " + str(data["amendment"]["sequence"]) + " — original conservé")
         labels.append("Motif : " + data["amendment"]["reason"])
