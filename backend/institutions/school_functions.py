@@ -26,7 +26,7 @@ FUNCTIONS = {
     "responsable_discipline": ("Responsable de discipline", "Pédagogie", "cycle", SECONDARY, ()),
     "professeur_principal": ("Professeur principal", "Pédagogie", "cycle", SECONDARY, ()),
     "instituteur": ("Instituteur / Enseignant du primaire", "Pédagogie", "cycle", ("primaire",), ()),
-    "educateur_prescolaire": ("Éducateur / Enseignant préscolaire", "Pédagogie", "cycle", ("prescolaire",), ()),
+    "educateur_prescolaire": ("Éducateur / Éducatrice de maternelle", "Pédagogie", "cycle", ("prescolaire",), ()),
     "enseignant": ("Enseignant", "Pédagogie", "cycle", ALL_CYCLES, ()),
     "censeur_vie_scolaire": ("Censeur de la vie scolaire", "Vie scolaire", "cycle", LYCEE, ()),
     "conseiller_education": ("Conseiller d'éducation", "Vie scolaire", "cycle", SECONDARY, ()),
@@ -44,20 +44,72 @@ FUNCTIONS = {
 }
 
 
+# Les anciens codes restent lisibles et sont regroupés lors de la saisie.
+FUNCTION_ALIASES = {
+    "maternelle": {
+        "direction_etablissement": "directeur_maternelle",
+        "enseignant": "educateur_prescolaire",
+        "econome": "caissier",
+    },
+    "primaire": {
+        "direction_etablissement": "directeur_primaire",
+        "enseignant": "instituteur",
+        "econome": "caissier",
+    },
+}
+PROFILE_POSITIONS = {
+    "maternelle": (
+        "directeur_maternelle", "secretaire", "educateur_prescolaire",
+        "assistant_scolaire", "responsable_pedagogique", "comptable", "caissier", "intendant",
+    ),
+    "primaire": (
+        "directeur_primaire", "secretaire", "instituteur", "responsable_pedagogique",
+        "assistant_scolaire", "surveillant", "comptable", "caissier", "intendant",
+    ),
+}
+PROFILE_FUNCTION_LABELS = {
+    "maternelle": {"caissier": "Caisse / Économat"},
+    "primaire": {
+        "directeur_primaire": "Direction du primaire",
+        "instituteur": "Enseignant / Enseignante du primaire",
+        "secretaire": "Secrétariat du primaire",
+        "surveillant": "Vie scolaire / Surveillance",
+        "caissier": "Caisse / Économat",
+    },
+}
+
+
+def function_aliases(school):
+    return FUNCTION_ALIASES.get(school.school_type, {})
+
+
+def account_function_codes(school, codes):
+    aliases = function_aliases(school)
+    return sorted({aliases.get(code, code) for code in codes})
+
+
+def function_label(school, code):
+    canonical = account_function_codes(school, [code])[0]
+    labels = PROFILE_FUNCTION_LABELS.get(school.school_type, {})
+    return labels.get(canonical, FUNCTIONS.get(canonical, (canonical,))[0])
+
+
 def positions_for_school(school):
     """Return recommended functions only for cycles the school actually opens."""
     cycles = set(school.education_cycles or [])
     if school.school_type == "non_classe" or not cycles:
         return []
     positions = []
-    for code, (label, family, scope, compatible, types) in FUNCTIONS.items():
+    codes = PROFILE_POSITIONS.get(school.school_type, FUNCTIONS)
+    for code in codes:
+        _, family, scope, compatible, types = FUNCTIONS[code]
         if types and school.school_type not in types:
             continue
         eligible = sorted(cycles.intersection(compatible))
         if scope == "cycle" and not eligible:
             continue
         positions.append({
-            "code": code, "label": label, "family": family,
+            "code": code, "label": function_label(school, code), "family": family,
             "scope": scope, "allowed_cycles": eligible if scope == "cycle" else [],
         })
     return positions
@@ -65,6 +117,10 @@ def positions_for_school(school):
 
 def validate_position(school, code, cycle):
     position = next((p for p in positions_for_school(school) if p["code"] == code), None)
+    if position is None and code in function_aliases(school):
+        # Les nominations existantes gardent leur périmètre et restent modifiables.
+        _, _, scope, compatible, _ = FUNCTIONS[code]
+        position = {"scope": scope, "allowed_cycles": set(compatible).intersection(school.education_cycles)}
     if position is None:
         raise ValueError("Fonction non disponible pour les cycles de cet établissement.")
     if position["scope"] == "school":
@@ -79,12 +135,25 @@ def account_functions(school):
     options = positions_for_school(school)
     if school.enabled_functions is None:
         return options
-    return [p for p in options if p["code"] in school.enabled_functions]
+    enabled = account_function_codes(school, school.enabled_functions)
+    return [p for p in options if p["code"] in enabled]
+
+
+def suggested_account_function(school, role_code, options):
+    aliases = function_aliases(school)
+    if not aliases:
+        return ""
+    code = {
+        "direction": aliases["direction_etablissement"], "enseignant": aliases["enseignant"],
+        "secretariat": "secretaire", "econome": "caissier", "comptabilite": "comptable",
+    }.get(role_code, "")
+    return code if any(option["code"] == code for option in options) else ""
 
 
 def validate_account_functions(school, codes):
     if not isinstance(codes, list) or len(codes) > 40 or any(not isinstance(c, str) for c in codes):
         raise ValueError("Fonctions invalides.")
+    codes = account_function_codes(school, codes)
     if not set(codes) <= {p["code"] for p in account_functions(school)}:
         raise ValueError("Fonction non activée dans cet établissement.")
     return sorted(set(codes))

@@ -10,6 +10,7 @@ from django.views.decorators.http import require_http_methods, require_GET
 from accounts.views import authorized
 from .views import access, refuse, parse_body, log_event
 from .services import has_permission
+from .cycle_scope import scoped_cycle_ids
 from .models import SchoolMember
 from .academic_models import AcademicYear, AcademicClass
 from .staff_models import StaffRecord, StaffAssignment
@@ -213,4 +214,7 @@ def my_assignments(request,school_id):
     school,error=access(request,school_id)
     if error is not None:return error
     rows=StaffAssignment.objects.filter(school=school,staff__account=request.user,staff__active=True,active=True)
+    cycles=scoped_cycle_ids(request.user,school)
+    if cycles is not None:
+        rows=rows.filter(classroom__level__cycle_id__in=cycles)
     return JsonResponse({"assignments":[assignment_repr(a) for a in rows.order_by("year_id","pk")[:200]]})

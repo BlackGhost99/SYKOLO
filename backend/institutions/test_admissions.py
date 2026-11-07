@@ -101,7 +101,7 @@ class AdmissionWorkflowTests(TestCase):
         self.assertEqual(Enrollment.objects.count(), 1)
         self.assertEqual(StudentGuardian.objects.count(), 1)
         self.assertEqual(EnrollmentEvent.objects.count(), 1)
-        self.assertEqual(Enrollment.objects.get().student.student_code, "YEM001")
+        self.assertRegex(Enrollment.objects.get().student.student_code, r"^YEM-[0-9A-F]{32}$")
         self.assertEqual(StudentGuardian.objects.get().full_name, "Mme Nzamba")
         duplicate = self.convert(row, revision=3)
         self.assertEqual(duplicate.status_code, 200, duplicate.content.decode())

@@ -131,7 +131,7 @@ def students_overview(request, school_id):
         g = guardians.get(s.pk)
         b = balances.get(e.pk) if e else None
         rows.append({
-            "id": str(s.pk), "student_code": s.student_code, "first_name": s.first_name, "last_name": s.last_name,
+            "id": str(s.pk), "student_code": s.student_code, "matricule_yem": s.matricule_yem, "first_name": s.first_name, "last_name": s.last_name,
             "active": s.active, "missing_documents": len(missing_documents(form, s.documents)),
             "enrollment": {"id": str(e.pk), "status": e.status, "enrolled_on": e.enrolled_on.isoformat(),
                            "classroom": {"id": str(e.classroom_id), "name": e.classroom.name}} if e else None,

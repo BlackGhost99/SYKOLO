@@ -179,6 +179,9 @@ def pdf_bytes(r):
         f"Période : {data['period']['name'] if data['period'] else 'Année entière'}",
         status,
     ]
+    identity = data["student"].get("matricule_yem")
+    if identity and identity != data["student"]["code"]:
+        labels.insert(1, "Identifiant permanent YEM : " + identity)
     if data.get("amendment"):
         labels.append("RECTIFICATIF N° " + str(data["amendment"]["sequence"]) + " — original conservé")
         labels.append("Motif : " + data["amendment"]["reason"])

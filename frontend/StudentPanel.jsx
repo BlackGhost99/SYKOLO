@@ -21,7 +21,6 @@ export default function StudentPanel({schoolId}) {
   const [years,setYears]=useState([]);
   const [classes,setClasses]=useState([]);
   const [chosen,setChosen]=useState("");
-  const [code,setCode]=useState("");
   const [first,setFirst]=useState("");
   const [last,setLast]=useState("");
   const [birth,setBirth]=useState("");
@@ -67,16 +66,13 @@ export default function StudentPanel({schoolId}) {
       <p className="hint">Données privées de cet établissement. Les dossiers sont archivés, jamais supprimés physiquement.</p>
       <form onSubmit={e=>{e.preventDefault();run(async()=>{
         await call(base+"students",{
-          student_code:code,first_name:first,last_name:last,date_of_birth:birth||null,
+          first_name:first,last_name:last,date_of_birth:birth||null,
         });
-        setCode("");setFirst("");setLast("");setBirth("");
+        setFirst("");setLast("");setBirth("");
         setMessage("Élève enregistré.");
       });}}>
         <h3>Nouvelle fiche élève</h3>
         <div className="two">
-          <label className="field">Matricule
-            <input value={code} onChange={e=>setCode(e.target.value)} maxLength={50} required />
-          </label>
           <label className="field">Prénom(s)
             <input value={first} onChange={e=>setFirst(e.target.value)} maxLength={120} required />
           </label>

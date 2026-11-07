@@ -7,6 +7,8 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 from .models import School, SchoolMember, PermissionDelegation
+from .academic_models import AcademicCycle
+from .school_profiles import CYCLE_LABELS
 from .services import PERMISSIONS, effective_permissions, has_permission, owns_organization
 from .views import access, refuse, parse_body, log_event, may_delegate_finance, financial_grant_allowed, string
 from .school_functions import positions_for_school, account_functions
@@ -15,9 +17,15 @@ from .school_functions import positions_for_school, account_functions
 DELEGATABLE = PERMISSIONS - {"school.members.write", "school.roles.manage", "school.settings.write"}
 
 
+def class_cycle_choices(school):
+    choices = {code: CYCLE_LABELS[code] for code in school.education_cycles or [] if code in CYCLE_LABELS}
+    choices.update(AcademicCycle.objects.filter(school=school, active=True).values_list("code", "name"))
+    return choices
+
+
 def describe(grant):
     return {"id": str(grant.pk), "user_id": str(grant.member.user_id),
-            "permissions": grant.permissions, "reason": grant.reason,
+            "permissions": grant.permissions, "reason": grant.reason, "class_cycle": grant.class_cycle,
             "source_function": grant.source_function, "granted_by": str(grant.granted_by_id),
             "expires_at": grant.expires_at, "revoked_at": grant.revoked_at,
             "revoked_by": str(grant.revoked_by_id) if grant.revoked_by_id else None,
@@ -34,7 +42,7 @@ def delegations(request, school_id, delegation_id=None):
     if not owner and not has_permission(request.user, school, "school.roles.manage"):
         return refuse()
     if request.method == "GET":
-        return JsonResponse({"delegations": [describe(g) for g in PermissionDelegation.objects.filter(school=school).select_related("member").order_by("-created_at")[:500]], "available_permissions": sorted(DELEGATABLE)})
+        return JsonResponse({"delegations": [describe(g) for g in PermissionDelegation.objects.filter(school=school).select_related("member").order_by("-created_at")[:500]], "available_permissions": sorted(DELEGATABLE), "class_cycles": class_cycle_choices(school)})
     data, error = parse_body(request)
     if error is not None:
         return error
@@ -57,7 +65,13 @@ def delegations(request, school_id, delegation_id=None):
         perms = data.get("permissions")
         if not isinstance(perms, list) or not perms or any(not isinstance(p, str) for p in perms) or not set(perms) <= DELEGATABLE:
             return JsonResponse({"error": "Permissions délégables invalides."}, status=422)
-        if not may_delegate_finance(request.user, school, perms) or (not owner and not set(perms) <= effective_permissions(request.user, school)):
+        class_cycle = data.get("class_cycle", "")
+        if not isinstance(class_cycle, str) or (class_cycle and (
+            set(perms) != {"school.classes.manage"} or class_cycle not in class_cycle_choices(school)
+        )):
+            return JsonResponse({"error": "Un cycle peut limiter une délégation réservée à la gestion des classes."}, status=422)
+        if not may_delegate_finance(request.user, school, perms) or (not owner and not set(perms) <= effective_permissions(request.user, school)
+                and not (set(perms) == {"school.classes.manage"} and has_permission(request.user, school, "school.academic.manage"))):
             return refuse()
         try:
             member = SchoolMember.objects.select_related("user").filter(school=school, user_id=data.get("user_id"), active=True).first()
@@ -80,7 +94,7 @@ def delegations(request, school_id, delegation_id=None):
                 raise ValueError()
         except (ValueError, TypeError):
             return JsonResponse({"error": "Échéance future avec fuseau horaire requise."}, status=422)
-        grant = PermissionDelegation.objects.create(school=school, member=member, permissions=sorted(set(perms)), reason=data["reason"].strip(), source_function=source, expires_at=end, granted_by=request.user)
+        grant = PermissionDelegation.objects.create(school=school, member=member, permissions=sorted(set(perms)), reason=data["reason"].strip(), source_function=source, class_cycle=class_cycle, expires_at=end, granted_by=request.user)
         log_event(school, request, "delegation_granted", grant.pk)
     return JsonResponse(describe(grant), status=201)
 

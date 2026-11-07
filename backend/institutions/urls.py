@@ -1,11 +1,14 @@
 from django.urls import path
 from . import import_views
 from . import singpay_views
-from . import delegation_views
+from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views
+from . import staff_onboarding_views
+from . import cycle_access_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
 
 urlpatterns = [
+    path("schools/<uuid:school_id>/student-numbering", student_numbering_views.numbering),
     path("schools/<uuid:school_id>/imports/students/profiles", import_views.profiles),
     path("schools/<uuid:school_id>/imports/students/export", import_views.export_students),
     path("schools/<uuid:school_id>/imports/students/inspect", import_views.inspect),
@@ -114,6 +117,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/subjects", curriculum_views.subjects),
     path("schools/<uuid:school_id>/subjects/<uuid:subject_id>", curriculum_views.subject_detail),
     path("schools/<uuid:school_id>/courses", curriculum_views.courses),
+    path("schools/<uuid:school_id>/courses/generate", curriculum_views.generate_courses),
     path("schools/<uuid:school_id>/courses/<uuid:course_id>", curriculum_views.course_detail),
     path("schools/<uuid:school_id>/courses/<uuid:course_id>/units", curriculum_views.units),
     path("schools/<uuid:school_id>/courses/<uuid:course_id>/units/<uuid:unit_id>", curriculum_views.unit_detail),
@@ -123,6 +127,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/organization/appointments", organization_views.appointments),
     path("schools/<uuid:school_id>/organization/appointments/<uuid:appointment_id>", organization_views.appointment_detail),
     path("schools/<uuid:school_id>/organization/my-appointments", organization_views.my_appointments),
+    path("schools/<uuid:school_id>/staff/onboard", staff_onboarding_views.onboard_staff),
+    path("schools/<uuid:school_id>/members/<uuid:member_id>/cycle-access", cycle_access_views.member_cycle_access),
     path("schools/<uuid:school_id>/staff", staff_views.staff),
     path("schools/<uuid:school_id>/staff/me/assignments", staff_views.my_assignments),
     path("schools/<uuid:school_id>/staff/<uuid:staff_id>", staff_views.staff_detail),
@@ -133,6 +139,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/enrollment-form", enrollment_form.enrollment_form),
     path("schools/<uuid:school_id>/students/register", registration_views.register_student),
     path("schools/<uuid:school_id>/students/next-code", registration_views.next_code),
+    path("schools/<uuid:school_id>/students/<uuid:student_id>/transfer", student_transfers.issue),
     path("schools/<uuid:school_id>/students/<uuid:student_id>/dossier", registration_views.student_dossier),
     path("schools/<uuid:school_id>/classes/<uuid:class_id>/enroll", registration_views.class_enroll),
     path("schools/<uuid:school_id>/classes/<uuid:class_id>/apply-fees", registration_views.class_apply_fees),

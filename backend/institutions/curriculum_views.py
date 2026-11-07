@@ -6,11 +6,13 @@ from uuid import UUID
 from django.core.exceptions import ValidationError
 from django.db import transaction, IntegrityError
 from django.http import JsonResponse
+from django.utils.text import slugify
 from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 
-from .views import access, refuse, parse_body, log_event
+from .views import access, delete_unused, refuse, parse_body, log_event
 from .services import has_permission
+from .models import School
 from .academic_models import AcademicClass, AcademicYear
 from .staff_models import StaffAssignment
 from .curriculum_models import Subject, CourseOffering, CourseUnit, CourseInstructor
@@ -86,6 +88,7 @@ def mutate(request, school, model, data, allowed, required=(), obj=None):
         with transaction.atomic():
             if updating:
                 obj=model.objects.select_for_update().filter(school=school,pk=obj.pk).first()
+                if obj is None: return JsonResponse({"error":"Élément introuvable."},status=404)
                 if obj.revision!=data["revision"]: return JsonResponse({"error":"Conflit de version.","revision":obj.revision},status=409)
                 for k,v in values.items(): setattr(obj,k,v)
                 obj.full_clean();obj.revision+=1;obj.save()
@@ -104,13 +107,14 @@ def subjects(request,school_id):
     school,error=access_to(request,school_id,"school.curriculum.read" if request.method=="GET" else "school.curriculum.manage")
     if error is not None:return error
     if request.method=="GET":
-        return JsonResponse({"subjects":[object_output(s) for s in Subject.objects.filter(school=school).order_by("name")[:500]]})
+        return JsonResponse({"subjects":[object_output(s) for s in Subject.objects.filter(school=school).order_by("name")[:500]],
+                             "can_manage":has_permission(request.user,school,"school.curriculum.manage")})
     body,error=parse_body(request)
     if error is not None:return error
     return mutate(request,school,Subject,body,("code","name","description","active"),("code","name"))
 
 
-@require_http_methods(["GET","PATCH"])
+@require_http_methods(["GET","PATCH","DELETE"])
 @authorized
 def subject_detail(request,school_id,subject_id):
     school,error=access_to(request,school_id,"school.curriculum.read" if request.method=="GET" else "school.curriculum.manage")
@@ -120,6 +124,7 @@ def subject_detail(request,school_id,subject_id):
     if request.method=="GET":return JsonResponse(object_output(obj))
     body,error=parse_body(request)
     if error is not None:return error
+    if request.method=="DELETE":return remove_curriculum(request,school,Subject,obj.pk,body)
     return mutate(request,school,Subject,body,("name","description","active"),obj=obj)
 
 
@@ -136,7 +141,7 @@ def courses(request,school_id):
         ("year","classroom","subject","coefficient","active"),("year","classroom","subject"))
 
 
-@require_http_methods(["GET","PATCH"])
+@require_http_methods(["GET","PATCH","DELETE"])
 @authorized
 def course_detail(request,school_id,course_id):
     school,error=access_to(request,school_id,"school.curriculum.read" if request.method=="GET" else "school.curriculum.manage")
@@ -146,7 +151,81 @@ def course_detail(request,school_id,course_id):
     if request.method=="GET":return JsonResponse(object_output(obj))
     body,error=parse_body(request)
     if error is not None:return error
+    if request.method=="DELETE":return remove_curriculum(request,school,CourseOffering,obj.pk,body)
     return mutate(request,school,CourseOffering,body,("coefficient","active"),obj=obj)
+
+
+def remove_curriculum(request, school, model, key, body):
+    try:
+        with transaction.atomic():
+            obj = model.objects.select_for_update().filter(school=school, pk=key).first()
+            if obj is None:
+                return JsonResponse({"error": "Élément introuvable."}, status=404)
+            return delete_unused(request, school, obj, body, "curriculum_deleted")
+    except IntegrityError:
+        return JsonResponse({"error": "Cet élément est utilisé. Archivez-le pour conserver son historique."}, status=409)
+
+
+@require_http_methods(["POST"])
+@authorized
+def generate_courses(request, school_id):
+    school, error = access_to(request, school_id, "school.curriculum.manage")
+    if error is not None:
+        return error
+    data, error = parse_body(request)
+    if error is not None:
+        return error
+    try:
+        if set(data) != {"classroom", "names"} or not isinstance(data["names"], list) or not 1 <= len(data["names"]) <= 30:
+            raise ValueError("Indiquez une classe et 1 à 30 matières.")
+        classroom_id = parsed({"classroom": data["classroom"]}, ("classroom",))["classroom_id"]
+        names = {}
+        for value in data["names"]:
+            name = parsed({"name": value}, ("name",))["name"]
+            names.setdefault(name.casefold(), name)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+    try:
+        with transaction.atomic():
+            School.objects.select_for_update(no_key=True).get(pk=school.pk)
+            classroom = AcademicClass.objects.select_for_update().filter(school=school, pk=classroom_id).first()
+            if classroom is None:
+                return JsonResponse({"error": "Classe introuvable."}, status=404)
+            if not classroom.active or not classroom.year.active:
+                return JsonResponse({"error": "Choisissez une classe et une année actives."}, status=422)
+            catalog = list(Subject.objects.filter(school=school).order_by("active", "pk"))
+            by_name = {subject.name.casefold(): subject for subject in catalog}
+            taken_codes = {subject.code for subject in catalog}
+            assigned = {row.subject_id: row for row in CourseOffering.objects.filter(school=school, classroom=classroom)}
+            created = []
+            skipped = []
+            archived = []
+            for key, name in names.items():
+                subject = by_name.get(key)
+                if subject is None:
+                    prefix = (slugify(name) or "matiere")[:44]
+                    code = prefix
+                    suffix = 2
+                    while code in taken_codes:
+                        code = f"{prefix}-{suffix}"
+                        suffix += 1
+                    subject = Subject.objects.create(school=school, code=code, name=name)
+                    taken_codes.add(code)
+                    log_event(school, request, "curriculum_created", f"Subject:{subject.pk}")
+                offering = assigned.get(subject.pk)
+                if not subject.active or (offering is not None and not offering.active):
+                    archived.append(name)
+                elif offering is not None:
+                    skipped.append(name)
+                else:
+                    offering = CourseOffering.objects.create(
+                        school=school, classroom=classroom, year_id=classroom.year_id, subject=subject,
+                    )
+                    created.append(name)
+                    log_event(school, request, "curriculum_created", f"CourseOffering:{offering.pk}")
+    except IntegrityError:
+        return JsonResponse({"error": "Une modification simultanée a empêché la génération. Réessayez."}, status=409)
+    return JsonResponse({"created": created, "existing": skipped, "archived": archived}, status=201 if created else 200)
 
 
 def can_manage_course(request,school,course):
@@ -165,7 +244,8 @@ def units(request,school_id,course_id):
     course=CourseOffering.objects.filter(school=school,pk=course_id).first()
     if course is None:return JsonResponse({"error":"Cours introuvable."},status=404)
     if request.method=="GET":
-        return JsonResponse({"units":[object_output(x) for x in course.units.order_by("order","pk")[:500]]})
+        return JsonResponse({"units":[object_output(x) for x in course.units.order_by("order","pk")[:500]],
+                             "can_manage":can_manage_course(request,school,course)})
     if not can_manage_course(request,school,course):return refuse()
     body,error=parse_body(request)
     if error is not None:return error

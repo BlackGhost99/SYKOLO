@@ -3,6 +3,8 @@ import React, {useEffect,useState} from "react";
 import AcademicPanel from "./AcademicPanel.jsx";
 import StudentPanel from "./StudentPanel.jsx";
 import StaffPanel from "./StaffPanel.jsx";
+import StaffOnboarding from "./StaffOnboarding.jsx";
+import CycleWorkspace from "./CycleWorkspace.jsx";
 import OrganisationPanel, {MySchoolFunctions} from "./OrganisationPanel.jsx";
 import RoleManager from "./RoleManager.jsx";
 import CurriculumPanel from "./CurriculumPanel.jsx";
@@ -13,6 +15,7 @@ import FinancePanel from "./FinancePanel.jsx";
 import AttendancePanel from "./AttendancePanel.jsx";
 import TimetablePanel from "./TimetablePanel.jsx";
 import AdmissionsPanel from "./AdmissionsPanel.jsx";
+import StudentNumberingSettings from "./StudentNumberingSettings.jsx";
 import ParentPortal from "./ParentPortal.jsx";
 import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens.jsx";
 import {StudentForm,StudentFile,ClassEnrollments,ClassSetup,FormSettings,PaymentTracking,ImportStudents} from "./EnrollmentScreens.jsx";
@@ -22,6 +25,7 @@ import "./yem-desktop.css";
 /* Espace réel connecté : mêmes cadre, menu et en-têtes que les maquettes (docs/maquettes),
    chaque entrée du menu ouvrant les modules existants autorisés pour le rôle du compte. */
 const modules = {
+  onboarding:{label:"Ajouter un collaborateur",read:"school.staff.manage",view:StaffOnboarding},
   academic:{label:"Années, cycles et classes",read:"school.academic.read",view:AcademicPanel},
   students:{label:"Élèves et inscriptions",read:"school.students.read",view:StudentPanel},
   staff:{label:"Personnel et enseignants",read:"school.staff.read",view:StaffPanel},
@@ -49,10 +53,11 @@ const sections = {
   arrears:{title:"Impayés & relances",subtitle:"Suivi des échéances, retards et soldes des familles",modules:[],lives:[{key:"live",label:"Impayés",need:["school.finance.read"]}]},
   bulletins:{title:"Bulletins et résultats scolaires",subtitle:"Évaluations, préparation, contrôle et publication des bulletins",modules:["assessments","reports","council"]},
   absences:{title:"Absences et retards",subtitle:"Appels, absences, retards et justificatifs",modules:["attendance","timetable"]},
-  staff:{title:"Personnel",subtitle:"Équipe pédagogique et administrative, affectations et comptes",modules:["staff","organization","roles"],extra:"users"},
+  staff:{title:"Personnel",subtitle:"Équipe pédagogique et administrative, affectations et comptes",modules:["onboarding","staff","organization","roles"],extra:"users"},
   settings:{title:"Paramétrage de l’établissement",subtitle:"Années, classes, fiche d’inscription, matières, barèmes et emplois du temps",modules:["academic","curriculum","timetable"],lives:[
     {key:"classes",label:"Classes",need:["school.academic.read"]},
-    {key:"form",label:"Fiche d’inscription",need:["school.students.read"]}]},
+    {key:"form",label:"Fiche d’inscription",need:["school.students.read"]},
+    {key:"numbering",label:"Matricules",need:["school.settings.write"]}]},
 };
 const sectionIcon=Object.fromEntries(NAV.map(([id,icon])=>[id,icon]));
 
@@ -62,7 +67,7 @@ async function get(path) {
   if (!r.ok) throw Error(data.error||"Accès refusé");
   return data;
 }
-const defaultPerson={username:"",email:"",first_name:"",last_name:"",password:"",role:"enseignant",function_codes:[]};
+const defaultPerson={username:"",email:"",first_name:"",last_name:"",password:"",role:"enseignant",function_codes:null};
 const DEFAULT_ROLE_OPTIONS=[["direction","Directeur / Directrice"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]];
 async function addUser(schoolId, body, endpoint="users") {
   await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
@@ -86,7 +91,7 @@ function UsersForm({schoolId,onMessage}) {
     get("schools/"+schoolId+"/roles").then(result=>{
       if(!alive)return;
       setFunctions(result.functions||[]);
-      const options=(result.roles||[]).map(r=>[r.code,r.label]);
+      const options=(result.roles||[]).map(r=>[r.code,r.label,r.suggested_function]);
       if(options.length){
         setRoleOptions(options);
         setPerson(old=>options.some(([code])=>code===old.role)?old:{...old,role:options[0][0]});
@@ -94,12 +99,14 @@ function UsersForm({schoolId,onMessage}) {
     }).catch(err=>{if(alive){setRoleOptions([]);onMessage(err.message);}});
     return()=>{alive=false;};
   },[schoolId]);
+  const proposedFunction=roleOptions.find(([code])=>code===person.role)?.[2];
+  const personFunctions=person.function_codes??(proposedFunction?[proposedFunction]:[]);
   return <Card title="Créer un compte pour l'établissement" icon="adduser" subtitle="Le compte est rattaché uniquement à cette école. Les droits dépendent de son rôle.">
-    <form onSubmit={async e=>{e.preventDefault();setBusy(true);onMessage("");try{const result=await addUser(schoolId,person);setPerson(defaultPerson);setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
+    <form onSubmit={async e=>{e.preventDefault();setBusy(true);onMessage("");try{const result=await addUser(schoolId,{...person,function_codes:personFunctions});setPerson(defaultPerson);setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
       {["first_name","last_name","username","email"].map(key=><label key={key}>{{first_name:"Prénom",last_name:"Nom",username:"Identifiant de connexion",email:"Email"}[key]}<input required value={person[key]} type={key==="email"?"email":"text"} onChange={e=>setPerson(x=>({...x,[key]:e.target.value}))}/></label>)}
-      <label>Rôle<select value={person.role} onChange={e=>setPerson(x=>({...x,role:e.target.value}))}>{roleOptions.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+      <label>Rôle<select value={person.role} onChange={e=>setPerson(x=>({...x,role:e.target.value,function_codes:null}))}>{roleOptions.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
       <label>Mot de passe initial<input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>setPerson(x=>({...x,password:e.target.value}))}/></label>
-    </div><fieldset><legend>Fonctions exercées (facultatives, sans droits automatiques)</legend>{functions.map(f=><label key={f.code}><input type="checkbox" checked={person.function_codes.includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...old.function_codes,f.code]:old.function_codes.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset><button className="pc-primary" type="submit" disabled={busy||!roleOptions.length}>Créer le compte</button></form>
+    </div><fieldset><legend>Fonctions exercées (facultatives, sans droits automatiques)</legend>{functions.map(f=><label key={f.code}><input type="checkbox" checked={personFunctions.includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...personFunctions,f.code]:personFunctions.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset><button className="pc-primary" type="submit" disabled={busy||!roleOptions.length}>Créer le compte</button></form>
     <form aria-label="Fonctions d'un compte existant" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await addUser(schoolId,assignment,"members");setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Fonctions mises à jour.");}catch(err){onMessage(err.message);}finally{setBusy(false);}}}>
       <h3>Fonctions d'un compte existant</h3>
       <label>Compte existant<select required value={assignment.username} onChange={e=>{const m=members.find(x=>x.username===e.target.value);if(m)setAssignment({username:m.username,role:m.role,additional_roles:m.additional_roles||[],function_codes:m.function_codes||[]});}}><option value="">Choisir…</option>{members.map(m=><option key={m.user_id} value={m.username}>{m.username}</option>)}</select></label>
@@ -153,9 +160,17 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     setPage("dashboard");return ()=>{alive=false;};
   },[chosen]);
   const perms=access?.permissions||[];
-  const allowed=key=>perms.includes(modules[key].read);
+  const allowed=key=>key==="onboarding"
+    ? (perms.includes("school.staff.manage")||access?.role==="proprietaire")
+    : perms.includes(modules[key].read);
   const canUsers=perms.includes("school.members.write");
-  const visibleSections=Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers,lives:(s.lives||[]).filter(l=>l.need.every(p=>perms.includes(p)))}]).filter(([,s])=>s.modules.length||s.users||s.lives.length));
+  const restricted=Boolean(access?.cycle_scope_restricted);
+  const visibleSections=restricted
+    ? Object.fromEntries([
+        ...(perms.includes("school.students.read")?[["students",{...sections.students,modules:[],users:false,lives:[{key:"cycle-list",label:"Élèves autorisés",need:[]}]}]]:[]),
+        ...(perms.includes("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],users:false,lives:[]}]]:[]),
+      ])
+    : Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers,lives:(s.lives||[]).filter(l=>l.need.every(p=>perms.includes(p)))}]).filter(([,s])=>s.modules.length||s.users||s.lives.length));
   const nav=NAV.filter(([id])=>id==="dashboard"||visibleSections[id]||(id==="parents"&&isParent));
   function navigate(id,subTab="",extra=null){setPage(id);setSub(subTab);setParams(extra);setMessage("");window.scrollTo?.(0,0);}
   const section=visibleSections[page];
@@ -189,9 +204,10 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p>{isParent&&<Button primary icon="users" onClick={()=>navigate("parents")}>Ouvrir l'espace parents</Button>}</Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
   else if (section&&(hiddenTab||section.lives.some(l=>l.key===tab))) {
-    const props={schoolId:chosen,schoolName,tabs:tabBar,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canReceive:perms.includes("school.finance.receive")};
+    const props={schoolId:chosen,schoolName,tabs:tabBar,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canIssueTransfer:perms.includes("school.students.manage")&&perms.includes("school.admissions.decide"),canReceive:perms.includes("school.finance.receive")};
     const k=chosen+JSON.stringify(params);
     content={
+      "students:cycle-list":<CycleWorkspace key={chosen} schoolId={chosen} access={access}/>,
       "students:live":<LiveStudents key={chosen} {...props}/>,
       "students:byclass":<ClassEnrollments key={chosen} {...props}/>,
       "students:new":<StudentForm key={k} {...props}/>,
@@ -201,6 +217,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
       "arrears:live":<LiveArrears key={chosen} {...props}/>,
       "settings:classes":<ClassSetup key={chosen} {...props}/>,
+      "settings:numbering":<StudentNumberingSettings key={chosen} {...props}/>,
       "settings:form":<FormSettings key={chosen} {...props} canEdit={perms.includes("school.students.manage")}/>,
     }[page+":"+tab];
   }
@@ -217,11 +234,22 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else content=<>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={access.role_label||"Membre"} badgeIcon="crown"/>
     <MySchoolFunctions schoolId={chosen}/>
+    {restricted&&<div className="yd-real-body"><p className="hint">Ce compte est limité aux cycles autorisés. Les modules non encore sécurisés par cycle sont temporairement indisponibles.</p></div>}
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
+  const schoolCode = access?.school?.id === chosen && access.school.login_code;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
     userMenu={<UserMenu user={user} roleLabel={access?.role_label} onAccount={()=>navigate("account")} onLogout={onLogout}/>}>
     {message&&<p role="status" className="pc-alert">{message}</p>}
+    {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school">
+      <label className="field">Code à communiquer au personnel
+        <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
+      </label>
+      <Button type="button" onClick={async()=>{
+        try {await navigator.clipboard.writeText(schoolCode);setMessage("Code établissement copié.");}
+        catch {setMessage("Sélectionnez le code puis copiez-le.");}
+      }}>Copier le code</Button>
+    </Card>}
     {content}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
   </Shell>;

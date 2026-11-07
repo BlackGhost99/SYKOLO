@@ -31,7 +31,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
     [routeReference,setRouteReference]=useState(""),[orientationAuthority,setOrientationAuthority]=useState(""),
     [routePolicy,setRoutePolicy]=useState(null),
     [existing,setExisting]=useState(""),[chosen,setChosen]=useState(""),
-    [reason,setReason]=useState(""),[studentCode,setStudentCode]=useState(""),
+    [reason,setReason]=useState(""),
     [enrollDate,setEnrollDate]=useState(""),[capacity,setCapacity]=useState(null),
     [history,setHistory]=useState(null),[busy,setBusy]=useState(false),
     [message,setMessage]=useState(""),[visible,setVisible]=useState(true);
@@ -168,7 +168,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
     </form>
     <h3>Traitement des candidatures</h3>
     <label className="field">Candidature
-      <select value={chosen} onChange={e=>{setChosen(e.target.value);setReason("");setHistory(null);setStudentCode("");}}>
+      <select value={chosen} onChange={e=>{setChosen(e.target.value);setReason("");setHistory(null);}}>
         <option value="">Choisir un dossier…</option>
         {applications.map(x=><option key={x.id} value={x.id}>{x.last_name} {x.first_name} · {STATES[x.status]||x.status}</option>)}
       </select>
@@ -202,7 +202,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
       </form>}
       {current.status==="accepted"&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
         await admissionApi(base+"/"+current.id+"/convert",{
-          revision:current.revision,enrolled_on:enrollDate,student_code:studentCode
+          revision:current.revision,enrolled_on:enrollDate
         });
         setMessage("Inscription officielle créée ; vous pouvez gérer les frais dans la caisse scolaire.");
       })}}>
@@ -210,10 +210,6 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
         <div className="two">
           <label className="field">Date de l'inscription
             <input type="date" required value={enrollDate} onChange={e=>setEnrollDate(e.target.value)}/>
-          </label>
-          <label className="field">Matricule {current.existing_student?"existant (facultatif)":"du nouvel élève"}
-            <input required={!current.existing_student} maxLength={50} pattern="[a-zA-Z0-9][a-zA-Z0-9_-]*"
-              value={studentCode} onChange={e=>setStudentCode(e.target.value)}/>
           </label>
         </div>
         <button disabled={busy||!enrollDate} type="submit">Transformer en inscription officielle</button>

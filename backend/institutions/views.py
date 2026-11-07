@@ -13,6 +13,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from accounts.views import authorized
 from pedagogy.domain import ValidationError as PolicyValidationError, validate_policy
 
+from .school_functions import account_function_codes
 from .models import (
     Organization, OrganizationMember, School, SchoolAudit, SchoolMember, SchoolLogin,
     SchoolRole, SchoolSetting,
@@ -41,6 +42,18 @@ def parse_body(request):
     if not isinstance(data, dict):
         return None, JsonResponse({"error": "Objet JSON requis."}, status=400)
     return data, None
+
+
+def delete_unused(request, school, obj, data, event):
+    """The caller locks the object and checks the school and write permission."""
+    if set(data) != {"revision"} or type(data["revision"]) is not int:
+        return JsonResponse({"error": "Révision obligatoire."}, status=422)
+    if data["revision"] != obj.revision:
+        return JsonResponse({"error": "Conflit de version. Actualisez la page."}, status=409)
+    subject = obj.pk
+    obj.delete()
+    log_event(school, request, event, subject)
+    return JsonResponse({"deleted": True})
 
 
 def refuse():
@@ -192,7 +205,7 @@ def school_members(request, school_id):
         ).order_by("user__username")[:200]
         return JsonResponse({"members": [
             {"user_id": str(m.user_id), "username": SchoolLogin.objects.filter(school=school, user=m.user).values_list("username", flat=True).first() or m.user.username,
-             "function_codes": m.function_codes,
+             "function_codes": account_function_codes(school, m.function_codes),
              "role": m.role.code, "additional_roles": list(m.additional_roles.filter(school=school).values_list("code", flat=True))}
             for m in rows
         ]})
@@ -254,6 +267,8 @@ def school_members(request, school_id):
 @require_GET
 @authorized
 def my_school_access(request, school_id):
+    from .cycle_scope import scoped_cycle_ids, allowed_school_permissions
+    from .academic_models import AcademicCycle
     school, error = access(request, school_id)
     if error is not None:
         return error
@@ -261,12 +276,18 @@ def my_school_access(request, school_id):
         school=school, user=request.user, active=True
     ).first()
     founder = owns_organization(request.user, school.organization)
+    cycle_ids = scoped_cycle_ids(request.user,school)
+    permitted = effective_permissions(request.user,school) if member else ({"school.view", "school.members.write"} if founder else set())
+    scoped_cycles = list(AcademicCycle.objects.filter(school=school,pk__in=cycle_ids).values("id","name")) if cycle_ids is not None else []
     return JsonResponse({
         "school": school_response(school),
         "role": member.role.code if member else ("proprietaire" if founder else None),
-        "role_label": public_role_label(member.role) if member else ("Propriétaire" if founder else ""),
+        "role_label": public_role_label(member.role, school) if member else ("Propriétaire" if founder else ""),
         "roles": [member.role.code, *member.additional_roles.filter(school=school).values_list("code", flat=True)] if member else [],
-        "permissions": sorted(effective_permissions(request.user, school)) if member else (["school.view", "school.members.write"] if founder else []),
+        "permissions": allowed_school_permissions(permitted,cycle_ids),
+        "cycle_scope_restricted": cycle_ids is not None,
+        "access_cycle_ids": sorted(cycle_ids) if cycle_ids is not None else None,
+        "access_cycles": [{"id": str(row["id"]), "name": row["name"]} for row in scoped_cycles],
     })
 
 
@@ -336,8 +357,8 @@ def may_delegate_finance(user, school, permissions):
     return not FINANCIAL_DUTIES.intersection(permissions) or owns_organization(user, school.organization)
 
 
-def role_response(role):
-    return {"id": str(role.id), "code": role.code, "label": public_role_label(role),
+def role_response(role, school=None):
+    return {"id": str(role.id), "code": role.code, "label": public_role_label(role, school),
             "permissions": role.permissions, "revision": role.revision}
 
 
@@ -350,8 +371,12 @@ def school_roles(request, school_id):
     if request.method == "GET":
         if not has_permission(request.user, school, "school.roles.read") and not owns_organization(request.user, school.organization):
             return refuse()
-        from .school_functions import account_functions
-        return JsonResponse({"functions": account_functions(school), "roles": [role_response(r) for r in school.roles.order_by("code")],
+        from .school_functions import account_functions, suggested_account_function
+        functions = account_functions(school)
+        return JsonResponse({"functions": functions, "roles": [
+            {**role_response(r, school), "suggested_function": suggested_account_function(school, r.code, functions)}
+            for r in school.roles.order_by("code")
+        ],
                              "available_permissions": sorted(PERMISSIONS)})
     if not has_permission(request.user, school, "school.roles.manage"):
         return refuse()

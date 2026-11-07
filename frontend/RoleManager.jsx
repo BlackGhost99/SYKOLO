@@ -2,7 +2,7 @@ import React, {useEffect,useState} from "react";
 
 const DOMAIN_LABELS = {
   view:"Accès", members:"Utilisateurs", roles:"Rôles", settings:"Paramètres",
-  audit:"Audit", organization:"Organigramme", academic:"Structure académique",
+  audit:"Audit", organization:"Organigramme", academic:"Structure académique", classes:"Classes",
   admissions:"Admissions", parents:"Accès parents", students:"Élèves",
   staff:"Personnel", curriculum:"Matières et programmes", assessments:"Évaluations",
   reports:"Bulletins", deliberations:"Conseils", timetable:"Emplois du temps",
