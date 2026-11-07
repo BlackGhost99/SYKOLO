@@ -3,6 +3,7 @@ from . import import_views
 from . import singpay_views
 from . import delegation_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views
+from . import staff_onboarding_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
 
 urlpatterns = [
@@ -123,6 +124,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/organization/appointments", organization_views.appointments),
     path("schools/<uuid:school_id>/organization/appointments/<uuid:appointment_id>", organization_views.appointment_detail),
     path("schools/<uuid:school_id>/organization/my-appointments", organization_views.my_appointments),
+    path("schools/<uuid:school_id>/staff/onboard", staff_onboarding_views.onboard_staff),
     path("schools/<uuid:school_id>/staff", staff_views.staff),
     path("schools/<uuid:school_id>/staff/me/assignments", staff_views.my_assignments),
     path("schools/<uuid:school_id>/staff/<uuid:staff_id>", staff_views.staff_detail),

@@ -3,6 +3,7 @@ import React, {useEffect,useState} from "react";
 import AcademicPanel from "./AcademicPanel.jsx";
 import StudentPanel from "./StudentPanel.jsx";
 import StaffPanel from "./StaffPanel.jsx";
+import StaffOnboarding from "./StaffOnboarding.jsx";
 import OrganisationPanel, {MySchoolFunctions} from "./OrganisationPanel.jsx";
 import RoleManager from "./RoleManager.jsx";
 import CurriculumPanel from "./CurriculumPanel.jsx";
@@ -22,6 +23,7 @@ import "./yem-desktop.css";
 /* Espace réel connecté : mêmes cadre, menu et en-têtes que les maquettes (docs/maquettes),
    chaque entrée du menu ouvrant les modules existants autorisés pour le rôle du compte. */
 const modules = {
+  onboarding:{label:"Ajouter un collaborateur",read:"school.staff.manage",view:StaffOnboarding},
   academic:{label:"Années, cycles et classes",read:"school.academic.read",view:AcademicPanel},
   students:{label:"Élèves et inscriptions",read:"school.students.read",view:StudentPanel},
   staff:{label:"Personnel et enseignants",read:"school.staff.read",view:StaffPanel},
@@ -49,7 +51,7 @@ const sections = {
   arrears:{title:"Impayés & relances",subtitle:"Suivi des échéances, retards et soldes des familles",modules:[],lives:[{key:"live",label:"Impayés",need:["school.finance.read"]}]},
   bulletins:{title:"Bulletins et résultats scolaires",subtitle:"Évaluations, préparation, contrôle et publication des bulletins",modules:["assessments","reports","council"]},
   absences:{title:"Absences et retards",subtitle:"Appels, absences, retards et justificatifs",modules:["attendance","timetable"]},
-  staff:{title:"Personnel",subtitle:"Équipe pédagogique et administrative, affectations et comptes",modules:["staff","organization","roles"],extra:"users"},
+  staff:{title:"Personnel",subtitle:"Équipe pédagogique et administrative, affectations et comptes",modules:["onboarding","staff","organization","roles"],extra:"users"},
   settings:{title:"Paramétrage de l’établissement",subtitle:"Années, classes, fiche d’inscription, matières, barèmes et emplois du temps",modules:["academic","curriculum","timetable"],lives:[
     {key:"classes",label:"Classes",need:["school.academic.read"]},
     {key:"form",label:"Fiche d’inscription",need:["school.students.read"]}]},
@@ -153,7 +155,9 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     setPage("dashboard");return ()=>{alive=false;};
   },[chosen]);
   const perms=access?.permissions||[];
-  const allowed=key=>perms.includes(modules[key].read);
+  const allowed=key=>key==="onboarding"
+    ? (perms.includes("school.staff.manage")||access?.role==="proprietaire")
+    : perms.includes(modules[key].read);
   const canUsers=perms.includes("school.members.write");
   const visibleSections=Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers,lives:(s.lives||[]).filter(l=>l.need.every(p=>perms.includes(p)))}]).filter(([,s])=>s.modules.length||s.users||s.lives.length));
   const nav=NAV.filter(([id])=>id==="dashboard"||visibleSections[id]||(id==="parents"&&isParent));
