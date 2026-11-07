@@ -1,9 +1,10 @@
 import React, {useEffect,useState} from "react";
 import YemDesktop from "./YemDesktop.jsx";
+import DemoExperience from "./DemoExperience.jsx";
 import AuthPanel from "./AuthPanel.jsx";
 import "./platform-console.css";
 
-export default function App() {
+function RealApp() {
   const [mode,setMode]=useState("workspace");
   const [authenticated,setAuthenticated]=useState(false);
   const [apiAvailable,setApiAvailable]=useState(null);
@@ -29,7 +30,8 @@ export default function App() {
     {!authenticated && <nav className="yem-mode-switch" aria-label="Mode d'application YEM">
       <strong>YEM</strong>
       <button type="button" aria-pressed={mode==="workspace"} onClick={()=>setMode("workspace")}>Espace de gestion réel</button>
-      <button type="button" aria-pressed={mode==="preview"} onClick={()=>setMode("preview")}>Maquettes PC (démonstration)</button>
+      <button type="button" aria-pressed={mode==="preview"} onClick={()=>setMode("preview")}>Maquettes PC (référence statique)</button>
+      <button type="button" onClick={()=>{window.location.hash="#/demo";}}>Démonstration interactive · Présentation</button>
     </nav>}
     {mode==="workspace"||authenticated ?
       <div className={authenticated?"yem-live-workspace yem-auth-app":"yem-live-workspace"}>
@@ -38,4 +40,16 @@ export default function App() {
         <footer className="yem-company">YEM · Développé par BWETEK Informatyk</footer>
       </div> : <YemDesktop />}
   </div>;
+}
+
+/* Entrée indépendante : ne monte jamais AuthPanel ni les requêtes réelles YEM
+   lorsque la démo est active, y compris si le visiteur possède une session. */
+export default function App(){
+  const [demo,setDemo]=useState(()=>window.location.hash.startsWith("#/demo"));
+  useEffect(()=>{
+    const onHashChange=()=>setDemo(window.location.hash.startsWith("#/demo"));
+    window.addEventListener("hashchange",onHashChange);
+    return()=>window.removeEventListener("hashchange",onHashChange);
+  },[]);
+  return demo?<DemoExperience/>:<RealApp/>;
 }

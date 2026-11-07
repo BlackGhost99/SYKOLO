@@ -1,0 +1,148 @@
+/* YEM — démonstration séparée des données de production. Réutilise le cadre YEM. */
+.demo-app{font-family:var(--yd-font,"Segoe UI",sans-serif);min-height:100vh;background:#f6f9f6;color:#213327}
+.demo-app *{box-sizing:border-box}
+.demo-ribbon{display:flex;align-items:center;flex-wrap:wrap;gap:12px;position:sticky;z-index:80;top:0;
+  background:#103f27;color:#fff;padding:9px 18px;min-height:46px;font-size:13px;box-shadow:0 3px 16px #102c201f}
+.demo-ribbon strong{display:flex;align-items:center;gap:8px;letter-spacing:.08em;font-size:12px}
+.demo-ribbon span{opacity:.84;flex:1}
+.demo-ribbon button,.demo-ribbon a{display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid #9ec3a7;
+  border-radius:7px;background:transparent;color:#fff;font-size:12px;min-height:32px}
+.demo-ribbon button:hover,.demo-ribbon a:hover{background:#28693c}
+.demo-rolebar{background:#ecf6ed;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 20px;
+  border-bottom:1px solid #c4dfc9;min-height:60px}
+.demo-rolebar>span{font-weight:700;color:#234732;font-size:13px}
+.demo-rolebar button{border:1px solid #b6d1bb;border-radius:20px;background:white;color:#30583b;
+  padding:9px 13px;font-size:12px;font-weight:600}
+.demo-rolebar button.active{background:#296c40;border-color:#296c40;color:white}
+.demo-rolebar select{margin-left:auto;min-width:180px;max-width:330px;border-radius:7px;border:1px solid #b4d0bc;
+  background:white;padding:9px;font-size:12px;color:#1d4931}
+.demo-shell .yd-topbar{top:46px}
+.demo-shell .yd-topbar .yd-logo{flex-shrink:0}
+.demo-shell .yd-topbar .yd-logo b{font-size:32px}
+.demo-shell .yd-topbar .yd-logo span{font-size:11px}
+.demo-shell .yd-topbar .yd-brand-emblem{max-height:52px;width:52px;object-fit:contain}
+.demo-header-school{display:flex;align-items:center;gap:9px;color:#245536;font-weight:650;font-size:14px;
+  min-width:190px;max-width:350px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+.demo-shell .yd-global-search{display:none}
+.demo-shell .yd-topbar-sep.small,.demo-shell .yd-bell{display:none}
+.demo-shell .yd-user{margin-left:auto}
+.demo-shell .yd-user b{font-size:13px;max-width:310px;white-space:normal;line-height:1.3}
+.demo-shell .yd-sidebar{top:134px;height:calc(100vh - 134px)}
+.demo-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}
+.demo-metrics .yd-metric{min-height:104px}
+.demo-metrics .yd-metric strong{font-size:clamp(16px,2vw,24px);white-space:normal;overflow-wrap:anywhere}
+.demo-grid-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;margin:14px 0}
+.demo-grid-split{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr);gap:16px;margin:16px 0;align-items:start}
+.demo-app .yd-card{min-width:0}
+.demo-app .yd-card-title{margin-bottom:14px}
+.demo-quick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.demo-quick .yd-btn{min-width:0;white-space:normal;font-size:14px;min-height:54px}
+.demo-activity{margin:0;padding-left:21px;display:grid;gap:14px;line-height:1.5;color:#3c5443}
+.demo-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0}
+.demo-toolbar input,.demo-toolbar select,.demo-field input,.demo-field select,.demo-field textarea{
+  border:1px solid #c9d9cd;border-radius:8px;background:white;padding:11px 13px;min-height:44px;color:#24402d;
+  font:inherit;min-width:0}
+.demo-toolbar input{flex:1;min-width:190px}
+.demo-toolbar select{max-width:320px}
+.demo-table-wrap{max-width:100%;overflow:auto}
+.demo-table-wrap table{border-collapse:collapse;min-width:480px;width:100%;font-size:13px}
+.demo-table-wrap th{text-align:left;background:#f3f8f4;font-weight:700;color:#2d5138;padding:12px 11px;border-bottom:1px solid #dce9df}
+.demo-table-wrap td{padding:13px 11px;border-bottom:1px solid #e8ede9;vertical-align:middle}
+.demo-table-wrap tr.demo-selected{background:#e5f5e8}
+.demo-table-action,.demo-name{border:0;padding:5px 7px;background:none;color:#176839;font-weight:750;text-align:left}
+.demo-table-action:hover,.demo-name:hover{text-decoration:underline;background:#ecf6ed}
+.demo-table-action:disabled{color:#65766b;cursor:not-allowed}
+.demo-profile{display:flex;align-items:center;gap:14px;margin:10px 0 19px}
+.demo-profile h3{font-size:19px;margin:0 0 5px;color:#163e27}
+.demo-profile span{display:block;font-size:12px;color:#6a8071}
+.demo-avatar{width:48px;height:48px;display:grid;place-items:center;flex:0 0 auto;border-radius:50%;
+  background:#e1f1e3;color:#206a3e;font-weight:800;font-size:16px}
+.demo-profile .demo-avatar{width:62px;height:62px;font-size:20px}
+.demo-person-inline{display:flex;align-items:center;gap:10px}
+.demo-dl{margin:12px 0}
+.demo-dl>div,.demo-receipt dl>div{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:11px 0;border-bottom:1px solid #e4eae5}
+.demo-dl dt,.demo-receipt dt{color:#5e7565;font-size:13px}
+.demo-dl dd,.demo-receipt dd{margin:0;color:#1a4429;font-weight:650;font-size:13px;text-align:right}
+.demo-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+.demo-actions .yd-btn{font-size:13px;white-space:normal;padding:9px 12px;min-height:42px;max-width:100%}
+.demo-line{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
+  border-bottom:1px solid #e6ede7;padding:14px 8px;text-align:left;font-size:13px}
+.demo-line>div:first-child{display:grid;gap:4px}
+.demo-line small{display:block;color:#7d8c80}
+.demo-line span{color:#556e5c}
+.demo-line-button{width:100%;border-radius:7px;border-left:0;border-right:0;border-top:0;background:white;color:inherit}
+.demo-line-button:hover,.demo-line.demo-selected{background:#eaf5ec}
+.demo-empty{padding:22px;text-align:center;color:#657b6c;font-style:italic;font-size:13px}
+.demo-notice{display:flex;align-items:center;gap:10px;margin:3px 0 16px;border:1px solid #c0d9c4;
+  background:#e8f7e9;color:#205e35;border-radius:8px;padding:12px 13px;font-size:13px}
+.demo-notice button{margin-left:auto;border:0;background:transparent;padding:4px;display:flex}
+.demo-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px;margin:18px 0}
+.demo-tile{border:1px solid #dce9dd;border-radius:12px;background:white;box-shadow:0 3px 14px #294e3012;
+  text-align:left;display:flex;align-items:flex-start;flex-direction:column;gap:10px;min-height:145px;padding:16px;
+  color:#1a5634}
+.demo-tile b{font-size:16px;color:#193d2b}
+.demo-tile span,.demo-tile small{color:#56705f;font-size:12px}
+.demo-tile:hover,.demo-tile-selected{border-color:#73b281;background:#ecf8ee}
+.demo-presence>div:first-child{flex:1}
+.demo-segments{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.demo-segments button{border:1px solid #bcd7bf;background:#fff;padding:7px 10px;border-radius:7px;font-size:12px}
+.demo-segments button.active{background:#2d7245;border-color:#2d7245;color:#fff}
+.demo-report{background:#f7faf7;padding:17px;border:1px solid #e0ebe0;border-radius:9px;margin:12px 0}
+.demo-report h3{color:#20593a;margin-top:0}
+.demo-check{display:flex;gap:10px;align-items:center;padding:12px;border-bottom:1px solid #e5ede6;font-size:14px}
+.demo-check input{accent-color:#286f40;width:17px;height:17px}
+.demo-hint{color:#5d7564;font-size:12px;line-height:1.6;margin-top:12px}
+.demo-parent-quick{margin:16px 0}
+.demo-footer{padding:18px 8px;text-align:center;font-size:11px;color:#698072}
+.demo-app .yd-content{min-height:calc(100vh - 160px);padding-bottom:30px}
+.demo-overlay{position:fixed;inset:0;z-index:200;background:rgba(12,31,22,.62);display:grid;place-items:center;
+  padding:18px;overflow:auto}
+.demo-dialog{max-height:93vh;overflow:auto;background:white;border-radius:16px;padding:23px;width:min(550px,100%);
+  box-shadow:0 28px 85px #0216086e;animation:demo-in .15s ease-out}
+@keyframes demo-in{from{transform:translateY(10px);opacity:.8}to{transform:translateY(0);opacity:1}}
+.demo-dialog-head{height:auto;display:flex;align-items:flex-start;justify-content:space-between;
+  background:none;padding:0 0 16px;border-bottom:1px solid #e2ede4}
+.demo-dialog-head small{color:#247444;letter-spacing:.09em;font-size:10px;font-weight:800}
+.demo-dialog-head h2{color:#133e24;margin:5px 0;font-size:22px}
+.demo-dialog-head button{border:0;background:#eff6f0;color:#244f31;border-radius:8px;padding:7px}
+.demo-dialog-form{padding-top:12px}
+.demo-fields{display:grid;gap:12px}
+.demo-field{display:grid;gap:6px;font-size:13px;color:#31533b;font-weight:650}
+.demo-field input,.demo-field select{width:100%;font-weight:450}
+.demo-dialog-footer{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:21px}
+.demo-dialog-footer button{min-height:44px;border-radius:8px;padding:10px 15px;border:1px solid #cbd9ce}
+.demo-dialog-footer .demo-main-btn{background:#267343;color:white;border-color:#267343;
+  display:flex;align-items:center;gap:7px;font-weight:700}
+.demo-emphasis{font-size:12px;color:#855021;background:#fff4e3;border:1px solid #ecd9b6;
+  padding:10px;border-radius:7px;line-height:1.6}
+.demo-receipt{padding-top:15px}
+.demo-receipt .yd-logo{transform:scale(.75);transform-origin:left;max-width:280px}
+.demo-export-preview{white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid #d7e9db;
+  background:#f2f8f3;border-radius:8px;padding:13px;line-height:1.8}
+@media(max-width:1160px){.demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .demo-grid-split{grid-template-columns:1fr}}
+@media(max-width:760px){
+  .demo-ribbon{position:relative;padding:8px 12px}
+  .demo-ribbon span{flex:1 1 100%;font-size:11px}
+  .demo-rolebar{padding:10px;gap:7px}
+  .demo-rolebar select{width:100%;min-width:0;max-width:none;margin-left:0}
+  .demo-shell .yd-topbar{top:0;position:relative}
+  .demo-shell .yd-topbar .yd-logo{display:none}
+  .demo-shell .yd-topbar .yd-topbar-sep{display:none}
+  .demo-shell .yd-topbar .demo-header-school{font-size:12px;min-width:0;flex:1;white-space:normal}
+  .demo-shell .yd-topbar .yd-user{display:none}
+  .demo-shell .yd-app,.demo-app .yd-app{display:block;min-height:0}
+  .demo-shell .yd-sidebar{height:auto;top:0}
+  .demo-shell .yd-content{padding:12px;min-height:70vh}
+  .demo-grid-two,.demo-grid-split,.demo-metrics{grid-template-columns:1fr}
+  .demo-quick{grid-template-columns:1fr}
+  .demo-metrics{gap:8px}
+  .demo-metrics .yd-metric{min-height:84px}
+  .demo-toolbar>*{max-width:100%;width:100%}
+  .demo-tiles{grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr))}
+  .demo-dialog{padding:15px}
+  .demo-dialog-head h2{font-size:19px}
+  .demo-app .yd-hero h1{white-space:normal}
+  .demo-app .yd-hero p{white-space:normal}
+}
