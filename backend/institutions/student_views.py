@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 from .views import access, refuse, parse_body, log_event
 from .services import has_permission, quota_reached
+from .cycle_scope import scoped_cycle_ids
 from .academic_models import AcademicYear, AcademicClass
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 
@@ -20,6 +21,22 @@ def check(request, school_id, permission):
     if not has_permission(request.user, school, permission):
         return None, refuse()
     return school, None
+
+
+def visible_students(user, school):
+    result = Student.objects.filter(school=school)
+    cycles = scoped_cycle_ids(user, school)
+    if cycles is not None:
+        result = result.filter(enrollments__active=True, enrollments__classroom__level__cycle_id__in=cycles).distinct()
+    return result
+
+
+def visible_enrollments(user, school):
+    result = Enrollment.objects.filter(school=school)
+    cycles = scoped_cycle_ids(user, school)
+    if cycles is not None:
+        result = result.filter(classroom__level__cycle_id__in=cycles)
+    return result
 
 
 TEXT_LIMITS = {"place_of_birth": 120, "nationality": 80, "address": 255, "previous_school": 180, "profession": 120}
@@ -117,7 +134,7 @@ def students(request, school_id):
     school, error = check(request, school_id, "school.students.read" if request.method == "GET" else "school.students.manage")
     if error is not None: return error
     if request.method == "GET":
-        return JsonResponse({"students": [describe(s) for s in Student.objects.filter(school=school).order_by("last_name","first_name")[:500]]})
+        return JsonResponse({"students": [describe(s) for s in visible_students(request.user,school).order_by("last_name","first_name")[:500]]})
     data, error = parse_body(request)
     if error is not None: return error
     try:
@@ -143,7 +160,7 @@ def student_detail(request, school_id, student_id):
     school, error = check(request, school_id, "school.students.read" if request.method == "GET" else "school.students.manage")
     if error is not None: return error
     if request.method == "GET":
-        student = Student.objects.filter(school=school, id=student_id).first()
+        student = visible_students(request.user,school).filter(id=student_id).first()
         return JsonResponse(describe(student)) if student else JsonResponse({"error": "Élève introuvable."}, status=404)
     data,error = parse_body(request)
     if error is not None: return error
@@ -185,7 +202,7 @@ def student_detail(request, school_id, student_id):
 def guardians(request, school_id, student_id):
     school, error = check(request, school_id, "school.students.read" if request.method == "GET" else "school.students.manage")
     if error is not None: return error
-    student = Student.objects.filter(school=school, pk=student_id).first()
+    student = visible_students(request.user,school).filter(pk=student_id).first()
     if student is None: return JsonResponse({"error": "Élève introuvable."}, status=404)
     if request.method == "GET":
         return JsonResponse({"guardians": [describe(g) for g in student.guardians.order_by("full_name")[:100]]})
@@ -250,7 +267,7 @@ def enrollments(request,school_id):
     if error is not None: return error
     if request.method=="GET":
         student_id=request.GET.get("student")
-        qs=Enrollment.objects.filter(school=school).order_by("-enrolled_on","pk")
+        qs=visible_enrollments(request.user,school).order_by("-enrolled_on","pk")
         if student_id:
             try: qs=qs.filter(student_id=UUID(student_id))
             except (ValueError,TypeError): return JsonResponse({"error":"Identifiant invalide."},status=422)
@@ -282,7 +299,7 @@ def enrollment_detail(request,school_id,enrollment_id):
     school,error=check(request,school_id,"school.students.read" if request.method=="GET" else "school.students.manage")
     if error is not None: return error
     if request.method=="GET":
-        record=Enrollment.objects.filter(school=school,pk=enrollment_id).first()
+        record=visible_enrollments(request.user,school).filter(pk=enrollment_id).first()
         return JsonResponse(describe(record)) if record else JsonResponse({"error":"Inscription introuvable."},status=404)
     data,error=parse_body(request)
     if error is not None: return error

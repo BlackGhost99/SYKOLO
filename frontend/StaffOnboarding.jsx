@@ -1,4 +1,5 @@
 import React, {useEffect, useMemo, useState} from "react";
+import CycleScopeManager from "./CycleScopeManager.jsx";
 
 const EMPTY_STAFF = {staff_code:"", first_name:"", last_name:"", position:""};
 const EMPTY_APPOINTMENT = {function_code:"", cycle_code:"", starts_on:"", ends_on:""};
@@ -42,6 +43,8 @@ export default function StaffOnboarding({schoolId}) {
   const [createAccess,setCreateAccess] = useState(false);
   const [account,setAccount] = useState(EMPTY_ACCOUNT);
   const [ack,setAck] = useState(false);
+  const [limitAccess,setLimitAccess] = useState(true);
+  const [chosenCycles,setChosenCycles] = useState([]);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [success,setSuccess] = useState(null);
@@ -52,6 +55,7 @@ export default function StaffOnboarding({schoolId}) {
     setLoading(true);setError("");setContext(null);setSuccess(null);
     setStep(0);setStaff(EMPTY_STAFF);setAppointments([]);setClasses([]);
     setCreateAccess(false);setAccount(EMPTY_ACCOUNT);setAck(false);
+    setLimitAccess(true);setChosenCycles([]);
     request(base).then(data=>{
       if (active) {
         setContext(data);
@@ -69,6 +73,8 @@ export default function StaffOnboarding({schoolId}) {
   );
   const granted = [...new Set(selectedRoles.flatMap(r=>r.permissions))].sort();
   const manyCycles = (context?.education_cycles?.length||0)>1;
+  const academicCycles = context?.academic_cycles||[];
+  const actorRestricted = context?.actor_access_cycle_ids!==null;
   const changeStaff = (field,value)=>setStaff(old=>({...old,[field]:value}));
   const changeAccount = (field,value)=>setAccount(old=>({...old,[field]:value}));
   const editAppointment = (index,field,value)=>setAppointments(old=>old.map((item,i)=>i===index?{
@@ -94,7 +100,8 @@ export default function StaffOnboarding({schoolId}) {
   const readyAccount = !createAccess||Boolean(context?.can_create_account
     && roles.some(r=>r.code===account.role)
     && account.username.trim()&&account.email.includes("@")
-    && account.password.length>=12);
+    && account.password.length>=12
+    && ((!limitAccess&&!actorRestricted) || (limitAccess&&chosenCycles.length>0)));
   const ready = readyStaff&&readyAppointments&&readyClasses&&readyAccount
     && (!manyCycles||!createAccess||ack);
 
@@ -110,6 +117,7 @@ export default function StaffOnboarding({schoolId}) {
         account:createAccess?{
           username:account.username.trim(),email:account.email.trim(),
           password:account.password,role:account.role,additional_roles:account.additional_roles,
+          access_cycle_ids:limitAccess?chosenCycles:null,
         }:null,
         appointments:appointments.map(a=>({
           function_code:a.function_code,
@@ -130,7 +138,7 @@ export default function StaffOnboarding({schoolId}) {
   const reset = ()=>{
     setStaff(EMPTY_STAFF);setAppointments([]);setClasses([]);
     setCreateAccess(false);setAccount(EMPTY_ACCOUNT);
-    setAck(false);setSuccess(null);setError("");setStep(0);
+    setAck(false);setLimitAccess(true);setChosenCycles([]);setSuccess(null);setError("");setStep(0);
   };
 
   if(loading) return <section className="card" aria-label="Ajouter un collaborateur"><h2>Ajouter un collaborateur</h2><p>Chargement des autorisations…</p></section>;
@@ -250,6 +258,15 @@ export default function StaffOnboarding({schoolId}) {
               </select>
             </label>
           </div>
+          <fieldset><legend>Périmètre des autorisations</legend>
+            <p className="hint">Sélectionnez les cycles académiques réels que ce compte pourra consulter et administrer. Les anciennes API non compatibles avec cette restriction seront bloquées.</p>
+            {!actorRestricted&&<label style={{display:"flex",gap:8}}><input type="radio" name="staff-cycle-scope" checked={!limitAccess} onChange={()=>{setLimitAccess(false);setChosenCycles([]);}}/><span>Accès à tout l’établissement (réservé aux comptes de confiance)</span></label>}
+            <label style={{display:"flex",gap:8}}><input type="radio" name="staff-cycle-scope" checked={limitAccess} onChange={()=>setLimitAccess(true)}/><span>Limiter aux cycles sélectionnés</span></label>
+            {limitAccess&&academicCycles.map(c=><label key={c.id} style={{display:"flex",gap:8,alignItems:"center",marginLeft:16}}>
+              <input type="checkbox" checked={chosenCycles.includes(c.id)} onChange={e=>setChosenCycles(old=>e.target.checked?[...old,c.id]:old.filter(x=>x!==c.id))}/><span>{c.name}</span>
+            </label>)}
+            {limitAccess&&!academicCycles.length&&<p className="hint">Aucun cycle académique disponible. Un responsable doit d’abord configurer les cycles scolaires.</p>}
+          </fieldset>
           <fieldset><legend>Rôles applicatifs supplémentaires (facultatif)</legend>
             {roles.filter(r=>r.code!==account.role).map(r=><label key={r.code} style={{display:"flex",gap:8,alignItems:"center"}}>
               <input type="checkbox" checked={account.additional_roles.includes(r.code)} onChange={e=>setAccount(old=>({...old,additional_roles:e.target.checked?[...old.additional_roles,r.code]:old.additional_roles.filter(c=>c!==r.code)}))}/>
@@ -268,10 +285,11 @@ export default function StaffOnboarding({schoolId}) {
         <p><strong>Nominations :</strong> {appointments.length?appointments.map((a,i)=><span key={i}>{i?", ":""}{chosenPosition(a)?.label} ({labelCycle(a.cycle_code)})</span>):"Aucune"}</p>
         <p><strong>Classes :</strong> {classes.length||"Aucune"}</p>
         <p><strong>Compte YEM :</strong> {createAccess?account.username+" · "+selectedRoles.map(r=>r.label).join(", "):"Aucun"}</p>
-        {createAccess&&<p className="hint" role="note">Attention : les permissions du rôle s'appliquent actuellement à l'établissement entier, même lorsqu'une nomination concerne seulement la maternelle ou le primaire. Ce formulaire ne crée pas de restrictions techniques par cycle.</p>}
+        {createAccess&&<p><strong>Cycles autorisés :</strong> {limitAccess?academicCycles.filter(c=>chosenCycles.includes(c.id)).map(c=>c.name).join(", "):"Ensemble de l’établissement"}</p>}
+        {createAccess&&<p className="hint" role="note">Les comptes limités sont contrôlés par le serveur : les modules qui ne filtrent pas encore leurs données par cycle sont refusés. Un accès global ne doit être attribué qu'aux comptes de confiance.</p>}
         {createAccess&&manyCycles&&<label style={{display:"flex",alignItems:"flex-start",gap:8}}>
           <input type="checkbox" required checked={ack} onChange={e=>setAck(e.target.checked)}/>
-          <span>J'ai compris que les permissions applicatives s'étendent à tous les cycles de ce complexe. Je n'attribue pas de rôle à portée globale si la personne doit être limitée à un cycle.</span>
+          <span>Je confirme avoir vérifié les cycles sélectionnés et les permissions du compte. Certains modules restent indisponibles aux comptes limités en attendant leur adaptation.</span>
         </label>}
         <p className="hint">Aucun poste fictif ni compte supplémentaire ne sera créé. Les changements sont audités.</p>
       </div>}
@@ -282,5 +300,8 @@ export default function StaffOnboarding({schoolId}) {
           <button type="submit" className="pc-primary" disabled={busy||!ready}>{busy?"Enregistrement…":"Créer le collaborateur"}</button>}
       </div>
     </form>}
+    {context.can_manage_cycle_access&&<CycleScopeManager schoolId={schoolId}
+      cycles={academicCycles} accounts={context.existing_accounts||[]}
+      onSaved={async()=>setContext(await request(base))}/>} 
   </section>;
 }

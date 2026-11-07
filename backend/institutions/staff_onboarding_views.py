@@ -11,7 +11,8 @@ from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
-from .academic_models import AcademicClass, AcademicYear
+from .academic_models import AcademicClass, AcademicYear, AcademicCycle
+from .cycle_scope import scoped_cycle_ids, validate_cycle_scope, profile_cycle_keys
 from .models import School, SchoolAppointment, SchoolLogin, SchoolMember, SchoolRole
 from .school_functions import (
     account_functions, positions_for_school, validate_account_functions, validate_position,
@@ -101,9 +102,8 @@ def _class_assignments(school, data):
 def _account(school, actor, owner, data, appointments):
     if data is None:
         return None
-    if not isinstance(data, dict) or set(data) != {
-        "username", "email", "password", "role", "additional_roles"
-    }:
+    required = {"username", "email", "password", "role", "additional_roles"}
+    if not isinstance(data, dict) or not required <= set(data) or set(data) - required - {"access_cycle_ids"}:
         raise ValueError("Compte utilisateur incomplet.")
     username, email, password = data["username"], data["email"], data["password"]
     if not (string(username, 150) and string(email, 254) and "@" in email
@@ -132,11 +132,15 @@ def _account(school, actor, owner, data, appointments):
     } for p in granted):
         raise PermissionError("Les droits financiers sensibles sont réservés au propriétaire.")
     validate_account_functions(school, [row[0] for row in appointments])
+    scope = validate_cycle_scope(school, data.get("access_cycle_ids"))
+    actor_scope = scoped_cycle_ids(actor, school)
+    if actor_scope is not None and (scope is None or not set(scope) <= actor_scope):
+        raise PermissionError("Le compte créé doit rester dans les cycles autorisés du responsable.")
     candidate = get_user_model()(
         username=username.strip(), email=email.strip()
     )
     validate_password(password, user=candidate)
-    return (username.strip(), email.strip(), password, primary, extra, granted)
+    return (username.strip(), email.strip(), password, primary, extra, granted, scope)
 
 
 @require_http_methods(["GET", "POST"])
@@ -151,6 +155,7 @@ def onboard_staff(request, school_id):
         return refuse()
     can_account = owner or has_permission(request.user, school, "school.members.write")
     can_appoint = owner or has_permission(request.user, school, "school.organization.manage")
+    actor_scope = scoped_cycle_ids(request.user, school)
 
     if request.method == "GET":
         allowed = effective_permissions(request.user, school)
@@ -164,14 +169,38 @@ def onboard_staff(request, school_id):
         ))]
         years = AcademicYear.objects.filter(school=school, active=True).order_by("-start_date")
         classes = AcademicClass.objects.filter(school=school, active=True, year__active=True).order_by("name")
+        academic_cycles = AcademicCycle.objects.filter(school=school,active=True).order_by("order","name")
+        positions = account_functions(school) if can_appoint else []
+        if actor_scope is not None:
+            classes = classes.filter(level__cycle_id__in=actor_scope)
+            years = years.filter(pk__in=classes.values("year_id"))
+            academic_cycles = academic_cycles.filter(pk__in=actor_scope)
+            keys = profile_cycle_keys(school, actor_scope)
+            positions = [{**p, "allowed_cycles": sorted(set(p["allowed_cycles"]) & keys)} for p in positions if p["scope"]=="cycle" and set(p["allowed_cycles"]) & keys]
+        existing = []
+        if owner:
+            members = SchoolMember.objects.select_related("user").filter(
+                school=school, active=True, user__is_active=True
+            ).order_by("user__last_name","user__first_name")[:200]
+            for member in members:
+                if owns_organization(member.user, school.organization):
+                    continue
+                alias = SchoolLogin.objects.filter(school=school,user=member.user).values_list("username",flat=True).first()
+                existing.append({"member_id":str(member.pk), "username":alias or member.user.username,
+                                 "name":f"{member.user.first_name} {member.user.last_name}".strip(),
+                                 "access_cycle_ids":member.access_cycle_ids})
         return JsonResponse({
+            "can_manage_cycle_access": owner,
+            "existing_accounts":existing,
             "school_name": school.name,
             "school_type": school.school_type,
             "education_cycles": school.education_cycles,
             "can_create_account": can_account,
             "can_appoint": can_appoint,
             "roles": [{"code": r.code, "label": r.label, "permissions": r.permissions} for r in roles] if can_account else [],
-            "positions": account_functions(school) if can_appoint else [],
+            "positions": positions,
+            "academic_cycles": [{"id": str(c.id), "code": c.code, "name": c.name} for c in academic_cycles],
+            "actor_access_cycle_ids": sorted(actor_scope) if actor_scope is not None else None,
             "years": [{"id": str(y.id), "name": y.name} for y in years],
             "classes": [{"id": str(c.id), "name": c.name, "year": str(c.year_id)} for c in classes],
             "notice": "Les rôles applicatifs accordent des droits à tout l'établissement, pas seulement au cycle nommé.",
@@ -200,6 +229,14 @@ def onboard_staff(request, school_id):
         appointments = _appointments(school, body["appointments"])
         assignments = _class_assignments(school, body["class_assignments"])
         account_info = _account(school, request.user, owner, body["account"], appointments)
+        if actor_scope is not None:
+            keys = profile_cycle_keys(school, actor_scope)
+            if not appointments and not assignments:
+                raise PermissionError("Sélectionnez une fonction ou une classe du cycle autorisé.")
+            if any(cycle not in keys for _, cycle, _, _ in appointments):
+                raise PermissionError("Nomination hors du cycle autorisé.")
+            if any(str(classroom.level.cycle_id) not in actor_scope for _, classroom, _ in assignments):
+                raise PermissionError("Classe hors du cycle autorisé.")
     except PermissionError as exc:
         return JsonResponse({"error": str(exc)}, status=403)
     except ValueError as exc:
@@ -223,6 +260,15 @@ def onboard_staff(request, school_id):
             appointments = _appointments(school, body["appointments"])
             assignments = _class_assignments(school, body["class_assignments"])
             account_info = _account(school, request.user, owner, body["account"], appointments)
+            actor_scope = scoped_cycle_ids(request.user, school)
+            if actor_scope is not None:
+                keys = profile_cycle_keys(school, actor_scope)
+                if not appointments and not assignments:
+                    raise PermissionError("Sélectionnez une fonction ou une classe du cycle autorisé.")
+                if any(cycle not in keys for _, cycle, _, _ in appointments):
+                    raise PermissionError("Nomination hors du cycle autorisé.")
+                if any(str(classroom.level.cycle_id) not in actor_scope for _, classroom, _ in assignments):
+                    raise PermissionError("Classe hors du cycle autorisé.")
             if account_info and quota_reached(school, "users"):
                 return JsonResponse({"error": "Plafond de comptes atteint pour cette école."}, status=409)
             if StaffRecord.objects.filter(school=school, staff_code=staff_fields["staff_code"]).exists():
@@ -241,6 +287,7 @@ def onboard_staff(request, school_id):
                 member = SchoolMember.objects.create(
                     school=school, user=user, role=primary,
                     function_codes=validate_account_functions(school, [row[0] for row in appointments]),
+                    access_cycle_ids=account_info[6],
                 )
                 member.additional_roles.set(extra)
                 SchoolLogin.objects.create(school=school, user=user, username=username)
@@ -265,6 +312,7 @@ def onboard_staff(request, school_id):
                 obj.save()
             log_event(school, request, "staff_onboarded", str(staff_record.id), {
                 "account_created": bool(user),
+                "access_cycle_ids": account_info[6] if account_info else None,
                 "roles": [account_info[3].code, *[r.code for r in account_info[4]]] if account_info else [],
                 "appointments": [{"function": code, "cycle": cycle} for code, cycle, _, _ in appointments],
                 "assignments_count": len(assignments),

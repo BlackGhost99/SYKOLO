@@ -59,6 +59,8 @@ class SchoolMember(models.Model):
     additional_roles = models.ManyToManyField(SchoolRole, blank=True, related_name="additional_members")
     active = models.BooleanField(default=True)
     function_codes = models.JSONField(default=list, blank=True)
+    # None = legacy / portée générale ; une liste d’UUID = cycles académiques autorisés.
+    access_cycle_ids = models.JSONField(null=True, default=None, blank=True)
 
     class Meta:
         constraints = [

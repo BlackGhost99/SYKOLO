@@ -13,6 +13,7 @@ from .academic_models import (
     AcademicYear, AcademicCycle, AcademicLevel, AcademicTrack, AcademicClass, AcademicPeriod,
 )
 from .services import has_permission
+from .cycle_scope import scoped_cycle_ids
 from .views import access, log_event, parse_body, refuse
 
 RESOURCES = {
@@ -35,6 +36,18 @@ REQUIRED = {
     "periods": {"code", "name", "year", "start_date", "end_date"},
 }
 IMMUTABLE_RELATIONS = {"year", "cycle", "level", "track"}
+
+
+def scoped_resources(query, resource, user, school):
+    cycles = scoped_cycle_ids(user, school)
+    if cycles is None:
+        return query
+    lookups = {
+        "cycles": "id__in", "levels": "cycle_id__in",
+        "tracks": "level__cycle_id__in", "classes": "level__cycle_id__in",
+    }
+    # Les années sont des métadonnées globales sans dossier personnel.
+    return query.filter(**{lookups[resource]: cycles}) if resource in lookups else query
 
 
 def describe(obj, fields):
@@ -127,7 +140,7 @@ def collection(request, school_id, resource):
         return refuse()
     model, fields = RESOURCES[resource]
     if request.method == "GET":
-        rows = model.objects.filter(school=school).order_by("name", "pk")[:500]
+        rows = scoped_resources(model.objects.filter(school=school), resource, request.user, school).order_by("name", "pk")[:500]
         return JsonResponse({resource: [describe(o, fields) for o in rows]})
     data, error = parse_body(request)
     if error is not None:
@@ -165,7 +178,7 @@ def detail(request, school_id, resource, object_id):
         return refuse()
     model, fields = RESOURCES[resource]
     if request.method == "GET":
-        obj = model.objects.filter(school=school, pk=object_id).first()
+        obj = scoped_resources(model.objects.filter(school=school, pk=object_id), resource, request.user, school).first()
         if not obj:
             return JsonResponse({"error": "Objet introuvable."}, status=404)
         return JsonResponse(describe(obj, fields))

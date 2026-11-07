@@ -4,6 +4,7 @@ import AcademicPanel from "./AcademicPanel.jsx";
 import StudentPanel from "./StudentPanel.jsx";
 import StaffPanel from "./StaffPanel.jsx";
 import StaffOnboarding from "./StaffOnboarding.jsx";
+import CycleWorkspace from "./CycleWorkspace.jsx";
 import OrganisationPanel, {MySchoolFunctions} from "./OrganisationPanel.jsx";
 import RoleManager from "./RoleManager.jsx";
 import CurriculumPanel from "./CurriculumPanel.jsx";
@@ -159,7 +160,13 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     ? (perms.includes("school.staff.manage")||access?.role==="proprietaire")
     : perms.includes(modules[key].read);
   const canUsers=perms.includes("school.members.write");
-  const visibleSections=Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers,lives:(s.lives||[]).filter(l=>l.need.every(p=>perms.includes(p)))}]).filter(([,s])=>s.modules.length||s.users||s.lives.length));
+  const restricted=Boolean(access?.cycle_scope_restricted);
+  const visibleSections=restricted
+    ? Object.fromEntries([
+        ...(perms.includes("school.students.read")?[["students",{...sections.students,modules:[],users:false,lives:[{key:"cycle-list",label:"Élèves autorisés",need:[]}]}]]:[]),
+        ...(perms.includes("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],users:false,lives:[]}]]:[]),
+      ])
+    : Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers,lives:(s.lives||[]).filter(l=>l.need.every(p=>perms.includes(p)))}]).filter(([,s])=>s.modules.length||s.users||s.lives.length));
   const nav=NAV.filter(([id])=>id==="dashboard"||visibleSections[id]||(id==="parents"&&isParent));
   function navigate(id,subTab="",extra=null){setPage(id);setSub(subTab);setParams(extra);setMessage("");window.scrollTo?.(0,0);}
   const section=visibleSections[page];
@@ -196,6 +203,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     const props={schoolId:chosen,schoolName,tabs:tabBar,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canReceive:perms.includes("school.finance.receive")};
     const k=chosen+JSON.stringify(params);
     content={
+      "students:cycle-list":<CycleWorkspace key={chosen} schoolId={chosen} access={access}/>,
       "students:live":<LiveStudents key={chosen} {...props}/>,
       "students:byclass":<ClassEnrollments key={chosen} {...props}/>,
       "students:new":<StudentForm key={k} {...props}/>,
@@ -221,6 +229,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else content=<>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={access.role_label||"Membre"} badgeIcon="crown"/>
     <MySchoolFunctions schoolId={chosen}/>
+    {restricted&&<div className="yd-real-body"><p className="hint">Ce compte est limité aux cycles autorisés. Les modules non encore sécurisés par cycle sont temporairement indisponibles.</p></div>}
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}

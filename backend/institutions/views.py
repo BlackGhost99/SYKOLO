@@ -254,6 +254,8 @@ def school_members(request, school_id):
 @require_GET
 @authorized
 def my_school_access(request, school_id):
+    from .cycle_scope import scoped_cycle_ids, allowed_school_permissions
+    from .academic_models import AcademicCycle
     school, error = access(request, school_id)
     if error is not None:
         return error
@@ -261,12 +263,18 @@ def my_school_access(request, school_id):
         school=school, user=request.user, active=True
     ).first()
     founder = owns_organization(request.user, school.organization)
+    cycle_ids = scoped_cycle_ids(request.user,school)
+    permitted = effective_permissions(request.user,school) if member else ({"school.view", "school.members.write"} if founder else set())
+    scoped_cycles = list(AcademicCycle.objects.filter(school=school,pk__in=cycle_ids).values("id","name")) if cycle_ids is not None else []
     return JsonResponse({
         "school": school_response(school),
         "role": member.role.code if member else ("proprietaire" if founder else None),
         "role_label": public_role_label(member.role) if member else ("Propriétaire" if founder else ""),
         "roles": [member.role.code, *member.additional_roles.filter(school=school).values_list("code", flat=True)] if member else [],
-        "permissions": sorted(effective_permissions(request.user, school)) if member else (["school.view", "school.members.write"] if founder else []),
+        "permissions": allowed_school_permissions(permitted,cycle_ids),
+        "cycle_scope_restricted": cycle_ids is not None,
+        "access_cycle_ids": sorted(cycle_ids) if cycle_ids is not None else None,
+        "access_cycles": [{"id": str(row["id"]), "name": row["name"]} for row in scoped_cycles],
     })
 
 
