@@ -65,7 +65,7 @@ export default function StaffPanel({schoolId}){
         <h3>Créer une fiche du personnel</h3>
         <div className="two">
           <label className="field">Matricule
-            <input required value={staffCode} maxLength={50} onChange={e=>setStaffCode(e.target.value)}/>
+            <input value={staffCode} placeholder="Attribué par YEM si vide" maxLength={50} onChange={e=>setStaffCode(e.target.value)}/>
           </label>
           <label className="field">Prénom(s)
             <input required value={first} maxLength={120} onChange={e=>setFirst(e.target.value)}/>

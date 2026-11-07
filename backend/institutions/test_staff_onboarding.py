@@ -65,6 +65,14 @@ class StaffOnboardingTests(TestCase):
         self.assertEqual(StaffRecord.objects.filter(school=self.school).count(), 1)
         self.assertEqual(SchoolAppointment.objects.filter(school=self.school).count(), 2)
 
+    def test_staff_number_is_generated_only_when_missing(self):
+        generated = self.send(self.payload(code=""))
+        self.assertEqual(generated.status_code, 201, generated.content)
+        self.assertRegex(generated.json()["staff"]["staff_code"], r"^P-[0-9A-F]{32}$")
+        existing = self.send(self.payload(code="0007"))
+        self.assertEqual(existing.status_code, 201, existing.content)
+        self.assertEqual(existing.json()["staff"]["staff_code"], "0007")
+
     def test_one_transaction_creates_login_staff_and_functions(self):
         data = self.payload(account=True)
         response = self.send(data)

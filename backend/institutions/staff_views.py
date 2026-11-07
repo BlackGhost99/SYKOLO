@@ -1,7 +1,7 @@
 """Staff management for authorized administrators; private employee information."""
 import re
 from datetime import date
-from uuid import UUID
+from uuid import UUID, uuid4
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import transaction, IntegrityError
@@ -27,12 +27,14 @@ def parse_staff(data, *, editing=False):
     allowed={"staff_code","first_name","last_name","position","hired_on","username","active"}
     if editing: allowed-={"staff_code"}
     if set(data)-allowed-({"revision"} if editing else set()): raise ValueError("Champs inconnus ou non modifiables.")
-    if not editing and not {"staff_code","first_name","last_name","position"} <= set(data): raise ValueError("Champs obligatoires manquants.")
+    if not editing and not {"first_name","last_name","position"} <= set(data): raise ValueError("Champs obligatoires manquants.")
     if editing and (type(data.get("revision")) is not int or data["revision"]<1 or len(data)==1): raise ValueError("Révision invalide ou aucune modification.")
     output={}
     for k,v in data.items():
         if k=="revision": continue
         if k=="staff_code":
+            if v == "":
+                continue
             if not isinstance(v,str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}",v): raise ValueError("Matricule invalide.")
         if k in ("first_name","last_name","position"):
             if not isinstance(v,str) or not (1<=len(v.strip())<=(100 if k=="position" else 120)): raise ValueError("Nom ou fonction invalide.")
@@ -49,6 +51,8 @@ def parse_staff(data, *, editing=False):
                 except ValueError: raise ValueError("Date ISO invalide.") from None
         if k=="active" and type(v) is not bool: raise ValueError("Statut invalide.")
         output[k]=v
+    if not editing and "staff_code" not in output:
+        output["staff_code"] = "P-" + uuid4().hex.upper()
     return output
 
 

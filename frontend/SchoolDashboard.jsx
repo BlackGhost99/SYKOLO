@@ -162,7 +162,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const perms=access?.permissions||[];
   const allowed=key=>key==="onboarding"
     ? (perms.includes("school.staff.manage")||access?.role==="proprietaire")
-    : perms.includes(modules[key].read);
+    : perms.includes(modules[key].read) || (key==="attendance" && perms.includes("school.attendance.assigned"));
   const canUsers=perms.includes("school.members.write");
   const restricted=Boolean(access?.cycle_scope_restricted);
   const visibleSections=restricted
@@ -224,7 +224,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else if (section) content=<>
     <PageHeader title={section.title} subtitle={section.subtitle}/>
     {tabBar}
-    <div className="yd-real-body">{tab==="users"?<UsersForm schoolId={chosen} onMessage={setMessage}/>:View&&<View key={chosen+"-"+tab} schoolId={chosen} canDecide={perms.includes("school.admissions.decide")} canConfigurePayment={perms.includes("school.admissions.manage")&&perms.includes("school.finance.manage")} canManage={perms.includes("school.organization.manage")} canManageRoles={perms.includes("school.roles.manage")}/>}</div>
+    <div className="yd-real-body">{tab==="users"?<UsersForm schoolId={chosen} onMessage={setMessage}/>:View&&<View key={chosen+"-"+tab} schoolId={chosen} attendanceAssignedOnly={tab==="attendance" && !perms.includes("school.attendance.read")} attendanceCanWrite={perms.includes("school.attendance.write") || perms.includes("school.attendance.assigned")} attendanceCanFinalize={perms.includes("school.attendance.finalize")} canDecide={perms.includes("school.admissions.decide")} canConfigurePayment={perms.includes("school.admissions.manage")&&perms.includes("school.finance.manage")} canManage={perms.includes("school.organization.manage")} canManageRoles={perms.includes("school.roles.manage")}/>}</div>
   </>;
   else if (perms.includes("school.finance.read")) content=<>
     <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={access.role_label} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")}/>

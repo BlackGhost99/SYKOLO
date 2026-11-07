@@ -15,7 +15,7 @@ async function request(path, data) {
   return v;
 }
 
-export default function AttendancePanel({schoolId}) {
+export default function AttendancePanel({schoolId,attendanceAssignedOnly=false,attendanceCanWrite=true,attendanceCanFinalize=true}) {
   const root = "schools/" + schoolId + "/";
   const base = root + "attendance/";
   const [classes,setClasses]=useState([]);
@@ -39,10 +39,16 @@ export default function AttendancePanel({schoolId}) {
 
   useEffect(()=>{
     let active=true;
-    request(root+"academic/classes").then(v=>{if(active)setClasses(v.classes||[])})
-      .catch(()=>{if(active)setClasses([])});
+    Promise.all([
+      request(root+"academic/classes"),
+      attendanceAssignedOnly ? request(root+"staff/me/assignments") : null,
+    ]).then(([v, assigned])=>{
+      if (!active) return;
+      const ids = new Set(assigned?.assignments.map(a=>a.classroom));
+      setClasses((v.classes||[]).filter(c=>!attendanceAssignedOnly || ids.has(c.id)));
+    }).catch(()=>{if(active)setClasses([])});
     return()=>{active=false;};
-  },[schoolId]);
+  },[schoolId,attendanceAssignedOnly]);
 
   useEffect(()=>{
     let active=true;
@@ -118,26 +124,28 @@ export default function AttendancePanel({schoolId}) {
       <code>{'{"attendance":{"statuses":[{"code":"p","label":"Présent","group":"present"},{"code":"a","label":"Absent","group":"absent"},{"code":"r","label":"Retard","group":"late"}]}}'}</code>
     </p>}
     {selectedClass&&statuses.length>0&&<>
-      <h3>Créer une séance</h3>
-      <form onSubmit={e=>{e.preventDefault();run(async()=>{
-        const result=await request(base+"sessions",{
-          classroom:selectedClass,date,slot,label,
-        });
-        await reloadSessions();setSelectedSession(result.id);setMessage("Nouvel appel créé.");
-      })}}>
-        <div className="two">
-          <label className="field">Date
-            <input type="date" required value={date} onChange={e=>setDate(e.target.value)} />
-          </label>
-          <label className="field">Code du créneau
-            <input required maxLength={48} pattern="[a-z0-9][a-z0-9_-]*" value={slot} onChange={e=>setSlot(e.target.value)} placeholder="matin, cours1..." />
-          </label>
-          <label className="field">Intitulé
-            <input required maxLength={120} value={label} onChange={e=>setLabel(e.target.value)} placeholder="Appel du matin" />
-          </label>
-        </div>
-        <button disabled={busy} type="submit">Créer la séance</button>
-      </form>
+      {attendanceCanWrite&&<>
+        <h3>Créer une séance</h3>
+        <form onSubmit={e=>{e.preventDefault();run(async()=>{
+          const result=await request(base+"sessions",{
+            classroom:selectedClass,date,slot,label,
+          });
+          await reloadSessions();setSelectedSession(result.id);setMessage("Nouvel appel créé.");
+        })}}>
+          <div className="two">
+            <label className="field">Date
+              <input type="date" required value={date} onChange={e=>setDate(e.target.value)} />
+            </label>
+            <label className="field">Code du créneau
+              <input required maxLength={48} pattern="[a-z0-9][a-z0-9_-]*" value={slot} onChange={e=>setSlot(e.target.value)} placeholder="matin, cours1..." />
+            </label>
+            <label className="field">Intitulé
+              <input required maxLength={120} value={label} onChange={e=>setLabel(e.target.value)} placeholder="Appel du matin" />
+            </label>
+          </div>
+          <button disabled={busy} type="submit">Créer la séance</button>
+        </form>
+      </>}
       <label className="field">Séances enregistrées
         <select value={selectedSession} onChange={e=>setSelectedSession(e.target.value)}>
           <option value="">Choisir une séance...</option>
@@ -160,23 +168,24 @@ export default function AttendancePanel({schoolId}) {
       })}}>
         {roster.map(e=>{
           const d=drafts[e.enrollment]||{};
+          const readOnly = Boolean(!attendanceCanWrite || sessionData.closed_at || (attendanceAssignedOnly && e.mark?.justified));
           return <div key={e.enrollment} style={{padding:"0.6rem 0",borderBottom:"1px solid var(--border,#ddd)"}}>
             <strong>{e.last_name} {e.first_name}</strong> <small>({e.student_code})</small>
             <div className="two">
               <label className="field">Statut
-                <select disabled={!!sessionData.closed_at} value={d.status||""} onChange={ev=>edit(e.enrollment,"status",ev.target.value)}>
+                <select disabled={readOnly} value={d.status||""} onChange={ev=>edit(e.enrollment,"status",ev.target.value)}>
                   <option value="">Non renseigné</option>
                   {statuses.map(s=><option key={s.code} value={s.code}>{s.label}</option>)}
                 </select>
               </label>
               <label className="field">Observation
-                <input disabled={!!sessionData.closed_at} maxLength={500} value={d.note||""} onChange={ev=>edit(e.enrollment,"note",ev.target.value)} />
+                <input disabled={readOnly} maxLength={500} value={d.note||""} onChange={ev=>edit(e.enrollment,"note",ev.target.value)} />
               </label>
               <label className="field">Justification déposée (texte administratif)
-                <input disabled={!!sessionData.closed_at} maxLength={500} value={d.justification||""} onChange={ev=>edit(e.enrollment,"justification",ev.target.value)} />
+                <input disabled={readOnly} maxLength={500} value={d.justification||""} onChange={ev=>edit(e.enrollment,"justification",ev.target.value)} />
               </label>
               <label className="field">Justification vérifiée
-                <input type="checkbox" disabled={!!sessionData.closed_at} checked={!!d.justified}
+                <input type="checkbox" disabled={readOnly || attendanceAssignedOnly} checked={!!d.justified}
                   onChange={ev=>edit(e.enrollment,"justified",ev.target.checked)} />
               </label>
             </div>
@@ -186,14 +195,14 @@ export default function AttendancePanel({schoolId}) {
             })}>Voir l'historique</button>}
           </div>;
         })}
-        {!sessionData.closed_at&&<>
+        {attendanceCanWrite&&!sessionData.closed_at&&<>
           <label className="field">Motif obligatoire des corrections (si statut déjà enregistré)
             <textarea maxLength={500} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Pourquoi cette correction ?" />
           </label>
           <button disabled={busy||prepared.length===0||prepared.length>100} type="submit">Enregistrer {prepared.length} modification(s)</button>
         </>}
       </form>
-      {!sessionData.closed_at&&<button type="button" disabled={busy||roster.length===0||recorded!==roster.length} onClick={()=>run(async()=>{
+      {attendanceCanFinalize&&!sessionData.closed_at&&<button type="button" disabled={busy||roster.length===0||recorded!==roster.length} onClick={()=>run(async()=>{
         await request(base+"sessions/"+selectedSession+"/close",{revision:sessionData.revision});
         await reloadSession();await reloadSessions();setMessage("Appel clôturé.");
       })}>Clôturer l'appel (direction)</button>}
