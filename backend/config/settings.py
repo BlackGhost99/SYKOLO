@@ -78,6 +78,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "config.middleware.SchoolSessionMiddleware",
+    "config.middleware.SchoolCycleBoundaryMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "config.middleware.ResponseHeadersMiddleware",
 ]

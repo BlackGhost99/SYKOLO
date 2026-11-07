@@ -12,8 +12,10 @@ from accounts.views import authorized
 from .academic_models import (
     AcademicYear, AcademicCycle, AcademicLevel, AcademicTrack, AcademicClass, AcademicPeriod,
 )
-from .services import has_permission
-from .views import access, log_event, parse_body, refuse
+from .cycle_scope import scoped_cycle_ids
+from .services import can_manage_classes, has_permission
+from .student_models import Enrollment
+from .views import access, delete_unused, log_event, parse_body, refuse
 
 RESOURCES = {
     "years": (AcademicYear, ("code", "name", "start_date", "end_date", "active")),
@@ -35,6 +37,18 @@ REQUIRED = {
     "periods": {"code", "name", "year", "start_date", "end_date"},
 }
 IMMUTABLE_RELATIONS = {"year", "cycle", "level", "track"}
+
+
+def scoped_resources(query, resource, user, school):
+    cycles = scoped_cycle_ids(user, school)
+    if cycles is None:
+        return query
+    lookups = {
+        "cycles": "id__in", "levels": "cycle_id__in",
+        "tracks": "level__cycle_id__in", "classes": "level__cycle_id__in",
+    }
+    # Les années sont des métadonnées globales sans dossier personnel.
+    return query.filter(**{lookups[resource]: cycles}) if resource in lookups else query
 
 
 def describe(obj, fields):
@@ -114,6 +128,15 @@ def model_error(exc):
     return JsonResponse({"error": " ".join(parts)[:500]}, status=422)
 
 
+def class_name_taken(school, year_id, name, *, exclude=None):
+    names = AcademicClass.objects.filter(school=school, year_id=year_id).exclude(pk=exclude)
+    return any(existing.casefold() == name.casefold() for existing in names.values_list("name", flat=True))
+
+
+def duplicate_class_name():
+    return JsonResponse({"error": "Ce nom de classe est déjà utilisé pour cette année."}, status=409)
+
+
 @require_http_methods(["GET", "POST"])
 @authorized
 def collection(request, school_id, resource):
@@ -123,11 +146,12 @@ def collection(request, school_id, resource):
     if resource not in RESOURCES:
         return JsonResponse({"error": "Ressource introuvable."}, status=404)
     permission = "school.academic.read" if request.method == "GET" else "school.academic.manage"
-    if not has_permission(request.user, school, permission):
+    if not (can_manage_classes(request.user, school) if resource == "classes" and request.method != "GET"
+            else has_permission(request.user, school, permission)):
         return refuse()
     model, fields = RESOURCES[resource]
     if request.method == "GET":
-        rows = model.objects.filter(school=school).order_by("name", "pk")[:500]
+        rows = scoped_resources(model.objects.filter(school=school), resource, request.user, school).order_by("name", "pk")[:500]
         return JsonResponse({resource: [describe(o, fields) for o in rows]})
     data, error = parse_body(request)
     if error is not None:
@@ -141,6 +165,13 @@ def collection(request, school_id, resource):
             if resource == "periods":
                 # Serialize competing period creations for the same school year.
                 AcademicYear.objects.select_for_update().get(school=school, pk=clean["year_id"])
+            if resource == "classes":
+                level = AcademicLevel.objects.select_related("cycle").get(school=school, pk=clean["level_id"])
+                if not can_manage_classes(request.user, school, level.cycle.code):
+                    return refuse()
+                AcademicYear.objects.select_for_update(no_key=True).get(school=school, pk=clean["year_id"])
+                if class_name_taken(school, clean["year_id"], clean["name"]):
+                    return duplicate_class_name()
             obj = model(school=school, **clean)
             obj.full_clean()
             obj.save()
@@ -152,7 +183,7 @@ def collection(request, school_id, resource):
     return JsonResponse(describe(obj, fields), status=201)
 
 
-@require_http_methods(["GET", "PATCH"])
+@require_http_methods(["GET", "PATCH", "DELETE"])
 @authorized
 def detail(request, school_id, resource, object_id):
     school, error = access(request, school_id)
@@ -160,18 +191,32 @@ def detail(request, school_id, resource, object_id):
         return error
     if resource not in RESOURCES:
         return JsonResponse({"error": "Ressource introuvable."}, status=404)
+    if request.method == "DELETE" and resource != "classes":
+        return JsonResponse({"error": "Archivage uniquement pour cette ressource."}, status=405)
     permission = "school.academic.read" if request.method == "GET" else "school.academic.manage"
-    if not has_permission(request.user, school, permission):
+    if not (can_manage_classes(request.user, school) if resource == "classes" and request.method != "GET"
+            else has_permission(request.user, school, permission)):
         return refuse()
     model, fields = RESOURCES[resource]
     if request.method == "GET":
-        obj = model.objects.filter(school=school, pk=object_id).first()
+        obj = scoped_resources(model.objects.filter(school=school, pk=object_id), resource, request.user, school).first()
         if not obj:
             return JsonResponse({"error": "Objet introuvable."}, status=404)
         return JsonResponse(describe(obj, fields))
     data, error = parse_body(request)
     if error is not None:
         return error
+    if request.method == "DELETE":
+        try:
+            with transaction.atomic():
+                classroom = AcademicClass.objects.select_for_update().filter(school=school, pk=object_id).first()
+                if classroom is None:
+                    return JsonResponse({"error": "Classe introuvable."}, status=404)
+                if not can_manage_classes(request.user, school, classroom.level.cycle.code):
+                    return refuse()
+                return delete_unused(request, school, classroom, data, "academic_class_deleted")
+        except IntegrityError:
+            return JsonResponse({"error": "Cette classe est utilisée. Vous pouvez l’archiver pour garder son historique."}, status=409)
     revision = data.get("revision")
     if type(revision) is not int or revision < 1:
         return JsonResponse({"error": "Révision obligatoire."}, status=422)
@@ -184,10 +229,20 @@ def detail(request, school_id, resource, object_id):
             obj = model.objects.select_for_update().filter(school=school, pk=object_id).first()
             if not obj:
                 return JsonResponse({"error": "Objet introuvable."}, status=404)
+            if resource == "classes" and not can_manage_classes(request.user, school, obj.level.cycle.code):
+                return refuse()
             if obj.revision != revision:
                 return JsonResponse({"error": "Conflit de version.", "revision": obj.revision}, status=409)
             if resource == "periods":
                 AcademicYear.objects.select_for_update().get(school=school, pk=obj.year_id)
+            if resource == "classes" and "name" in clean and clean["name"] != obj.name:
+                AcademicYear.objects.select_for_update(no_key=True).get(school=school, pk=obj.year_id)
+                if class_name_taken(school, obj.year_id, clean["name"], exclude=obj.pk):
+                    return duplicate_class_name()
+            if resource == "classes" and clean.get("capacity") is not None and clean["capacity"] != obj.capacity:
+                enrolled = Enrollment.objects.filter(school=school, classroom=obj, active=True).count()
+                if clean["capacity"] < enrolled:
+                    return JsonResponse({"error": f"Cette classe compte déjà {enrolled} élèves inscrits."}, status=422)
             for key, value in clean.items():
                 setattr(obj, key, value)
             obj.full_clean()

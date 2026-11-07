@@ -85,6 +85,14 @@ def string_cell(value):
     return s
 
 
+def xlsx_cell(cell):
+    value = cell.value
+    mask = getattr(cell, "number_format", "") or ""
+    if type(value) in (int, float) and 0 <= value < 10**50 and int(value) == value and re.fullmatch(r"0{2,50}", mask):
+        return str(int(value)).zfill(len(mask))
+    return value
+
+
 def parse_upload(upload, sheet="", header_row=1):
     if not upload or not hasattr(upload, "name"):
         raise ValueError("Sélectionnez un fichier CSV ou XLSX.")
@@ -125,7 +133,7 @@ def parse_upload(upload, sheet="", header_row=1):
             selected = sheet or sheet_names[0]
             if selected not in sheet_names:
                 raise ValueError("Feuille XLSX inconnue.")
-            values = book[selected].iter_rows(values_only=True)
+            values = ([xlsx_cell(cell) for cell in row] for row in book[selected].iter_rows())
         headers, rows = None, []
         for n, cells in enumerate(values, start=1):
             if n < header_row:

@@ -170,7 +170,7 @@ class CompleteSchoolJourneyTest(TestCase):
             })
             roster = self.client.get(base + f"assessments/{assessment['id']}/roster")
             self.assertEqual(roster.status_code, 200)
-            self.assertEqual(roster.json()["students"][0]["student_code"], "YEM-0001")
+            self.assertRegex(roster.json()["students"][0]["student_code"], r"^YEM-[0-9A-F]{32}$")
             grade = self.post(base + f"assessments/{assessment['id']}/grades", {
                 "enrollment": enrollment["id"], "score": score,
             })

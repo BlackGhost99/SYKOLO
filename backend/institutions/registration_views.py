@@ -19,16 +19,18 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 from accounts.views import authorized
 
+from .student_transfers import transfer_identity
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment
 from .overview_views import gate, current_year, enrollment_balances, finance_status, money, ZERO
-from .services import has_permission, quota_reached
+from .services import can_manage_classes, class_management_scope, has_permission, quota_reached
+from .school_profiles import class_level_options
 from .models import School
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import (
     parse_fields, describe, validate_enrollment_slot, validation_response, STUDENT_INFO, GUARDIAN_INFO,
 )
-from .views import parse_body, log_event
+from .views import access, parse_body, log_event, refuse
 from .enrollment_form import load_config, clean_answers, check_base, missing_documents
 
 STUDENT_FIELDS = ("student_code", "first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO)
@@ -46,16 +48,6 @@ def as_uuid(value):
         return UUID(str(value))
     except (TypeError, ValueError, AttributeError):
         raise Refused("Identifiant incorrect.") from None
-
-
-def next_student_code(school):
-    """Matricule lisible et unique : ELE26-0001, ELE26-0002…"""
-    prefix = f"ELE{timezone.localdate():%y}-"
-    taken = set(Student.objects.filter(school=school, student_code__startswith=prefix).values_list("student_code", flat=True))
-    n = len(taken) + 1
-    while f"{prefix}{n:04d}" in taken:
-        n += 1
-    return f"{prefix}{n:04d}"
 
 
 def unique_code(base, taken, limit=40):
@@ -131,7 +123,7 @@ def register_student(request, school_id):
         return error
 
     def run():
-        if not isinstance(data, dict) or set(data) - {"student", "guardians", "enrollment", "apply_fees"}:
+        if not isinstance(data, dict) or set(data) - {"student", "guardians", "enrollment", "apply_fees", "transfer_code"}:
             raise Refused("Champs inconnus.")
         info = data.get("student")
         if not isinstance(info, dict):
@@ -160,15 +152,16 @@ def register_student(request, school_id):
             School.objects.select_for_update().get(pk=school.pk)
             if quota_reached(school, "students"):
                 raise Refused("Plafond d'élèves atteint pour cet établissement.", 409)
-            if not info.get("student_code"):
-                info["student_code"] = next_student_code(school)
-            values = parse_fields(info, STUDENT_FIELDS, ("student_code", "first_name", "last_name"))
-            if Student.objects.filter(school=school, student_code=values["student_code"]).exists():
-                raise Refused("Ce matricule est déjà utilisé.", 409)
-            student = Student(school=school, extra_fields=extra, documents=documents, **values)
+            info.pop("student_code", None)  # Legacy client input, never used to issue a matricule.
+            values = parse_fields(info, STUDENT_FIELDS, ("first_name", "last_name"))
+            transfer_code = data.get("transfer_code")
+            identity_id = transfer_identity(transfer_code, school, values) if transfer_code is not None else None
+            if identity_id and Student.objects.filter(school=school, identity_id=identity_id).exists():
+                raise Refused("L’élève a déjà un dossier dans cet établissement. Recherchez son matricule YEM.", 409)
+            student = Student(school=school, identity_id=identity_id, extra_fields=extra, documents=documents, **values)
             student.full_clean()
             student.save()
-            log_event(school, request, "student_created", student.pk)
+            log_event(school, request, "student_transferred" if identity_id else "student_created", student.pk)
             saved_guardians = []
             cleaned = [parse_fields({k: v for k, v in g.items() if v is not None}, GUARDIAN_FIELDS, ("full_name",))
                        for g in guardians if str(g.get("full_name") or "").strip()]
@@ -211,7 +204,7 @@ def next_code(request, school_id):
     school, error = gate(request, school_id, "school.students.manage")
     if error is not None:
         return error
-    return JsonResponse({"student_code": next_student_code(school)})
+    return JsonResponse({"student_code": None, "message": "Matricule attribué à l’enregistrement."})
 
 
 @require_GET
@@ -273,7 +266,7 @@ def classes_overview(request, school_id):
     year = current_year(school, request.GET.get("year") or None)
     years = AcademicYear.objects.filter(school=school).order_by("-start_date")
     levels = AcademicLevel.objects.select_related("cycle").filter(school=school).order_by("cycle__order", "order", "name")
-    classes = list(AcademicClass.objects.select_related("level").filter(school=school, year=year).order_by("level__order", "name")) if year else []
+    classes = list(AcademicClass.objects.select_related("level__cycle").filter(school=school, year=year).order_by("level__order", "name")) if year else []
     enrollments = list(Enrollment.objects.filter(school=school, year=year, active=True)) if year else []
     counts = Counter(e.classroom_id for e in enrollments)
     finance_visible = has_permission(request.user, school, "school.finance.read")
@@ -291,19 +284,23 @@ def classes_overview(request, school_id):
         for cid in FeeSchedule.objects.filter(school=school, year=year, active=True).values_list("classroom_id", flat=True):
             schedules[cid] += 1
     unassigned = Student.objects.filter(school=school, active=True).exclude(enrollments__year=year).count() if year else 0
+    scope = class_management_scope(request.user, school)
     return JsonResponse({
-        "year": {"id": str(year.pk), "name": year.name, "start_date": year.start_date.isoformat(), "end_date": year.end_date.isoformat()} if year else None,
+        "year": {"id": str(year.pk), "name": year.name, "active": year.active, "start_date": year.start_date.isoformat(), "end_date": year.end_date.isoformat()} if year else None,
         "years": [{"id": str(y.pk), "name": y.name, "active": y.active} for y in years],
-        "levels": [{"id": str(lv.pk), "name": lv.name, "cycle": lv.cycle.name, "active": lv.active} for lv in levels],
+        "levels": [{"id": str(lv.pk), "name": lv.name, "cycle": lv.cycle.name, "cycle_code": lv.cycle.code, "code": lv.code, "active": lv.active and lv.cycle.active} for lv in levels],
         "currency": currency or "XAF",
         "finance_visible": finance_visible,
         "unassigned_students": unassigned,
+        "class_level_options": class_level_options(school),
+        "can_manage_classes": scope is None or bool(scope),
+        "class_management_cycles": sorted(scope) if scope is not None else None,
         "can_manage_academic": has_permission(request.user, school, "school.academic.manage"),
         "can_manage_students": has_permission(request.user, school, "school.students.manage"),
         "can_manage_finance": has_permission(request.user, school, "school.finance.manage"),
         "classes": [{
             "id": str(c.pk), "name": c.name, "code": c.code, "active": c.active, "revision": c.revision,
-            "level": {"id": str(c.level_id), "name": c.level.name},
+            "level": {"id": str(c.level_id), "name": c.level.name, "cycle_code": c.level.cycle.code},
             "capacity": c.capacity, "enrolled": counts[c.pk],
             "remaining": (c.capacity - counts[c.pk]) if c.capacity is not None else None,
             "fee_schedules": (schedules[c.pk] + schedules[None]) if finance_visible else None,
@@ -317,66 +314,58 @@ def classes_overview(request, school_id):
 @require_POST
 @authorized
 def quick_classes(request, school_id):
-    """Crée une ou plusieurs classes d'un coup ; le niveau (et son cycle) peut être créé à la volée."""
-    school, error = gate(request, school_id, "school.academic.manage")
+    """Crée en bloc des classes nommées, éventuellement à partir d'un niveau proposé."""
+    school, error = access(request, school_id)
     if error is not None:
         return error
+    if not can_manage_classes(request.user, school):
+        return refuse()
     data, error = parse_body(request)
     if error is not None:
         return error
+    if set(data) - {"year", "level", "preset", "level_name", "cycle_name", "names", "capacity"}:
+        return JsonResponse({"error": "Champs inconnus."}, status=422)
+    if not (data.get("level") or data.get("preset")) and not has_permission(request.user, school, "school.academic.manage"):
+        return refuse()
 
     def run():
-        if not isinstance(data, dict) or set(data) - {"year", "level", "level_name", "cycle_name", "names", "capacity"}:
-            raise Refused("Champs inconnus.")
-        year = AcademicYear.objects.filter(school=school, pk=as_uuid(data.get("year"))).first()
-        if year is None:
-            raise Refused("Année scolaire introuvable.", 404)
-        if not year.active:
-            raise Refused("Année scolaire archivée.")
         names = data.get("names")
         if isinstance(names, str):
-            names = re.split(r"[,;\n]", names)
+            names = [n for n in re.split(r"[,;\n]", names) if n.strip()]
         if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
             raise Refused("Noms de classes invalides.")
-        names = list(dict.fromkeys(n.strip() for n in names if n.strip()))
-        if not 1 <= len(names) <= 30 or any(len(n) > 120 for n in names):
+        names = [n.strip() for n in names]
+        if not 1 <= len(names) <= 30 or any(not 1 <= len(n) <= 120 for n in names):
             raise Refused("Indiquez entre 1 et 30 noms de classe (120 caractères au plus).")
+        normalized = {name.casefold() for name in names}
+        if len(normalized) != len(names):
+            raise Refused("Chaque classe doit avoir un nom distinct.")
         capacity = data.get("capacity")
         if capacity in ("", None):
             capacity = None
         elif type(capacity) is not int or not 1 <= capacity <= 5000:
             raise Refused("Capacité invalide (1 à 5000).")
         with transaction.atomic():
-            if data.get("level"):
-                level = AcademicLevel.objects.filter(school=school, pk=as_uuid(data["level"])).first()
-                if level is None:
-                    raise Refused("Niveau introuvable.", 404)
-            else:
-                level_name = str(data.get("level_name") or "").strip()
-                if not 1 <= len(level_name) <= 120:
-                    raise Refused("Choisissez un niveau ou saisissez son nom.")
-                level = AcademicLevel.objects.filter(school=school, name__iexact=level_name).first()
-                if level is None:
-                    cycle_name = str(data.get("cycle_name") or "").strip()[:120] or "Cycle principal"
-                    cycle = AcademicCycle.objects.filter(school=school, name__iexact=cycle_name).first()
-                    if cycle is None:
-                        taken = set(AcademicCycle.objects.filter(school=school).values_list("code", flat=True))
-                        cycle = AcademicCycle(school=school, code=unique_code(cycle_name, taken), name=cycle_name,
-                                              order=AcademicCycle.objects.filter(school=school).count())
-                        cycle.full_clean()
-                        cycle.save()
-                        log_event(school, request, "academic_cycles_created", cycle.pk)
-                    taken = set(AcademicLevel.objects.filter(school=school).values_list("code", flat=True))
-                    level = AcademicLevel(school=school, cycle=cycle, code=unique_code(level_name, taken), name=level_name,
-                                          order=AcademicLevel.objects.filter(school=school).count())
-                    level.full_clean()
-                    level.save()
-                    log_event(school, request, "academic_levels_created", level.pk)
-            existing = {n.lower() for n in AcademicClass.objects.filter(school=school, year=year).values_list("name", flat=True)}
-            duplicates = [n for n in names if n.lower() in existing]
+            # Le verrou école sérialise aussi la création de niveaux entre années.
+            locked_school = School.objects.select_for_update(no_key=True).get(pk=school.pk)
+            year = AcademicYear.objects.select_for_update(no_key=True).filter(
+                school=school, pk=as_uuid(data.get("year")),
+            ).first()
+            if year is None:
+                raise Refused("Année scolaire introuvable.", 404)
+            if not year.active:
+                raise Refused("Année scolaire archivée.")
+            level = resolve_class_level(request, locked_school, data)
+            if not can_manage_classes(request.user, school, level.cycle.code):
+                raise Refused("Ce cycle est hors de votre délégation.", 403)
+            if not level.active or not level.cycle.active:
+                raise Refused("Le niveau ou son cycle est archivé.")
+            existing = AcademicClass.objects.filter(school=school, year=year)
+            existing_names = {name.casefold() for name in existing.values_list("name", flat=True)}
+            duplicates = [name for name in names if name.casefold() in existing_names]
             if duplicates:
                 raise Refused("Classe déjà existante pour cette année : " + ", ".join(duplicates), 409)
-            taken = set(AcademicClass.objects.filter(school=school, year=year).values_list("code", flat=True))
+            taken = set(existing.values_list("code", flat=True))
             created = []
             for name in names:
                 code = unique_code(name, taken)
@@ -388,6 +377,65 @@ def quick_classes(request, school_id):
                 created.append({"id": str(row.pk), "name": row.name, "code": row.code})
         return JsonResponse({"level": {"id": str(level.pk), "name": level.name}, "classes": created}, status=201)
     return respond(run)
+
+
+def resolve_class_level(request, school, data):
+    if data.get("level"):
+        if "preset" in data:
+            raise Refused("Choisissez un seul niveau.")
+        level = AcademicLevel.objects.select_related("cycle").filter(
+            school=school, pk=as_uuid(data["level"]),
+        ).first()
+        if level is None:
+            raise Refused("Niveau introuvable.", 404)
+        return level
+    if "preset" in data:
+        key = data["preset"]
+        preset = class_level_options(school).get(key) if isinstance(key, str) else None
+        if preset is None:
+            raise Refused("Ce niveau n'est pas proposé pour les cycles ouverts de cette école.")
+        if not can_manage_classes(request.user, school, preset["cycle"]):
+            raise Refused("Ce cycle est hors de votre délégation.", 403)
+        cycle, created = AcademicCycle.objects.get_or_create(
+            school=school, code=preset["cycle"], defaults={"name": preset["cycle_name"]},
+        )
+        if created:
+            log_event(school, request, "academic_cycles_created", cycle.pk)
+        level, created = AcademicLevel.objects.get_or_create(
+            school=school, cycle=cycle, code=preset["code"],
+            defaults={"name": preset["name"], "order": preset["order"]},
+        )
+        if created:
+            log_event(school, request, "academic_levels_created", level.pk)
+        return level
+
+    level_name = str(data.get("level_name") or "").strip()
+    if not 1 <= len(level_name) <= 120:
+        raise Refused("Choisissez un niveau ou saisissez son nom.")
+    cycle_name = str(data.get("cycle_name") or "").strip()[:120]
+    if not cycle_name:
+        existing = AcademicLevel.objects.filter(school=school, name__iexact=level_name)
+        if existing.count() == 1:
+            return existing.get()
+    cycle_name = cycle_name or "Cycle principal"
+    cycles = AcademicCycle.objects.filter(school=school)
+    cycle = cycles.filter(name__iexact=cycle_name).first()
+    if cycle is None:
+        cycle = AcademicCycle(school=school, code=unique_code(cycle_name, set(cycles.values_list("code", flat=True))),
+                              name=cycle_name, order=cycles.count())
+        cycle.full_clean()
+        cycle.save()
+        log_event(school, request, "academic_cycles_created", cycle.pk)
+    levels = AcademicLevel.objects.filter(school=school, cycle=cycle)
+    level = levels.filter(name__iexact=level_name).first()
+    if level is None:
+        level = AcademicLevel(school=school, cycle=cycle,
+                              code=unique_code(level_name, set(levels.values_list("code", flat=True))),
+                              name=level_name, order=levels.count())
+        level.full_clean()
+        level.save()
+        log_event(school, request, "academic_levels_created", level.pk)
+    return level
 
 
 @require_POST

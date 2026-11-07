@@ -112,6 +112,7 @@ def calculate_report(school,enrollment,period):
         "created_at":timezone.now().isoformat(),
         "school":{"id":str(school.pk),"name":school.name,"short_name":school.short_name},
         "student":{"id":str(enrollment.student_id),"code":enrollment.student.student_code,
+                   "matricule_yem":enrollment.student.matricule_yem,
                    "first_name":enrollment.student.first_name,"last_name":enrollment.student.last_name},
         "class":{"id":str(classroom.pk),"name":classroom.name},
         "year":{"id":str(enrollment.year_id),"name":enrollment.year.name},

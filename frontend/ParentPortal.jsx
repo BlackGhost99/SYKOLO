@@ -108,6 +108,9 @@ export default function ParentPortal() {
     try{await fn();}catch(error){setMessage(error.message);}finally{setBusy(false);}
   }
   const current=children.find(c=>c.student===selected);
+  const relatedSchools=current?.matricule_yem
+    ? children.filter(child=>child.matricule_yem===current.matricule_yem)
+    : [];
   const base="parents/children/"+selected;
   return <div className="yd-parent-real">
     <div className="yd-hero">
@@ -132,6 +135,12 @@ export default function ParentPortal() {
       </Card>
       {current&&<Card title={current.last_name+" "+current.first_name}>
         <p>{current.school_name} · matricule {current.student_code}</p>
+        {current.matricule_yem&&current.matricule_yem!==current.student_code&&<p>Identifiant permanent YEM · {current.matricule_yem}</p>}
+        {relatedSchools.length>1&&<label className="field">Établissements du parcours
+          <select value={selected} onChange={e=>{setSelected(e.target.value);setMessage("");}}>
+            {relatedSchools.map(child=><option key={child.student} value={child.student}>{child.school_name}</option>)}
+          </select>
+        </label>}
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:"1rem"}}>
           {[
             ["reports","Bulletins"],["enrollments","Scolarité"],["attendance","Présences"],

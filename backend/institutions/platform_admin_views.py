@@ -12,6 +12,7 @@ from .models import (
     SchoolAudit, SchoolMember, SchoolRole, Student,
 )
 from .platform_views import platform_only
+from .services import public_role_label
 from .school_profiles import validate_school_profile
 from .views import parse_body, log_event, string
 
@@ -180,12 +181,13 @@ def platform_organizations(request):
 
 
 def detail_dict(s):
-    from .school_functions import account_functions
+    from .school_functions import account_functions, suggested_account_function
     policy = SchoolAdminPolicy.objects.filter(school=s).first()
     members = SchoolMember.objects.filter(school=s).select_related("user", "role").order_by(
         "user__last_name", "user__username"
     )
     roles = SchoolRole.objects.filter(school=s).order_by("label")
+    functions = account_functions(s)
     return {
         "school": {
             "id": str(s.id), "name": s.name, "active": s.is_active,
@@ -196,12 +198,13 @@ def detail_dict(s):
             "organization_id": str(s.organization_id),
             "created_at": s.created_at.isoformat(),
         },
-        "functions": account_functions(s),
+        "functions": functions,
         "login_code": str(s.pk),
         "members_count": members.filter(active=True, user__is_active=True, user__is_superuser=False).count(),
         "students_count": Student.objects.filter(school=s, active=True).count(),
         "roles": [
-            {"id": str(r.id), "code": r.code, "label": r.label}
+            {"id": str(r.id), "code": r.code, "label": public_role_label(r, s),
+             "suggested_function": suggested_account_function(s, r.code, functions)}
             for r in roles
         ],
         "members": [
@@ -210,7 +213,7 @@ def detail_dict(s):
                 "name": f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username,
                 "email": m.user.email, "active": m.active and m.user.is_active,
                 "membership_active": m.active, "role_id": str(m.role_id),
-                "role": m.role.label, "role_code": m.role.code,
+                "role": public_role_label(m.role, s), "role_code": m.role.code,
                 "is_platform_admin": m.user.is_superuser,
             } for m in members[:250]
         ],
@@ -425,7 +428,7 @@ def platform_school_members(request, school_id):
                 "name": f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username,
                 "email": m.user.email, "active": m.active and m.user.is_active,
                 "membership_active": m.active,
-                "role_id": str(m.role_id), "role": m.role.label, "role_code": m.role.code,
+                "role_id": str(m.role_id), "role": public_role_label(m.role, school), "role_code": m.role.code,
                 "is_platform_admin": m.user.is_superuser,
             } for m in rows
         ],

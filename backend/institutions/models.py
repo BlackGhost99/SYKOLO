@@ -59,6 +59,8 @@ class SchoolMember(models.Model):
     additional_roles = models.ManyToManyField(SchoolRole, blank=True, related_name="additional_members")
     active = models.BooleanField(default=True)
     function_codes = models.JSONField(default=list, blank=True)
+    # None = legacy / portée générale ; une liste d’UUID = cycles académiques autorisés.
+    access_cycle_ids = models.JSONField(null=True, default=None, blank=True)
 
     class Meta:
         constraints = [
@@ -176,6 +178,7 @@ class PermissionDelegation(models.Model):
     permissions = models.JSONField(default=list)
     reason = models.CharField(max_length=240)
     source_function = models.CharField(max_length=48, blank=True)
+    class_cycle = models.SlugField(max_length=40, blank=True, default="")
     granted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)

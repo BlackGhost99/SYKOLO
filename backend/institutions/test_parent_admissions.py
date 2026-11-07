@@ -10,6 +10,7 @@ from .models import Organization, School, SchoolMember, SchoolRole
 from .parent_admission_models import FamilyChild, ParentAdmissionRequest, SchoolPublicListing
 from .parent_models import GuardianAccountLink
 from .services import ROLE_TEMPLATES
+from .student_models import Student, StudentGuardian
 
 
 class FamilyDiscoveryTests(TestCase):
@@ -106,6 +107,55 @@ class FamilyDiscoveryTests(TestCase):
         self.login(self.director)
         staff = self.client.get(f"/api/v1/schools/{self.school.pk}/admissions")
         self.assertEqual(len(staff.json()["applications"]), 1)
+
+    def test_verified_transfer_keeps_matricule_without_granting_school_access(self):
+        self.setup_listing()
+        self.login(self.parent)
+        child_id = self.create_child()
+        self.assertEqual(self.application(child_id).status_code, 201)
+        source = AdmissionApplication.objects.get(school=self.school)
+        source.status = "accepted"
+        source.save(update_fields=["status"])
+        self.login(self.director)
+        payload = {"revision": 1, "enrolled_on": "2026-10-03"}
+        response = self.post(f"schools/{self.school.pk}/admissions/{source.pk}/convert", payload)
+        self.assertEqual(response.status_code, 201, response.content)
+        original = Student.objects.get(school=self.school)
+
+        year = AcademicYear.objects.create(school=self.other_school, code="2026", name="2026",
+            start_date=self.year.start_date, end_date=self.year.end_date)
+        cycle = AcademicCycle.objects.create(school=self.other_school, code="primaire", name="Primaire")
+        level = AcademicLevel.objects.create(school=self.other_school, cycle=cycle, code="ce1", name="CE1")
+        classroom = AcademicClass.objects.create(school=self.other_school, year=year, level=level,
+            code="ce1a", name="CE1 A")
+        SchoolPublicListing.objects.create(school=self.other_school, published=True, cash_at_school=True)
+        self.login(self.parent)
+        result = self.application(child_id, classroom=str(classroom.pk))
+        self.assertEqual(result.status_code, 201, result.content)
+        target = AdmissionApplication.objects.get(school=self.other_school)
+        target.status = "accepted"
+        target.save(update_fields=["status"])
+        SchoolMember.objects.create(school=self.other_school, user=self.director,
+            role=SchoolRole.objects.get(school=self.other_school, code="direction"))
+        self.login(self.director)
+        url = f"schools/{self.other_school.pk}/admissions/{target.pk}/convert"
+        self.assertEqual(self.post(url, payload).status_code, 422)
+        self.assertFalse(Student.objects.filter(school=self.other_school).exists())
+        SchoolMember.objects.create(school=self.school, user=self.parent,
+            role=SchoolRole.objects.get(school=self.school, code="parent"))
+        GuardianAccountLink.objects.create(school=self.school, user=self.parent,
+            guardian=StudentGuardian.objects.get(student=original), verified_by=self.director)
+        response = self.post(url, payload)
+        self.assertEqual(response.status_code, 201, response.content)
+        transferred = Student.objects.get(school=self.other_school)
+        self.assertNotEqual(original.pk, transferred.pk)
+        self.assertEqual(original.matricule_yem, transferred.matricule_yem)
+
+        lookup = f"/api/v1/schools/{self.other_school.pk}/students?matricule={original.matricule_yem.lower()}"
+        self.assertEqual([row["id"] for row in self.client.get(lookup).json()["students"]], [str(transferred.pk)])
+        self.login(self.parent)
+        self.assertEqual(self.client.get(lookup).status_code, 404)
+        self.assertEqual(len(self.client.get("/api/v1/parents/children").json()["children"]), 1)
 
     def test_other_account_cannot_access_child_or_application(self):
         self.setup_listing()
