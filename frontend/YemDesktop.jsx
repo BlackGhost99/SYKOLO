@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import ParentPortal from "./ParentPortal.jsx";
 import { MobileApp, MobileShowcase, useIsMobile } from "./YemMobile.jsx";
 import { Icon, Button, Status, Metric, Card, Table, InfoRow, Note, SelectBox, SearchBox, Toggle, Check, Donut, LineChart, BarList, PageHeader, QrCode, Signature, Shell, NAV, BrandContext } from "./yem-ui.jsx";
 import admissionPhoto from "./assets/yem-admission-photo.jpg";
@@ -413,20 +412,12 @@ function useBrandStyle(brand) {
 export default function YemDesktop() {
   const isMobile = useIsMobile();
   const [page, setPage] = useState("dashboard");
-  const [isParent, setIsParent] = useState(false);
-  useEffect(() => {
-    let live = true;
-    fetch("/api/v1/parents/children", { credentials: "same-origin" })
-      .then(r => r.ok ? r.json() : null).then(data => { if (live && data?.parent_role) { setIsParent(true); setPage("parents"); } })
-      .catch(() => {});
-    return () => { live = false; };
-  }, []);
   const [brand, setBrand] = useState(getBrand);
   useBrandStyle(brand);
   const updateBrand = next => { setBrand(next); try { window.localStorage.setItem(BRAND_KEY, JSON.stringify(next)); } catch { /* aperçu non persistant si stockage plein */ } };
-  const content = useMemo(() => ({ dashboard: <Dashboard/>, students: <Students/>, admissions: <Admissions/>, payments: <Payments/>, arrears: <Arrears/>, bulletins: <Bulletins/>, settings: <BulletinConfig/>, absences: <Absences/>, parents: <ParentPortal/>, staff: <Staff/>, branding: <BrandingEditor brand={brand} onChange={updateBrand}/>, mobile: <MobileShowcase/> })[page], [page, brand]);
+  const content = useMemo(() => ({ dashboard: <Dashboard/>, students: <Students/>, admissions: <Admissions/>, payments: <Payments/>, arrears: <Arrears/>, bulletins: <Bulletins/>, settings: <BulletinConfig/>, absences: <Absences/>, parents: <MobileShowcase/>, staff: <Staff/>, branding: <BrandingEditor brand={brand} onChange={updateBrand}/>, mobile: <MobileShowcase/> })[page], [page, brand]);
   if (isMobile) return <MobileApp/>;
-  const nav = NAV.filter(([id]) => !isParent || id === "parents");
+  const nav = NAV;
   const active = page === "branding" ? "settings" : page;
   return <BrandContext.Provider value={brand}><Shell active={active} onNavigate={setPage} nav={nav}
     schoolSelector={<SchoolMenu name={brand.name} logo={brand.logo} value={page} onSelect={setPage} items={[{ key: "dashboard", label: brand.name, icon: "school" }, { key: "branding", label: "Identité visuelle", icon: "palette" }, { key: "mobile", label: "Expérience mobile", icon: "mobile" }]}/>}>
