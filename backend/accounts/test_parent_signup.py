@@ -35,7 +35,7 @@ class ParentRegistrationTests(TestCase):
 
     def test_registration_requires_email_activation_and_creates_no_school_access(self):
         response=self.post("parents/register",self.user_payload())
-        self.assertEqual(response.status_code,201,response.content)
+        self.assertEqual(response.status_code,200,response.content)
         user=get_user_model().objects.get(username="parent-appli-test")
         self.assertFalse(user.is_active)
         self.assertFalse(user.is_staff)
@@ -54,10 +54,24 @@ class ParentRegistrationTests(TestCase):
         self.assertEqual(self.post("parents/verify",{"uid":url.group(1),"token":url.group(2)}).status_code,422)
 
     def test_duplicate_email_does_not_issue_a_second_account(self):
-        self.assertEqual(self.post("parents/register",self.user_payload()).status_code,201)
+        first=self.post("parents/register",self.user_payload())
+        self.assertEqual(first.status_code,200)
         second=self.user_payload()
         second["username"]="parent-appli-test-2"
-        self.assertEqual(self.post("parents/register",second).status_code,200)
+        duplicate=self.post("parents/register",second)
+        self.assertEqual(duplicate.status_code,first.status_code)
+        self.assertEqual(duplicate.json(),first.json())
+        self.assertIn("lien d’activation",first.json()["message"])
+        self.assertEqual(get_user_model().objects.count(),1)
+        self.assertEqual(len(mail.outbox),1)
+
+    def test_duplicate_username_keeps_the_same_public_response(self):
+        first=self.post("parents/register",self.user_payload())
+        second=self.user_payload()
+        second["email"]="autre@example.test"
+        duplicate=self.post("parents/register",second)
+        self.assertEqual(duplicate.status_code,first.status_code)
+        self.assertEqual(duplicate.json(),first.json())
         self.assertEqual(get_user_model().objects.count(),1)
         self.assertEqual(len(mail.outbox),1)
 
@@ -73,7 +87,7 @@ class ParentRegistrationTests(TestCase):
         self.assertEqual(response.status_code,503)
 
     def test_resend_link_is_generic_and_only_for_self_registered_parent(self):
-        self.assertEqual(self.post("parents/register",self.user_payload()).status_code,201)
+        self.assertEqual(self.post("parents/register",self.user_payload()).status_code,200)
         self.assertEqual(len(mail.outbox),1)
         res=self.post("parents/resend-verification",{"email":"famille@example.test"})
         self.assertEqual(res.status_code,200,res.content)
@@ -84,7 +98,7 @@ class ParentRegistrationTests(TestCase):
         self.assertEqual(len(mail.outbox),2)
 
     def test_resend_mail_failure_keeps_non_enumerating_response(self):
-        self.assertEqual(self.post("parents/register",self.user_payload()).status_code,201)
+        self.assertEqual(self.post("parents/register",self.user_payload()).status_code,200)
         with patch("accounts.parent_signup_views.send_verification_email",side_effect=RuntimeError("mail down")):
             known=self.post("parents/resend-verification",{"email":"famille@example.test"})
             unknown=self.post("parents/resend-verification",{"email":"unregistered@example.test"})
