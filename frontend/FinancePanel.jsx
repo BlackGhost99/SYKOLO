@@ -15,7 +15,7 @@ async function financeApi(url, body, method) {
   return data;
 }
 
-export default function FinancePanel({schoolId, mode = "all"}) {
+export default function FinancePanel({schoolId, mode = "all", workingYearId="", onWorkingYearChange}) {
   const settings = mode === "settings";
   const root = "schools/" + schoolId + "/";
   const finance = root + "finance/";
@@ -27,7 +27,8 @@ export default function FinancePanel({schoolId, mode = "all"}) {
   const [charges, setCharges] = useState([]);
   const [payments, setPayments] = useState([]);
   const [statement, setStatement] = useState(null);
-  const [selectedYear, setSelectedYear] = useState("");
+  const [selectedYear, setSelectedYear] = useState(workingYearId);
+  useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");setSelectedSchedule("");setSelectedCharge("");},[workingYearId,schoolId]);
   const [selectedClass, setSelectedClass] = useState("");
   const [feeCode, setFeeCode] = useState("");
   const [feeLabel, setFeeLabel] = useState("");
@@ -143,7 +144,7 @@ export default function FinancePanel({schoolId, mode = "all"}) {
     });}}>
       <div className="two">
         <label className="field">Année scolaire
-          <select required value={selectedYear} onChange={e=>{setSelectedYear(e.target.value);setSelectedClass("");}}>
+          <select required value={selectedYear} onChange={e=>{setSelectedYear(e.target.value);onWorkingYearChange?.(e.target.value);setSelectedClass("");}}>
             <option value="">Sélectionner…</option>
             {years.filter(x=>x.active).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
