@@ -26,3 +26,10 @@ it("propose une connexion plateforme séparée",async()=>{
  await ui.type(screen.getByLabelText("Mot de passe",{exact:true}),"secret");await ui.click(screen.getByRole("button",{name:"Se connecter",exact:true}));
  expect(JSON.parse(calls.find(([url])=>url.endsWith("/login"))[1].body).scope).toBe("platform");
 });
+it("ouvre directement la connexion familles sur le lien parents",async()=>{
+ const calls=setup();window.history.replaceState(null,"","/#/parents");render(<AuthPanel/>);const ui=userEvent.setup();
+ await ui.type(await screen.findByLabelText("Identifiant"),"famille");
+ expect(screen.queryByLabelText("Code de l'établissement")).toBeNull();
+ await ui.type(screen.getByLabelText("Mot de passe",{exact:true}),"secret");await ui.click(screen.getByRole("button",{name:"Se connecter",exact:true}));
+ expect(JSON.parse(calls.find(([url])=>url.endsWith("/login"))[1].body).scope).toBe("parent");
+});

@@ -71,7 +71,13 @@ def me(request):
     if not request.user.is_authenticated or not request.user.is_active:
         return JsonResponse({"authenticated": False})
     device = MFADevice.objects.filter(user=request.user, confirmed_at__isnull=False).first()
-    return JsonResponse({"authenticated": True, "user": {**public_user(request.user), "username": request.session.get("school_username", request.user.username)}, "school_id": request.session.get("school_id"), "mfa_enabled": bool(device)})
+    return JsonResponse({
+        "authenticated": True,
+        "user": {**public_user(request.user), "username": request.session.get("school_username", request.user.username)},
+        "school_id": request.session.get("school_id"),
+        "login_scope": request.session.get("login_scope"),
+        "mfa_enabled": bool(device),
+    })
 
 
 @require_POST

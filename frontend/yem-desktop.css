@@ -99,6 +99,16 @@
 .yd-school-banner::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, var(--yd-bg) 0%, rgba(248, 249, 248, .55) 14%, rgba(248, 249, 248, 0) 32%); z-index: 1; }
 .yd-school-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+/* ---------- Espace familles ---------- */
+.yd-parent-standalone { max-width: 1040px; margin: 0 auto; padding: 1rem; }
+.yd-parent-standalone > nav,
+.yd-parent-standalone > nav > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.yd-parent-standalone > nav { justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.yd-parent-standalone > nav > strong { color: #175c46; font-size: 21px; }
+.yd-parent-real .yd-hero { min-height: auto; }
+.yd-parent-real .yd-hero :is(h1, p) { white-space: normal; }
+.yd-parent-real > .yd-card { margin-bottom: 1rem; }
+
 /* ---------- Boutons, statuts ---------- */
 .yd-btn { min-height: 44px; border: 1px solid #b9c3bb; background: #fff; color: #1b2a1e; border-radius: 6px; padding: 0 20px; display: inline-flex; align-items: center; justify-content: center; gap: 12px; font-size: 17px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s; }
 .yd-btn:hover { background: #f3f7f1; border-color: #9fb0a2; }
