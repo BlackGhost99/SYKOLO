@@ -13,6 +13,7 @@ from institutions.parent_models import GuardianAccountLink
 
 
 @override_settings(
+    PARENT_EMAIL_VERIFICATION_REQUIRED=True,
     PASSWORD_RESET_ENABLED=True,
     AUTH_PUBLIC_BASE_URL="https://yem.example.test",
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
@@ -116,6 +117,64 @@ class ParentRegistrationTests(TestCase):
             result=self.client.get("/api/v1/auth/parents/registration-status")
             self.assertFalse(result.json()["email_registration_available"])
 
+
+    @override_settings(
+        PARENT_EMAIL_VERIFICATION_REQUIRED=False,
+        PASSWORD_RESET_ENABLED=False,
+        EMAIL_BACKEND="accounts.email_backends.ResendEmailBackend",
+        DEFAULT_FROM_EMAIL="YEM <onboarding@resend.dev>",
+    )
+    @patch("accounts.parent_signup_views.send_verification_email",
+           side_effect=AssertionError("Aucun message ne doit être envoyé en mode pilote"))
+    def test_pilot_registration_works_without_email_service_and_can_login(self, send_email):
+        status=self.client.get("/api/v1/auth/parents/registration-status")
+        self.assertEqual(status.status_code,200)
+        self.assertEqual(status.json(),{
+            "email_registration_available":True,
+            "email_verification_required":False,
+            "email_test_mode":False,
+            "confirmation_valid_minutes":0,
+        })
+        response=self.post("parents/register",self.user_payload())
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertIn("utilisable immédiatement",response.json()["message"])
+        user=get_user_model().objects.get(username="parent-appli-test")
+        self.assertTrue(user.is_active)
+        self.assertFalse(user.is_staff)
+        self.assertFalse(user.is_superuser)
+        self.assertEqual(SchoolMember.objects.count(),0)
+        self.assertEqual(GuardianAccountLink.objects.count(),0)
+        self.assertEqual(len(mail.outbox),0)
+        self.assertEqual(self.post("parents/resend-verification",
+            {"email":self.user_payload()["email"]}).status_code,409)
+        login=self.post("login",{
+            "username":self.user_payload()["username"],
+            "password":self.user_payload()["password"],
+            "scope":"parent",
+        })
+        self.assertEqual(login.status_code,200,login.content)
+        self.assertTrue(login.json()["authenticated"])
+        send_email.assert_not_called()
+
+    @override_settings(PARENT_EMAIL_VERIFICATION_REQUIRED=False,PASSWORD_RESET_ENABLED=False)
+    def test_pilot_registration_duplicates_remain_private(self):
+        first=self.post("parents/register",self.user_payload())
+        second=self.user_payload()
+        second["username"]="parent-alternate"
+        duplicate=self.post("parents/register",second)
+        self.assertEqual(first.status_code,duplicate.status_code)
+        self.assertEqual(first.json(),duplicate.json())
+        self.assertEqual(get_user_model().objects.count(),1)
+        self.assertTrue(get_user_model().objects.get().is_active)
+
+    @override_settings(PARENT_EMAIL_VERIFICATION_REQUIRED=False,PASSWORD_RESET_ENABLED=False)
+    def test_pilot_still_enforces_password_rules(self):
+        details=self.user_payload()
+        details["password"]="123"
+        result=self.post("parents/register",details)
+        self.assertEqual(result.status_code,422)
+        self.assertFalse(get_user_model().objects.exists())
+
     @override_settings(
         EMAIL_BACKEND="accounts.email_backends.ResendEmailBackend",
         YEM_RESEND_API_KEY="test-key",
@@ -127,7 +186,9 @@ class ParentRegistrationTests(TestCase):
     def test_test_sender_is_reported_and_refused_delivery_rolls_back_signup(self, urlopen):
         status = self.client.get("/api/v1/auth/parents/registration-status")
         self.assertEqual(status.json(), {
-            "email_registration_available": True, "email_test_mode": True, "confirmation_valid_minutes": 30,
+            "email_registration_available": True,
+            "email_verification_required": True,
+            "email_test_mode": True, "confirmation_valid_minutes": 30,
         })
         with self.assertLogs("accounts.email_backends", level="WARNING") as logs:
             response = self.post("parents/register", self.user_payload())

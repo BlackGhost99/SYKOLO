@@ -49,11 +49,14 @@ export default function AuthPanel() {
   const isResetLink = window.location.hash.startsWith("#/reset?");
   const isVerifyLink = window.location.hash.startsWith("#/verify?");
   const registrationReady = registrationStatus?.email_registration_available;
+  const emailVerificationRequired = registrationStatus?.email_verification_required !== false;
   const registrationNotice = registrationReady === false
-    ? "L’envoi des liens d’activation est indisponible pour le moment."
-    : registrationStatus?.email_test_mode
-      ? "Mode test Resend : seuls les destinataires autorisés par Resend peuvent recevoir un lien. Pour inscrire tous les parents, configurez un domaine d’envoi vérifié (possible avec le forfait gratuit)."
-      : "";
+    ? "L’inscription parent est temporairement indisponible."
+    : !emailVerificationRequired
+      ? "Mode test : aucun e-mail d’activation n’est envoyé. Le compte est utilisable immédiatement. L’accès aux dossiers des élèves reste soumis à la vérification de l’établissement."
+      : registrationStatus?.email_test_mode
+        ? "Mode test Resend : seuls les destinataires autorisés peuvent recevoir un lien. Un domaine d’envoi vérifié est nécessaire pour ouvrir les inscriptions à tous les parents."
+        : "";
 
   useEffect(() => {
     let live = true;
@@ -169,7 +172,7 @@ export default function AuthPanel() {
             <button type="button" onClick={() => { setTab("login"); setMessage(""); }}>Connexion</button>
             <button type="button" onClick={() => { setTab("reset"); setMessage(""); }}>Mot de passe oublié</button>
             <button type="button" onClick={() => { setTab("register"); setMessage(""); }}>Créer un compte parent</button>
-            <button type="button" onClick={() => { setTab("resend"); setMessage(""); }}>Renvoyer mon lien d'activation</button>
+            {emailVerificationRequired && <button type="button" onClick={() => { setTab("resend"); setMessage(""); }}>Renvoyer mon lien d'activation</button>}
           </div>
           {isVerifyLink ? (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
@@ -214,8 +217,10 @@ export default function AuthPanel() {
                 email, password: newPassword,
               });
               setMessage(result.message); setTab("login"); setNewPassword("");
+              setLoginScope("parent");
+              window.history.replaceState(null, "", "#/parents");
             }); }}>
-              <p>Un seul compte parent pour plusieurs enfants et plusieurs écoles. Vous devrez confirmer votre adresse e-mail avant la première connexion.</p>
+              <p>Un seul compte parent pour plusieurs enfants et plusieurs écoles. {emailVerificationRequired ? "Vous devrez confirmer votre adresse e-mail avant la première connexion." : "Après la création, vous pourrez vous connecter immédiatement."}</p>
               {registrationNotice && <p role="status">{registrationNotice}</p>}
               <label className="field">Prénom<input required maxLength={120} autoComplete="given-name" value={registerFirst} onChange={e=>setRegisterFirst(e.target.value)}/></label>
               <label className="field">Nom<input required maxLength={120} autoComplete="family-name" value={registerLast} onChange={e=>setRegisterLast(e.target.value)}/></label>
