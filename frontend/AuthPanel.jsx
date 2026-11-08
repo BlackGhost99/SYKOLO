@@ -20,6 +20,7 @@ async function authApi(path, body) {
   const data = await response.json();
   if (!response.ok) {
     const error = Error(data.error || "Requête refusée.");
+    error.status = response.status;
     error.mfaRequired = data.mfa_required;
     throw error;
   }
@@ -81,6 +82,46 @@ export default function AuthPanel() {
       if (e.mfaRequired) setMessage("Ajoutez votre code d’authentification pour vous connecter.");
       else setMessage(e.message);
     } finally { setBusy(false); }
+  }
+
+  async function signIn(credentials) {
+    await authApi("login", credentials);
+    const session = await authApi("me");
+    if (!session.authenticated || session.login_scope !== credentials.scope) {
+      throw Error("La session n’a pas pu s’ouvrir. Réessayez de vous connecter.");
+    }
+    setAccount(session);
+    setPassword("");
+    setCode("");
+    window.dispatchEvent(new Event("yem:auth-change"));
+  }
+
+  async function registerParent() {
+    const result = await authApi("parents/register", {
+      username, first_name: registerFirst, last_name: registerLast,
+      email, password: newPassword,
+    });
+    setLoginScope("parent");
+    window.history.replaceState(null, "", "#/parents");
+
+    if (result.email_verification_required === false) {
+      try {
+        await signIn({ username, password: newPassword, scope: "parent" });
+      } catch (error) {
+        if (error.status === 401 && !error.mfaRequired) {
+          setMessage("Impossible d’ouvrir l’espace Parents avec ces informations. Si vous avez déjà un compte, utilisez son identifiant dans Connexion. Pour une nouvelle inscription, essayez un autre identifiant et une autre adresse e-mail.");
+          return;
+        }
+        setTab("login");
+        setNewPassword("");
+        throw error;
+      }
+      setMessage("Vous êtes connecté à YEM Parents.");
+    } else {
+      setMessage(result.message);
+    }
+    setTab("login");
+    setNewPassword("");
   }
 
   async function logout() {
@@ -211,15 +252,7 @@ export default function AuthPanel() {
               <button disabled={busy||registrationReady===false} type="submit">Renvoyer le lien</button>
             </form>
           ) : tab === "register" ? (
-            <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-              const result = await authApi("parents/register", {
-                username, first_name: registerFirst, last_name: registerLast,
-                email, password: newPassword,
-              });
-              setMessage(result.message); setTab("login"); setNewPassword("");
-              setLoginScope("parent");
-              window.history.replaceState(null, "", "#/parents");
-            }); }}>
+            <form onSubmit={(e) => { e.preventDefault(); run(registerParent); }}>
               <p>Un seul compte parent pour plusieurs enfants et plusieurs écoles. {emailVerificationRequired ? "Vous devrez confirmer votre adresse e-mail avant la première connexion." : "Après la création, vous pourrez vous connecter immédiatement."}</p>
               {registrationNotice && <p role="status">{registrationNotice}</p>}
               <label className="field">Prénom<input required maxLength={120} autoComplete="given-name" value={registerFirst} onChange={e=>setRegisterFirst(e.target.value)}/></label>
@@ -241,8 +274,8 @@ export default function AuthPanel() {
             </form>
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-              const result = await authApi("login", { username, password, code, scope: loginScope, school_code: schoolCode.trim() });
-              setAccount(await authApi("me")); window.dispatchEvent(new Event("yem:auth-change")); setPassword(""); setCode(""); setMessage("Connexion réussie.");
+              await signIn({ username, password, code, scope: loginScope, school_code: schoolCode.trim() });
+              setMessage("Connexion réussie.");
             }); }}>
               <h3>{loginScope === "platform" ? "Administration YEM" : loginScope === "parent" ? "Espace parents" : "Connexion établissement"}</h3>
               <div className="actions">

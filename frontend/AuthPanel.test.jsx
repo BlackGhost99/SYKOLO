@@ -6,11 +6,31 @@ import {it,expect,vi,afterEach} from "vitest";
 import AuthPanel from "./AuthPanel.jsx";
 vi.mock("./SchoolDashboard.jsx",()=>({default:()=> <p>Espace scolaire ouvert</p>}));
 vi.mock("./PlatformConsole.jsx",()=>({default:()=> <p>Console plateforme ouverte</p>}));
+vi.mock("./ParentPortal.jsx",()=>({FamilyWorkspace:()=> <p>Espace famille ouvert</p>}));
 afterEach(()=>{cleanup();vi.unstubAllGlobals();window.history.replaceState(null,"","/");});
-function setup(registrationStatus={email_registration_available:false}){
- const calls=[];vi.stubGlobal("fetch",vi.fn(async(url,options={})=>{
-  calls.push([url,options]);return {ok:true,headers:new Headers({"content-type":"application/json"}),json:async()=>url.endsWith("registration-status")?registrationStatus:{authenticated:false}};
- }));return calls;
+function setup(registrationStatus = {email_registration_available: false}, loginStatus = 200) {
+  const calls = [];
+  let session = {authenticated: false};
+  vi.stubGlobal("fetch", vi.fn(async (url, options = {}) => {
+    calls.push([url, options]);
+    let status = 200;
+    let data = {};
+    if (url.endsWith("/registration-status")) data = registrationStatus;
+    if (url.endsWith("/register")) {
+      data = {message: "Demande traitée.", email_verification_required: registrationStatus.email_verification_required};
+    }
+    if (url.endsWith("/login")) {
+      status = loginStatus;
+      if (status === 200) {
+        const {username, scope} = JSON.parse(options.body);
+        session = {authenticated: true, login_scope: scope, user: {username, is_platform_admin: scope === "platform"}};
+      }
+      data = status === 200 ? {authenticated: true} : {error: "Identifiants invalides."};
+    }
+    if (url.endsWith("/me")) data = session;
+    return {ok: status === 200, status, headers: new Headers({"content-type": "application/json"}), json: async () => data};
+  }));
+  return calls;
 }
 it("demande le code école avant les identifiants et envoie la portée choisie",async()=>{
  const calls=setup();render(<AuthPanel/>);const ui=userEvent.setup();
@@ -43,22 +63,44 @@ it("affiche la restriction du mode test avant la création d’un compte parent"
  expect(screen.getByRole("button",{name:"Créer mon compte parent"}).disabled).toBe(false);
 });
 
-it("permet la création sans e-mail d’activation et mène à la connexion parent",async()=>{
- const calls=setup({email_registration_available:true,email_verification_required:false,email_test_mode:false});
- render(<AuthPanel/>);const ui=userEvent.setup();
- await ui.click(screen.getByRole("button",{name:"Créer un compte parent",exact:true}));
- expect(await screen.findByText(/aucun e-mail d’activation n’est envoyé/)).toBeTruthy();
- expect(screen.queryByRole("button",{name:"Renvoyer mon lien d'activation"})).toBeNull();
- expect(screen.getByText(/Après la création, vous pourrez vous connecter immédiatement/)).toBeTruthy();
- expect(screen.getByRole("button",{name:"Créer mon compte parent"}).disabled).toBe(false);
- await ui.type(screen.getByLabelText("Prénom"),"Diane");
- await ui.type(screen.getByLabelText("Nom"),"Nze");
- await ui.type(screen.getByLabelText("Identifiant"),"diane-nze");
- await ui.type(screen.getByLabelText("Adresse e-mail"),"diane@example.test");
- await ui.type(screen.getByLabelText("Mot de passe (au moins 12 caractères)"),"Test compte parent sécurisé 2026!");
- await ui.click(screen.getByRole("button",{name:"Créer mon compte parent"}));
- expect(calls.some(([url])=>url.endsWith("parents/register"))).toBe(true);
- expect(await screen.findByText("Espace parents")).toBeTruthy();
- expect(screen.queryByLabelText("Code de l'établissement")).toBeNull();
- expect(window.location.hash).toBe("#/parents");
+const pilot = {email_registration_available: true, email_verification_required: false, email_test_mode: false};
+const parentPassword = "Test compte parent sécurisé 2026!";
+
+async function submitParentRegistration(ui) {
+  await ui.type(screen.getByLabelText("Prénom"), "Diane");
+  await ui.type(screen.getByLabelText("Nom"), "Nze");
+  await ui.type(screen.getByLabelText("Identifiant"), "diane-nze");
+  await ui.type(screen.getByLabelText("Adresse e-mail"), "diane@example.test");
+  await ui.type(screen.getByLabelText("Mot de passe (au moins 12 caractères)"), parentPassword);
+  await ui.click(screen.getByRole("button", {name: "Créer mon compte parent"}));
+}
+
+it("ouvre l’espace parent après l’inscription en mode pilote", async () => {
+  const calls = setup(pilot);
+  render(<AuthPanel/>);
+  const ui = userEvent.setup();
+  await ui.click(screen.getByRole("button", {name: "Créer un compte parent", exact: true}));
+  expect(await screen.findByText(/aucun e-mail d’activation n’est envoyé/)).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Renvoyer mon lien d'activation"})).toBeNull();
+  await submitParentRegistration(ui);
+  expect(await screen.findByText("Espace famille ouvert")).toBeTruthy();
+  expect(JSON.parse(calls.find(([url]) => url.endsWith("/login"))[1].body)).toMatchObject({
+    scope: "parent", username: "diane-nze", password: parentPassword,
+  });
+  expect(window.location.hash).toBe("#/parents");
+});
+
+it("laisse corriger l’inscription pilote quand la connexion est refusée", async () => {
+  setup(pilot, 401);
+  render(<AuthPanel/>);
+  const ui = userEvent.setup();
+  await ui.click(screen.getByRole("button", {name: "Créer un compte parent", exact: true}));
+  await submitParentRegistration(ui);
+  expect(await screen.findByText(/essayez un autre identifiant et une autre adresse e-mail/)).toBeTruthy();
+  expect(screen.getByLabelText("Identifiant").value).toBe("diane-nze");
+  expect(screen.getByLabelText("Adresse e-mail").value).toBe("diane@example.test");
+  expect(screen.getByRole("button", {name: "Créer mon compte parent"}).disabled).toBe(false);
+  expect(screen.queryByText("Espace famille ouvert")).toBeNull();
+  await ui.click(screen.getByRole("button", {name: "Connexion", exact: true}));
+  expect(screen.getByRole("heading", {name: "Espace parents"})).toBeTruthy();
 });
