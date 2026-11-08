@@ -89,6 +89,12 @@ export default function AcademicPanel({schoolId}) {
     } catch (e) {setMessage(e.message);} finally {setBusy(false);}
   }
   function fieldControl(field) {
+    if (field==="year"&&yearId&&(resource==="classes"||resource==="periods")) {
+      const name=(all.years||[]).find(y=>y.id===yearId)?.name||"Année sélectionnée";
+      return <select value={yearId} disabled aria-label="Année du contexte sélectionné">
+        <option value={yearId}>{name}</option>
+      </select>;
+    }
     if (PARENT[field]) {
       const options = all[PARENT[field]] || [];
       return <select value={form[field]} required={field !== "track"} onChange={e => update(field,e.target.value)}>
