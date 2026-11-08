@@ -88,6 +88,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "config.middleware.SchoolSessionMiddleware",
     "config.middleware.SchoolCycleBoundaryMiddleware",
+    "config.middleware.ClosedYearWriteErrorMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "config.middleware.ResponseHeadersMiddleware",
 ]
