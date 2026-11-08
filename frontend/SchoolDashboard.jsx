@@ -217,6 +217,14 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     }
     return ()=>{live=false};
   },[chosen,access]);
+  useEffect(()=>{
+    if(!chosen||!workingYearId||!access?.permissions?.includes("school.academic.read"))return;
+    let live=true;
+    get("schools/"+chosen+"/academic/annual-snapshot?year="+encodeURIComponent(workingYearId))
+      .then(data=>{if(live)setAcademicYears(data.years||[])})
+      .catch(()=>{});
+    return()=>{live=false};
+  },[chosen,workingYearId,access]);
   const perms=access?.permissions||[];
   const can = permission => perms.includes(permission);
   const isOwner = Boolean(access?.is_owner || access?.role === "proprietaire");
@@ -285,11 +293,11 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       numbering:<StudentNumberingSettings key={chosen} {...common}/>,
       form:<FormSettings key={chosen} {...common} canEdit={can("school.students.manage")}/>,
       "admission-policy":<AdmissionSettings key={chosen} {...panelProps} canConfigureCatalog={can("school.admissions.manage")}/>,
-      fees:<FinancePanel key={chosen} schoolId={chosen} mode="settings" workingYearId={workingYearId}/>,
+      fees:<FinancePanel key={chosen} schoolId={chosen} mode="settings" workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
       gateway:<AdmissionPaymentSettings key={chosen} schoolId={chosen}/>,
       amendments:<CouncilPanel key={chosen} schoolId={chosen} mode="amendments"/>,
       "parent-access":<SchoolParentAccess key={chosen} schoolId={chosen} canAssignRole={canUsers} canReadStudents={can("school.students.read")}/>,
-      "staff-setup":<StaffPanel key={chosen} schoolId={chosen} mode="settings" workingYearId={workingYearId}/>,
+      "staff-setup":<StaffPanel key={chosen} schoolId={chosen} mode="settings" workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
     }[id] || (SettingView && <SettingView key={chosen+id} {...panelProps}/>);
   }
   const tabBar=tabs.length>1&&page!=="staff"?<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>:null;
