@@ -61,6 +61,8 @@ def describe(obj, fields):
         elif isinstance(value, UUID):
             value = str(value)
         result[key] = value
+    if isinstance(obj, AcademicYear):
+        result["status"] = obj.status
     return result
 
 
@@ -161,6 +163,8 @@ def collection(request, school_id, resource):
         clean = validate_fields(data, school, resource)
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=422)
+    if resource == "years" and "active" in clean:
+        return JsonResponse({"error": "L'état d'une année scolaire est géré par le cycle de vie dédié."}, status=422)
     try:
         with transaction.atomic():
             if resource == "years":
@@ -235,11 +239,15 @@ def detail(request, school_id, resource, object_id):
         clean = validate_fields(data, school, resource, editing=True)
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=422)
+    if resource == "years" and "active" in clean:
+        return JsonResponse({"error": "Utilisez l'activation ou la clôture officielle de l'année."}, status=422)
     try:
         with transaction.atomic():
             obj = model.objects.select_for_update().filter(school=school, pk=object_id).first()
             if not obj:
                 return JsonResponse({"error": "Objet introuvable."}, status=404)
+            if resource == "years" and obj.status == AcademicYear.STATUS_CLOSED:
+                return JsonResponse({"error": "L'année scolaire clôturée est conservée en lecture seule."}, status=409)
             if resource == "classes" and not can_manage_classes(request.user, school, obj.level.cycle.code):
                 return refuse()
             if resource in ("classes", "periods") and not obj.year.active:

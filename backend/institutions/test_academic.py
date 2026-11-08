@@ -90,9 +90,15 @@ class AcademicStructureTests(TestCase):
     def test_archival_and_invalid_data(self):
         year = self.year()
         self.assertEqual(self.write("years", {"code": "2026-2027", "name": "Doublon", "start_date": "2026-09-01", "end_date": "2027-07-31"}).status_code, 422)
-        archived = self.write("years", {"revision": 1, "active": False}, method="patch", obj_id=year["id"])
-        self.assertEqual(archived.status_code, 200)
-        self.assertFalse(archived.json()["active"])
+        # Legacy direct toggling is denied: year status transitions are audited.
+        denied = self.write("years", {"revision": 1, "active": False}, method="patch", obj_id=year["id"])
+        self.assertEqual(denied.status_code, 422)
+        archived = AcademicYear.objects.get(pk=year["id"])
+        archived.status = AcademicYear.STATUS_CLOSED
+        archived.active = False
+        archived.save(update_fields=["status", "active"])
+        self.assertEqual(self.client.get(self.base + "years/" + year["id"]).json()["status"], "closed")
+        self.assertEqual(self.write("years", {"revision": 1, "name": "Nouveau nom"}, method="patch", obj_id=year["id"]).status_code, 409)
         self.assertEqual(self.write("years", {"revision": 2, "school": str(self.other_school.pk)}, method="patch", obj_id=year["id"]).status_code, 422)
         self.assertEqual(self.write("years", {}, method="delete", obj_id=year["id"]).status_code, 405)
         self.assertEqual(self.write("years", {"code": "reverse", "name": "Dates", "start_date": "2027-08-01", "end_date": "2026-09-01"}).status_code, 422)
@@ -137,6 +143,65 @@ class AcademicStructureTests(TestCase):
         self.assertEqual(future.json()["stats"]["classes"],1)
         self.assertEqual(future.json()["periods"],[])
         self.assertEqual(self.write("prepare-year",payload).status_code,409)
+
+
+    def test_activate_year_is_audited_and_unique_per_school(self):
+        from .models import SchoolAudit
+        first = self.year()
+        snapshot = self.client.get(self.base + "annual-snapshot").json()
+        self.assertEqual(snapshot["year"]["status"], "preparation")
+        self.assertTrue(snapshot["can_activate_year"])
+        denied = self.write("years/" + first["id"] + "/activate", {
+            "revision": 1, "reason": "court"
+        })
+        self.assertEqual(denied.status_code, 422)
+        activated = self.write("years/" + first["id"] + "/activate", {
+            "revision": 1, "reason": "Ouverture officielle de la rentrée"
+        })
+        self.assertEqual(activated.status_code, 200, activated.content)
+        self.assertEqual(activated.json()["year"]["status"], "current")
+        self.assertEqual(activated.json()["year"]["revision"], 2)
+        self.assertEqual(SchoolAudit.objects.filter(
+            school=self.school, event="academic_year_activated"
+        ).count(), 1)
+        self.assertEqual(self.client.get(self.base + "annual-snapshot").json()["year"]["id"], first["id"])
+        another = self.make("years", {"code": "2027-2028", "name": "2027-2028",
+                                      "start_date": "2027-09-01", "end_date": "2028-07-31"})
+        self.assertEqual(another["status"], "preparation")
+        self.assertEqual(self.client.get(self.base + "annual-snapshot?year=" +
+                         another["id"]).json()["can_activate_year"], False)
+        blocked = self.write("years/" + another["id"] + "/activate", {
+            "revision": 1, "reason": "Nouvelle rentrée prévue"
+        })
+        self.assertEqual(blocked.status_code, 409)
+        self.assertEqual(AcademicYear.objects.filter(school=self.school,
+                                                     status="current").count(), 1)
+
+    def test_activation_rejects_foreign_school_restricted_access_and_revision(self):
+        first = self.year()
+        self.assertEqual(self.write("years/" + first["id"] + "/activate", {
+            "revision": 4, "reason": "Ouverture administrative"
+        }).status_code, 409)
+        self.login(self.reader)
+        self.assertEqual(self.write("years/" + first["id"] + "/activate", {
+            "revision": 1, "reason": "Pas autorisé à activer"
+        }).status_code, 403)
+        self.login(self.stranger)
+        self.assertEqual(self.write("years/" + first["id"] + "/activate", {
+            "revision": 1, "reason": "Année établissement tiers"
+        }).status_code, 404)
+
+    def test_current_year_takes_precedence_over_future_prepared_year(self):
+        from .overview_views import current_year
+        first = self.year()
+        response = self.write("years/" + first["id"] + "/activate", {
+            "revision": 1, "reason": "Année de référence officielle"
+        })
+        self.assertEqual(response.status_code, 200)
+        later = self.make("years", {"code": "2027-2028", "name": "2027-2028",
+                                    "start_date": "2027-09-01", "end_date": "2028-07-31"})
+        self.assertEqual(str(current_year(self.school).pk), first["id"])
+        self.assertNotEqual(first["id"], later["id"])
 
     def test_year_preparation_rejects_overlap_and_cross_school_source(self):
         existing=self.year()

@@ -41,7 +41,8 @@ def current_year(school, requested=None):
     if requested:
         return years.filter(pk=uid(requested)).first() if uid(requested) else None
     today = timezone.localdate()
-    return (years.filter(active=True, start_date__lte=today, end_date__gte=today).order_by("-start_date").first()
+    return (years.filter(status=AcademicYear.STATUS_CURRENT).first()
+            or years.filter(active=True, start_date__lte=today, end_date__gte=today).order_by("-start_date").first()
             or years.filter(active=True).order_by("-start_date").first()
             or years.order_by("-start_date").first())
 

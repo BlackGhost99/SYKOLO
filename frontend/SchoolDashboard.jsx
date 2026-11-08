@@ -199,6 +199,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [message,setMessage]=useState("");
   const [academicYears,setAcademicYears]=useState([]);
   const [workingYearId,setWorkingYearId]=useState("");
+  const [yearCatalogVersion,setYearCatalogVersion]=useState(0);
   useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
   useEffect(()=>{
     if (!chosen) {setAccess(null);return;}
@@ -225,7 +226,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       .then(data=>{if(live)setAcademicYears(data.years||[])})
       .catch(()=>{});
     return()=>{live=false};
-  },[chosen,workingYearId,access]);
+  },[chosen,workingYearId,access,yearCatalogVersion]);
   const perms=access?.permissions||[];
   const can = permission => perms.includes(permission);
   const isOwner = Boolean(access?.is_owner);
@@ -281,6 +282,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),
     canPublish:can("school.reports.publish"),onNavigate:navigate,
     workingYearId,onWorkingYearChange:setWorkingYearId,
+    onYearsUpdated:()=>setYearCatalogVersion(v=>v+1),
   };
   function renderSetting(id){
     if(teachingKinds[id])return <TeachingSettings key={chosen+id} schoolId={chosen} kind={teachingKinds[id]}
@@ -312,7 +314,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       <Icon name="calendar" size={18}/>
       <select aria-label="Année de travail de l'établissement" value={workingYearId}
         onChange={e=>setWorkingYearId(e.target.value)}>
-        {academicYears.map(y=><option key={y.id} value={y.id}>{y.name}{y.active?"":" · archivée"}</option>)}
+        {academicYears.map(y=><option key={y.id} value={y.id}>{y.name} · {({preparation:"en préparation",current:"en cours",closed:"clôturée"})[y.status] || (y.active?"à vérifier":"archivée")}</option>)}
       </select>
     </label>}
   </div>;
