@@ -27,7 +27,7 @@ function RealApp() {
   },[]);
   if (authenticated && !platformAdmin) return <AuthPanel />;
   return <div>
-    {!authenticated && <nav className="yem-mode-switch" aria-label="Mode d'application YEM">
+    {!authenticated && <nav className={mode === "workspace" ? "yem-mode-switch yem-mode-switch-login" : "yem-mode-switch"} aria-label="Mode d'application YEM">
       <strong>YEM</strong>
       <button type="button" aria-pressed={mode==="workspace"} onClick={()=>setMode("workspace")}>Espace de gestion réel</button>
       <button type="button" aria-pressed={mode==="preview"} onClick={()=>setMode("preview")}>Maquettes PC (référence statique)</button>
