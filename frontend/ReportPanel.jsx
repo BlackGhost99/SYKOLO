@@ -16,7 +16,7 @@ async function call(path,body){
   return data;
 }
 
-export default function ReportPanel({schoolId, canPrepare = true, canPublish = true}){
+export default function ReportPanel({schoolId, canPrepare = true, canPublish = true, workingYearId=""}){
   const base="schools/"+schoolId+"/";
   const [pupils,setPupils]=useState([]);
   const [periods,setPeriods]=useState([]);
@@ -24,6 +24,10 @@ export default function ReportPanel({schoolId, canPrepare = true, canPublish = t
   const [classes,setClasses]=useState([]);
   const [years,setYears]=useState([]);
   const [room,setRoom]=useState("");
+  useEffect(()=>{
+    setRoom("");setPupils([]);setReports([]);setSelectedEnrollment("");
+    setSelectedPeriod("");setSelectedReport("");setPreview(null);
+  },[workingYearId,schoolId]);
   const [selectedEnrollment,setSelectedEnrollment]=useState("");
   const [selectedPeriod,setSelectedPeriod]=useState("");
   const [selectedReport,setSelectedReport]=useState("");
@@ -80,7 +84,7 @@ export default function ReportPanel({schoolId, canPrepare = true, canPublish = t
 
   return <section className="card" aria-label="Bulletins et résultats" style={{marginTop:"1rem"}}>
     <h2>Bulletins et résultats</h2>
-    <ClassField classes={classes} years={years} value={room} disabled={busy} onChange={value=>{
+    <ClassField classes={classes.filter(c=>!workingYearId||c.year===workingYearId)} years={years} value={room} disabled={busy} onChange={value=>{
       setRoom(value);setPupils([]);setReports([]);setSelectedEnrollment("");setSelectedPeriod("");setSelectedReport("");setPreview(null);setMessage("");
     }}/>
     {room && <>
