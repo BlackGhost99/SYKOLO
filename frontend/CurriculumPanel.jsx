@@ -11,7 +11,7 @@ const namesFrom = text => text.split(/[,;\n]/).map(name => name.trim()).filter(B
 const codeFrom = (name, fallback) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
   .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50) || fallback;
 
-export default function CurriculumPanel({schoolId}) {
+export default function CurriculumPanel({schoolId,workingYearId=""}) {
   const base = `schools/${schoolId}/`;
   const [data, setData] = useState(null);
   const [classroom, setClassroom] = useState("");
@@ -21,6 +21,7 @@ export default function CurriculumPanel({schoolId}) {
   const [course, setCourse] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  useEffect(()=>{setClassroom("");setCourse("");setEditing(null);setNames("");},[workingYearId,schoolId]);
   async function load() {
     const [catalog, program, years, classes] = await Promise.all(
       ["subjects", "courses", "academic/years", "academic/classes"].map(path => req(base + path)),
@@ -57,7 +58,7 @@ export default function CurriculumPanel({schoolId}) {
   function change(key, value) {
     setEditing(old => ({...old, item: {...old.item, [key]: value}}));
   }
-  const classOptions = data?.classes.map(row => {
+  const classOptions = data?.classes.filter(row=>!workingYearId||row.year===workingYearId).map(row => {
     const year = data.years.find(y => y.id === row.year);
     return {...row, yearName: year?.name, available: row.active && year?.active};
   }) || [];
@@ -117,7 +118,7 @@ export default function CurriculumPanel({schoolId}) {
                 const subject = subjects.get(row.subject);
                 return <tr key={row.id}><td>{subject?.name || "Matière"}</td><td>{Number(row.coefficient)}</td>
                   <td><Status tone={row.active ? "green" : "gray"}>{row.active ? "Active" : "Archivée"}</Status></td>
-                  <td>{data.can_manage && <button type="button" onClick={() => edit("courses", row)}>Modifier</button>}{" "}
+                  <td>{data.can_manage && currentClass?.available && <button type="button" onClick={() => edit("courses", row)}>Modifier</button>}{" "}
                     <button type="button" aria-expanded={course === row.id} onClick={() => setCourse(course === row.id ? "" : row.id)}>Programme</button></td></tr>;
               })}</tbody>
             </table></TableScroll>}
