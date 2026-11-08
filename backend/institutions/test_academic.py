@@ -102,3 +102,63 @@ class AcademicStructureTests(TestCase):
         self.assertEqual(self.client.get(self.base + "unknown").status_code, 404)
         self.client.logout()
         self.assertEqual(self.client.get(self.base + "years").status_code, 401)
+
+    def test_prepare_year_copies_only_class_structure_and_preserves_history(self):
+        from .academic_models import AcademicClass
+        from .student_models import Student, Enrollment
+        previous=self.year()
+        cycle=self.make("cycles",{"code":"col","name":"Collège"})
+        level=self.make("levels",{"code":"six","name":"Sixième","cycle":cycle["id"]})
+        existing=self.make("classes",{"code":"six-a","name":"6e A","year":previous["id"],
+                                     "level":level["id"],"capacity":35})
+        student=Student.objects.create(school=self.school,student_code="A-11",
+                                       first_name="Maïa",last_name="NZÉ")
+        Enrollment.objects.create(school=self.school,student=student,year_id=previous["id"],
+                                  classroom_id=existing["id"],enrolled_on="2026-09-07")
+        payload={"code":"2027-2028","name":"Année 2027-2028",
+                 "start_date":"2027-09-01","end_date":"2028-07-31",
+                 "source_year":previous["id"],"copy_classes":True}
+        created=self.write("prepare-year",payload)
+        self.assertEqual(created.status_code,201,created.content)
+        year=created.json()["year"]
+        self.assertEqual(created.json()["classes_copied"],1)
+        rooms=AcademicClass.objects.filter(school=self.school,year_id=year["id"])
+        self.assertEqual(rooms.count(),1)
+        self.assertEqual(rooms.first().name,"6e A")
+        self.assertNotEqual(str(rooms.first().pk),existing["id"])
+        self.assertEqual(Enrollment.objects.filter(school=self.school,year_id=year["id"]).count(),0)
+        self.assertEqual(Enrollment.objects.filter(school=self.school,year_id=previous["id"]).count(),1)
+        past=self.client.get(self.base+"annual-snapshot?year="+previous["id"])
+        future=self.client.get(self.base+"annual-snapshot?year="+year["id"])
+        self.assertEqual(past.status_code,200)
+        self.assertEqual(future.status_code,200)
+        self.assertEqual(past.json()["stats"]["enrollments"],1)
+        self.assertEqual(future.json()["stats"]["enrollments"],0)
+        self.assertEqual(future.json()["stats"]["classes"],1)
+        self.assertEqual(future.json()["periods"],[])
+        self.assertEqual(self.write("prepare-year",payload).status_code,409)
+
+    def test_year_preparation_rejects_overlap_and_cross_school_source(self):
+        existing=self.year()
+        overlapping={"code":"overlap","name":"Année chevauchante",
+                     "start_date":"2027-05-01","end_date":"2028-07-31",
+                     "source_year":None,"copy_classes":False}
+        self.assertEqual(self.write("prepare-year",overlapping).status_code,409)
+        future={**overlapping,"code":"2027-2028","name":"2027-2028",
+                "start_date":"2027-09-01"}
+        future["source_year"]=str(self.other_school.pk)
+        future["copy_classes"]=True
+        self.assertEqual(self.write("prepare-year",future).status_code,422)
+        self.assertEqual(AcademicYear.objects.filter(school=self.school).count(),1)
+
+    def test_annual_summary_requires_permission_and_rejects_foreign_year(self):
+        year=self.year()
+        self.login(self.reader)
+        response=self.client.get(self.base+"annual-snapshot?year="+year["id"])
+        self.assertEqual(response.status_code,200)
+        self.assertFalse(response.json()["can_prepare_year"])
+        self.assertEqual(self.write("prepare-year",{
+            "code":"2027-2028","name":"Année","start_date":"2027-09-01",
+            "end_date":"2028-07-31","source_year":None,"copy_classes":False,
+        }).status_code,403)
+        self.assertEqual(self.client.get(self.base+"annual-snapshot?year="+str(self.other_school.pk)).status_code,422)
