@@ -4,7 +4,7 @@ import json
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from .models import Organization, School, PlatformAudit
+from .models import Organization, School, SchoolRole, PlatformAudit
 from .school_functions import positions_for_school, validate_account_functions, validate_position
 
 
@@ -121,10 +121,44 @@ class SchoolProfilesTests(TestCase):
         validate_position(school, "enseignant", "primaire")
         validate_position(school, "direction_etablissement", "")
 
+    def test_secondary_profiles_provision_distinct_roles_and_functions(self):
+        cases = (
+            ("college", ["college"], "principal", "directeur_etudes", "surveillant_general"),
+            ("lycee_general", ["college", "lycee_general"], "proviseur", "censeur_pedagogique", "censeur_vie_scolaire"),
+            ("lycee_technique", ["lycee_technique"], "proviseur", "directeur_etudes", "censeur_vie_scolaire"),
+        )
+        for kind, cycles, direction, studies, life in cases:
+            with self.subTest(profile=kind):
+                result = self.post("/api/v1/platform/schools", {
+                    **self.payload, "school_type": kind, "education_cycles": cycles,
+                    "username": f"direction-{kind}",
+                })
+                self.assertEqual(result.status_code, 201, result.content)
+                school = School.objects.get(pk=result.json()["id"])
+                self.assertEqual(school.members.get().function_codes, [direction])
+                detail = self.client.get(f"/api/v1/platform/schools/{school.pk}/detail").json()
+                roles = {role["code"]: role for role in detail["roles"]}
+                functions = {position["code"]: position for position in detail["functions"]}
+                self.assertEqual(roles["etudes"]["suggested_function"], studies)
+                self.assertEqual(roles["vie_scolaire"]["suggested_function"], life)
+                self.assertEqual("chef_travaux" in roles, kind == "lycee_technique")
+                self.assertEqual("chef_travaux" in functions, kind == "lycee_technique")
+                self.assertEqual("censeur_principal" in roles, kind != "college")
+                self.assertIn("surveillant_general_adjoint", functions)
+                self.assertNotIn("instituteur", functions)
+                if kind == "lycee_general":
+                    self.assertEqual(functions["principal"]["allowed_cycles"], ["college"])
+                    self.assertEqual(functions["censeur_vie_scolaire"]["allowed_cycles"], ["lycee_general"])
+                for code in {"etudes", "vie_scolaire", "surveillance"}:
+                    self.assertTrue(all(not perm.startswith("school.finance.")
+                                        for perm in school.roles.get(code=code).permissions))
+                self.assertNotIn("school.attendance.read", school.roles.get(code="surveillance").permissions)
+
     def test_legacy_school_can_be_classified_with_audit(self):
         org = Organization.objects.create(name="Groupe existant")
         school = School.objects.create(organization=org, name="Lycée existant")
         self.assertEqual(school.school_type, "non_classe")
+        custom = SchoolRole.objects.create(school=school, code="etudes", label="Coordination", permissions=["school.view"])
         url = "/api/v1/platform/schools/" + str(school.pk) + "/action"
         no_reason = self.post(url, {
             "action": "profile", "school_type": "lycee_general",
@@ -140,6 +174,9 @@ class SchoolProfilesTests(TestCase):
         school.refresh_from_db()
         self.assertEqual(school.school_type, "lycee_general")
         self.assertEqual(school.education_cycles, ["college", "lycee_general"])
+        self.assertTrue(school.roles.filter(code="vie_scolaire").exists())
+        custom.refresh_from_db()
+        self.assertEqual((custom.label, custom.permissions), ("Coordination", ["school.view"]))
         self.assertTrue(PlatformAudit.objects.filter(
             school=school, event="school_profile_updated"
         ).exists())

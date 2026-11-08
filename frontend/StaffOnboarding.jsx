@@ -88,7 +88,7 @@ export default function StaffOnboarding({schoolId}) {
     prescolaire:"Maternelle",primaire:"Primaire",college:"Collège",
     lycee_general:"Lycée général",lycee_technique:"Lycée technique"
   })[code]||code||"Ensemble de l'établissement";
-  const readyStaff = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}$/.test(staff.staff_code)
+  const readyStaff = (!staff.staff_code.trim() || /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}$/.test(staff.staff_code.trim()))
     && Boolean(staff.first_name.trim()&&staff.last_name.trim()&&staff.position.trim());
   const readyAppointments = appointments.every(a=>{
     const p=chosenPosition(a);
@@ -165,7 +165,8 @@ export default function StaffOnboarding({schoolId}) {
         <h3>1. Qui est cette personne ?</h3>
         <div className="two">
           <label className="field">Matricule (unique dans l'école)
-            <input required maxLength={50} pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}" value={staff.staff_code} onChange={e=>changeStaff("staff_code",e.target.value)} placeholder="EX-2026-001"/>
+            <input maxLength={50} pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,49}" value={staff.staff_code} onChange={e=>changeStaff("staff_code",e.target.value)} placeholder="Attribué par YEM si vide"/>
+            <small>Saisissez le matricule existant s’il y en a déjà un.</small>
           </label>
           <label className="field">Prénom(s)
             <input required maxLength={120} value={staff.first_name} onChange={e=>changeStaff("first_name",e.target.value)}/>
@@ -174,7 +175,7 @@ export default function StaffOnboarding({schoolId}) {
             <input required maxLength={120} value={staff.last_name} onChange={e=>changeStaff("last_name",e.target.value)}/>
           </label>
           <label className="field">Poste / métier sur la fiche
-            <input required maxLength={100} value={staff.position} onChange={e=>changeStaff("position",e.target.value)} placeholder="Ex. Directrice, instituteur, secrétaire"/>
+            <input required maxLength={100} value={staff.position} onChange={e=>changeStaff("position",e.target.value)} placeholder="Ex. Proviseur, professeure, secrétaire"/>
           </label>
         </div>
         <p className="hint">La fiche professionnelle existe même si la personne ne se connecte pas à YEM.</p>
@@ -281,7 +282,7 @@ export default function StaffOnboarding({schoolId}) {
       </div>}
       {step===3&&<div>
         <h3>4. Vérifier avant d'enregistrer</h3>
-        <p><strong>{staff.first_name} {staff.last_name}</strong> — matricule {staff.staff_code} — {staff.position}</p>
+        <p><strong>{staff.first_name} {staff.last_name}</strong> — matricule {staff.staff_code.trim() || "attribué à l’enregistrement"} — {staff.position}</p>
         <p><strong>Nominations :</strong> {appointments.length?appointments.map((a,i)=><span key={i}>{i?", ":""}{chosenPosition(a)?.label} ({labelCycle(a.cycle_code)})</span>):"Aucune"}</p>
         <p><strong>Classes :</strong> {classes.length||"Aucune"}</p>
         <p><strong>Compte YEM :</strong> {createAccess?account.username+" · "+selectedRoles.map(r=>r.label).join(", "):"Aucun"}</p>

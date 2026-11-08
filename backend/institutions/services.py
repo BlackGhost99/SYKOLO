@@ -8,7 +8,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.http import JsonResponse
 
-from .models import OrganizationMember, School, SchoolMember, SchoolSetting, SchoolAdminPolicy, Student, PermissionDelegation
+from .models import OrganizationMember, School, SchoolMember, SchoolSetting, SchoolAdminPolicy, Student, PermissionDelegation, SchoolRole
 
 PERMISSIONS = frozenset({
     "school.view", "school.members.read", "school.members.write",
@@ -26,7 +26,7 @@ PERMISSIONS = frozenset({
     "school.deliberations.read", "school.deliberations.manage", "school.deliberations.finalize",
     "school.reports.amend",
     "school.timetable.read", "school.timetable.manage",
-    "school.attendance.read", "school.attendance.write", "school.attendance.finalize",
+    "school.attendance.read", "school.attendance.write", "school.attendance.finalize", "school.attendance.assigned",
     "school.finance.read", "school.finance.manage", "school.finance.receive", "school.finance.reverse", "school.finance.approve", "school.finance.deposit",
 })
 
@@ -43,6 +43,9 @@ ROLE_TEMPLATES = [
 ]
 
 PROFILE_ROLE_LABELS = {
+    "college": {"direction": "Principal / Principale du collège", "enseignant": "Professeur / Professeure du collège"},
+    "lycee_general": {"direction": "Proviseur / Proviseure du lycée", "enseignant": "Professeur / Professeure du lycée"},
+    "lycee_technique": {"direction": "Proviseur / Proviseure du lycée technique", "enseignant": "Professeur / Professeure du lycée technique"},
     "maternelle": {
         "direction": "Direction de la maternelle",
         "enseignant": "Éducateur / Éducatrice de maternelle",
@@ -58,13 +61,64 @@ PROFILE_ROLE_LABELS = {
 }
 
 
+SECONDARY_STUDIES_PERMISSIONS = (
+    "school.view", "school.academic.read", "school.curriculum.read", "school.curriculum.manage",
+    "school.staff.read", "school.timetable.read", "school.timetable.manage",
+    "school.assessments.read", "school.reports.read", "school.deliberations.read",
+)
+SECONDARY_ATTENDANCE_PERMISSIONS = (
+    "school.view", "school.academic.read", "school.attendance.read", "school.attendance.write",
+)
+SECONDARY_SURVEILLANCE = ("surveillance", "Surveillance", (
+    "school.view", "school.academic.read", "school.attendance.assigned",
+))
+SECONDARY_LYCEE_ROLES = (
+    ("censeur_principal", "Censeur principal", (*SECONDARY_STUDIES_PERMISSIONS, "school.attendance.read")),
+    ("surveillance_generale", "Surveillance générale", SECONDARY_ATTENDANCE_PERMISSIONS),
+    SECONDARY_SURVEILLANCE,
+)
+SECONDARY_ROLE_TEMPLATES = {
+    "college": (
+        ("etudes", "Direction des études", SECONDARY_STUDIES_PERMISSIONS),
+        ("vie_scolaire", "Surveillant général / Conseiller d’éducation", (
+            *SECONDARY_ATTENDANCE_PERMISSIONS, "school.attendance.finalize",
+        )),
+        SECONDARY_SURVEILLANCE,
+    ),
+    "lycee_general": (
+        ("etudes", "Censeur pédagogique / Direction des études", SECONDARY_STUDIES_PERMISSIONS),
+        ("vie_scolaire", "Censeur de la vie scolaire", (
+            *SECONDARY_ATTENDANCE_PERMISSIONS, "school.attendance.finalize",
+        )),
+        *SECONDARY_LYCEE_ROLES,
+    ),
+    "lycee_technique": (
+        ("etudes", "Direction des études du lycée technique", SECONDARY_STUDIES_PERMISSIONS),
+        ("vie_scolaire", "Direction de la vie scolaire", (
+            *SECONDARY_ATTENDANCE_PERMISSIONS, "school.attendance.finalize",
+        )),
+        *SECONDARY_LYCEE_ROLES,
+        ("chef_travaux", "Chef de travaux", (
+            "school.view", "school.academic.read", "school.curriculum.read",
+        )),
+    ),
+}
+
+
 def role_templates_for(school):
     labels = PROFILE_ROLE_LABELS.get(school.school_type, {})
     return [
-        (code, labels.get(code, label), permissions)
-        for code, label, permissions in ROLE_TEMPLATES
+        (code, labels.get(code, label), list(permissions))
+        for code, label, permissions in (*ROLE_TEMPLATES, *SECONDARY_ROLE_TEMPLATES.get(school.school_type, ()))
         if code != "eleve" or school.school_type != "maternelle"
     ]
+
+
+def provision_secondary_roles(school):
+    SchoolRole.objects.bulk_create([
+        SchoolRole(school=school, code=code, label=label, permissions=list(permissions))
+        for code, label, permissions in SECONDARY_ROLE_TEMPLATES.get(school.school_type, ())
+    ], ignore_conflicts=True)
 
 
 SCOPE_FIELDS = ("year", "cycle", "level", "class")
@@ -72,7 +126,16 @@ SCOPE_FIELDS = ("year", "cycle", "level", "class")
 
 def public_role_label(role, school=None):
     """Use the inclusive title for legacy built-in roles, retain school custom labels."""
-    labels = PROFILE_ROLE_LABELS.get((school or role.school).school_type, {})
+    school_type = (school or role.school).school_type
+    for code, label, _ in SECONDARY_ROLE_TEMPLATES.get(school_type, ()):
+        if role.code == code and any(
+            role.label == old_label
+            for templates in SECONDARY_ROLE_TEMPLATES.values()
+            for old_code, old_label, _ in templates
+            if old_code == code
+        ):
+            return label
+    labels = PROFILE_ROLE_LABELS.get(school_type, {})
     if role.code in labels:
         default_labels = {label for code, label, _ in ROLE_TEMPLATES if code == role.code}
         if role.label in default_labels or (role.code == "direction" and role.label == "Direction"):

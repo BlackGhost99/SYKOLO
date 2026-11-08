@@ -12,7 +12,7 @@ from .models import (
     SchoolAudit, SchoolMember, SchoolRole, Student,
 )
 from .platform_views import platform_only
-from .services import public_role_label
+from .services import provision_secondary_roles, public_role_label
 from .school_profiles import validate_school_profile
 from .views import parse_body, log_event, string
 
@@ -294,6 +294,7 @@ def platform_school_action(request, school_id):
             school.school_type = school_type
             school.education_cycles = education_cycles
             school.save(update_fields=["school_type", "education_cycles"])
+            provision_secondary_roles(school)
             log_event(school, request, "school_profile_updated", reason)
             audit(request, "school_profile_updated", school.name, school, reason)
         elif action == "plan":

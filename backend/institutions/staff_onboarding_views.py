@@ -17,7 +17,7 @@ from .models import School, SchoolAppointment, SchoolLogin, SchoolMember, School
 from .school_functions import (
     account_functions, positions_for_school, validate_account_functions, validate_position,
 )
-from .services import effective_permissions, has_permission, owns_organization, quota_reached
+from .services import effective_permissions, has_permission, owns_organization, public_role_label, quota_reached
 from .staff_models import StaffAssignment, StaffRecord
 from .staff_views import parse_staff, staff_repr
 from .views import access, financial_grant_allowed, log_event, parse_body, refuse, string
@@ -197,7 +197,7 @@ def onboard_staff(request, school_id):
             "education_cycles": school.education_cycles,
             "can_create_account": can_account,
             "can_appoint": can_appoint,
-            "roles": [{"code": r.code, "label": r.label, "permissions": r.permissions} for r in roles] if can_account else [],
+            "roles": [{"code": r.code, "label": public_role_label(r, school), "permissions": r.permissions} for r in roles] if can_account else [],
             "positions": positions,
             "academic_cycles": [{"id": str(c.id), "code": c.code, "name": c.name} for c in academic_cycles],
             "actor_access_cycle_ids": sorted(actor_scope) if actor_scope is not None else None,

@@ -31,9 +31,11 @@ FUNCTIONS = {
     "censeur_vie_scolaire": ("Censeur de la vie scolaire", "Vie scolaire", "cycle", LYCEE, ()),
     "conseiller_education": ("Conseiller d'éducation", "Vie scolaire", "cycle", SECONDARY, ()),
     "surveillant_general": ("Surveillant général", "Vie scolaire", "cycle", SECONDARY, ()),
+    "surveillant_general_adjoint": ("Surveillant général adjoint", "Vie scolaire", "cycle", SECONDARY, ()),
     "surveillant": ("Surveillant", "Vie scolaire", "cycle", ("primaire",) + SECONDARY, ()),
     "conseiller_orientation": ("Conseiller d'orientation", "Vie scolaire", "cycle", SECONDARY, ()),
     "chef_travaux": ("Chef de travaux", "Technique", "cycle", ("lycee_technique",), ()),
+    "responsable_formation_continue": ("Direction des études · formation continue", "Technique", "cycle", ("lycee_technique",), ()),
     "responsable_atelier": ("Responsable d'atelier", "Technique", "cycle", ("lycee_technique",), ()),
     "secretaire": ("Secrétaire administratif", "Administration", "school", ALL_CYCLES, ()),
     "intendant": ("Intendant", "Administration", "school", ALL_CYCLES, ()),
@@ -46,6 +48,9 @@ FUNCTIONS = {
 
 # Les anciens codes restent lisibles et sont regroupés lors de la saisie.
 FUNCTION_ALIASES = {
+    "college": {"direction_etablissement": "principal"},
+    "lycee_general": {"direction_etablissement": "proviseur"},
+    "lycee_technique": {"direction_etablissement": "proviseur"},
     "maternelle": {
         "direction_etablissement": "directeur_maternelle",
         "enseignant": "educateur_prescolaire",
@@ -57,7 +62,24 @@ FUNCTION_ALIASES = {
         "econome": "caissier",
     },
 }
+SECONDARY_COMMON_POSITIONS = (
+    "enseignant", "professeur_principal", "responsable_pedagogique",
+    "responsable_discipline", "surveillant_general", "surveillant_general_adjoint",
+    "conseiller_education", "surveillant", "conseiller_orientation",
+    "secretaire", "intendant", "comptable", "econome", "caissier",
+)
+LYCEE_POSITIONS = (
+    "proviseur", "principal", "directeur_etudes", "censeur_principal",
+    "censeur_pedagogique", "censeur_etudes", "censeur_vie_scolaire",
+)
+
 PROFILE_POSITIONS = {
+    "college": ("principal", "directeur_etudes", *SECONDARY_COMMON_POSITIONS),
+    "lycee_general": (*LYCEE_POSITIONS, *SECONDARY_COMMON_POSITIONS),
+    "lycee_technique": (
+        *LYCEE_POSITIONS, "responsable_formation_continue", "chef_travaux", "responsable_atelier",
+        *SECONDARY_COMMON_POSITIONS,
+    ),
     "maternelle": (
         "directeur_maternelle", "secretaire", "educateur_prescolaire",
         "assistant_scolaire", "responsable_pedagogique", "comptable", "caissier", "intendant",
@@ -68,6 +90,7 @@ PROFILE_POSITIONS = {
     ),
 }
 PROFILE_FUNCTION_LABELS = {
+    "lycee_technique": {"censeur_vie_scolaire": "Direction de la vie scolaire / Censeur"},
     "maternelle": {"caissier": "Caisse / Économat"},
     "primaire": {
         "directeur_primaire": "Direction du primaire",
@@ -144,8 +167,13 @@ def suggested_account_function(school, role_code, options):
     if not aliases:
         return ""
     code = {
-        "direction": aliases["direction_etablissement"], "enseignant": aliases["enseignant"],
+        "direction": aliases["direction_etablissement"],
+        "enseignant": aliases.get("enseignant", "enseignant"),
         "secretariat": "secretaire", "econome": "caissier", "comptabilite": "comptable",
+        "etudes": "censeur_pedagogique" if school.school_type == "lycee_general" else "directeur_etudes",
+        "vie_scolaire": "surveillant_general" if school.school_type == "college" else "censeur_vie_scolaire",
+        "censeur_principal": "censeur_principal", "surveillance_generale": "surveillant_general",
+        "surveillance": "surveillant", "chef_travaux": "chef_travaux",
     }.get(role_code, "")
     return code if any(option["code"] == code for option in options) else ""
 
