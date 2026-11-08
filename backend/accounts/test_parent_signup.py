@@ -37,6 +37,7 @@ class ParentRegistrationTests(TestCase):
     def test_registration_requires_email_activation_and_creates_no_school_access(self):
         response=self.post("parents/register",self.user_payload())
         self.assertEqual(response.status_code,200,response.content)
+        self.assertTrue(response.json()["email_verification_required"])
         user=get_user_model().objects.get(username="parent-appli-test")
         self.assertFalse(user.is_active)
         self.assertFalse(user.is_staff)
@@ -137,7 +138,7 @@ class ParentRegistrationTests(TestCase):
         })
         response=self.post("parents/register",self.user_payload())
         self.assertEqual(response.status_code,200,response.content)
-        self.assertIn("utilisable immédiatement",response.json()["message"])
+        self.assertFalse(response.json()["email_verification_required"])
         user=get_user_model().objects.get(username="parent-appli-test")
         self.assertTrue(user.is_active)
         self.assertFalse(user.is_staff)
@@ -166,6 +167,11 @@ class ParentRegistrationTests(TestCase):
         self.assertEqual(first.json(),duplicate.json())
         self.assertEqual(get_user_model().objects.count(),1)
         self.assertTrue(get_user_model().objects.get().is_active)
+        login = self.post("login", {
+            "username": second["username"], "password": second["password"], "scope": "parent",
+        })
+        self.assertEqual(login.status_code,401)
+        self.assertFalse(self.client.get("/api/v1/auth/me").json()["authenticated"])
 
     @override_settings(PARENT_EMAIL_VERIFICATION_REQUIRED=False,PASSWORD_RESET_ENABLED=False)
     def test_pilot_still_enforces_password_rules(self):
