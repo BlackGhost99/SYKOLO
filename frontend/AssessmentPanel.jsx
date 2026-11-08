@@ -16,7 +16,7 @@ async function request(path,body,method){
   return data;
 }
 
-export default function AssessmentPanel({schoolId, canEdit = true, canPublish = false}){
+export default function AssessmentPanel({schoolId, canEdit = true, canPublish = false, workingYearId=""}){
   const base="schools/"+schoolId+"/";
   const [courses,setCourses]=useState([]);
   const [periods,setPeriods]=useState([]);
@@ -38,6 +38,10 @@ export default function AssessmentPanel({schoolId, canEdit = true, canPublish = 
   const [message,setMessage]=useState("");
   const [loadError,setLoadError]=useState("");
   const [busy,setBusy]=useState(false);
+  useEffect(()=>{
+    setClassroom("");setCourse("");setAssessment("");setAssessments([]);
+    setRoster([]);setGrades([]);setScoreDraft({});
+  },[workingYearId,schoolId]);
   const chosen=assessments.find(a=>a.id===assessment);
   const currentCourse=courses.find(c=>c.id===course);
 
@@ -101,7 +105,7 @@ export default function AssessmentPanel({schoolId, canEdit = true, canPublish = 
   const activeCourses = courses.filter(item => item.active && item.classroom === classroom);
   return <section className="card" aria-label="Évaluations et notes" style={{marginTop:"1rem"}}>
     <h2>Évaluations et saisie des notes</h2>
-    <ClassField classes={classes.filter(room => courses.some(item => item.active && item.classroom === room.id))}
+    <ClassField classes={classes.filter(room => (!workingYearId||room.year===workingYearId) && courses.some(item => item.active && item.classroom === room.id))}
       years={years} value={classroom} disabled={busy} onChange={value => {setClassroom(value);setCourse("");setMessage("");}}/>
     {classroom && <label className="field">Matière
       <select value={course} disabled={busy} onChange={e=>{setCourse(e.target.value);setMessage("");}}>
