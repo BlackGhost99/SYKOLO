@@ -12,7 +12,7 @@ async function api(path,body,method) {
   return data;
 }
 
-export default function StaffPanel({schoolId, mode = "all"}){
+export default function StaffPanel({schoolId, mode = "all", workingYearId="", onWorkingYearChange}){
   const base="schools/"+schoolId+"/";
   const [staff,setStaff]=useState([]);
   const [years,setYears]=useState([]);
@@ -26,7 +26,8 @@ export default function StaffPanel({schoolId, mode = "all"}){
   const [linkStaff,setLinkStaff]=useState("");
   const [linkUsername,setLinkUsername]=useState("");
   const [selectedStaff,setSelectedStaff]=useState("");
-  const [selectedYear,setSelectedYear]=useState("");
+  const [selectedYear,setSelectedYear]=useState(workingYearId);
+  useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");},[workingYearId,schoolId]);
   const [selectedClass,setSelectedClass]=useState("");
   const [duty,setDuty]=useState("enseignant");
   const [error,setError]=useState("");
@@ -117,7 +118,7 @@ export default function StaffPanel({schoolId, mode = "all"}){
             </select>
           </label>
           <label className="field">Année scolaire
-            <select value={selectedYear} required onChange={e=>{setSelectedYear(e.target.value);setSelectedClass("");}}>
+            <select value={selectedYear} required onChange={e=>{setSelectedYear(e.target.value);onWorkingYearChange?.(e.target.value);setSelectedClass("");}}>
               <option value="">Sélectionner…</option>
               {years.filter(y=>y.active).map(y=><option key={y.id} value={y.id}>{y.name}</option>)}
             </select>
