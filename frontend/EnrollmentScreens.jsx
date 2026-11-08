@@ -72,9 +72,10 @@ function needed(config, key) { return !!config?.fields?.[key]?.required && shown
 
 /* ---------- Nouvel élève : fiche de renseignement complète ---------- */
 const emptyGuardian = { full_name: "", relationship: "", phone: "", email: "", profession: "", address: "" };
-export function StudentForm({ schoolId, params, onNavigate, tabs }) {
+export function StudentForm({ schoolId, params, onNavigate, tabs, workingYearId = "", onWorkingYearChange }) {
   const form = useLoad(`schools/${schoolId}/enrollment-form`);
-  const [year, setYear] = useState("");
+  const [year, setYear] = useState(workingYearId);
+  useEffect(() => {setYear(workingYearId);setClassroom("");}, [schoolId, workingYearId]);
   const classes = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
   const [student, setStudent] = useState({ last_name: "", first_name: "", date_of_birth: "", gender: "", place_of_birth: "", nationality: "", address: "", previous_school: "" });
   const [extra, setExtra] = useState({});
@@ -158,7 +159,7 @@ export function StudentForm({ schoolId, params, onNavigate, tabs }) {
         <Card title="Inscription en classe" icon="cap">
           <Loading state={classes}>{cd && <>
             <div className="yf-grid">
-              <Field label="Année scolaire"><select value={year || cd.year?.id || ""} onChange={e => { setYear(e.target.value); setClassroom(""); }}>{cd.years.length === 0 && <option value="">Aucune année créée</option>}{cd.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select></Field>
+              <Field label="Année scolaire"><select value={year || cd.year?.id || ""} onChange={e => { setYear(e.target.value); setClassroom(""); onWorkingYearChange?.(e.target.value); }}>{cd.years.length === 0 && <option value="">Aucune année créée</option>}{cd.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select></Field>
               <Field label="Classe" hint={cd.classes.length ? "" : "Aucune classe pour cette année : créez-les dans Paramètres › Classes."}>
                 <select value={classroom} onChange={e => setClassroom(e.target.value)}><option value="">Ne pas inscrire maintenant</option>
                   {cd.classes.filter(c => c.active).map(c => <option key={c.id} value={c.id} disabled={c.remaining === 0}>{c.name}{c.remaining == null ? "" : c.remaining === 0 ? " — complète" : ` — ${c.remaining} place(s)`}</option>)}</select></Field>
@@ -174,10 +175,10 @@ export function StudentForm({ schoolId, params, onNavigate, tabs }) {
 }
 
 /* ---------- Dossier élève ---------- */
-export function StudentFile({ schoolId, params, canManage, canIssueTransfer, canReceive, onNavigate, tabs }) {
+export function StudentFile({ schoolId, params, canManage, canIssueTransfer, canReceive, onNavigate, tabs, workingYearId = "" }) {
   const id = params?.student;
   const dossier = useLoad(id ? `schools/${schoolId}/students/${id}/dossier` : "");
-  const classes = useLoad(canManage ? `schools/${schoolId}/overview/classes` : "");
+  const classes = useLoad(canManage ? `schools/${schoolId}/overview/classes${workingYearId ? `?year=${workingYearId}` : ""}` : "");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
   const [newGuardian, setNewGuardian] = useState(null);
@@ -195,8 +196,8 @@ export function StudentFile({ schoolId, params, canManage, canIssueTransfer, can
   }
   if (!id) return <Empty>Aucun élève sélectionné.</Empty>;
   const s = d?.student, form = d?.form;
-  const current = d?.enrollments.find(e => e.year === classes.data?.year?.id) || d?.enrollments[0];
   const curYear = classes.data?.year;
+  const current = curYear ? d?.enrollments.find(e => e.year === curYear.id) : d?.enrollments[0];
   const enrolledThisYear = d?.enrollments.some(e => e.year === curYear?.id);
   function startEdit() { setDraft({ first_name: s.first_name, last_name: s.last_name, date_of_birth: s.date_of_birth || "", gender: s.gender, place_of_birth: s.place_of_birth, nationality: s.nationality, address: s.address, previous_school: s.previous_school, extra_fields: { ...s.extra_fields } }); setEditing(true); }
   function saveEdit() {
@@ -319,8 +320,9 @@ export function StudentFile({ schoolId, params, canManage, canIssueTransfer, can
 }
 
 /* ---------- Inscriptions par classe ---------- */
-export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings }) {
-  const [year, setYear] = useState("");
+export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange }) {
+  const [year, setYear] = useState(workingYearId);
+  useEffect(() => {setYear(workingYearId);setSelected("");setPicking(false);setPicked({});}, [schoolId, workingYearId]);
   const overview = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
   const roster = useLoad(`schools/${schoolId}/overview/students${year ? `?year=${year}` : ""}`);
   const [selected, setSelected] = useState("");
@@ -348,7 +350,7 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
   const fin = c => c.finance;
   return <>
     <PageHeader title="Inscriptions par classe" subtitle="Effectifs, places restantes, élèves inscrits et situation des paiements par classe"
-      actions={(advancedSettings || o) && <>{o && <label className="yd-select plain"><select aria-label="Année scolaire" value={year || o.year?.id || ""} onChange={e => { setYear(e.target.value); setSelected(""); }}>{o.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>}{advancedSettings}</>}/>
+      actions={(advancedSettings || o) && <>{o && <label className="yd-select plain"><select aria-label="Année scolaire" value={year || o.year?.id || ""} onChange={e => { setYear(e.target.value); setSelected("");setPicking(false);setPicked({});onWorkingYearChange?.(e.target.value); }}>{o.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>}{advancedSettings}</>}/>
     {tabs}
     <Msg {...message}/>
     <Loading state={overview}>{o && (!o.year || o.classes.length === 0 ? <Card title={o.year ? `Aucune classe en ${o.year.name}` : "Aucune année scolaire"} icon="school">
@@ -393,8 +395,9 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
 }
 
 /* ---------- Paramètres : classes ---------- */
-export function ClassSetup({ schoolId, tabs }) {
-  const [year, setYear] = useState("");
+export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearChange }) {
+  const [year, setYear] = useState(workingYearId);
+  useEffect(() => {setYear(workingYearId);setPreview([]);setEditing(null);}, [schoolId, workingYearId]);
   const o = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
   const y0 = new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1;
   const [newYear, setNewYear] = useState({ name: `${y0}-${y0 + 1}`, start_date: `${y0}-09-01`, end_date: `${y0 + 1}-07-31` });
@@ -415,7 +418,7 @@ export function ClassSetup({ schoolId, tabs }) {
     setBusy(true); setMessage({ text: "" });
     try { setMessage({ text: await fn() }); o.reload(); } catch (e) { setMessage({ text: e.message, error: true }); } finally { setBusy(false); }
   }
-  const yearForm = <form className="yf-inline-form wrap" onSubmit={e => { e.preventDefault(); run(async () => { const r = await req(`schools/${schoolId}/academic/years`, { ...newYear, code: newYear.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "annee" }); setYear(r.id); return `Année ${r.name} créée.`; }); }}>
+  const yearForm = <form className="yf-inline-form wrap" onSubmit={e => { e.preventDefault(); run(async () => { const r = await req(`schools/${schoolId}/academic/years`, { ...newYear, code: newYear.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "annee" }); setYear(r.id);onWorkingYearChange?.(r.id); return `Année ${r.name} créée.`; }); }}>
     <Field label="Nom de l’année"><input required value={newYear.name} onChange={e => setNewYear(x => ({ ...x, name: e.target.value }))}/></Field>
     <Field label="Début"><input type="date" required value={newYear.start_date} onChange={e => setNewYear(x => ({ ...x, start_date: e.target.value }))}/></Field>
     <Field label="Fin"><input type="date" required value={newYear.end_date} onChange={e => setNewYear(x => ({ ...x, end_date: e.target.value }))}/></Field>
@@ -441,7 +444,7 @@ export function ClassSetup({ schoolId, tabs }) {
   }
   return <>
     <PageHeader title="Classes de l’établissement" subtitle="Créez les classes de l’année en quelques secondes, réglez leur capacité d’accueil" banner={false}
-      actions={d?.years.length > 0 && <label className="yd-select plain"><select aria-label="Année scolaire" value={year || d.year?.id || ""} onChange={e => { setYear(e.target.value); setPreview([]); setEditing(null); }}>{d.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>}/>
+      actions={d?.years.length > 0 && <label className="yd-select plain"><select aria-label="Année scolaire" value={year || d.year?.id || ""} onChange={e => { setYear(e.target.value); setPreview([]); setEditing(null); onWorkingYearChange?.(e.target.value); }}>{d.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>}/>
     {tabs}
     {!editing && <Msg {...message}/>}
     <Loading state={o}>{d && (year && year !== d.year?.id ? <p role="status">Chargement de l’année…</p> : <>
@@ -609,9 +612,10 @@ export function FormSettings({ schoolId, canEdit, tabs }) {
 }
 
 /* ---------- Suivi des paiements ---------- */
-export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs, advancedSettings }) {
-  const roster = useLoad(`schools/${schoolId}/overview/students`);
-  const fin = useLoad(`schools/${schoolId}/overview/finance`);
+export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "" }) {
+  const yearQuery = workingYearId ? `?year=${encodeURIComponent(workingYearId)}` : "";
+  const roster = useLoad(`schools/${schoolId}/overview/students${yearQuery}`);
+  const fin = useLoad(`schools/${schoolId}/overview/finance${yearQuery}`);
   const [query, setQuery] = useState("");
   const [klass, setKlass] = useState("");
   const [status, setStatus] = useState("");
