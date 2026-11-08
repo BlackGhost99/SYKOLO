@@ -256,7 +256,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     schoolId:chosen,canDecide:can("school.admissions.decide"),
     canCreate:can("school.admissions.manage"),canEnroll:can("school.admissions.enroll"),
     canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),
-    canPublish:can("school.reports.publish"),
+    canPublish:can("school.reports.publish"),onNavigate:navigate,
   };
   function renderSetting(id){
     if(teachingKinds[id])return <TeachingSettings key={chosen+id} schoolId={chosen} kind={teachingKinds[id]}
