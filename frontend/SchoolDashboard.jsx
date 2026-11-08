@@ -343,7 +343,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
       "arrears:live":<LiveArrears key={chosen} {...props}/>,
       "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
-        <div className="yd-real-body"><FamilyDirectory key={chosen} schoolId={chosen} onNavigate={navigate}/></div></>,
+        <div className="yd-real-body"><FamilyDirectory key={chosen} schoolId={chosen} onNavigate={navigate} workingYearId={workingYearId}/></div></>,
       "staff:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
         <div className="yd-real-body"><StaffDirectory key={chosen} schoolId={chosen}
           onAdd={allowed("onboarding")?()=>navigate("staff","onboarding"):undefined}
