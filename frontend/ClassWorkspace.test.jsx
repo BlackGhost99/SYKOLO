@@ -67,3 +67,38 @@ test("l'espace établissement permet de créer une classe et de consulter ses é
   expect(screen.getByRole("button", {name: "Classes", exact: true, pressed: true})).toBeTruthy();
   expect(screen.getByRole("button", {name: "Années et cycles", pressed: false})).toBeTruthy();
 });
+
+test.each([true,false])("le raccourci des évaluations respecte les droits et le sous-onglet (accès : %s)", async canReadSettings => {
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  const school = {id:"school",name:"Établissement test"};
+  const root = "/api/v1/schools/school/";
+  const permissions = ["school.assessments.read","school.deliberations.read"];
+  if (canReadSettings) permissions.push("school.settings.read");
+  vi.stubGlobal("fetch", vi.fn(async url => Response.json({
+    "/api/v1/schools":{schools:[school]},
+    [root+"my-access"]:{school,role:"etudes-personnalise",permissions},
+    [root+"organization/my-appointments"]:{appointments:[]},
+    [root+"academic/classes"]:{classes:[]},
+    [root+"academic/years"]:{years:[]},
+    [root+"academic/periods"]:{periods:[]},
+    [root+"courses"]:{courses:[]},
+    [root+"subjects"]:{subjects:[]},
+    [root+"councils"]:{councils:[]},
+    [root+"settings?"]:{effective:{}},
+  }[url] || {})));
+  const user = userEvent.setup();
+  render(<SchoolDashboard user={{username:"etudes"}}/>);
+  const nav = await screen.findByRole("navigation", {name:"Navigation principale"});
+  await user.click(await within(nav).findByRole("button", {name:"Évaluations et notes"}));
+  const council = {name:"Conseils et décisions",exact:true};
+  await user.click(screen.getByRole("tab", council));
+  const shortcut = screen.queryByRole("button", {name:"Paramètres avancés"});
+  if (!canReadSettings) {
+    expect(shortcut).toBeNull();
+    return;
+  }
+  await user.click(shortcut);
+  expect(screen.getByRole("button", {name:"Décisions du conseil",pressed:true})).toBeTruthy();
+  await user.click(screen.getByRole("button", {name:"Retour au module"}));
+  expect(screen.getByRole("tab", {...council,selected:true})).toBeTruthy();
+});

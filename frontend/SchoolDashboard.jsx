@@ -98,6 +98,11 @@ const settingsSections = [
     {id:"staff-setup", label:"Comptes du personnel et affectations", need:["school.staff.manage","school.staff.read","school.academic.read"]},
   ]},
 ];
+const advancedSettingsTargets = {
+  students:["form"], classes:["classes"], admissions:["admission-policy"], payments:["fees","gateway"],
+  bulletins:["report-policy"], absences:["attendance-policy"], parents:["parent-access"],
+  staff:["staff-setup","organization"],
+};
 const teachingKinds = {"report-policy":"bulletin","council-policy":"deliberation","attendance-policy":"attendance"};
 
 async function get(path) {
@@ -188,6 +193,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [sub,setSub]=useState("");
   const [params,setParams]=useState(null);
   const [settingsSelection,setSettingsSelection]=useState(null);
+  const [settingsReturn,setSettingsReturn]=useState(null);
   const [showWorkspace,setShowWorkspace]=useState(false);
   const [message,setMessage]=useState("");
   useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
@@ -223,7 +229,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   };
   const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]);
   function navigate(id,subTab="",extra=null){
-    setPage(id);setSub(subTab);setParams(extra);setMessage("");
+    setPage(id);setSub(subTab);setParams(extra);setMessage("");setSettingsReturn(null);
     if(id==="settings"){
       const group=availableSettings.find(group=>group.items.some(item=>item.id===subTab));
       setSettingsSelection(group ? {section:group.id,item:subTab} : null);
@@ -235,6 +241,14 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const hiddenTab=section?.hidden?.[sub]&&perms.includes(section.hidden[sub])?sub:null;
   const tab=hiddenTab||tabs.find(t=>t[0]===sub)?.[0]||tabs[0]?.[0];
   const View=tab&&modules[tab]?.view;
+  const targets = page==="bulletins" && tab==="council"
+    ? ["council-policy"] : advancedSettingsTargets[page] || [];
+  const settingsTarget = section && !hiddenTab && targets.find(id =>
+    availableSettings.some(group=>group.items.some(item=>item.id===id)));
+  const advancedSettings = settingsTarget ? <Button icon="settings" className="small" onClick={()=>{
+    navigate("settings",settingsTarget);
+    setSettingsReturn({page,tab,params});
+  }}>Paramètres avancés</Button> : null;
   const roleLabel=isOwner && access?.role!=="proprietaire"
     ? ["Propriétaire", access?.role_label].filter(Boolean).join(" · ")
     : access?.role_label;
@@ -281,9 +295,10 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p></Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
   else if (page==="settings"&&availableSettings.length) content=<SchoolSettings sections={availableSettings}
-    selection={settingsSelection} onSelect={setSettingsSelection} render={renderSetting} isOwner={isOwner}/>;
+    selection={settingsSelection} onSelect={setSettingsSelection} render={renderSetting} isOwner={isOwner}
+    onReturn={settingsReturn ? ()=>navigate(settingsReturn.page,settingsReturn.tab,settingsReturn.params) : undefined}/>;
   else if (section&&(hiddenTab||section.lives.some(l=>l.key===tab))) {
-    const props={schoolId:chosen,schoolName,tabs:tabBar,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canIssueTransfer:perms.includes("school.students.manage")&&perms.includes("school.admissions.decide"),canReceive:perms.includes("school.finance.receive")};
+    const props={schoolId:chosen,schoolName,tabs:tabBar,advancedSettings,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canIssueTransfer:perms.includes("school.students.manage")&&perms.includes("school.admissions.decide"),canReceive:perms.includes("school.finance.receive")};
     const k=chosen+JSON.stringify(params);
     content={
       "students:cycle-list":<CycleWorkspace key={chosen} schoolId={chosen} access={access}/>,
@@ -292,13 +307,13 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "students:new":<StudentForm key={k} {...props}/>,
       "students:fiche":<StudentFile key={k} {...props}/>,
       "students:import":<ImportStudents key={chosen} {...props}/>,
-      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.read")}/>,
+      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.read")} advancedSettings={advancedSettings}/>,
       "payments:live":<LivePayments key={k} {...props}/>,
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
       "arrears:live":<LiveArrears key={chosen} {...props}/>,
-      "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle}/>
+      "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
         <div className="yd-real-body"><FamilyDirectory key={chosen} schoolId={chosen} onNavigate={navigate}/></div></>,
-      "staff:directory":<><PageHeader title={section.title} subtitle={section.subtitle}/>
+      "staff:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
         <div className="yd-real-body"><StaffDirectory key={chosen} schoolId={chosen}
           onAdd={allowed("onboarding")?()=>navigate("staff","onboarding"):undefined}
           onAssign={availableSettings.some(group=>group.items.some(item=>item.id==="staff-setup"))
@@ -306,8 +321,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     }[page+":"+tab];
   }
   else if (section) content=<>
-    <PageHeader title={section.title} subtitle={section.subtitle} actions={page==="staff"&&
-      section.lives.length>0&&<Button onClick={()=>navigate("staff")}>Retour à l’équipe</Button>}/>
+    <PageHeader title={section.title} subtitle={section.subtitle} actions={page==="staff"&&section.lives.length>0
+      ? <><Button onClick={()=>navigate("staff")}>Retour à l’équipe</Button>{advancedSettings}</> : advancedSettings}/>
     {tabBar}
     <div className="yd-real-body">{View&&<View key={chosen+"-"+tab} {...panelProps}
       {...(["finance","onboarding"].includes(tab)?{mode:"daily"}:{})}

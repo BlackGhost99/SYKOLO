@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from "react";
-import {Card, Icon, PageHeader} from "./yem-ui.jsx";
+import {Button, Card, Icon, PageHeader} from "./yem-ui.jsx";
 
 export async function schoolRequest(path, values) {
   if (values !== undefined) {
@@ -36,11 +36,11 @@ export function useSchoolData(root, resources) {
   return state;
 }
 
-export function SchoolSettings({sections, selection, onSelect, render, isOwner}) {
+export function SchoolSettings({sections, selection, onSelect, render, isOwner, onReturn}) {
   const current = sections.find(section => section.id === selection?.section);
   const active = current?.items.find(item => item.id === selection?.item) || current?.items[0];
   return <>
-    <PageHeader title="Paramètres" subtitle={isOwner
+    <PageHeader title="Paramètres" actions={onReturn && <Button icon="back" onClick={onReturn}>Retour au module</Button>} subtitle={isOwner
       ? "Espace propriétaire · comptes de l’établissement et accès autorisés"
       : "Réglages de l’établissement · choisissez la rubrique à configurer"}/>
     <div className="yd-real-body">

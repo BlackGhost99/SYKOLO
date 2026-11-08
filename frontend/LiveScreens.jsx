@@ -65,7 +65,7 @@ function scale(values) {
 function Empty({ children }) { return <p className="yd-card-sub yd-empty">{children}</p>; }
 
 /* ---------- Élèves ---------- */
-export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs }) {
+export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings }) {
   const [viewYear, setViewYear] = useState("");
   const [viewCurrency, setViewCurrency] = useState("");
   const state = useData(`schools/${schoolId}/overview/students?currency=${viewCurrency}&year=${viewYear}`);
@@ -93,7 +93,7 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
   const m = d?.metrics;
   return <>
     <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={setViewYear}/>
-    <PageHeader title="Gestion des élèves" subtitle="Inscriptions, classes, responsables et suivi administratif"/>
+    <PageHeader title="Gestion des élèves" subtitle="Inscriptions, classes, responsables et suivi administratif" actions={advancedSettings}/>
     {tabs}
     <Loading state={state}>{d && <>
       <div className="yd-toolbar students">
@@ -143,7 +143,7 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
 /* ---------- Paiements ---------- */
 function newKey() { return (crypto.randomUUID && crypto.randomUUID()) || "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)); }
 
-export function LivePayments({ schoolId, canReceive, params, tabs }) {
+export function LivePayments({ schoolId, canReceive, params, tabs, advancedSettings }) {
   const [viewYear, setViewYear] = useState("");
   const [viewCurrency, setViewCurrency] = useState("");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
@@ -211,7 +211,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs }) {
   const donutRows = METHODS.map(([k, l]) => [l, Number(byMethod[k] || 0)]);
   return <>
     <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={setViewYear}/>
-    <PageHeader title="Encaissements et caisse journalière" subtitle="Suivi des paiements, reçus et méthodes d’encaissement" badge="Économe" badgeIcon="coins"/>
+    <PageHeader title="Encaissements et caisse journalière" subtitle="Suivi des paiements, reçus et méthodes d’encaissement" badge="Économe" badgeIcon="coins" actions={advancedSettings}/>
     {tabs}
     <Loading state={fin}>{d && <>
       <div className="yd-metrics four">
