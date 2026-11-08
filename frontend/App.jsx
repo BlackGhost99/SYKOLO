@@ -34,7 +34,7 @@ function RealApp() {
       <button type="button" onClick={()=>{window.location.hash="#/demo";}}>Démonstration interactive · Présentation</button>
     </nav>}
     {mode==="workspace"||authenticated ?
-      <div className={authenticated?"yem-live-workspace yem-auth-app":"yem-live-workspace"}>
+      <div className={authenticated?"yem-live-workspace yem-auth-app":"yem-live-workspace yem-entry-workspace"}>
         {apiAvailable===false && <div role="status" className="yem-deploy-note">L'API YEM est indisponible. Vérifiez le service Django pour enregistrer des données.</div>}
         <AuthPanel />
         <footer className="yem-company">YEM · Développé par BWETEK Informatyk</footer>
