@@ -196,6 +196,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [settingsReturn,setSettingsReturn]=useState(null);
   const [showWorkspace,setShowWorkspace]=useState(false);
   const [message,setMessage]=useState("");
+  const [academicYears,setAcademicYears]=useState([]);
+  const [workingYearId,setWorkingYearId]=useState("");
   useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
   useEffect(()=>{
     if (!chosen) {setAccess(null);return;}
@@ -203,6 +205,18 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     get("schools/"+chosen+"/my-access").then(x=>{if(alive)setAccess(x);}).catch(e=>{if(alive)setMessage(e.message);});
     setPage("dashboard");return ()=>{alive=false;};
   },[chosen]);
+  useEffect(()=>{
+    let live=true;
+    setAcademicYears([]);setWorkingYearId("");
+    if(chosen && access?.permissions?.includes("school.academic.read")){
+      get("schools/"+chosen+"/academic/annual-snapshot").then(data=>{
+        if(!live)return;
+        setAcademicYears(data.years||[]);
+        setWorkingYearId(data.year?.id||"");
+      }).catch(()=>{if(live)setAcademicYears([])});
+    }
+    return ()=>{live=false};
+  },[chosen,access]);
   const perms=access?.permissions||[];
   const can = permission => perms.includes(permission);
   const isOwner = Boolean(access?.is_owner || access?.role === "proprietaire");
@@ -257,11 +271,12 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     canCreate:can("school.admissions.manage"),canEnroll:can("school.admissions.enroll"),
     canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),
     canPublish:can("school.reports.publish"),onNavigate:navigate,
+    workingYearId,onWorkingYearChange:setWorkingYearId,
   };
   function renderSetting(id){
     if(teachingKinds[id])return <TeachingSettings key={chosen+id} schoolId={chosen} kind={teachingKinds[id]}
       canEdit={can("school.settings.write")} canReadAcademic={can("school.academic.read")}/>;
-    const common={schoolId:chosen,schoolName,onNavigate:navigate};
+    const common={schoolId:chosen,schoolName,onNavigate:navigate,workingYearId,onWorkingYearChange:setWorkingYearId};
     const SettingView=modules[id]?.view;
     return {
       users:<UsersForm key={chosen} schoolId={chosen} onMessage={setMessage}/>,
@@ -270,11 +285,11 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       numbering:<StudentNumberingSettings key={chosen} {...common}/>,
       form:<FormSettings key={chosen} {...common} canEdit={can("school.students.manage")}/>,
       "admission-policy":<AdmissionSettings key={chosen} {...panelProps} canConfigureCatalog={can("school.admissions.manage")}/>,
-      fees:<FinancePanel key={chosen} schoolId={chosen} mode="settings"/>,
+      fees:<FinancePanel key={chosen} schoolId={chosen} mode="settings" workingYearId={workingYearId}/>,
       gateway:<AdmissionPaymentSettings key={chosen} schoolId={chosen}/>,
       amendments:<CouncilPanel key={chosen} schoolId={chosen} mode="amendments"/>,
       "parent-access":<SchoolParentAccess key={chosen} schoolId={chosen} canAssignRole={canUsers} canReadStudents={can("school.students.read")}/>,
-      "staff-setup":<StaffPanel key={chosen} schoolId={chosen} mode="settings"/>,
+      "staff-setup":<StaffPanel key={chosen} schoolId={chosen} mode="settings" workingYearId={workingYearId}/>,
     }[id] || (SettingView && <SettingView key={chosen+id} {...panelProps}/>);
   }
   const tabBar=tabs.length>1&&page!=="staff"?<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>:null;
@@ -283,7 +298,15 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>{
       setAccess(null);setShowWorkspace(false);setChosen(e.target.value);navigate("dashboard");
     }}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:<b>{schoolName}</b>}
-    {schools.length>1&&<Icon name="chevron" size={18} className="chev"/>}</label></div>;
+    {schools.length>1&&<Icon name="chevron" size={18} className="chev"/>}</label>
+    {academicYears.length>0&&<label className="yd-school-select" title="Année scolaire de consultation">
+      <Icon name="calendar" size={18}/>
+      <select aria-label="Année de travail de l'établissement" value={workingYearId}
+        onChange={e=>setWorkingYearId(e.target.value)}>
+        {academicYears.map(y=><option key={y.id} value={y.id}>{y.name}{y.active?"":" · archivée"}</option>)}
+      </select>
+    </label>}
+  </div>;
   const isSchoolParent=access?.role==="parent"&&!user?.is_platform_admin;
   if (isSchoolParent&&!showWorkspace) {
     const canUseSchoolWorkspace=nav.length>1;
@@ -298,7 +321,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     selection={settingsSelection} onSelect={setSettingsSelection} render={renderSetting} isOwner={isOwner}
     onReturn={settingsReturn ? ()=>navigate(settingsReturn.page,settingsReturn.tab,settingsReturn.params) : undefined}/>;
   else if (section&&(hiddenTab||section.lives.some(l=>l.key===tab))) {
-    const props={schoolId:chosen,schoolName,tabs:tabBar,advancedSettings,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canIssueTransfer:perms.includes("school.students.manage")&&perms.includes("school.admissions.decide"),canReceive:perms.includes("school.finance.receive")};
+    const props={schoolId:chosen,schoolName,tabs:tabBar,advancedSettings,onNavigate:navigate,params,workingYearId,onWorkingYearChange:setWorkingYearId,canManage:perms.includes("school.students.manage"),canIssueTransfer:perms.includes("school.students.manage")&&perms.includes("school.admissions.decide"),canReceive:perms.includes("school.finance.receive")};
     const k=chosen+JSON.stringify(params);
     content={
       "students:cycle-list":<CycleWorkspace key={chosen} schoolId={chosen} access={access}/>,
@@ -307,7 +330,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "students:new":<StudentForm key={k} {...props}/>,
       "students:fiche":<StudentFile key={k} {...props}/>,
       "students:import":<ImportStudents key={chosen} {...props}/>,
-      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.read")} advancedSettings={advancedSettings}/>,
+      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.read")} advancedSettings={advancedSettings} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
       "payments:live":<LivePayments key={k} {...props}/>,
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
       "arrears:live":<LiveArrears key={chosen} {...props}/>,
@@ -336,7 +359,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         onSettings:can("school.settings.write")&&can("school.settings.read")?()=>navigate("settings","attendance-policy"):undefined}:{})}/>}</div>
   </>;
   else if (perms.includes("school.finance.read")) content=<>
-    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")}/>
+    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>
     <MySchoolFunctions schoolId={chosen}/>
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
