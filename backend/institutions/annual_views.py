@@ -37,7 +37,7 @@ def _year_dict(year):
     return {
         "id": str(year.pk), "code": year.code, "name": year.name,
         "start_date": year.start_date.isoformat(), "end_date": year.end_date.isoformat(),
-        "active": year.active,
+        "active": year.active, "status": year.status, "revision": year.revision,
     }
 
 
@@ -66,6 +66,12 @@ def annual_snapshot(request, school_id):
         "year": _year_dict(year) if year else None,
         "can_prepare_year": has_permission(request.user, school, "school.academic.manage")
                             and scoped_cycle_ids(request.user, school) is None,
+        "can_activate_year": bool(
+            year is not None and year.active and year.status == AcademicYear.STATUS_PREPARATION
+            and has_permission(request.user, school, "school.academic.manage")
+            and scoped_cycle_ids(request.user, school) is None
+            and not years.filter(status=AcademicYear.STATUS_CURRENT).exists()
+        ),
         "classes": [],
         "periods": [],
         "stats": {},
@@ -136,6 +142,59 @@ def annual_snapshot(request, school_id):
         "assessments": sum(assessments.values()) if can_assess else None,
     }
     return JsonResponse(result)
+
+
+@require_POST
+@authorized
+def activate_year(request, school_id, year_id):
+    """Explicit, audited activation. Closing is intentionally not yet exposed.
+
+    All year-dependent write endpoints must first honor closed status before
+    allowing the school year to be finalized.
+    """
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if (not has_permission(request.user, school, "school.academic.manage")
+            or scoped_cycle_ids(request.user, school) is not None):
+        return refuse()
+    body, error = parse_body(request)
+    if error is not None:
+        return error
+    if set(body) != {"revision", "reason"}:
+        return JsonResponse({"error": "Révision et motif obligatoires."}, status=422)
+    revision, reason = body["revision"], body["reason"]
+    if (type(revision) is not int or revision < 1
+            or not isinstance(reason, str) or not 8 <= len(reason.strip()) <= 300):
+        return JsonResponse({"error": "Révision valide et motif de 8 à 300 caractères requis."}, status=422)
+    try:
+        with transaction.atomic():
+            # Serialise activations for one school, even if the target years differ.
+            School.objects.select_for_update().get(pk=school.pk)
+            year = AcademicYear.objects.select_for_update().filter(
+                school=school, pk=year_id
+            ).first()
+            if year is None:
+                return JsonResponse({"error": "Année scolaire introuvable."}, status=404)
+            if year.revision != revision:
+                return JsonResponse({"error": "Conflit de version.", "revision": year.revision}, status=409)
+            if year.status != AcademicYear.STATUS_PREPARATION or not year.active:
+                return JsonResponse({"error": "Seule une année en préparation peut être activée."}, status=409)
+            if AcademicYear.objects.filter(
+                school=school, status=AcademicYear.STATUS_CURRENT
+            ).exclude(pk=year.pk).exists():
+                return JsonResponse({
+                    "error": "Une autre année est en cours. Sa clôture sécurisée est nécessaire avant l'activation suivante."
+                }, status=409)
+            year.status = AcademicYear.STATUS_CURRENT
+            year.revision += 1
+            year.save(update_fields=["status", "revision"])
+            log_event(school, request, "academic_year_activated", str(year.pk), {
+                "reason": reason.strip(), "status_from": "preparation", "status_to": "current",
+            })
+    except IntegrityError:
+        return JsonResponse({"error": "Une année scolaire est déjà en cours."}, status=409)
+    return JsonResponse({"year": _year_dict(year), "message": "Année scolaire activée."})
 
 
 @require_POST
