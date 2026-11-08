@@ -17,7 +17,10 @@ from .models import School, SchoolAppointment, SchoolLogin, SchoolMember, School
 from .school_functions import (
     account_functions, positions_for_school, validate_account_functions, validate_position,
 )
-from .services import effective_permissions, has_permission, owns_organization, public_role_label, quota_reached
+from .services import (
+    OWNER_ROLE_CODE, effective_permissions, has_permission, owns_school, platform_only,
+    public_role_label, quota_reached, role_available,
+)
 from .staff_models import StaffAssignment, StaffRecord
 from .staff_views import parse_staff, staff_repr
 from .views import access, financial_grant_allowed, log_event, parse_body, refuse, string
@@ -99,7 +102,7 @@ def _class_assignments(school, data):
     return clean
 
 
-def _account(school, actor, owner, data, appointments):
+def _account(school, actor, owner, platform, data):
     if data is None:
         return None
     required = {"username", "email", "password", "role", "additional_roles"}
@@ -109,25 +112,26 @@ def _account(school, actor, owner, data, appointments):
     if not (string(username, 150) and string(email, 254) and "@" in email
             and isinstance(password, str) and string(data["role"], 48)):
         raise ValueError("Identifiants de connexion invalides.")
-    if not owner and not has_permission(actor, school, "school.members.write"):
+    can_delegate = owner or platform
+    if not can_delegate and not has_permission(actor, school, "school.members.write"):
         raise PermissionError("Création de compte non autorisée.")
     roles = data["additional_roles"]
     if (not isinstance(roles, list) or len(roles) > 20
             or any(not isinstance(c, str) for c in roles) or len(roles) != len(set(roles))
             or data["role"] in roles):
         raise ValueError("Rôles supplémentaires invalides.")
-    if data["role"] in {"parent", "eleve", "proprietaire"} or any(
-        code in {"parent", "eleve", "proprietaire"} for code in roles
-    ):
+    if data["role"] in {"parent", "eleve"} or any(code in {"parent", "eleve", OWNER_ROLE_CODE} for code in roles):
         raise ValueError("Rôle non destiné au personnel scolaire.")
+    if data["role"] == OWNER_ROLE_CODE and not platform:
+        raise PermissionError("La nomination d’un propriétaire est réservée au super-administrateur.")
     primary = SchoolRole.objects.filter(school=school, code=data["role"]).first()
     extra = list(SchoolRole.objects.filter(school=school, code__in=roles))
-    if not primary or len(extra) != len(roles):
+    if not primary or len(extra) != len(roles) or not all(role_available(school, r.code) for r in [primary, *extra]):
         raise ValueError("Rôle inconnu dans cet établissement.")
     granted = set().union(*(set(r.permissions) for r in [primary, *extra]))
-    if not owner and not granted <= effective_permissions(actor, school):
+    if not can_delegate and not granted <= effective_permissions(actor, school):
         raise PermissionError("Vous ne pouvez pas transmettre ces autorisations.")
-    if not owner and any(p.startswith("school.finance.") and p.split(".")[-1] in {
+    if not can_delegate and any(p.startswith("school.finance.") and p.split(".")[-1] in {
         "manage", "receive", "reverse", "approve", "deposit"
     } for p in granted):
         raise PermissionError("Les droits financiers sensibles sont réservés au propriétaire.")
@@ -135,6 +139,8 @@ def _account(school, actor, owner, data, appointments):
     # An account can have a valid school appointment even when its account-function
     # catalogue is deliberately restricted.
     scope = validate_cycle_scope(school, data.get("access_cycle_ids"))
+    if primary.code == OWNER_ROLE_CODE and scope is not None:
+        raise ValueError("Le compte propriétaire couvre tout l’établissement.")
     actor_scope = scoped_cycle_ids(actor, school)
     if actor_scope is not None and (scope is None or not set(scope) <= actor_scope):
         raise PermissionError("Le compte créé doit rester dans les cycles autorisés du responsable.")
@@ -151,18 +157,20 @@ def onboard_staff(request, school_id):
     school, error = access(request, school_id)
     if error is not None:
         return error
-    owner = owns_organization(request.user, school.organization)
-    can_staff = owner or has_permission(request.user, school, "school.staff.manage")
+    platform = platform_only(request)
+    owner = owns_school(request.user, school)
+    can_staff = owner or platform or has_permission(request.user, school, "school.staff.manage")
     if not can_staff:
         return refuse()
-    can_account = owner or has_permission(request.user, school, "school.members.write")
-    can_appoint = owner or has_permission(request.user, school, "school.organization.manage")
+    can_account = owner or platform or has_permission(request.user, school, "school.members.write")
+    can_appoint = owner or platform or has_permission(request.user, school, "school.organization.manage")
     actor_scope = scoped_cycle_ids(request.user, school)
 
     if request.method == "GET":
         allowed = effective_permissions(request.user, school)
         roles = SchoolRole.objects.filter(school=school).order_by("label")
-        roles = [r for r in roles if r.code not in {"parent", "eleve", "proprietaire"} and (owner or (
+        roles = [r for r in roles if role_available(school, r.code) and r.code not in {"parent", "eleve"}
+                 and (r.code != OWNER_ROLE_CODE or platform) and (owner or platform or (
             can_account and set(r.permissions) <= allowed
             and not any(p in r.permissions for p in (
                 "school.finance.manage", "school.finance.receive", "school.finance.reverse",
@@ -185,7 +193,7 @@ def onboard_staff(request, school_id):
                 school=school, active=True, user__is_active=True
             ).order_by("user__last_name","user__first_name")[:200]
             for member in members:
-                if owns_organization(member.user, school.organization):
+                if owns_school(member.user, school):
                     continue
                 alias = SchoolLogin.objects.filter(school=school,user=member.user).values_list("username",flat=True).first()
                 existing.append({"member_id":str(member.pk), "username":alias or member.user.username,
@@ -238,7 +246,7 @@ def onboard_staff(request, school_id):
             raise ValueError("Utilisez le formulaire de compte pour la connexion.")
         appointments = _appointments(school, body["appointments"])
         assignments = _class_assignments(school, body["class_assignments"])
-        account_info = _account(school, request.user, owner, body["account"], appointments)
+        account_info = _account(school, request.user, owner, platform, body["account"])
         if actor_scope is not None:
             keys = profile_cycle_keys(school, actor_scope)
             if not appointments and not assignments:
@@ -258,18 +266,18 @@ def onboard_staff(request, school_id):
         with transaction.atomic():
             # Même verrou que le reste de l'administration : quotas et matricules cohérents.
             school = School.objects.select_for_update().get(pk=school.pk)
-            owner = owns_organization(request.user, school.organization)
-            if not (owner or has_permission(request.user, school, "school.staff.manage")):
+            owner = owns_school(request.user, school)
+            if not (owner or platform or has_permission(request.user, school, "school.staff.manage")):
                 return refuse()
-            if body["account"] is not None and not (owner or has_permission(request.user, school, "school.members.write")):
+            if body["account"] is not None and not (owner or platform or has_permission(request.user, school, "school.members.write")):
                 return refuse()
-            if body["appointments"] and not (owner or has_permission(request.user, school, "school.organization.manage")):
+            if body["appointments"] and not (owner or platform or has_permission(request.user, school, "school.organization.manage")):
                 return refuse()
             if body["account"] is not None and len(school.education_cycles or []) > 1 and not body["ack_school_wide_permissions"]:
                 raise ValueError("Confirmez les droits applicatifs à tout le complexe.")
             appointments = _appointments(school, body["appointments"])
             assignments = _class_assignments(school, body["class_assignments"])
-            account_info = _account(school, request.user, owner, body["account"], appointments)
+            account_info = _account(school, request.user, owner, platform, body["account"])
             actor_scope = scoped_cycle_ids(request.user, school)
             if actor_scope is not None:
                 keys = profile_cycle_keys(school, actor_scope)
@@ -296,6 +304,7 @@ def onboard_staff(request, school_id):
                 )
                 member = SchoolMember.objects.create(
                     school=school, user=user, role=primary,
+                    is_school_owner=primary.code == OWNER_ROLE_CODE,
                     function_codes=validate_account_functions(
                         school, [code for code, _, _, _ in appointments
                                  if code in {p["code"] for p in account_functions(school)}]
@@ -304,7 +313,7 @@ def onboard_staff(request, school_id):
                 )
                 member.additional_roles.set(extra)
                 SchoolLogin.objects.create(school=school, user=user, username=username)
-                if not financial_grant_allowed(request.user, school, user, granted):
+                if not platform and not financial_grant_allowed(request.user, school, user, granted):
                     raise PermissionError("Attribution financière non autorisée.")
 
             staff_record = StaffRecord(school=school, account=user, **staff_fields)

@@ -19,9 +19,9 @@ from .models import (
     SchoolRole, SchoolSetting,
 )
 from .services import (
-    PERMISSIONS, ROLE_TEMPLATES, has_permission, effective_permissions, key_for_scope,
-    owns_organization, resolve_settings, school_access, school_response, quota_reached, public_role_label,
-    validate_scope,
+    OWNER_ROLE_CODE, PERMISSIONS, has_permission, effective_permissions, key_for_scope,
+    owns_school, platform_only, resolve_settings, role_available, school_access, school_response,
+    quota_reached, public_role_label, role_templates_for, validate_scope,
 )
 
 
@@ -97,7 +97,7 @@ def financial_grant_allowed(actor, school, target, permissions):
     added = requested - existing
     if not added:
         return True
-    return (owns_organization(actor, school.organization)
+    return (owns_school(actor, school)
             and target is not None and actor.pk != target.pk)
 
 
@@ -106,7 +106,7 @@ def financial_role_change_allowed(actor, school, role, permissions):
     after = set(permissions) & FINANCIAL_DUTIES
     if before == after:
         return True
-    if not owns_organization(actor, school.organization):
+    if not owns_school(actor, school):
         return False
     if after - before:
         # A founder may delegate to staff but must not change a role already
@@ -161,7 +161,7 @@ def organization_schools(request, organization_id):
         )
         SchoolRole.objects.bulk_create([
             SchoolRole(school=school, code=code, label=label, permissions=permissions)
-            for code, label, permissions in ROLE_TEMPLATES
+            for code, label, permissions in role_templates_for(school)
         ])
         SchoolLogin.objects.get_or_create(school=school, user=request.user, defaults={"username": request.user.username})
         log_event(school, request, "school_created")
@@ -198,7 +198,7 @@ def school_members(request, school_id):
         return error
     perm = "school.members.read" if request.method == "GET" else "school.members.write"
     if not has_permission(request.user, school, perm) and not (
-        request.method == "GET" and owns_organization(request.user, school.organization)
+        request.method == "GET" and owns_school(request.user, school)
     ):
         return refuse()
     if request.method == "GET":
@@ -207,6 +207,7 @@ def school_members(request, school_id):
         ).order_by("user__username")[:200]
         return JsonResponse({"members": [
             {"user_id": str(m.user_id), "username": SchoolLogin.objects.filter(school=school, user=m.user).values_list("username", flat=True).first() or m.user.username,
+             "is_school_owner": m.is_school_owner,
              "function_codes": account_function_codes(school, m.function_codes),
              "role": m.role.code, "additional_roles": list(m.additional_roles.filter(school=school).values_list("code", flat=True))}
             for m in rows
@@ -230,13 +231,15 @@ def school_members(request, school_id):
     codes = data.get("additional_roles", [])
     if not isinstance(codes, list) or not all(isinstance(code, str) for code in codes) or len(codes) > 20:
         return JsonResponse({"error": "Fonctions supplémentaires invalides."}, status=422)
+    if OWNER_ROLE_CODE in {role.code, *codes}:
+        return refuse()
     extra = list(SchoolRole.objects.filter(school=school, code__in=set(codes)))
     if len(extra) != len(set(codes)):
         return JsonResponse({"error": "Fonction étrangère ou inconnue."}, status=422)
     granted = set().union(*(set(r.permissions) for r in [role, *extra]))
     if not may_delegate_finance(request.user, school, granted):
         return refuse()
-    if not owns_organization(request.user, school.organization) and not granted <= effective_permissions(request.user, school):
+    if not owns_school(request.user, school) and not granted <= effective_permissions(request.user, school):
         return refuse()
     from .school_functions import validate_account_functions
     try:
@@ -244,16 +247,20 @@ def school_members(request, school_id):
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=422)
     with transaction.atomic():
-        School.objects.select_for_update().get(pk=school.pk)
+        school = School.objects.select_for_update().get(pk=school.pk)
+        if not has_permission(request.user, school, "school.members.write"):
+            return refuse()
         # Match main #45: recompute financial duties under the school lock.
         role = SchoolRole.objects.get(pk=role.pk, school=school)
         extra = list(SchoolRole.objects.filter(school=school, code__in=set(codes)))
         granted = set().union(*(set(r.permissions) for r in [role, *extra]))
-        if not owns_organization(request.user, school.organization) and not granted <= effective_permissions(request.user, school):
+        if not owns_school(request.user, school) and not granted <= effective_permissions(request.user, school):
             return refuse()
         if not financial_grant_allowed(request.user, school, user, granted):
             return refuse()
         previous = SchoolMember.objects.filter(school=school, user=user).first()
+        if previous and previous.is_school_owner:
+            return refuse()
         if create_only and previous:
             if previous.role_id != role.pk or not previous.active:
                 return JsonResponse({"error": "Ce compte possède déjà un rattachement qui nécessite une vérification dans Personnel."}, status=409)
@@ -284,15 +291,15 @@ def my_school_access(request, school_id):
     member = SchoolMember.objects.select_related("role").filter(
         school=school, user=request.user, active=True
     ).first()
-    founder = owns_organization(request.user, school.organization)
+    owner = owns_school(request.user, school)
     cycle_ids = scoped_cycle_ids(request.user,school)
-    permitted = effective_permissions(request.user,school) if member else ({"school.view", "school.members.write"} if founder else set())
+    permitted = effective_permissions(request.user,school) if member else ({"school.view", "school.members.write"} if owner else set())
     scoped_cycles = list(AcademicCycle.objects.filter(school=school,pk__in=cycle_ids).values("id","name")) if cycle_ids is not None else []
     return JsonResponse({
         "school": school_response(school),
-        "role": member.role.code if member else ("proprietaire" if founder else None),
-        "role_label": public_role_label(member.role, school) if member else ("Propriétaire" if founder else ""),
-        "is_owner": founder,
+        "role": member.role.code if member else (OWNER_ROLE_CODE if owner else None),
+        "role_label": public_role_label(member.role, school) if member else ("Propriétaire" if owner else ""),
+        "is_owner": owner,
         "roles": [member.role.code, *member.additional_roles.filter(school=school).values_list("code", flat=True)] if member else [],
         "permissions": allowed_school_permissions(permitted,cycle_ids),
         "cycle_scope_restricted": cycle_ids is not None,
@@ -323,9 +330,12 @@ def school_user_create(request, school_id):
     role = SchoolRole.objects.filter(school=school, code=role_code).first()
     if role is None:
         return JsonResponse({"error": "Rôle introuvable dans cet établissement."}, status=404)
-    if not may_delegate_finance(request.user, school, role.permissions):
+    platform = platform_only(request)
+    if role.code == OWNER_ROLE_CODE and not platform:
         return refuse()
-    if not owns_organization(request.user, school.organization):
+    if not platform and not may_delegate_finance(request.user, school, role.permissions):
+        return refuse()
+    if not (platform or owns_school(request.user, school)):
         actor = SchoolMember.objects.select_related("role").filter(
             school=school, user=request.user, active=True
         ).first()
@@ -340,31 +350,35 @@ def school_user_create(request, school_id):
         return JsonResponse({"error": " ".join(exc.messages)}, status=422)
     from .school_functions import validate_account_functions
     try:
-        functions = validate_account_functions(school, data.get("function_codes", []))
-    except ValueError as exc:
-        return JsonResponse({"error": str(exc)}, status=422)
-    try:
         with transaction.atomic():
-            School.objects.select_for_update().get(pk=school.pk)
+            school = School.objects.select_for_update().get(pk=school.pk)
+            if not has_permission(request.user, school, "school.members.write"):
+                return refuse()
             role = SchoolRole.objects.get(pk=role.pk, school=school)
-            if not may_delegate_finance(request.user, school, role.permissions):
+            if not role_available(school, role.code):
+                return JsonResponse({"error": "Rôle non disponible pour cette école."}, status=422)
+            if not platform and not may_delegate_finance(request.user, school, role.permissions):
                 return refuse()
-            if not owns_organization(request.user, school.organization) and not set(role.permissions) <= effective_permissions(request.user, school):
+            if not (platform or owns_school(request.user, school)) and not set(role.permissions) <= effective_permissions(request.user, school):
                 return refuse()
+            functions = validate_account_functions(school, data.get("function_codes", []))
             if quota_reached(school, "users"):
                 return JsonResponse({"error": "Plafond d'utilisateurs atteint pour cet établissement."}, status=409)
             user = User.objects.create_user(username=(candidate.username if not User.objects.filter(username=candidate.username).exists() else "school-" + uuid4().hex), email=candidate.email,
                                            first_name=candidate.first_name, last_name=candidate.last_name,
                                            password=password)
-            SchoolMember.objects.create(school=school, user=user, role=role, function_codes=functions)
+            SchoolMember.objects.create(school=school, user=user, role=role, function_codes=functions,
+                                        is_school_owner=role.code == OWNER_ROLE_CODE)
             SchoolLogin.objects.create(school=school, user=user, username=username.strip())
             log_event(school, request, "member_account_created", str(user.pk))
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
     except IntegrityError:
         return JsonResponse({"error": "Cet identifiant est déjà utilisé."}, status=409)
     return JsonResponse({"username": username.strip(), "role": role.code}, status=201)
 
 def may_delegate_finance(user, school, permissions):
-    return not FINANCIAL_DUTIES.intersection(permissions) or owns_organization(user, school.organization)
+    return not FINANCIAL_DUTIES.intersection(permissions) or owns_school(user, school)
 
 
 def role_response(role, school=None):
@@ -379,12 +393,15 @@ def school_roles(request, school_id):
     if error is not None:
         return error
     if request.method == "GET":
-        if not has_permission(request.user, school, "school.roles.read") and not owns_organization(request.user, school.organization):
+        owner = owns_school(request.user, school)
+        if not has_permission(request.user, school, "school.roles.read") and not owner:
             return refuse()
         from .school_functions import account_functions, suggested_account_function
         functions = account_functions(school)
+        platform = platform_only(request)
         return JsonResponse({"functions": functions, "roles": [
-            {**role_response(r, school), "suggested_function": suggested_account_function(school, r.code, functions)}
+            {**role_response(r, school), "suggested_function": suggested_account_function(school, r.code, functions),
+             "available_for_accounts": role_available(school, r.code) and (r.code != OWNER_ROLE_CODE or platform)}
             for r in school.roles.order_by("code")
         ],
                              "available_permissions": sorted(PERMISSIONS)})
@@ -396,6 +413,8 @@ def school_roles(request, school_id):
     code, label, perms = data.get("code"), data.get("label"), data.get("permissions")
     if not isinstance(code, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{1,47}", code) or not string(label, 100):
         return JsonResponse({"error": "Code ou intitulé invalide."}, status=422)
+    if code == OWNER_ROLE_CODE:
+        return refuse()
     if not isinstance(perms, list) or not all(isinstance(x, str) for x in perms) or not set(perms) <= PERMISSIONS:
         return JsonResponse({"error": "Permissions inconnues."}, status=422)
     if not set(perms) <= effective_permissions(request.user, school):
@@ -442,6 +461,8 @@ def school_role_detail(request, school_id, role_id):
         role = SchoolRole.objects.select_for_update().filter(school=school, id=role_id).first()
         if role is None:
             return JsonResponse({"error": "Rôle introuvable."}, status=404)
+        if role.code == OWNER_ROLE_CODE:
+            return refuse()
         if not set(perms) <= effective_permissions(request.user, school):
             return refuse()
         if not may_delegate_finance(request.user, school, FINANCIAL_DUTIES.intersection(set(role.permissions) ^ set(perms))):

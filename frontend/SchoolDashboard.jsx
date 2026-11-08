@@ -134,7 +134,7 @@ function UsersForm({schoolId,onMessage}) {
     get("schools/"+schoolId+"/roles").then(result=>{
       if(!alive)return;
       setFunctions(result.functions||[]);
-      const options=(result.roles||[]).map(r=>[r.code,r.label,r.suggested_function]);
+      const options=(result.roles||[]).filter(r=>r.available_for_accounts!==false).map(r=>[r.code,r.label,r.suggested_function]);
       if(options.length){
         setRoleOptions(options);
         setPerson(old=>options.some(([code])=>code===old.role)?old:{...old,role:options[0][0]});
@@ -144,6 +144,7 @@ function UsersForm({schoolId,onMessage}) {
   },[schoolId]);
   const proposedFunction=roleOptions.find(([code])=>code===person.role)?.[2];
   const personFunctions=person.function_codes??(proposedFunction?[proposedFunction]:[]);
+  const assignmentRoles=roleOptions.filter(([code])=>code!=="proprietaire");
   return <Card title="Créer un compte pour l'établissement" icon="adduser" subtitle="Le compte est rattaché uniquement à cette école. Les droits dépendent de son rôle.">
     <form onSubmit={async e=>{e.preventDefault();setBusy(true);onMessage("");try{const result=await addUser(schoolId,{...person,function_codes:personFunctions});setPerson(defaultPerson);setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
       {["first_name","last_name","username","email"].map(key=><label key={key}>{{first_name:"Prénom",last_name:"Nom",username:"Identifiant de connexion",email:"Email"}[key]}<input required value={person[key]} type={key==="email"?"email":"text"} onChange={e=>setPerson(x=>({...x,[key]:e.target.value}))}/></label>)}
@@ -152,9 +153,9 @@ function UsersForm({schoolId,onMessage}) {
     </div><fieldset><legend>Fonctions exercées (facultatives, sans droits automatiques)</legend>{functions.map(f=><label key={f.code}><input type="checkbox" checked={personFunctions.includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...personFunctions,f.code]:personFunctions.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset><button className="pc-primary" type="submit" disabled={busy||!roleOptions.length}>Créer le compte</button></form>
     <form aria-label="Fonctions d'un compte existant" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await addUser(schoolId,assignment,"members");setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Fonctions mises à jour.");}catch(err){onMessage(err.message);}finally{setBusy(false);}}}>
       <h3>Fonctions d'un compte existant</h3>
-      <label>Compte existant<select required value={assignment.username} onChange={e=>{const m=members.find(x=>x.username===e.target.value);if(m)setAssignment({username:m.username,role:m.role,additional_roles:m.additional_roles||[],function_codes:m.function_codes||[]});}}><option value="">Choisir…</option>{members.map(m=><option key={m.user_id} value={m.username}>{m.username}</option>)}</select></label>
-      <label>Rôle principal<select value={assignment.role} onChange={e=>setAssignment({...assignment,role:e.target.value})}>{roleOptions.map(([code,label])=><option key={code} value={code}>{label}</option>)}</select></label>
-      <fieldset><legend>Fonctions supplémentaires (remplace la sélection précédente)</legend>{roleOptions.filter(([code])=>code!==assignment.role).map(([code,label])=><label key={code}><input type="checkbox" checked={assignment.additional_roles.includes(code)} onChange={e=>setAssignment(old=>({...old,additional_roles:e.target.checked?[...old.additional_roles,code]:old.additional_roles.filter(x=>x!==code)}))}/>{label}</label>)}</fieldset>
+      <label>Compte existant<select required value={assignment.username} onChange={e=>{const m=members.find(x=>x.username===e.target.value);if(m)setAssignment({username:m.username,role:m.role,additional_roles:m.additional_roles||[],function_codes:m.function_codes||[]});}}><option value="">Choisir…</option>{members.filter(m=>!m.is_school_owner).map(m=><option key={m.user_id} value={m.username}>{m.username}</option>)}</select></label>
+      <label>Rôle principal<select value={assignment.role} onChange={e=>setAssignment({...assignment,role:e.target.value})}>{assignmentRoles.map(([code,label])=><option key={code} value={code}>{label}</option>)}</select></label>
+      <fieldset><legend>Fonctions supplémentaires (remplace la sélection précédente)</legend>{assignmentRoles.filter(([code])=>code!==assignment.role).map(([code,label])=><label key={code}><input type="checkbox" checked={assignment.additional_roles.includes(code)} onChange={e=>setAssignment(old=>({...old,additional_roles:e.target.checked?[...old.additional_roles,code]:old.additional_roles.filter(x=>x!==code)}))}/>{label}</label>)}</fieldset>
       <fieldset><legend>Fonctions exercées (remplace la sélection précédente)</legend>{functions.map(f=><label key={f.code}><input type="checkbox" checked={assignment.function_codes.includes(f.code)} onChange={e=>setAssignment(old=>({...old,function_codes:e.target.checked?[...old.function_codes,f.code]:old.function_codes.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset>
       <button disabled={busy}>Enregistrer les fonctions</button>
     </form>
@@ -227,7 +228,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   },[chosen,workingYearId,access]);
   const perms=access?.permissions||[];
   const can = permission => perms.includes(permission);
-  const isOwner = Boolean(access?.is_owner || access?.role === "proprietaire");
+  const isOwner = Boolean(access?.is_owner);
   const allowed = key => key === "onboarding"
     ? can("school.staff.manage") || isOwner
     : can(modules[key].read) || (key==="attendance" && can("school.attendance.assigned"));

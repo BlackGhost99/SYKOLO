@@ -1,7 +1,8 @@
 import json
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from .models import Organization, PlatformAudit, School, SchoolAdminPolicy, SchoolMember, SchoolRole, Student
+from .models import Organization, OrganizationMember, PlatformAudit, School, SchoolAdminPolicy, SchoolMember, SchoolRole, Student
+from .services import effective_permissions, owns_school
 
 
 class PlatformAdminConsoleTests(TestCase):
@@ -51,6 +52,71 @@ class PlatformAdminConsoleTests(TestCase):
         self.assertTrue(any(m["username"] == "direction_arc" for m in data["members"]))
         self.assertTrue(any(role["code"] == "enseignant" for role in data["roles"]))
         self.assertIsNone(data["policy"]["max_users"])
+
+    def test_platform_can_add_school_owner_and_secondary_heads(self):
+        path = f"/api/v1/platform/schools/{self.school.pk}"
+        payload = {**self.payload, "username": "owner_arc", "role": "proprietaire"}
+        owner_response = self.post(path + "/users", payload)
+        self.assertEqual(owner_response.status_code, 201, owner_response.content)
+        owner = get_user_model().objects.get(username="owner_arc")
+        sibling = School.objects.create(organization=self.school.organization, name="Autre école du groupe")
+        self.assertTrue(owns_school(owner, self.school))
+        self.assertFalse(owns_school(owner, sibling))
+        self.assertFalse(OrganizationMember.objects.filter(user=owner).exists())
+        self.assertNotIn("school.students.manage", effective_permissions(owner, self.school))
+        self.assertNotIn("school.finance.approve", effective_permissions(owner, self.school))
+
+        for role in ("proviseur", "principal", "etudes", "vie_scolaire", "secretariat_pedagogique"):
+            response = self.post(path + "/users", {**payload, "username": "arc-" + role, "role": role})
+            self.assertEqual(response.status_code, 201, response.content)
+            self.assertEqual(response.json()["role"], role)
+
+        self.client.force_login(owner)
+        self.assertTrue(self.client.get(f"/api/v1/schools/{self.school.pk}/my-access").json()["is_owner"])
+        self.assertEqual(self.client.get(f"/api/v1/schools/{sibling.pk}/my-access").status_code, 404)
+
+    def test_proviseur_can_onboard_secondary_staff_but_cannot_assign_ownership(self):
+        path = f"/api/v1/schools/{self.school.pk}"
+        head = self.post(f"/api/v1/platform/schools/{self.school.pk}/users", {
+            **self.payload, "username": "proviseur-arc", "role": "proviseur",
+        })
+        self.assertEqual(head.status_code, 201, head.content)
+        self.client.force_login(get_user_model().objects.get(username="proviseur-arc"))
+        roles = self.client.get(path + "/staff/onboard").json()["roles"]
+        self.assertTrue({"etudes", "vie_scolaire", "secretariat_pedagogique"} <= {r["code"] for r in roles})
+        self.assertNotIn("proprietaire", {r["code"] for r in roles})
+
+        for role, function in (("etudes", "charge_etudes"), ("vie_scolaire", "directeur_vie_scolaire"),
+                               ("secretariat_pedagogique", "secretaire_pedagogique")):
+            response = self.post(path + "/staff/onboard", {
+                "staff": {"first_name": "Alex", "last_name": "Test", "position": role},
+                "account": {"username": "personnel-" + role, "email": f"{role}@example.test",
+                            "password": self.payload["password"], "role": role, "additional_roles": []},
+                "appointments": [{"function_code": function, "cycle_code": "lycee_general"}],
+                "class_assignments": [], "ack_school_wide_permissions": True,
+            })
+            self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(self.post(path + "/users", {
+            **self.payload, "username": "faux-proprietaire", "role": "proprietaire",
+        }).status_code, 403)
+        self.assertEqual(self.post(path + "/members", {
+            "username": "proviseur-arc", "role": "proviseur", "additional_roles": ["proprietaire"],
+        }).status_code, 403)
+
+    def test_platform_intervention_can_onboard_an_owner_with_mfa(self):
+        path = f"/api/v1/schools/{self.school.pk}/staff/onboard"
+        self.assertEqual(self.client.get(path).status_code, 404)
+        grant = self.client.post(f"/api/v1/platform/schools/{self.school.pk}/admin-access")
+        self.assertEqual(grant.status_code, 200)
+        self.assertIn("proprietaire", {role["code"] for role in self.client.get(path).json()["roles"]})
+        created = self.post(path, {
+            "staff": {"first_name": "Benoît", "last_name": "Test", "position": "Propriétaire"},
+            "account": {"username": "responsable-prive", "email": "owner@example.test",
+                        "password": self.payload["password"], "role": "proprietaire", "additional_roles": []},
+            "appointments": [], "class_assignments": [], "ack_school_wide_permissions": True,
+        })
+        self.assertEqual(created.status_code, 201, created.content)
+        self.assertTrue(self.school.members.get(user__username="responsable-prive").is_school_owner)
 
     def test_another_school_member_cannot_read_platform(self):
         self.client.force_login(self.director)

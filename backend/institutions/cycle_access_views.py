@@ -7,7 +7,7 @@ from accounts.views import authorized
 from .academic_models import AcademicCycle
 from .cycle_scope import validate_cycle_scope
 from .models import SchoolMember, School
-from .services import owns_organization
+from .services import owns_school
 from .views import access, log_event, parse_body, refuse
 
 
@@ -17,14 +17,14 @@ def member_cycle_access(request, school_id, member_id):
     school, error = access(request, school_id)
     if error is not None:
         return error
-    if not owns_organization(request.user, school.organization):
+    if not owns_school(request.user, school):
         return refuse()
     target = SchoolMember.objects.select_related("user").filter(
         school=school, pk=member_id, active=True, user__is_active=True
     ).first()
     if target is None:
         return JsonResponse({"error": "Collaborateur introuvable dans cette école."}, status=404)
-    if owns_organization(target.user, school.organization):
+    if owns_school(target.user, school):
         return JsonResponse({
             "error": "Le compte propriétaire conserve une autorité distincte ; cette restriction ne s'y applique pas."
         }, status=422)
@@ -51,7 +51,7 @@ def member_cycle_access(request, school_id, member_id):
     with transaction.atomic():
         School.objects.select_for_update().get(pk=school.pk)
         target = SchoolMember.objects.select_for_update().get(pk=target.pk, school=school)
-        if not target.active or owns_organization(target.user, school.organization):
+        if not owns_school(request.user, school) or not target.active or owns_school(target.user, school):
             return refuse()
         allowed = validate_cycle_scope(school, data["access_cycle_ids"])
         before = target.access_cycle_ids

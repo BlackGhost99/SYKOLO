@@ -12,7 +12,7 @@ from .models import (
     SchoolAudit, SchoolMember, SchoolRole, Student,
 )
 from .platform_views import platform_only
-from .services import provision_secondary_roles, public_role_label
+from .services import OWNER_ROLE_CODE, provision_appointment_roles, public_role_label, role_available
 from .school_profiles import validate_school_profile
 from .views import parse_body, log_event, string
 
@@ -205,7 +205,7 @@ def detail_dict(s):
         "roles": [
             {"id": str(r.id), "code": r.code, "label": public_role_label(r, s),
              "suggested_function": suggested_account_function(s, r.code, functions)}
-            for r in roles
+            for r in roles if role_available(s, r.code)
         ],
         "members": [
             {
@@ -294,7 +294,7 @@ def platform_school_action(request, school_id):
             school.school_type = school_type
             school.education_cycles = education_cycles
             school.save(update_fields=["school_type", "education_cycles"])
-            provision_secondary_roles(school)
+            provision_appointment_roles(school)
             log_event(school, request, "school_profile_updated", reason)
             audit(request, "school_profile_updated", school.name, school, reason)
         elif action == "plan":
@@ -354,10 +354,13 @@ def platform_member_action(request, school_id, member_id):
             except (ValueError, TypeError, AttributeError):
                 return JsonResponse({"error": "Identifiant de rôle invalide."}, status=422)
             role = SchoolRole.objects.filter(school=school, pk=valid_role_id).first()
-            if role is None:
+            if role is None or not role_available(school, role.code):
                 return JsonResponse({"error": "Rôle inconnu pour cet établissement."}, status=422)
             member.role = role
-            member.save(update_fields=["role"])
+            member.is_school_owner = role.code == OWNER_ROLE_CODE
+            if member.is_school_owner:
+                member.access_cycle_ids = None
+            member.save(update_fields=["role", "is_school_owner", "access_cycle_ids"])
             event = "member_role_changed"
         elif action == "status":
             if type(body.get("active")) is not bool:

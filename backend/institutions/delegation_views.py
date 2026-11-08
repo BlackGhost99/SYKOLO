@@ -9,7 +9,7 @@ from accounts.views import authorized
 from .models import School, SchoolMember, PermissionDelegation
 from .academic_models import AcademicCycle
 from .school_profiles import CYCLE_LABELS
-from .services import PERMISSIONS, effective_permissions, has_permission, owns_organization
+from .services import PERMISSIONS, effective_permissions, has_permission, owns_school
 from .views import access, refuse, parse_body, log_event, may_delegate_finance, financial_grant_allowed, string
 from .school_functions import positions_for_school, account_functions
 
@@ -38,7 +38,7 @@ def delegations(request, school_id, delegation_id=None):
     school, error = access(request, school_id)
     if error is not None:
         return error
-    owner = owns_organization(request.user, school.organization)
+    owner = owns_school(request.user, school)
     if not owner and not has_permission(request.user, school, "school.roles.manage"):
         return refuse()
     if request.method == "GET":
@@ -50,6 +50,9 @@ def delegations(request, school_id, delegation_id=None):
         return JsonResponse({"error": "Motif explicite requis."}, status=422)
     with transaction.atomic():
         School.objects.select_for_update().get(pk=school.pk)
+        owner = owns_school(request.user, school)
+        if not owner and not has_permission(request.user, school, "school.roles.manage"):
+            return refuse()
         if request.method == "DELETE":
             grant = PermissionDelegation.objects.filter(pk=delegation_id, school=school).first()
             if not grant:
@@ -105,7 +108,7 @@ def functions(request, school_id):
     school, error = access(request, school_id)
     if error is not None:
         return error
-    if not owns_organization(request.user, school.organization) and not has_permission(request.user, school, "school.members.write"):
+    if not owns_school(request.user, school) and not has_permission(request.user, school, "school.members.write"):
         return refuse()
     if request.method == "PATCH":
         data, error = parse_body(request)

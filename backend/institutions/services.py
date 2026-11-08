@@ -30,9 +30,18 @@ PERMISSIONS = frozenset({
     "school.finance.read", "school.finance.manage", "school.finance.receive", "school.finance.reverse", "school.finance.approve", "school.finance.deposit",
 })
 
+DIRECTION_PERMISSIONS = sorted(PERMISSIONS - {
+    "school.finance.receive", "school.finance.reverse", "school.finance.manage", "school.finance.deposit",
+})
+OWNER_ROLE_CODE = "proprietaire"
+OWNER_ROLE_TEMPLATE = (OWNER_ROLE_CODE, "Propriétaire de l’établissement", (
+    "school.view", "school.members.read", "school.members.write", "school.roles.read", "school.roles.manage",
+    "school.audit.read",
+))
+
 # Initial editable role templates, not institution-wide immutable business rules.
 ROLE_TEMPLATES = [
-    ("direction", "Directeur / Directrice", sorted(PERMISSIONS - {"school.finance.receive", "school.finance.reverse", "school.finance.manage", "school.finance.deposit"})),
+    ("direction", "Directeur / Directrice", DIRECTION_PERMISSIONS),
     ("secretariat", "Secrétariat", ["school.view", "school.members.read", "school.settings.read", "school.academic.read", "school.students.read", "school.students.manage", "school.admissions.read", "school.admissions.manage", "school.admissions.enroll", "school.staff.read", "school.staff.manage", "school.organization.read", "school.curriculum.read", "school.curriculum.manage", "school.reports.read", "school.deliberations.read", "school.attendance.read", "school.attendance.write", "school.timetable.read", "school.timetable.manage"]),
     ("enseignant", "Enseignant", ["school.view", "school.settings.read", "school.academic.read", "school.curriculum.read", "school.timetable.read"]),
     ("comptabilite", "Comptabilité", ["school.view", "school.students.read", "school.academic.read", "school.finance.read", "school.finance.approve", "school.finance.reverse"]),
@@ -43,6 +52,7 @@ ROLE_TEMPLATES = [
 ]
 
 PROFILE_ROLE_LABELS = {
+    "groupe_scolaire": {"direction": "Direction générale"},
     "college": {"direction": "Principal / Principale du collège", "enseignant": "Professeur / Professeure du collège"},
     "lycee_general": {"direction": "Proviseur / Proviseure du lycée", "enseignant": "Professeur / Professeure du lycée"},
     "lycee_technique": {"direction": "Proviseur / Proviseure du lycée technique", "enseignant": "Professeur / Professeure du lycée technique"},
@@ -77,17 +87,22 @@ SECONDARY_LYCEE_ROLES = (
     ("surveillance_generale", "Surveillance générale", SECONDARY_ATTENDANCE_PERMISSIONS),
     SECONDARY_SURVEILLANCE,
 )
+SECONDARY_SECRETARIAT = ("secretariat_pedagogique", "Secrétaire pédagogique", (
+    "school.view", "school.academic.read", "school.students.read", "school.curriculum.read",
+    "school.timetable.read", "school.assessments.read", "school.reports.read",
+))
 SECONDARY_ROLE_TEMPLATES = {
     "college": (
-        ("etudes", "Direction des études", SECONDARY_STUDIES_PERMISSIONS),
-        ("vie_scolaire", "Surveillant général / Conseiller d’éducation", (
+        ("etudes", "Direction des études / Chargé des études", SECONDARY_STUDIES_PERMISSIONS),
+        ("vie_scolaire", "Direction de la vie scolaire", (
             *SECONDARY_ATTENDANCE_PERMISSIONS, "school.attendance.finalize",
         )),
+        ("surveillance_generale", "Surveillant général / Conseiller d’éducation", SECONDARY_ATTENDANCE_PERMISSIONS),
         SECONDARY_SURVEILLANCE,
     ),
     "lycee_general": (
         ("etudes", "Censeur pédagogique / Direction des études", SECONDARY_STUDIES_PERMISSIONS),
-        ("vie_scolaire", "Censeur de la vie scolaire", (
+        ("vie_scolaire", "Censeur / Direction de la vie scolaire", (
             *SECONDARY_ATTENDANCE_PERMISSIONS, "school.attendance.finalize",
         )),
         *SECONDARY_LYCEE_ROLES,
@@ -103,22 +118,42 @@ SECONDARY_ROLE_TEMPLATES = {
         )),
     ),
 }
+SECONDARY_HEAD_CODES = {"college": "principal", "lycee_general": "proviseur", "lycee_technique": "proviseur"}
+SECONDARY_CODES = {code for templates in SECONDARY_ROLE_TEMPLATES.values() for code, _, _ in templates} | {
+    *SECONDARY_HEAD_CODES.values(), SECONDARY_SECRETARIAT[0],
+}
+
+
+def appointment_role_templates(school):
+    roles = {OWNER_ROLE_CODE: OWNER_ROLE_TEMPLATE}
+    cycles = school.education_cycles or [school.school_type]
+    for profile, templates in SECONDARY_ROLE_TEMPLATES.items():
+        if profile not in cycles:
+            continue
+        head = SECONDARY_HEAD_CODES[profile]
+        roles[head] = (head, PROFILE_ROLE_LABELS[profile]["direction"], DIRECTION_PERMISSIONS)
+        roles.update({row[0]: row for row in (*templates, SECONDARY_SECRETARIAT)})
+    return roles
 
 
 def role_templates_for(school):
     labels = PROFILE_ROLE_LABELS.get(school.school_type, {})
     return [
         (code, labels.get(code, label), list(permissions))
-        for code, label, permissions in (*ROLE_TEMPLATES, *SECONDARY_ROLE_TEMPLATES.get(school.school_type, ()))
+        for code, label, permissions in (*ROLE_TEMPLATES, *appointment_role_templates(school).values())
         if code != "eleve" or school.school_type != "maternelle"
     ]
 
 
-def provision_secondary_roles(school):
+def provision_appointment_roles(school):
     SchoolRole.objects.bulk_create([
         SchoolRole(school=school, code=code, label=label, permissions=list(permissions))
-        for code, label, permissions in SECONDARY_ROLE_TEMPLATES.get(school.school_type, ())
+        for code, label, permissions in appointment_role_templates(school).values()
     ], ignore_conflicts=True)
+
+
+def role_available(school, code):
+    return code not in SECONDARY_CODES or code in appointment_role_templates(school)
 
 
 SCOPE_FIELDS = ("year", "cycle", "level", "class")
@@ -126,27 +161,42 @@ SCOPE_FIELDS = ("year", "cycle", "level", "class")
 
 def public_role_label(role, school=None):
     """Use the inclusive title for legacy built-in roles, retain school custom labels."""
-    school_type = (school or role.school).school_type
-    for code, label, _ in SECONDARY_ROLE_TEMPLATES.get(school_type, ()):
-        if role.code == code and any(
-            role.label == old_label
-            for templates in SECONDARY_ROLE_TEMPLATES.values()
-            for old_code, old_label, _ in templates
-            if old_code == code
-        ):
-            return label
-    labels = PROFILE_ROLE_LABELS.get(school_type, {})
-    if role.code in labels:
-        default_labels = {label for code, label, _ in ROLE_TEMPLATES if code == role.code}
-        if role.label in default_labels or (role.code == "direction" and role.label == "Direction"):
-            return labels[role.code]
-    if role.code == "direction" and role.label == "Direction":
-        return "Directeur / Directrice"
+    school = school or role.school
+    base = next((label for code, label, _ in ROLE_TEMPLATES if code == role.code), None)
+    if base:
+        known = {labels.get(role.code) for labels in PROFILE_ROLE_LABELS.values()} | {base}
+        if role.code == "direction":
+            known.add("Direction")
+        if role.label in known:
+            return PROFILE_ROLE_LABELS.get(school.school_type, {}).get(role.code, base)
+    template = appointment_role_templates(school).get(role.code)
+    if template:
+        known = {label for roles in SECONDARY_ROLE_TEMPLATES.values() for code, label, _ in roles if code == role.code}
+        known.update({
+            "proprietaire": {"Propriétaire"},
+            "principal": {PROFILE_ROLE_LABELS["college"]["direction"]},
+            "proviseur": {PROFILE_ROLE_LABELS[k]["direction"] for k in ("lycee_general", "lycee_technique")},
+            "etudes": {"Direction des études"},
+            "vie_scolaire": {"Surveillant général / Conseiller d’éducation", "Censeur de la vie scolaire"},
+        }.get(role.code, ()))
+        if role.label in known:
+            return template[1]
     return role.label
 
 
 def owns_organization(user, organization):
     return OrganizationMember.objects.filter(organization=organization, user=user, role="founder").exists()
+
+
+def owns_school(user, school):
+    return owns_organization(user, school.organization) or SchoolMember.objects.filter(
+        school=school, user=user, active=True, is_school_owner=True,
+        role__school=school, role__code=OWNER_ROLE_CODE,
+    ).exists()
+
+
+def platform_only(request):
+    return bool(request.user.is_superuser and request.session.get("mfa_verified", False))
 
 
 def school_access(user, school_id):

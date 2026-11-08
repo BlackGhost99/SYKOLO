@@ -53,6 +53,28 @@ class SchoolProfilesTests(TestCase):
         self.assertEqual(duplicate.status_code, 422)
         self.assertEqual(School.objects.count(), 0)
 
+    def test_first_account_roles_follow_the_selected_profile_and_cycles(self):
+        path = "/api/v1/platform/schools"
+        for kind, cycles, head, absent in (
+            ("college", ["college"], "principal", "proviseur"),
+            ("lycee_general", ["lycee_general"], "proviseur", "principal"),
+            ("lycee_technique", ["lycee_technique"], "proviseur", "principal"),
+        ):
+            with self.subTest(kind=kind):
+                options = self.client.get(path, {"school_type": kind, "cycle": cycles}).json()
+                codes = {r["code"] for r in options["roles"]}
+                self.assertEqual(options["default_role"], head)
+                self.assertTrue({head, "proprietaire", "vie_scolaire", "etudes", "secretariat_pedagogique"} <= codes)
+                self.assertNotIn(absent, codes)
+                payload = {**self.payload, "school_type": kind, "education_cycles": cycles, "username": "chef-" + kind}
+                self.assertEqual(self.post(path, {**payload, "role": absent}).status_code, 422)
+                created = self.post(path, {**payload, "role": head})
+                self.assertEqual(created.status_code, 201, created.content)
+                school = School.objects.get(pk=created.json()["id"])
+                self.assertEqual(school.members.get().function_codes, [head])
+        mixed = self.client.get(path, {"school_type": "lycee_general", "cycle": ["college", "lycee_general"]}).json()
+        self.assertTrue({"principal", "proviseur"} <= {r["code"] for r in mixed["roles"]})
+
     def test_creation_preserves_selected_type_and_cycles(self):
         result = self.post("/api/v1/platform/schools", self.payload)
         self.assertEqual(result.status_code, 201, result.content)
@@ -159,6 +181,7 @@ class SchoolProfilesTests(TestCase):
         school = School.objects.create(organization=org, name="Lycée existant")
         self.assertEqual(school.school_type, "non_classe")
         custom = SchoolRole.objects.create(school=school, code="etudes", label="Coordination", permissions=["school.view"])
+        SchoolRole.objects.create(school=school, code="direction", label="Direction du primaire", permissions=["school.view"])
         url = "/api/v1/platform/schools/" + str(school.pk) + "/action"
         no_reason = self.post(url, {
             "action": "profile", "school_type": "lycee_general",
@@ -175,6 +198,9 @@ class SchoolProfilesTests(TestCase):
         self.assertEqual(school.school_type, "lycee_general")
         self.assertEqual(school.education_cycles, ["college", "lycee_general"])
         self.assertTrue(school.roles.filter(code="vie_scolaire").exists())
+        roles = {r["code"]: r["label"] for r in saved.json()["roles"]}
+        self.assertEqual(roles["direction"], "Proviseur / Proviseure du lycée")
+        self.assertIn("proprietaire", roles)
         custom.refresh_from_db()
         self.assertEqual((custom.label, custom.permissions), ("Coordination", ["school.view"]))
         self.assertTrue(PlatformAudit.objects.filter(
