@@ -87,7 +87,10 @@ export default function AnnualWorkspace({schoolId,yearId,onYearChange,onPrepared
           <thead><tr><th>Classe</th><th>Niveau</th><th>Inscrits</th><th>Personnel</th><th>Bulletins</th></tr></thead>
           <tbody>{data.classes.map(c=><tr key={c.id}>
             <td>{c.name}{c.active?"":" (archivée)"}</td><td>{c.level} · {c.cycle}</td>
-            <td>{c.enrolled??"—"}</td><td>{c.staff_assignments??"—"}</td><td>{c.published_reports??"—"}</td>
+            <td>{c.enrolled??"—"}</td>
+            <td>{Array.isArray(c.team)?(c.team.length?c.team.map((person,i)=>
+              <div key={person.staff_id+":"+person.duty}>{person.name} · {person.duty}</div>):"Aucune affectation"):(c.staff_assignments??"—")}</td>
+            <td>{c.published_reports??"—"}</td>
           </tr>)}</tbody>
         </table></div>:<p className="hint">Aucune classe pour cette année. Ajoutez-en une dans « Classes ».</p>}
         <h4>Calendrier des périodes</h4>
