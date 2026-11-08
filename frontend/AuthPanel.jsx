@@ -52,7 +52,7 @@ export default function AuthPanel() {
   const registrationNotice = registrationReady === false
     ? "L’envoi des liens d’activation est indisponible pour le moment."
     : registrationStatus?.email_test_mode
-      ? "Les e-mails d’activation sont en mode test. Seule l’adresse associée au service d’envoi peut recevoir un lien."
+      ? "Mode test Resend : seuls les destinataires autorisés par Resend peuvent recevoir un lien. Pour inscrire tous les parents, configurez un domaine d’envoi vérifié (possible avec le forfait gratuit)."
       : "";
 
   useEffect(() => {
@@ -215,7 +215,7 @@ export default function AuthPanel() {
               });
               setMessage(result.message); setTab("login"); setNewPassword("");
             }); }}>
-              <p>Un seul compte parent pour plusieurs enfants et plusieurs écoles. Vérification par e-mail obligatoire.</p>
+              <p>Un seul compte parent pour plusieurs enfants et plusieurs écoles. Vous devrez confirmer votre adresse e-mail avant la première connexion.</p>
               {registrationNotice && <p role="status">{registrationNotice}</p>}
               <label className="field">Prénom<input required maxLength={120} autoComplete="given-name" value={registerFirst} onChange={e=>setRegisterFirst(e.target.value)}/></label>
               <label className="field">Nom<input required maxLength={120} autoComplete="family-name" value={registerLast} onChange={e=>setRegisterLast(e.target.value)}/></label>
