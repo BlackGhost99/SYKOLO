@@ -13,10 +13,27 @@ class AcademicYear(models.Model):
     start_date = models.DateField()
     end_date = models.DateField()
     active = models.BooleanField(default=True)
+    # The legacy 'active' flag remains for compatibility while the lifecycle
+    # distinguishes an upcoming school year from the sole running year.
+    STATUS_PREPARATION = "preparation"
+    STATUS_CURRENT = "current"
+    STATUS_CLOSED = "closed"
+    STATUS_CHOICES = [
+        (STATUS_PREPARATION, "En préparation"),
+        (STATUS_CURRENT, "En cours"),
+        (STATUS_CLOSED, "Clôturée"),
+    ]
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PREPARATION)
     revision = models.PositiveIntegerField(default=1)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["school", "code"], name="unique_academic_year_code")]
+        constraints = [
+            models.UniqueConstraint(fields=["school", "code"], name="unique_academic_year_code"),
+            models.UniqueConstraint(
+                fields=["school"], condition=models.Q(status="current"),
+                name="unique_current_academic_year_per_school",
+            ),
+        ]
 
     def clean(self):
         if self.start_date and self.end_date and self.start_date >= self.end_date:
