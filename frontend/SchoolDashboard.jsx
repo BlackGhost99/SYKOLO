@@ -16,7 +16,7 @@ import AttendancePanel from "./AttendancePanel.jsx";
 import TimetablePanel from "./TimetablePanel.jsx";
 import AdmissionsPanel from "./AdmissionsPanel.jsx";
 import StudentNumberingSettings from "./StudentNumberingSettings.jsx";
-import ParentPortal from "./ParentPortal.jsx";
+import {FamilyWorkspace, SchoolParentAccess} from "./ParentPortal.jsx";
 import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens.jsx";
 import {StudentForm,StudentFile,ClassEnrollments,ClassSetup,FormSettings,PaymentTracking,ImportStudents} from "./EnrollmentScreens.jsx";
 import {Shell,NAV,PageHeader,Card,Icon,Button} from "./yem-ui.jsx";
@@ -125,7 +125,7 @@ function ModuleGrid({visibleSections,navigate}) {
     <div className="pc-module-grid">{entries.map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{NAV.find(n=>n[0]===id)?.[2]}</b><small>{[...s.lives.map(l=>l.label),...s.modules.map(k=>modules[k].label)].filter(Boolean).concat(s.users?["Comptes et accès"]:[]).join(" · ")}</small></button>)}</div>}</div>;
 }
 
-function UserMenu({user,roleLabel,onAccount,onLogout}) {
+function UserMenu({user,roleLabel,onAccount,onFamilyWorkspace,onLogout}) {
   const [open,setOpen]=useState(false);
   const name=[user?.first_name,user?.last_name].filter(Boolean).join(" ")||user?.username||"Mon compte";
   return <div className="yd-user-wrap">
@@ -135,6 +135,7 @@ function UserMenu({user,roleLabel,onAccount,onLogout}) {
     </button>
     {open&&<div className="yd-menu right" role="menu">
       <button type="button" role="menuitem" onClick={()=>{setOpen(false);onAccount();}}><Icon name="shield" size={18}/>Sécurité du compte</button>
+      {onFamilyWorkspace&&<button type="button" role="menuitem" onClick={onFamilyWorkspace}><Icon name="users" size={18}/>YEM Parents</button>}
       {onLogout&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onLogout();}}><Icon name="logout" size={18}/>Se déconnecter</button>}
     </div>}
   </div>;
@@ -148,11 +149,9 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [page,setPage]=useState("dashboard");
   const [sub,setSub]=useState("");
   const [params,setParams]=useState(null);
-  const [isParent,setIsParent]=useState(true);
   const [showWorkspace,setShowWorkspace]=useState(false);
   const [message,setMessage]=useState("");
   useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
-  useEffect(()=>{let live=true;fetch("/api/v1/parents/children",{credentials:"same-origin"}).then(r=>r.ok?r.json():null).then(d=>{if(live&&d?.parent_role)setIsParent(true);}).catch(()=>{});return()=>{live=false;};},[]);
   useEffect(()=>{
     if (!chosen) {setAccess(null);return;}
     let alive=true;setAccess(null);
@@ -165,13 +164,14 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     : perms.includes(modules[key].read);
   const canUsers=perms.includes("school.members.write");
   const restricted=Boolean(access?.cycle_scope_restricted);
+  const canManageParents=!restricted&&perms.includes("school.parents.manage");
   const visibleSections=restricted
     ? Object.fromEntries([
         ...(perms.includes("school.students.read")?[["students",{...sections.students,modules:[],users:false,lives:[{key:"cycle-list",label:"Élèves autorisés",need:[]}]}]]:[]),
         ...(perms.includes("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],users:false,lives:[]}]]:[]),
       ])
     : Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers,lives:(s.lives||[]).filter(l=>l.need.every(p=>perms.includes(p)))}]).filter(([,s])=>s.modules.length||s.users||s.lives.length));
-  const nav=NAV.filter(([id])=>id==="dashboard"||visibleSections[id]||(id==="parents"&&isParent));
+  const nav=NAV.filter(([id])=>id==="dashboard"||visibleSections[id]||(id==="parents"&&canManageParents));
   function navigate(id,subTab="",extra=null){setPage(id);setSub(subTab);setParams(extra);setMessage("");window.scrollTo?.(0,0);}
   const section=visibleSections[page];
   const tabs=section?[...section.lives.map(l=>[l.key,l.label]),...section.modules.map(k=>[k,(section.lives.length&&section.manage)||(page==="settings"&&k==="academic"?"Structure détaillée":modules[k].label)]),...(section.users?[["users","Comptes et accès"]]:[])]:[];
@@ -181,27 +181,24 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const tabBar=tabs.length>1?<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>:null;
   const schoolName=access?.school?.name||schools.find(s=>s.id===chosen)?.name||"Mon établissement";
   const selector=<div className="yd-school-select-wrap"><label className="yd-school-select"><Icon name="school" size={24}/>
-    {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>setChosen(e.target.value)}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:<b>{schoolName}</b>}
+    {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>{
+      setAccess(null);setShowWorkspace(false);setChosen(e.target.value);navigate("dashboard");
+    }}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:<b>{schoolName}</b>}
     {schools.length>1&&<Icon name="chevron" size={18} className="chev"/>}</label></div>;
-  // Une famille connectée arrive directement dans YEM Parents, sans tableau de bord scolaire.
-  // Un même compte peut aussi travailler dans un établissement : la bascule reste accessible.
-  const parentLanding = loaded && (schools.length === 0 || (access?.role === "parent" && !showWorkspace));
-  if (parentLanding) return <div className="yd-parent-standalone" style={{maxWidth:1040,margin:"0 auto",padding:"1rem"}}>
-    <nav aria-label="Navigation du compte parent" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:14}}>
-      <strong style={{fontSize:21,color:"#175c46"}}>YEM Parents</strong>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {schools.length>0&&<button type="button" className="yd-btn" onClick={()=>setShowWorkspace(true)}>Espace établissement</button>}
-        <button type="button" className="yd-btn" onClick={()=>setPage(page==="account"?"parents":"account")}>{page==="account"?"Mes enfants":"Mon compte"}</button>
-        <button type="button" className="yd-btn" onClick={onLogout}>Se déconnecter</button>
-      </div>
-    </nav>
-    {page==="account"?accountView:<ParentPortal/>}
-    <footer className="yd-brand-footer"><span>YEM · Espace familles</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
-  </div>;
+  const isSchoolParent=access?.role==="parent"&&!user?.is_platform_admin;
+  if (isSchoolParent&&!showWorkspace) {
+    const canUseSchoolWorkspace=nav.length>1;
+    return <FamilyWorkspace accountView={accountView} onLogout={onLogout}
+      onSchoolWorkspace={canUseSchoolWorkspace?()=>setShowWorkspace(true):undefined}/>;
+  }
   let content;
   if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
-  else if (page==="parents") content=<div className="yd-real-body"><ParentPortal/></div>;
-  else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p>{isParent&&<Button primary icon="users" onClick={()=>navigate("parents")}>Ouvrir l'espace parents</Button>}</Card></>;
+  else if (page==="parents"&&canManageParents) content=<>
+    <PageHeader title="Gestion des accès parents" subtitle={"Vérifiez les accès des responsables légaux de "+schoolName+"."} banner={false}/>
+    <div className="yd-real-body"><SchoolParentAccess key={chosen} schoolId={chosen}
+      canAssignRole={canUsers} canReadStudents={perms.includes("school.students.read")}/></div>
+  </>;
+  else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p></Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
   else if (section&&(hiddenTab||section.lives.some(l=>l.key===tab))) {
     const props={schoolId:chosen,schoolName,tabs:tabBar,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canIssueTransfer:perms.includes("school.students.manage")&&perms.includes("school.admissions.decide"),canReceive:perms.includes("school.finance.receive")};
@@ -239,7 +236,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   </>;
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
-    userMenu={<UserMenu user={user} roleLabel={access?.role_label} onAccount={()=>navigate("account")} onLogout={onLogout}/>}>
+    userMenu={<UserMenu user={user} roleLabel={access?.role_label} onAccount={()=>navigate("account")}
+      onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
     {message&&<p role="status" className="pc-alert">{message}</p>}
     {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school">
       <label className="field">Code à communiquer au personnel

@@ -214,6 +214,9 @@ def school_members(request, school_id):
         return error
     if not string(data.get("username"), 150) or not string(data.get("role"), 48):
         return JsonResponse({"error": "Identifiant ou rôle invalide."}, status=422)
+    create_only = data.get("create_only", False)
+    if not isinstance(create_only, bool):
+        return JsonResponse({"error": "Mode de rattachement invalide."}, status=422)
     identity = SchoolLogin.objects.filter(school=school, username=data["username"].strip(), user__is_active=True).first()
     user = identity.user if identity else get_user_model().objects.filter(
         username=data["username"].strip(), is_active=True).filter(
@@ -249,6 +252,10 @@ def school_members(request, school_id):
         if not financial_grant_allowed(request.user, school, user, granted):
             return refuse()
         previous = SchoolMember.objects.filter(school=school, user=user).first()
+        if create_only and previous:
+            if previous.role_id != role.pk or not previous.active:
+                return JsonResponse({"error": "Ce compte possède déjà un rattachement qui nécessite une vérification dans Personnel."}, status=409)
+            return JsonResponse({"user_id": str(user.id), "role": role.code})
         before = {"role": previous.role.code, "additional_roles": list(previous.additional_roles.values_list("code", flat=True)), "functions": previous.function_codes} if previous else {}
         member, created = SchoolMember.objects.update_or_create(
             school=school, user=user, defaults={"role": role, "active": True}

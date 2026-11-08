@@ -11,7 +11,7 @@ from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, Academi
 from .attendance_models import AttendanceSession, AttendanceMark
 from .council_models import ReportAmendment
 from .finance_models import FeeCharge, FeeSchedule, FeePayment
-from .models import Organization, School, SchoolMember, SchoolRole
+from .models import Organization, School, SchoolLogin, SchoolMember, SchoolRole
 from .parent_models import GuardianAccountLink
 from .report_models import SchoolReport
 from .services import ROLE_TEMPLATES
@@ -169,6 +169,52 @@ class ParentPortalTests(TestCase):
         self.assertEqual(cards[0]["student"], str(self.students[0].pk))
         self.assertNotIn("guardian_phone", str(cards))
         self.assertEqual(self.client.get(self.path(suffix="/enrollments")).status_code, 200)
+
+    def test_school_session_separates_staff_and_parent_api_access(self):
+        for user, password in (
+            (self.director, "Strong parent portal test director 2026!"),
+            (self.parent_a, "Strong parent portal test parent 2026!"),
+        ):
+            with self.subTest(user=user.username):
+                SchoolLogin.objects.create(school=self.school, user=user, username=user.username)
+                response = self.write("/api/v1/auth/login", {
+                    "scope": "school", "school_code": str(self.school.pk),
+                    "username": user.username, "password": password,
+                })
+                self.assertEqual(response.status_code, 200)
+                self.csrf = self.client.get("/api/v1/auth/csrf").cookies["csrftoken"].value
+                session = self.client.get("/api/v1/auth/me").json()
+                self.assertEqual(session["login_scope"], "school")
+                self.assertEqual(session["school_id"], str(self.school.pk))
+                self.assertEqual(self.client.get("/api/v1/parents/catalog").status_code, 200)
+                family_allowed = user == self.parent_a
+                self.assertEqual(self.client.get(self.portal).status_code, 200 if family_allowed else 403)
+                self.assertEqual(self.client.get(self.root).status_code, 403 if family_allowed else 200)
+                response = self.write("/api/v1/parents/family-children", {
+                    "first_name": "Enfant", "last_name": "Test", "date_of_birth": "",
+                })
+                self.assertEqual(response.status_code, 201 if family_allowed else 403)
+                if not family_allowed:
+                    self.link()
+        self.assertEqual(self.client.get(self.portal).json()["children"][0]["student"],
+                         str(self.students[0].pk))
+        response = self.write("/api/v1/auth/login", {
+            "scope": "parent", "username": self.outsider.username,
+            "password": "Strong parent portal test outsider 2026!",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/auth/me").json()["login_scope"], "parent")
+        self.assertEqual(self.client.get("/api/v1/parents/family-children").json()["children"], [])
+
+    def test_parent_attachment_preserves_existing_membership(self):
+        url = f"/api/v1/schools/{self.school.pk}/members"
+        for user, status in ((self.secretary, 409), (self.outsider, 201), (self.outsider, 200)):
+            result = self.write(url, {"username": user.username, "role": "parent", "create_only": True})
+            self.assertEqual(result.status_code, status, result.content)
+        self.assertEqual(SchoolMember.objects.get(school=self.school, user=self.secretary).role.code,
+                         "secretariat")
+        self.assertEqual(SchoolMember.objects.get(school=self.school, user=self.outsider).role.code,
+                         "parent")
 
     def test_cross_family_and_school_isolation_for_all_resources(self):
         self.login(self.director)

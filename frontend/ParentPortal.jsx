@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import ParentDiscovery from "./ParentDiscovery.jsx";
 import PWAInstall from "./PWAInstall.jsx";
 import SingPayPayment from "./SingPayPayment.jsx";
+import {Button, Card as SchoolCard, Status, Table} from "./yem-ui.jsx";
 
 async function portalApi(path, body, method) {
   if (body !== undefined) await fetch("/api/v1/auth/csrf", { credentials: "same-origin" });
@@ -28,48 +29,34 @@ function Card({title, children}) {
 }
 function Message({children}) {return children?<p role="status" aria-live="polite">{children}</p>:null;}
 
+export function FamilyWorkspace({accountView, onLogout, onSchoolWorkspace}) {
+  const [showAccount, setShowAccount] = useState(false);
+  return <div className="yd-parent-standalone">
+    <nav aria-label="Navigation du compte parent">
+      <strong>YEM Parents</strong>
+      <div>
+        {onSchoolWorkspace&&<Button onClick={onSchoolWorkspace}>Espace établissement</Button>}
+        <Button onClick={()=>setShowAccount(open=>!open)}>{showAccount?"Retour à l’espace parents":"Mon compte"}</Button>
+        <Button onClick={onLogout}>Se déconnecter</Button>
+      </div>
+    </nav>
+    {showAccount?accountView:<ParentPortal/>}
+    <footer className="yd-brand-footer"><span>YEM · Espace familles</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
+  </div>;
+}
+
 export default function ParentPortal() {
-  const [children,setChildren] = useState([]);
+  const [children,setChildren] = useState(null);
   const [selected,setSelected] = useState("");
   const [tab,setTab] = useState("reports");
   const [detail,setDetail] = useState(null);
-  const [schools,setSchools] = useState([]);
-  const [school,setSchool] = useState("");
-  const [links,setLinks] = useState([]);
-  const [students,setStudents] = useState([]);
-  const [guardians,setGuardians] = useState([]);
-  const [chosenStudent,setChosenStudent] = useState("");
-  const [guardian,setGuardian] = useState("");
-  const [username,setUsername] = useState("");
-  const [access,setAccess] = useState(false);
-  const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState("");
   const [connected,setConnected] = useState(true);
-  const [isParentAccount,setIsParentAccount] = useState(false);
 
-  async function reloadChildren() {
-    const result=await portalApi("parents/children");
-    setChildren(result.children||[]);
-  }
-  async function reloadAdmin(id) {
-    const [linkData,studentsData]=await Promise.all([
-      portalApi("schools/"+id+"/parent-links"),
-      portalApi("schools/"+id+"/students"),
-    ]);
-    setLinks(linkData.links||[]);
-    setStudents(studentsData.students||[]);
-    setAccess(true);
-  }
   useEffect(()=>{
     let alive=true;
-    Promise.all([
-      portalApi("parents/children"),
-      portalApi("schools").catch(()=>({schools:[]})),
-    ]).then(([family,admin])=>{
-      if (!alive)return;
-      setChildren(family.children||[]);
-      setIsParentAccount(!!family.parent_role);
-      setSchools(admin.schools||[]);
+    portalApi("parents/children").then(family=>{
+      if(alive)setChildren(family.children||[]);
     }).catch(error=>{if(alive){setConnected(false);setMessage(error.message);}});
     return()=>{alive=false};
   },[]);
@@ -82,32 +69,7 @@ export default function ParentPortal() {
       .catch(error=>{if(alive){setMessage(error.message);setDetail(null);}});
     return()=>{alive=false};
   },[selected,tab]);
-  useEffect(()=>{
-    let alive=true;
-    setAccess(false);setLinks([]);setStudents([]);setChosenStudent("");setGuardian("");
-    if(school)Promise.all([
-      portalApi("schools/"+school+"/parent-links"),
-      portalApi("schools/"+school+"/students"),
-    ]).then(([links,students])=>{
-      if(!alive)return;
-      setLinks(links.links||[]);setStudents(students.students||[]);setAccess(true);
-    }).catch(()=>{if(alive)setAccess(false)});
-    return()=>{alive=false};
-  },[school]);
-  useEffect(()=>{
-    let alive=true;setGuardians([]);setGuardian("");
-    if(school&&chosenStudent&&access)
-      portalApi("schools/"+school+"/students/"+chosenStudent+"/guardians")
-        .then(data=>{if(alive)setGuardians(data.guardians||[])})
-        .catch(()=>{if(alive)setGuardians([])});
-    return()=>{alive=false};
-  },[school,chosenStudent,access]);
-
-  async function run(fn) {
-    setBusy(true);setMessage("");
-    try{await fn();}catch(error){setMessage(error.message);}finally{setBusy(false);}
-  }
-  const current=children.find(c=>c.student===selected);
+  const current=children?.find(c=>c.student===selected);
   const relatedSchools=current?.matricule_yem
     ? children.filter(child=>child.matricule_yem===current.matricule_yem)
     : [];
@@ -123,8 +85,8 @@ export default function ParentPortal() {
       <p>Connectez-vous à un compte autorisé pour accéder à l'espace parents.</p><Message>{message}</Message>
     </Card>}
     {connected&&<>
-      <Card title="Mes enfants">
-        {children.length===0?
+      <Card title="Suivi scolaire de mes enfants">
+        {!children?<p role="status">Chargement des dossiers scolaires liés…</p>:children.length===0?
           <p>Aucun enfant n'est encore lié à ce compte. Contactez votre établissement pour faire vérifier votre qualité de responsable légal.</p>
           :<label className="field">Enfant
             <select value={selected} onChange={e=>{setSelected(e.target.value);setMessage("");}}>
@@ -190,57 +152,102 @@ export default function ParentPortal() {
         </>}
       </Card>}
       <Message>{message}</Message>
-      {!isParentAccount&&schools.length>0&&<Card title="Administration — vérifier les accès familiaux">
-        <p>Réservé à la direction autorisée. Contrôlez l'identité du responsable légal hors application
-          avant d'accorder l'accès ; un téléphone ou un e-mail identique ne suffit pas.</p>
-        <label className="field">Établissement
-          <select value={school} onChange={e=>setSchool(e.target.value)}>
-            <option value="">Choisir une école…</option>
-            {schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </label>
-        {school&&!access&&<p>Vous ne disposez pas des droits de vérification pour cet établissement.</p>}
-        {access&&<>
-          <label className="field">Élève
-            <select value={chosenStudent} onChange={e=>setChosenStudent(e.target.value)}>
-              <option value="">Choisir un élève…</option>
-              {students.map(s=><option key={s.id} value={s.id}>{s.last_name} {s.first_name} · {s.student_code}</option>)}
-            </select>
-          </label>
-          <label className="field">Responsable légal inscrit dans ce dossier
-            <select value={guardian} onChange={e=>setGuardian(e.target.value)}>
-              <option value="">Choisir le responsable…</option>
-              {guardians.filter(g=>g.active).map(g=><option key={g.id} value={g.id}>{g.full_name} ({g.relationship||"Lien enregistré"})</option>)}
-            </select>
-          </label>
-          <label className="field">Identifiant du compte utilisateur déjà créé
-            <input value={username} onChange={e=>setUsername(e.target.value)} maxLength={150}
-              autoComplete="off" placeholder="Compte parent existant"/>
-          </label>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"0.8rem 0"}}>
-            <button className="yd-btn" type="button" disabled={busy||!username} onClick={()=>run(async()=>{
-              await portalApi("schools/"+school+"/members",{username,role:"parent"});
-              setMessage("Compte affecté au rôle parent ; vérifiez la personne avant d'activer le lien.");
-            })}>1. Attribuer le rôle parent</button>
-            <button className="yd-btn primary" type="button" disabled={busy||!guardian||!username} onClick={()=>run(async()=>{
-              await portalApi("schools/"+school+"/parent-links",{guardian,username});
-              await reloadAdmin(school);await reloadChildren();setMessage("Accès familial vérifié et activé.");
-            })}>2. Vérifier et activer le lien</button>
-          </div>
-          <h4>Accès enregistrés</h4>
-          {links.length===0?<p>Aucun lien vérifié.</p>:links.map(l=><p key={l.id} style={{padding:"0.5rem 0"}}>
-            {l.student_name} · {l.guardian_name} → <strong>{l.username}</strong>
-            {l.active?" · Actif":" · Révoqué"}
-            {l.active&&<button className="yd-btn" type="button" disabled={busy}
-              onClick={()=>run(async()=>{
-                await portalApi("schools/"+school+"/parent-links/"+l.id,
-                  {revision:l.revision,active:false},"PATCH");
-                await reloadAdmin(school);await reloadChildren();
-                setMessage("Accès révoqué immédiatement.");
-              })}>Révoquer</button>}
-          </p>)}
-        </>}
-      </Card>}
     </>}
   </div>;
+}
+
+export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
+  const base = "schools/"+schoolId;
+  const [links, setLinks] = useState(null);
+  const [students, setStudents] = useState(null);
+  const [student, setStudent] = useState("");
+  const [guardians, setGuardians] = useState(null);
+  const [guardian, setGuardian] = useState("");
+  const [username, setUsername] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [guardiansError, setGuardiansError] = useState("");
+
+  useEffect(()=>{
+    let alive=true;
+    portalApi(base+"/parent-links").then(result=>{
+      if(alive)setLinks(result.links);
+    }).catch(error=>{if(alive)setLoadError(error.message);});
+    if(canReadStudents)portalApi(base+"/students").then(result=>{
+      if(alive)setStudents(result.students.filter(row=>row.active));
+    }).catch(error=>{if(alive)setLoadError(error.message);});
+    return()=>{alive=false;};
+  },[base,canReadStudents]);
+
+  useEffect(()=>{
+    if(!student||!canReadStudents)return;
+    let alive=true;
+    portalApi(base+"/students/"+student+"/guardians").then(result=>{
+      if(alive)setGuardians(result.guardians.filter(row=>row.active));
+    }).catch(error=>{if(alive)setGuardiansError(error.message);});
+    return()=>{alive=false;};
+  },[base,student,canReadStudents]);
+
+  async function run(action) {
+    setBusy(true);
+    setMessage("");
+    try{await action();}catch(error){setMessage(error.message);}finally{setBusy(false);}
+  }
+
+  return <SchoolCard title="Responsables légaux et comptes parents" icon="users">
+    {loadError&&<p role="alert">{loadError}</p>}
+    <Message>{message}</Message>
+    {canReadStudents&&links&&students&&<>
+      <p className="hint">Vérifiez l’identité du responsable légal hors de YEM avant d’activer l’accès à cet élève.</p>
+      <label className="field">Élève
+        <select value={student} disabled={busy} onChange={e=>{
+          setStudent(e.target.value);setGuardian("");setGuardians(null);setGuardiansError("");setMessage("");
+        }}>
+          <option value="">Choisir un élève…</option>
+          {students.map(s=><option key={s.id} value={s.id}>{s.last_name} {s.first_name} · {s.student_code}</option>)}
+        </select>
+      </label>
+      <label className="field">Responsable légal
+        <select value={guardian} disabled={busy||!guardians?.length} onChange={e=>setGuardian(e.target.value)}>
+          <option value="">Choisir le responsable…</option>
+          {guardians?.map(g=><option key={g.id} value={g.id}>{g.full_name} ({g.relationship||"Lien enregistré"})</option>)}
+        </select>
+      </label>
+      {student&&guardiansError&&<p role="alert">{guardiansError}</p>}
+      {student&&!guardiansError&&!guardians&&<p role="status">Chargement des responsables légaux…</p>}
+      {student&&guardians?.length===0&&<p className="hint">Ajoutez d’abord le responsable légal dans la fiche de l’élève.</p>}
+      <label className="field">Identifiant du compte parent existant
+        <input value={username} onChange={e=>setUsername(e.target.value)} disabled={busy} maxLength={150} autoComplete="off"/>
+      </label>
+      <div className="actions">
+        {canAssignRole&&<Button disabled={busy||!guardian||!username.trim()} onClick={()=>run(async()=>{
+          await portalApi(base+"/members",{username:username.trim(),role:"parent",create_only:true});
+          setMessage("Compte rattaché au rôle parent dans cet établissement.");
+        })}>Rattacher le compte parent</Button>}
+        <Button primary disabled={busy||!guardian||!username.trim()} onClick={()=>run(async()=>{
+          const verified=await portalApi(base+"/parent-links",{guardian,username:username.trim()});
+          setLinks(previous=>[verified,...previous.filter(link=>link.id!==verified.id)]);
+          setMessage("Accès familial vérifié et activé.");
+        })}>Vérifier et activer l’accès</Button>
+      </div>
+    </>}
+    <h3>Accès enregistrés</h3>
+    {!links&&!loadError&&<p role="status">Chargement des accès familiaux…</p>}
+    {links?.length===0&&<p>Aucun accès familial enregistré.</p>}
+    {links?.length>0&&<Table className="yd-table" headers={["Élève","Responsable légal","Compte parent","Statut","Action"]}
+      rows={links.map(link=>[
+        link.student_name,
+        link.guardian_name,
+        link.username,
+        <Status tone={link.active?"green":"gray"}>{link.active?"Actif":"Révoqué"}</Status>,
+        link.active?<Button className="small" disabled={busy}
+          ariaLabel={"Révoquer l’accès de "+link.guardian_name+" pour "+link.student_name}
+          onClick={()=>run(async()=>{
+            const revoked=await portalApi(base+"/parent-links/"+link.id,{revision:link.revision,active:false},"PATCH");
+            setLinks(previous=>previous.map(row=>row.id===revoked.id?revoked:row));
+            setMessage("Accès familial révoqué.");
+          })}>Révoquer</Button>:"—",
+      ])}/>}
+  </SchoolCard>;
 }
