@@ -40,7 +40,7 @@ export default function AuthPanel() {
   const [newPassword, setNewPassword] = useState("");
   const [registerFirst, setRegisterFirst] = useState("");
   const [registerLast, setRegisterLast] = useState("");
-  const [registrationReady, setRegistrationReady] = useState(null);
+  const [registrationStatus, setRegistrationStatus] = useState(null);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(null);
   const [recovery, setRecovery] = useState([]);
@@ -48,12 +48,18 @@ export default function AuthPanel() {
   const link = new URLSearchParams(window.location.hash.split("?")[1] || "");
   const isResetLink = window.location.hash.startsWith("#/reset?");
   const isVerifyLink = window.location.hash.startsWith("#/verify?");
+  const registrationReady = registrationStatus?.email_registration_available;
+  const registrationNotice = registrationReady === false
+    ? "L’envoi des liens d’activation est indisponible pour le moment."
+    : registrationStatus?.email_test_mode
+      ? "Les e-mails d’activation sont en mode test. Seule l’adresse associée au service d’envoi peut recevoir un lien."
+      : "";
 
   useEffect(() => {
     let live = true;
     authApi("parents/registration-status").then(data=>{
-      if(live)setRegistrationReady(data.email_registration_available);
-    }).catch(()=>{if(live)setRegistrationReady(false)});
+      if(live)setRegistrationStatus(data);
+    }).catch(()=>{if(live)setRegistrationStatus({email_registration_available:false});});
     return()=>{live=false};
   },[]);
   useEffect(() => {
@@ -195,6 +201,7 @@ export default function AuthPanel() {
               setTab("login");
             });}}>
               <p>Si votre compte parent a été créé et n'est pas encore activé, un nouveau lien de confirmation vous sera envoyé.</p>
+              {registrationNotice && <p role="status">{registrationNotice}</p>}
               <label className="field">Adresse e-mail
                 <input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/>
               </label>
@@ -209,7 +216,7 @@ export default function AuthPanel() {
               setMessage(result.message); setTab("login"); setNewPassword("");
             }); }}>
               <p>Un seul compte parent pour plusieurs enfants et plusieurs écoles. Vérification par e-mail obligatoire.</p>
-              {registrationReady===false&&<p role="status">L'envoi d'e-mails n'est pas encore configuré sur YEM. L'ouverture des nouveaux comptes est momentanément suspendue.</p>}
+              {registrationNotice && <p role="status">{registrationNotice}</p>}
               <label className="field">Prénom<input required maxLength={120} autoComplete="given-name" value={registerFirst} onChange={e=>setRegisterFirst(e.target.value)}/></label>
               <label className="field">Nom<input required maxLength={120} autoComplete="family-name" value={registerLast} onChange={e=>setRegisterLast(e.target.value)}/></label>
               <label className="field">Identifiant<input required minLength={3} maxLength={50} autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label>

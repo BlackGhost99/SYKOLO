@@ -4,6 +4,7 @@ No self-registered account receives membership, privileges or access to a
 student. Every school guardian link still requires human verification.
 """
 import re
+from email.utils import parseaddr
 from uuid import UUID
 
 from django.conf import settings
@@ -34,9 +35,16 @@ def registration_ready():
     )
 
 
+def registration_test_mode():
+    sender = parseaddr(settings.DEFAULT_FROM_EMAIL)[1].casefold()
+    return settings.EMAIL_BACKEND == "accounts.email_backends.ResendEmailBackend" and sender.endswith("@resend.dev")
+
+
 @require_GET
 def registration_status(request):
-    return JsonResponse({"email_registration_available": registration_ready(),
+    ready = registration_ready()
+    return JsonResponse({"email_registration_available": ready,
+                         "email_test_mode": ready and registration_test_mode(),
                          "confirmation_valid_minutes": settings.PASSWORD_RESET_TIMEOUT // 60})
 
 
@@ -94,7 +102,10 @@ def register(request):
         return JsonResponse({"message": GENERIC})
     except Exception:
         audit(request,"parent_registration_mail_error")
-        return JsonResponse({"error":"Impossible d'envoyer la confirmation. Réessayez ultérieurement."},status=503)
+        message = "La création du compte a été interrompue pendant l’envoi du lien d’activation."
+        if registration_test_mode():
+            message += " En mode test, le lien est réservé à l’adresse associée au service d’envoi."
+        return JsonResponse({"error": message}, status=503)
     audit(request,"parent_registration_requested",user)
     return JsonResponse({"message":GENERIC},status=201)
 

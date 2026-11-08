@@ -1,6 +1,8 @@
 """Email-verified self-registration creates an ordinary identity, never a school role."""
 import json
 import re
+from unittest.mock import patch
+from urllib.error import HTTPError
 
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -82,7 +84,6 @@ class ParentRegistrationTests(TestCase):
         self.assertEqual(len(mail.outbox),2)
 
     def test_resend_mail_failure_keeps_non_enumerating_response(self):
-        from unittest.mock import patch
         self.assertEqual(self.post("parents/register",self.user_payload()).status_code,201)
         with patch("accounts.parent_signup_views.send_verification_email",side_effect=RuntimeError("mail down")):
             known=self.post("parents/resend-verification",{"email":"famille@example.test"})
@@ -95,7 +96,28 @@ class ParentRegistrationTests(TestCase):
         result=self.client.get("/api/v1/auth/parents/registration-status")
         self.assertEqual(result.status_code,200)
         self.assertTrue(result.json()["email_registration_available"])
+        self.assertFalse(result.json()["email_test_mode"])
         self.assertNotIn("password",result.content.decode().lower())
         with override_settings(PASSWORD_RESET_ENABLED=False):
             result=self.client.get("/api/v1/auth/parents/registration-status")
             self.assertFalse(result.json()["email_registration_available"])
+
+    @override_settings(
+        EMAIL_BACKEND="accounts.email_backends.ResendEmailBackend",
+        YEM_RESEND_API_KEY="test-key",
+        DEFAULT_FROM_EMAIL="YEM <onboarding@resend.dev>",
+    )
+    @patch("accounts.email_backends.urlopen", side_effect=HTTPError(
+        "https://api.resend.com/emails", 403, "forbidden", {}, None,
+    ))
+    def test_test_sender_is_reported_and_refused_delivery_rolls_back_signup(self, urlopen):
+        status = self.client.get("/api/v1/auth/parents/registration-status")
+        self.assertEqual(status.json(), {
+            "email_registration_available": True, "email_test_mode": True, "confirmation_valid_minutes": 30,
+        })
+        with self.assertLogs("accounts.email_backends", level="WARNING") as logs:
+            response = self.post("parents/register", self.user_payload())
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("En mode test", response.json()["error"])
+        self.assertFalse(get_user_model().objects.exists())
+        self.assertEqual(logs.output, ["WARNING:accounts.email_backends:Resend email delivery failed (HTTP 403)"])

@@ -7,9 +7,9 @@ import AuthPanel from "./AuthPanel.jsx";
 vi.mock("./SchoolDashboard.jsx",()=>({default:()=> <p>Espace scolaire ouvert</p>}));
 vi.mock("./PlatformConsole.jsx",()=>({default:()=> <p>Console plateforme ouverte</p>}));
 afterEach(()=>{cleanup();vi.unstubAllGlobals();window.history.replaceState(null,"","/");});
-function setup(){
+function setup(registrationStatus={email_registration_available:false}){
  const calls=[];vi.stubGlobal("fetch",vi.fn(async(url,options={})=>{
-  calls.push([url,options]);return {ok:true,headers:new Headers({"content-type":"application/json"}),json:async()=>url.endsWith("registration-status")?{email_registration_available:false}:{authenticated:false}};
+  calls.push([url,options]);return {ok:true,headers:new Headers({"content-type":"application/json"}),json:async()=>url.endsWith("registration-status")?registrationStatus:{authenticated:false}};
  }));return calls;
 }
 it("demande le code école avant les identifiants et envoie la portée choisie",async()=>{
@@ -32,4 +32,12 @@ it("ouvre directement la connexion familles sur le lien parents",async()=>{
  expect(screen.queryByLabelText("Code de l'établissement")).toBeNull();
  await ui.type(screen.getByLabelText("Mot de passe",{exact:true}),"secret");await ui.click(screen.getByRole("button",{name:"Se connecter",exact:true}));
  expect(JSON.parse(calls.find(([url])=>url.endsWith("/login"))[1].body).scope).toBe("parent");
+});
+it("affiche la restriction du mode test avant la création d’un compte parent",async()=>{
+ setup({email_registration_available:true,email_test_mode:true});
+ render(<AuthPanel/>);
+ const ui=userEvent.setup();
+ await ui.click(screen.getByRole("button",{name:"Créer un compte parent",exact:true}));
+ expect(await screen.findByText(/Les e-mails d’activation sont en mode test/)).toBeTruthy();
+ expect(screen.getByRole("button",{name:"Créer mon compte parent"}).disabled).toBe(false);
 });
