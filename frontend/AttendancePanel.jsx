@@ -17,7 +17,7 @@ async function request(path, data) {
 }
 
 export default function AttendancePanel({schoolId, onSettings, attendanceAssignedOnly = false,
-  attendanceCanWrite = true, attendanceCanFinalize = true}) {
+  attendanceCanWrite = true, attendanceCanFinalize = true, workingYearId=""}) {
   const root = "schools/" + schoolId + "/";
   const base = root + "attendance/";
   const [classes,setClasses]=useState([]);
@@ -40,6 +40,7 @@ export default function AttendancePanel({schoolId, onSettings, attendanceAssigne
   const [history,setHistory]=useState(null);
   const [dateFrom,setDateFrom]=useState("");
   const [dateTo,setDateTo]=useState("");
+  useEffect(()=>{setSelectedClass("");setSelectedSession("");setSessionData(null);setSessions([]);},[workingYearId,schoolId]);
 
   useEffect(()=>{
     let active=true;
@@ -118,7 +119,7 @@ export default function AttendancePanel({schoolId, onSettings, attendanceAssigne
   });
   return <section className="card" style={{marginTop:"1rem"}} aria-label="Appels et assiduité">
     <h2>Absences, retards et appels</h2>
-    <ClassField classes={classes} years={years} value={selectedClass} disabled={busy} onChange={value=>{
+    <ClassField classes={classes.filter(c=>!workingYearId||c.year===workingYearId)} years={years} value={selectedClass} disabled={busy} onChange={value=>{
       setSelectedClass(value);setMessage("");setMarkFilter("all");setDate("");setDateFrom("");setDateTo("");
     }}/>
     {policyMessage&&<p role="status">{policyMessage} {onSettings&&<button type="button" onClick={onSettings}>Configurer les statuts</button>}</p>}
