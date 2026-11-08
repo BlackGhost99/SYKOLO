@@ -228,6 +228,36 @@ class AcademicStructureTests(TestCase):
         self.login(self.reader)
         self.assertEqual(self.client.get(self.base + "years/" + year["id"] + "/closure-review").status_code, 403)
 
+    def test_closure_review_detects_unpublished_report(self):
+        from .academic_models import AcademicClass
+        from .report_models import SchoolReport
+        from .student_models import Student, Enrollment
+        year = self.make("years", {
+            "code": "2023-2024", "name": "2023-2024",
+            "start_date": "2023-09-01", "end_date": "2024-07-31",
+        })
+        cycle = self.make("cycles", {"code": "pr", "name": "Primaire"})
+        level = self.make("levels", {"code": "cm1", "name": "CM1", "cycle": cycle["id"]})
+        room = self.make("classes", {
+            "code": "cm1a", "name": "CM1 A", "year": year["id"], "level": level["id"]
+        })
+        student = Student.objects.create(school=self.school, student_code="Z-01",
+                                         first_name="Lea", last_name="NZE")
+        enrollment = Enrollment.objects.create(
+            school=self.school, student=student, year_id=year["id"],
+            classroom_id=room["id"], enrolled_on="2023-09-07",
+        )
+        SchoolReport.objects.create(
+            school=self.school, enrollment=enrollment, year_id=year["id"],
+            period_key="", status="draft", snapshot={},
+        )
+        self.assertEqual(self.write("years/" + year["id"] + "/activate", {
+            "revision": 1, "reason": "Ouverture de l'année historique",
+        }).status_code, 200)
+        preview = self.client.get(self.base + "years/" + year["id"] + "/closure-review")
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn("draft_reports", [x["code"] for x in preview.json()["checks"]["blockers"]])
+
     def test_closed_year_writes_are_denied_by_postgresql(self):
         from .academic_models import AcademicClass
         if connection.vendor != "postgresql":
@@ -241,7 +271,49 @@ class AcademicStructureTests(TestCase):
         klass = self.make("classes", {
             "code": "cm1a", "name": "CM1 A", "year": year["id"], "level": level["id"]
         })
+        from .student_models import Student, Enrollment
+        from .finance_models import FeeSchedule, FeeCharge, CashClosing
+        from .report_models import SchoolReport
+        from .attendance_models import AttendanceSession
+        student = Student.objects.create(school=self.school, student_code="Z-02",
+                                         first_name="Jon", last_name="NZE")
+        enrollment = Enrollment.objects.create(
+            school=self.school, student=student, year_id=year["id"],
+            classroom_id=klass["id"], enrolled_on="2023-09-07",
+        )
+        schedule = FeeSchedule.objects.create(
+            school=self.school, year_id=year["id"], code="annuelle",
+            label="Frais annuels", amount="1000", currency="XAF", scope_key="",
+        )
+        charge = FeeCharge.objects.create(
+            school=self.school, enrollment=enrollment, schedule=schedule,
+            label="Frais annuels", amount="1000", currency="XAF",
+        )
+        report = SchoolReport.objects.create(
+            school=self.school, enrollment=enrollment, year_id=year["id"],
+            period_key="", status="published", snapshot={"mentions":"intact"},
+        )
+        session = AttendanceSession.objects.create(
+            school=self.school, classroom_id=klass["id"], attendance_date="2023-09-11",
+            slot="matin", label="Matin", created_by=self.director,
+        )
         AcademicYear.objects.filter(pk=year["id"]).update(status="closed", active=False)
+        for qs, update in (
+            (Enrollment.objects.filter(pk=enrollment.pk), {"status": "radié"}),
+            (FeeCharge.objects.filter(pk=charge.pk), {"label": "Frais altérés"}),
+            (SchoolReport.objects.filter(pk=report.pk), {"snapshot": {"mentions": "modifié"}}),
+            (AttendanceSession.objects.filter(pk=session.pk), {"label": "Modifié"}),
+        ):
+            with self.assertRaises(IntegrityError):
+                with transaction.atomic():
+                    qs.update(**update)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CashClosing.objects.create(
+                    school=self.school, day="2023-09-12", currency="XAF",
+                    expected="0", counted="0", difference="0",
+                    submitted_by=self.director,
+                )
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 AcademicClass.objects.filter(pk=klass["id"]).update(name="CM1 historique altéré")
