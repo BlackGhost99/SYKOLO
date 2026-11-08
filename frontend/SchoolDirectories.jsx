@@ -1,17 +1,19 @@
-import React, {useState} from "react";
+import React, {useEffect, useState} from "react";
 import {ClassField, useSchoolData} from "./SchoolSettings.jsx";
 import {Button, Card, Status, Table} from "./yem-ui.jsx";
 
-export function FamilyDirectory({schoolId, onNavigate}) {
+export function FamilyDirectory({schoolId, onNavigate, workingYearId = ""}) {
   const root = "schools/" + schoolId + "/";
   const {data, error} = useSchoolData(root, "academic/years academic/classes");
   const [room, setRoom] = useState("");
+  useEffect(() => setRoom(""), [schoolId, workingYearId]);
+  const classes = (data?.classes || []).filter(item => !workingYearId || item.year === workingYearId);
   return <>
     <Card title="Parents par classe" icon="users" subtitle="Retrouvez les responsables légaux enregistrés dans le dossier de chaque élève.">
       {error && <p role="alert">{error}</p>}
       {!data && !error && <p role="status">Chargement des classes…</p>}
-      {data && <ClassField classes={data.classes} years={data.years} value={room} onChange={setRoom}/>}
-      {data?.classes.length === 0 && <p>Aucune classe disponible.</p>}
+      {data && <ClassField classes={classes} years={data.years} value={room} onChange={setRoom}/>}
+      {data && classes.length === 0 && <p>Aucune classe disponible pour cette année scolaire.</p>}
     </Card>
     {room && <ClassFamilies key={room} root={root} room={room} onNavigate={onNavigate}/>}
   </>;
