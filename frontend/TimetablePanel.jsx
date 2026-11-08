@@ -14,14 +14,14 @@ async function api(path,body,method){
   return result;
 }
 const DAYS=["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
-export default function TimetablePanel({schoolId}){
+export default function TimetablePanel({schoolId,workingYearId="",onWorkingYearChange}){
   const root="schools/"+schoolId+"/",base=root+"timetable/";
   const [years,setYears]=useState([]),[classes,setClasses]=useState([]),
     [courses,setCourses]=useState([]),[subjects,setSubjects]=useState([]),
     [rooms,setRooms]=useState([]),[slots,setSlots]=useState([]),
     [entries,setEntries]=useState([]),[instructors,setInstructors]=useState([]),
     [staff,setStaff]=useState([]),[assignments,setAssignments]=useState([]);
-  const [year,setYear]=useState(""),[classroom,setClassroom]=useState(""),
+  const [year,setYear]=useState(workingYearId),[classroom,setClassroom]=useState(""),
     [course,setCourse]=useState(""),[instructor,setInstructor]=useState(""),
     [slot,setSlot]=useState(""),[room,setRoom]=useState(""),
     [weekday,setWeekday]=useState("0"),[from,setFrom]=useState(""),[to,setTo]=useState(""),
@@ -29,6 +29,7 @@ export default function TimetablePanel({schoolId}){
     [error,setError]=useState(""),[visible,setVisible]=useState(true);
   const [roomCode,setRoomCode]=useState(""),[roomName,setRoomName]=useState(""),[roomCapacity,setRoomCapacity]=useState("");
   const [slotCode,setSlotCode]=useState(""),[slotLabel,setSlotLabel]=useState(""),[slotStart,setSlotStart]=useState(""),[slotEnd,setSlotEnd]=useState("");
+  useEffect(()=>{setYear(workingYearId);setClassroom("");setEditing("");setCourse("");setSlot("");setInstructor("");},[workingYearId,schoolId]);
   async function refresh(){
     const [r,s,e]=await Promise.all([api(base+"rooms"),api(base+"slots"),api(base+"entries")]);
     setRooms(r.rooms||[]);setSlots(s.slots||[]);setEntries(e.entries||[]);
@@ -77,9 +78,9 @@ export default function TimetablePanel({schoolId}){
     <h2>Emplois du temps et planification</h2>
     <p className="hint">Le serveur empêche les doubles réservations de salle, de classe et d'enseignant.</p>
     <div className="two">
-      <label className="field">Année scolaire<select value={year} onChange={e=>{setYear(e.target.value);setClassroom("");reset()}}>
+      <label className="field">Année scolaire<select value={year} onChange={e=>{setYear(e.target.value);onWorkingYearChange?.(e.target.value);setClassroom("");reset()}}>
         <option value="">Toutes les années</option>
-        {years.filter(x=>x.active).map(y=><option key={y.id} value={y.id}>{y.name}</option>)}
+        {years.map(y=><option key={y.id} value={y.id}>{y.name}{y.active?"":" (archivée)"}</option>)}
       </select></label>
       <label className="field">Classe<select value={classroom} onChange={e=>{setClassroom(e.target.value);reset()}}>
         <option value="">Toutes les classes</option>
