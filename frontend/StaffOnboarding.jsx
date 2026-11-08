@@ -33,7 +33,7 @@ const domains = {
   deliberations:"Conseils", finance:"Finances", settings:"Paramètres",
 };
 
-export default function StaffOnboarding({schoolId, mode = "all", onNavigate}) {
+export default function StaffOnboarding({schoolId, mode = "all", onNavigate, workingYearId=""}) {
   const [context,setContext] = useState(null);
   const [loading,setLoading] = useState(true);
   const [step,setStep] = useState(0);
@@ -258,7 +258,7 @@ export default function StaffOnboarding({schoolId, mode = "all", onNavigate}) {
           <button type="button" onClick={()=>setClasses(old=>old.filter((_,i)=>i!==index))}>Retirer l'affectation</button>
         </fieldset>)}
         <button type="button" disabled={!context.years.length||!context.classes.length||classes.length>=30}
-          onClick={()=>setClasses(old=>[...old,{...EMPTY_CLASS,year:context.years[0].id}])}>Ajouter une classe</button>
+          onClick={()=>setClasses(old=>[...old,{...EMPTY_CLASS,year:context.years.some(y=>y.id===workingYearId)?workingYearId:context.years[0].id}])}>Ajouter une classe</button>
       </div>}
       {step===2&&<div>
         <h3>3. Cette personne doit-elle utiliser YEM ?</h3>
