@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React,{useState} from "react";
 import {afterEach,expect,test,vi} from "vitest";
-import {cleanup,render,screen,within} from "@testing-library/react";
+import {cleanup,render,screen,waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AnnualWorkspace from "./AnnualWorkspace.jsx";
 
@@ -36,14 +36,14 @@ test("une nouvelle année reprend seulement la structure choisie et change le co
   }
   const user=userEvent.setup();
   render(<Harness/>);
-  expect(await screen.findByText(/24 · Inscriptions/)).toBeTruthy();
+  await waitFor(()=>expect(screen.getByLabelText("Bilan de l\u0027année").textContent).toContain("24 · Inscriptions"));
   await user.click(screen.getByRole("button",{name:"Préparer une nouvelle année scolaire"}));
   expect(screen.getByLabelText("Code d'année").value).toBe("2027-2028");
   expect(screen.getByLabelText("Début de l'année").value).toBe("2027-09-01");
   expect(screen.getByLabelText("Fin de l'année").value).toBe("2028-07-31");
   expect(screen.getByRole("checkbox",{name:/Reprendre les classes actives/}).checked).toBe(true);
   await user.click(screen.getByRole("button",{name:"Créer l'année scolaire"}));
-  expect(await screen.findByText(/0 · Inscriptions/)).toBeTruthy();
+  await waitFor(()=>expect(screen.getByLabelText("Bilan de l\u0027année").textContent).toContain("0 · Inscriptions"));
   expect(posts).toHaveLength(1);
   expect(posts[0]).toMatchObject({code:"2027-2028",source_year:"year-old",copy_classes:true});
   expect(screen.getByLabelText("Année scolaire de travail").value).toBe("year-new");
