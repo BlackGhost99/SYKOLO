@@ -38,6 +38,7 @@ it("affiche la restriction du mode test avant la création d’un compte parent"
  render(<AuthPanel/>);
  const ui=userEvent.setup();
  await ui.click(screen.getByRole("button",{name:"Créer un compte parent",exact:true}));
- expect(await screen.findByText(/Les e-mails d’activation sont en mode test/)).toBeTruthy();
+ expect(await screen.findByText(/Mode test Resend/)).toBeTruthy();
+ expect(screen.getByText(/domaine d’envoi vérifié/)).toBeTruthy();
  expect(screen.getByRole("button",{name:"Créer mon compte parent"}).disabled).toBe(false);
 });

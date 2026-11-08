@@ -26,7 +26,8 @@ from .views import payload
 
 User = get_user_model()
 USERNAME = re.compile(r"[A-Za-z0-9_.@+-]{3,50}\Z")
-GENERIC = "Si votre inscription est recevable, un courriel de confirmation sera envoyé."
+GENERIC = ("Si ces informations permettent de créer un compte, un lien d’activation sera envoyé "
+           "à l’adresse indiquée. Vérifiez aussi les courriers indésirables.")
 
 
 def registration_ready():
@@ -102,12 +103,16 @@ def register(request):
         return JsonResponse({"message": GENERIC})
     except Exception:
         audit(request,"parent_registration_mail_error")
-        message = "La création du compte a été interrompue pendant l’envoi du lien d’activation."
+        message = ("La création du compte a échoué : le service d’envoi du lien d’activation "
+                   "est indisponible. Aucun compte n’a été créé.")
         if registration_test_mode():
-            message += " En mode test, le lien est réservé à l’adresse associée au service d’envoi."
+            message += (" En mode test Resend, seul le destinataire autorisé par Resend peut "
+                        "recevoir ce lien. Pour inscrire les parents, utilisez un domaine "
+                        "d’envoi vérifié (compatible avec le forfait gratuit).")
         return JsonResponse({"error": message}, status=503)
     audit(request,"parent_registration_requested",user)
-    return JsonResponse({"message":GENERIC},status=201)
+    # A successful request and an existing identity must have the same HTTP status.
+    return JsonResponse({"message":GENERIC},status=200)
 
 
 @require_POST
