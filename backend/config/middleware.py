@@ -95,3 +95,28 @@ class SchoolCycleBoundaryMiddleware:
                         "error": "Ce module n'est pas encore sécurisé pour l'accès limité par cycle."
                     }, status=403)
         return self.get_response(request)
+
+
+class ClosedYearWriteErrorMiddleware:
+    """Translate an uncaught PostgreSQL year-archive trigger into an API conflict.
+
+    Only the named database guard is handled; unrelated integrity errors still
+    propagate normally. This is intentionally process_exception middleware,
+    because Django converts view exceptions into responses inside __call__.
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        return self.get_response(request)
+
+    def process_exception(self, request, exception):
+        from django.db import IntegrityError
+        from django.http import JsonResponse
+        if (isinstance(exception, IntegrityError)
+                and "Année scolaire clôturée" in str(exception)
+                and request.path.startswith("/api/v1/")):
+            return JsonResponse({
+                "error": "Année scolaire clôturée : les écritures historiques sont interdites."
+            }, status=409)
+        return None

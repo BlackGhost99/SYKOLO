@@ -9,19 +9,21 @@ from datetime import date
 from uuid import UUID
 
 from accounts.views import authorized
+from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, transaction, connection
 from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
-from .academic_models import AcademicYear, AcademicClass, AcademicPeriod
+from .academic_models import AcademicYear, AcademicYearClosure, AcademicClass, AcademicPeriod
 from .assessment_models import Assessment
 from .models import School
 from .report_models import SchoolReport
 from .staff_models import StaffAssignment
 from .student_models import Enrollment
 from .cycle_scope import scoped_cycle_ids
+from .year_closure import annual_closure_checks, annual_closure_snapshot, closure_fingerprint
 from .services import has_permission
 from .views import access, log_event, parse_body, refuse
 
@@ -142,6 +144,110 @@ def annual_snapshot(request, school_id):
         "assessments": sum(assessments.values()) if can_assess else None,
     }
     return JsonResponse(result)
+
+
+def _year_closure_authorized(request, school):
+    return (has_permission(request.user, school, "school.academic.manage")
+            and has_permission(request.user, school, "school.finance.read")
+            and scoped_cycle_ids(request.user, school) is None)
+
+
+@require_GET
+@authorized
+def closure_review(request, school_id, year_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if not _year_closure_authorized(request, school):
+        return refuse()
+    year = AcademicYear.objects.filter(school=school, pk=year_id).first()
+    if year is None:
+        return JsonResponse({"error": "Année scolaire introuvable."}, status=404)
+    evidence = AcademicYearClosure.objects.filter(school=school, year=year).first()
+    snapshot = evidence.snapshot if evidence else annual_closure_snapshot(school, year)
+    checks = {"ready": False, "blockers": [], "warnings": []} if evidence else annual_closure_checks(school, year)
+    return JsonResponse({
+        "year": _year_dict(year), "snapshot": snapshot,
+        "checks": checks, "can_close": bool(
+            checks["ready"] and getattr(settings, "YEM_YEAR_CLOSURE_ENABLED", False)
+            and connection.vendor == "postgresql"
+        ),
+        "closure_enabled": bool(
+            getattr(settings, "YEM_YEAR_CLOSURE_ENABLED", False)
+            and connection.vendor == "postgresql"
+        ),
+        "evidence": ({
+            "id": str(evidence.pk), "sha256": evidence.digest_sha256,
+            "closed_at": evidence.closed_at.isoformat(),
+            "closed_by": str(evidence.closed_by_id) if evidence.closed_by_id else None,
+            "reason": evidence.reason,
+            "integrity_ok": closure_fingerprint(evidence.snapshot) == evidence.digest_sha256,
+        } if evidence else None),
+    })
+
+
+@require_POST
+@authorized
+def close_year(request, school_id, year_id):
+    """One-way, audited closure. Requires PostgreSQL row triggers and manual opt-in."""
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if not _year_closure_authorized(request, school):
+        return refuse()
+    if (not getattr(settings, "YEM_YEAR_CLOSURE_ENABLED", False)
+            or connection.vendor != "postgresql"):
+        return JsonResponse({
+            "error": "Clôture définitive désactivée : sauvegarde réelle et contrôles PostgreSQL requis."
+        }, status=503)
+    body, error = parse_body(request)
+    if error is not None:
+        return error
+    if set(body) != {"revision", "confirmation", "reason"}:
+        return JsonResponse({"error": "Révision, code d'année et motif obligatoires."}, status=422)
+    revision, reason, confirmation = body["revision"], body["reason"], body["confirmation"]
+    if (type(revision) is not int or revision < 1
+            or not isinstance(reason, str) or not 20 <= len(reason.strip()) <= 600
+            or not isinstance(confirmation, str)):
+        return JsonResponse({"error": "Révision valide et motif de 20 à 600 caractères requis."}, status=422)
+    try:
+        with transaction.atomic():
+            School.objects.select_for_update().get(pk=school.pk)
+            year = AcademicYear.objects.select_for_update().filter(school=school, pk=year_id).first()
+            if year is None:
+                return JsonResponse({"error": "Année scolaire introuvable."}, status=404)
+            if year.revision != revision:
+                return JsonResponse({"error": "Conflit de version.", "revision": year.revision}, status=409)
+            if confirmation != year.code:
+                return JsonResponse({"error": "Le code de confirmation ne correspond pas à l'année."}, status=422)
+            if AcademicYearClosure.objects.filter(year=year).exists():
+                return JsonResponse({"error": "Cette année est déjà clôturée."}, status=409)
+            checks = annual_closure_checks(school, year)
+            if not checks["ready"]:
+                return JsonResponse({"error": "Clôture refusée : contrôles non satisfaits.", "checks": checks}, status=409)
+            snapshot = annual_closure_snapshot(school, year)
+            digest = closure_fingerprint(snapshot)
+            evidence = AcademicYearClosure(
+                school=school, year=year, snapshot=snapshot, digest_sha256=digest,
+                reason=reason.strip(), closed_by=request.user,
+            )
+            evidence.full_clean()
+            evidence.save()
+            year.status = AcademicYear.STATUS_CLOSED
+            year.active = False
+            year.revision += 1
+            year.save(update_fields=["status", "active", "revision"])
+            log_event(school, request, "academic_year_closed", str(year.pk), {
+                "reason": reason.strip(), "digest_sha256": digest,
+                "closure_id": str(evidence.pk), "status_from": "current", "status_to": "closed",
+            })
+    except (IntegrityError, ValidationError) as exc:
+        return JsonResponse({"error": "Conflit de clôture ou données invalides."}, status=409)
+    return JsonResponse({
+        "year": _year_dict(year),
+        "evidence": {"id": str(evidence.pk), "sha256": evidence.digest_sha256},
+        "message": "Année scolaire définitivement clôturée et archivée.",
+    })
 
 
 @require_POST

@@ -1,6 +1,7 @@
 import json
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.db import connection, IntegrityError, transaction
+from django.test import Client, TestCase, override_settings
 from .academic_models import AcademicYear, AcademicPeriod
 from .models import Organization, OrganizationMember, School, SchoolMember, SchoolRole
 from .services import ROLE_TEMPLATES
@@ -202,6 +203,168 @@ class AcademicStructureTests(TestCase):
                                     "start_date": "2027-09-01", "end_date": "2028-07-31"})
         self.assertEqual(str(current_year(self.school).pk), first["id"])
         self.assertNotEqual(first["id"], later["id"])
+
+
+    def test_closure_preflight_and_disabled_by_default(self):
+        from .academic_models import AcademicYearClosure
+        year = self.year()
+        active = self.write("years/" + year["id"] + "/activate", {
+            "revision": 1, "reason": "Ouverture officielle de l'année"
+        })
+        self.assertEqual(active.status_code, 200, active.content)
+        preview = self.client.get(self.base + "years/" + year["id"] + "/closure-review")
+        self.assertEqual(preview.status_code, 200, preview.content)
+        self.assertFalse(preview.json()["can_close"])
+        self.assertTrue(any(item["code"] == "year_not_finished"
+                            for item in preview.json()["checks"]["blockers"]))
+        self.assertEqual(preview.json()["snapshot"]["counts"]["enrollments"], 0)
+        rejected = self.write("years/" + year["id"] + "/close", {
+            "revision": 2, "confirmation": "2026-2027",
+            "reason": "Clôture officielle demandée par la direction"
+        })
+        self.assertEqual(rejected.status_code, 503)
+        self.assertEqual(AcademicYearClosure.objects.count(), 0)
+        self.assertEqual(AcademicYear.objects.get(pk=year["id"]).status, "current")
+        self.login(self.reader)
+        self.assertEqual(self.client.get(self.base + "years/" + year["id"] + "/closure-review").status_code, 403)
+
+    def test_closure_review_detects_unpublished_report(self):
+        from .academic_models import AcademicClass
+        from .report_models import SchoolReport
+        from .student_models import Student, Enrollment
+        year = self.make("years", {
+            "code": "2023-2024", "name": "2023-2024",
+            "start_date": "2023-09-01", "end_date": "2024-07-31",
+        })
+        cycle = self.make("cycles", {"code": "pr", "name": "Primaire"})
+        level = self.make("levels", {"code": "cm1", "name": "CM1", "cycle": cycle["id"]})
+        room = self.make("classes", {
+            "code": "cm1a", "name": "CM1 A", "year": year["id"], "level": level["id"]
+        })
+        student = Student.objects.create(school=self.school, student_code="Z-01",
+                                         first_name="Lea", last_name="NZE")
+        enrollment = Enrollment.objects.create(
+            school=self.school, student=student, year_id=year["id"],
+            classroom_id=room["id"], enrolled_on="2023-09-07",
+        )
+        SchoolReport.objects.create(
+            school=self.school, enrollment=enrollment, year_id=year["id"],
+            period_key="", status="draft", snapshot={},
+        )
+        self.assertEqual(self.write("years/" + year["id"] + "/activate", {
+            "revision": 1, "reason": "Ouverture de l'année historique",
+        }).status_code, 200)
+        preview = self.client.get(self.base + "years/" + year["id"] + "/closure-review")
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn("draft_reports", [x["code"] for x in preview.json()["checks"]["blockers"]])
+
+    def test_closed_year_writes_are_denied_by_postgresql(self):
+        from .academic_models import AcademicClass
+        if connection.vendor != "postgresql":
+            self.skipTest("DB triggers are a PostgreSQL production safeguard")
+        year = self.make("years", {
+            "code": "2023-2024", "name": "2023-2024",
+            "start_date": "2023-09-01", "end_date": "2024-07-31"
+        })
+        cycle = self.make("cycles", {"code": "pr", "name": "Primaire"})
+        level = self.make("levels", {"code": "cm1", "name": "CM1", "cycle": cycle["id"]})
+        klass = self.make("classes", {
+            "code": "cm1a", "name": "CM1 A", "year": year["id"], "level": level["id"]
+        })
+        from .student_models import Student, Enrollment
+        from .finance_models import FeeSchedule, FeeCharge, CashClosing
+        from .report_models import SchoolReport
+        from .attendance_models import AttendanceSession
+        student = Student.objects.create(school=self.school, student_code="Z-02",
+                                         first_name="Jon", last_name="NZE")
+        enrollment = Enrollment.objects.create(
+            school=self.school, student=student, year_id=year["id"],
+            classroom_id=klass["id"], enrolled_on="2023-09-07",
+        )
+        schedule = FeeSchedule.objects.create(
+            school=self.school, year_id=year["id"], code="annuelle",
+            label="Frais annuels", amount="1000", currency="XAF", scope_key="",
+        )
+        charge = FeeCharge.objects.create(
+            school=self.school, enrollment=enrollment, schedule=schedule,
+            label="Frais annuels", amount="1000", currency="XAF",
+        )
+        report = SchoolReport.objects.create(
+            school=self.school, enrollment=enrollment, year_id=year["id"],
+            period_key="", status="published", snapshot={"mentions":"intact"},
+        )
+        session = AttendanceSession.objects.create(
+            school=self.school, classroom_id=klass["id"], attendance_date="2023-09-11",
+            slot="matin", label="Matin", created_by=self.director,
+        )
+        AcademicYear.objects.filter(pk=year["id"]).update(status="closed", active=False)
+        for qs, update in (
+            (Enrollment.objects.filter(pk=enrollment.pk), {"status": "radié"}),
+            (FeeCharge.objects.filter(pk=charge.pk), {"label": "Frais altérés"}),
+            (SchoolReport.objects.filter(pk=report.pk), {"snapshot": {"mentions": "modifié"}}),
+            (AttendanceSession.objects.filter(pk=session.pk), {"label": "Modifié"}),
+        ):
+            with self.assertRaises(IntegrityError):
+                with transaction.atomic():
+                    qs.update(**update)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CashClosing.objects.create(
+                    school=self.school, day="2023-09-12", currency="XAF",
+                    expected="0", counted="0", difference="0",
+                    submitted_by=self.director,
+                )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                AcademicClass.objects.filter(pk=klass["id"]).update(name="CM1 historique altéré")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                AcademicClass.objects.create(
+                    school=self.school, year_id=year["id"], level_id=level["id"],
+                    code="cm1b", name="CM1 B",
+                )
+        self.assertEqual(AcademicClass.objects.get(pk=klass["id"]).name, "CM1 A")
+
+    @override_settings(YEM_YEAR_CLOSURE_ENABLED=True)
+    def test_close_year_generates_snapshot_audit_and_immutable_history(self):
+        from .academic_models import AcademicYearClosure, AcademicClass
+        from .models import SchoolAudit
+        if connection.vendor != "postgresql":
+            self.skipTest("Final closure is enabled only with PostgreSQL guards")
+        year = self.make("years", {
+            "code": "2023-2024", "name": "Année 2023-2024",
+            "start_date": "2023-09-01", "end_date": "2024-07-31"
+        })
+        cycle = self.make("cycles", {"code": "pr", "name": "Primaire"})
+        level = self.make("levels", {"code": "cm2", "name": "CM2", "cycle": cycle["id"]})
+        self.make("classes", {"code": "cm2a", "name": "CM2 A", "year": year["id"], "level": level["id"]})
+        active = self.write("years/" + year["id"] + "/activate", {
+            "revision": 1, "reason": "Ouverture administrative de l'année historique"
+        })
+        self.assertEqual(active.status_code, 200, active.content)
+        payload = {"revision": 2, "confirmation": "2023-2024",
+                   "reason": "Toutes les opérations sont terminées et vérifiées"}
+        preview = self.client.get(self.base + "years/" + year["id"] + "/closure-review")
+        self.assertEqual(preview.status_code, 200, preview.content)
+        self.assertTrue(preview.json()["checks"]["ready"])
+        wrong = self.write("years/" + year["id"] + "/close",
+                           {**payload, "confirmation": "2024-2025"})
+        self.assertEqual(wrong.status_code, 422)
+        response = self.write("years/" + year["id"] + "/close", payload)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["year"]["status"], "closed")
+        self.assertFalse(response.json()["year"]["active"])
+        evidence = AcademicYearClosure.objects.get(year_id=year["id"])
+        self.assertEqual(evidence.snapshot["counts"]["classes"], 1)
+        self.assertEqual(len(evidence.digest_sha256), 64)
+        self.assertEqual(SchoolAudit.objects.filter(
+            school=self.school, event="academic_year_closed").count(), 1)
+        finished = self.client.get(self.base + "years/" + year["id"] + "/closure-review").json()
+        self.assertTrue(finished["evidence"]["integrity_ok"])
+        self.assertEqual(self.write("years/" + year["id"] + "/close", payload).status_code, 409)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                AcademicClass.objects.filter(year_id=year["id"]).update(name="Modification interdite")
 
     def test_year_preparation_rejects_overlap_and_cross_school_source(self):
         existing=self.year()

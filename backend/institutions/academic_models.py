@@ -1,5 +1,6 @@
 import uuid
 from datetime import date
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from .models import School
@@ -43,6 +44,22 @@ class AcademicYear(models.Model):
                 start_date__gte=self.start_date, end_date__lte=self.end_date
             ).exists():
                 raise ValidationError("Des périodes sont hors de la nouvelle année.")
+
+
+class AcademicYearClosure(models.Model):
+    """Immutable evidence and snapshot produced at the exact year close."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="year_closures")
+    year = models.OneToOneField(AcademicYear, on_delete=models.PROTECT, related_name="closure")
+    snapshot = models.JSONField()
+    digest_sha256 = models.CharField(max_length=64)
+    reason = models.TextField(max_length=600)
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    closed_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if self.school_id and self.year_id and self.year.school_id != self.school_id:
+            raise ValidationError("Le bilan appartient à un autre établissement.")
 
 
 class AcademicCycle(models.Model):

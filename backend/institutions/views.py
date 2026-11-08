@@ -513,6 +513,23 @@ def school_settings(request, school_id):
         return JsonResponse({"error": "Paramètres trop volumineux."}, status=413)
     key = key_for_scope(scope)
     with transaction.atomic():
+        # Year-scoped settings are archived with their school year. Lock the
+        # year even while still open to serialize against an imminent close.
+        if "year" in scope:
+            from uuid import UUID
+            from .academic_models import AcademicYear
+            selector = Q(code=scope["year"]) | Q(name=scope["year"])
+            try:
+                selector |= Q(pk=UUID(scope["year"]))
+            except (ValueError, TypeError):
+                pass
+            candidates = AcademicYear.objects.select_for_update().filter(
+                school=school
+            ).filter(selector)
+            if any(y.status == AcademicYear.STATUS_CLOSED for y in candidates):
+                return JsonResponse({
+                    "error": "Les paramètres de cette année scolaire clôturée sont en lecture seule."
+                }, status=409)
         obj = SchoolSetting.objects.select_for_update().filter(school=school, scope_key=key).first()
         current = obj.revision if obj else 0
         if current != expected:

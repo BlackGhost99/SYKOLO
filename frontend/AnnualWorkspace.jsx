@@ -19,6 +19,10 @@ export default function AnnualWorkspace({schoolId,yearId,onYearChange,onPrepared
   const [preparing,setPreparing] = useState(false);
   const [activating,setActivating] = useState(false);
   const [activationReason,setActivationReason] = useState("");
+  const [closureReview,setClosureReview] = useState(null);
+  const [closing,setClosing] = useState(false);
+  const [closeCode,setCloseCode] = useState("");
+  const [closeReason,setCloseReason] = useState("");
   const [draft,setDraft] = useState(empty);
   const [message,setMessage] = useState("");
   const prefix = "schools/"+schoolId+"/academic/";
@@ -30,7 +34,7 @@ export default function AnnualWorkspace({schoolId,yearId,onYearChange,onPrepared
   }
   useEffect(()=>{
     let active=true;
-    setData(null);setError("");
+    setData(null);setError("");setClosureReview(null);setClosing(false);
     schoolRequest(prefix+"annual-snapshot"+(yearId?"?year="+encodeURIComponent(yearId):""))
       .then(result=>{
         if(!active)return;
@@ -85,6 +89,36 @@ export default function AnnualWorkspace({schoolId,yearId,onYearChange,onPrepared
     finally{setBusy(false)}
   }
 
+  async function reviewClosure() {
+    if (!data?.year) return;
+    setBusy(true);setError("");
+    try {
+      const detail=await schoolRequest(prefix+"years/"+data.year.id+"/closure-review");
+      setClosureReview(detail);
+    }catch(e){setError(e.message)}
+    finally{setBusy(false)}
+  }
+
+  async function finalizeClosure(event) {
+    event.preventDefault();
+    if (!closureReview?.year || !closureReview.can_close) return;
+    setBusy(true);setError("");setMessage("");
+    try {
+      const result=await schoolRequest(prefix+"years/"+closureReview.year.id+"/close",{
+        revision:closureReview.year.revision,
+        confirmation:closeCode.trim(),
+        reason:closeReason.trim(),
+      });
+      setClosing(false);setCloseCode("");setCloseReason("");
+      await onPrepared?.();
+      await load(result.year.id);
+      const detail=await schoolRequest(prefix+"years/"+result.year.id+"/closure-review");
+      setClosureReview(detail);
+      setMessage(result.message);
+    }catch(e){setError(e.message)}
+    finally{setBusy(false)}
+  }
+
   return <div aria-label="Espace par année scolaire">
     <h3>Année scolaire de travail</h3>
     <p className="hint">Chaque année conserve ses classes, inscriptions, affectations, périodes, évaluations et bulletins. Les anciennes années restent consultables. Une seule année peut être déclarée « En cours » dans l'établissement.</p>
@@ -132,7 +166,62 @@ export default function AnnualWorkspace({schoolId,yearId,onYearChange,onPrepared
         <button type="submit" disabled={busy||activationReason.trim().length<8}>{busy?"Activation…":"Confirmer l'activation"}</button>
         <button type="button" disabled={busy} onClick={()=>setActivating(false)}>Annuler</button>
       </form>}
-      {data.year?.status==="current"&&<p className="hint">La clôture n'est pas encore accessible : toutes les opérations de notes, paiements, absences et bulletins devront d'abord être verrouillées côté serveur.</p>}
+      {["current","closed"].includes(data.year?.status)&&<div className="card" style={{marginTop:12}}>
+        <h4>Clôture et bilan définitif</h4>
+        <p className="hint">Vérifiez les évaluations, les bulletins, les présences, les conseils et les paiements avant de clôturer l'année.</p>
+        <button type="button" disabled={busy} onClick={reviewClosure}>
+          {busy?"Vérification…":"Consulter le bilan et les contrôles de clôture"}
+        </button>
+        {closureReview?.year?.id===data.year.id&&<>
+          <p role="status">{closureReview.evidence
+            ?"Procès-verbal de clôture enregistré."
+            :closureReview.checks.ready?"Contrôles satisfaits.":"Des points bloquent la clôture."}</p>
+          {closureReview.checks.blockers?.length>0&&<ul aria-label="Blocages de clôture">
+            {closureReview.checks.blockers.map(item=><li key={item.code}>
+              {item.message} {item.count?item.count+" élément(s)":""}
+            </li>)}
+          </ul>}
+          {closureReview.checks.warnings?.length>0&&<ul aria-label="Avertissements de clôture">
+            {closureReview.checks.warnings.map(item=><li key={item.code}>{item.message}</li>)}
+          </ul>}
+          <div className="two" aria-label="Résumé annuel de clôture">
+            {Object.entries(closureReview.snapshot.counts||{}).map(([key,value])=>
+              <div key={key} className="card" style={{padding:10,margin:0}}>
+                <strong>{value}</strong> · {({
+                  classes:"Classes",periods:"Périodes",enrollments:"Inscriptions",students:"Élèves",
+                  staff_assignments:"Affectations",staff_members_assigned:"Membres du personnel affectés",
+                  courses:"Cours",assessments:"Évaluations",grades:"Notes",published_reports:"Bulletins publiés",
+                  attendance_sessions:"Appels",attendance_marks:"Présences consignées",councils:"Conseils",
+                  council_decisions:"Décisions de conseil",
+                })[key]||key}
+              </div>)}
+          </div>
+          {Object.entries(closureReview.snapshot.finance||{}).map(([currency,row])=>
+            <p key={currency}><strong>{currency}</strong> · Frais : {row.billed} · Encaissé : {row.received} · Solde : {row.outstanding}</p>)}
+          {closureReview.evidence&&<p className="hint">
+            Archive du {closureReview.evidence.closed_at} · Empreinte SHA-256 : <code>{closureReview.evidence.sha256}</code>
+            · Intégrité : {closureReview.evidence.integrity_ok?"vérifiée":"à contrôler"}
+          </p>}
+          {!closureReview.closure_enabled&&!closureReview.evidence&&
+            <p className="hint">Clôture réelle désactivée : sauvegarde de la base et autorisation technique requises.</p>}
+          {closureReview.can_close&&!closing&&<button type="button" disabled={busy}
+            onClick={()=>{setClosing(true);setCloseCode("");setCloseReason("");}}>Lancer la clôture définitive</button>}
+          {closureReview.can_close&&closing&&<form onSubmit={finalizeClosure}>
+            <h4>Confirmation irréversible</h4>
+            <label className="field">Retaper le code exact {closureReview.year.code}
+              <input required value={closeCode} onChange={e=>setCloseCode(e.target.value)}/>
+            </label>
+            <label className="field">Motif officiel de clôture
+              <textarea required minLength={20} maxLength={600} value={closeReason}
+                onChange={e=>setCloseReason(e.target.value)}/>
+            </label>
+            <button type="submit" disabled={busy||closeCode!==closureReview.year.code||closeReason.trim().length<20}>
+              Confirmer la clôture de {closureReview.year.name}
+            </button>
+            <button type="button" disabled={busy} onClick={()=>setClosing(false)}>Annuler</button>
+          </form>}
+        </>}
+      </div>}
       {data.year?.status==="closed"&&<p className="hint">Archive consultable. Les corrections officielles devront être historisées et autorisées.</p>}
       {data.can_prepare_year&&!preparing&&<button type="button" onClick={startPreparation}>Préparer une nouvelle année scolaire</button>}
       {data.can_prepare_year&&preparing&&<form onSubmit={submit} className="card" style={{marginTop:12}}>

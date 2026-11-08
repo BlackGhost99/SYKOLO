@@ -54,6 +54,9 @@ PARENT_EMAIL_VERIFICATION_REQUIRED = os.environ.get(
 YEM_PAYMENTS_LIVE_ENABLED = os.environ.get("YEM_PAYMENTS_LIVE_ENABLED", "false").lower() == "true"
 # OFF until SingPay confirms callback authentication and school merchant acceptance.
 YEM_SINGPAY_ENABLED = os.environ.get("YEM_SINGPAY_ENABLED", "false").lower() == "true"
+# Closure is irreversible: enable only after a verified production database backup,
+# final validation of year-dependent writers and PostgreSQL migration checks.
+YEM_YEAR_CLOSURE_ENABLED = os.environ.get("YEM_YEAR_CLOSURE_ENABLED", "false").lower() == "true"
 YEM_PAYMENT_ENCRYPTION_KEY = os.environ.get("YEM_PAYMENT_ENCRYPTION_KEY", "")
 AUTH_PUBLIC_BASE_URL = os.environ.get("AUTH_PUBLIC_BASE_URL", "" if DEPLOYED else "http://localhost:3000")
 EMAIL_HOST = os.environ.get("YEM_SMTP_HOST", "localhost")
@@ -85,6 +88,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "config.middleware.SchoolSessionMiddleware",
     "config.middleware.SchoolCycleBoundaryMiddleware",
+    "config.middleware.ClosedYearWriteErrorMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "config.middleware.ResponseHeadersMiddleware",
 ]
