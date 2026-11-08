@@ -1,4 +1,4 @@
-import React, {useId, useLayoutEffect, useRef, useState} from "react";
+import React, {useEffect, useId, useLayoutEffect, useRef, useState} from "react";
 import {Empty, Field, Loading, Msg, req, useLoad} from "./EnrollmentScreens.jsx";
 import {Button, Card, Icon, PageHeader, Status, TableScroll} from "./yem-ui.jsx";
 
@@ -91,8 +91,9 @@ function ClassRoster({schoolId, year, classroom, onClose, onStudent}) {
   </ClassDialog>;
 }
 
-export default function ClassWorkspace({schoolId, canReadStudents, onNavigate, advancedSettings}) {
-  const [year, setYear] = useState("");
+export default function ClassWorkspace({schoolId, canReadStudents, onNavigate, advancedSettings, workingYearId="", onWorkingYearChange}) {
+  const [year, setYear] = useState(workingYearId);
+  useEffect(()=>{setYear(workingYearId);setSelected(null);setCreating(false);},[workingYearId,schoolId]);
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState(null);
   const [message, setMessage] = useState("");
@@ -109,6 +110,7 @@ export default function ClassWorkspace({schoolId, canReadStudents, onNavigate, a
       {data?.years.length > 0 && <label className="yd-select plain">
         <select aria-label="Année scolaire" value={year || currentYear?.id || ""} onChange={event => {
           setYear(event.target.value);
+          onWorkingYearChange?.(event.target.value);
           setMessage("");
         }}>{data.years.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <Icon name="chevron" size={18} className="chev"/>
