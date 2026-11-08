@@ -4,11 +4,14 @@ Requires a verified sender domain, YEM_RESEND_API_KEY and YEM_FROM_EMAIL.
 No API key, recipient address, message content or one-time link is logged.
 """
 import json
+import logging
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.core.mail.backends.base import BaseEmailBackend
+
+log = logging.getLogger(__name__)
 
 
 class ResendEmailBackend(BaseEmailBackend):
@@ -51,6 +54,8 @@ class ResendEmailBackend(BaseEmailBackend):
                         raise RuntimeError("Le fournisseur de messagerie a refusé l'envoi.")
                 count += 1
             except (HTTPError, URLError, TimeoutError, OSError) as exc:
+                reason = f"HTTP {exc.code}" if isinstance(exc, HTTPError) else type(exc).__name__
+                log.warning("Resend email delivery failed (%s)", reason)
                 if not self.fail_silently:
                     raise RuntimeError("Le service d'e-mails est temporairement indisponible.") from None
         return count
