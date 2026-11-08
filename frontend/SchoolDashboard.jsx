@@ -312,7 +312,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       <Icon name="calendar" size={18}/>
       <select aria-label="Année de travail de l'établissement" value={workingYearId}
         onChange={e=>setWorkingYearId(e.target.value)}>
-        {academicYears.map(y=><option key={y.id} value={y.id}>{y.name}{y.active?"":" · archivée"}</option>)}
+        {academicYears.map(y=><option key={y.id} value={y.id}>{y.name} · {({preparation:"en préparation",current:"en cours",closed:"clôturée"})[y.status] || (y.active?"à vérifier":"archivée")}</option>)}
       </select>
     </label>}
   </div>;
