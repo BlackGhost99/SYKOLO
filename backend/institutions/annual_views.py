@@ -97,6 +97,16 @@ def annual_snapshot(request, school_id):
     assignments = dict(StaffAssignment.objects.filter(
         school=school, year=year, classroom_id__in=room_ids, active=True
     ).values_list("classroom_id").annotate(total=Count("pk"))) if can_staff else {}
+    annual_team = {}
+    if can_staff:
+        for assignment in StaffAssignment.objects.select_related("staff").filter(
+            school=school, year=year, classroom_id__in=room_ids, active=True
+        ).order_by("staff__last_name", "staff__first_name", "duty"):
+            annual_team.setdefault(assignment.classroom_id, []).append({
+                "staff_id": str(assignment.staff_id),
+                "name": f"{assignment.staff.first_name} {assignment.staff.last_name}".strip(),
+                "duty": assignment.duty,
+            })
     assessments = dict(Assessment.objects.filter(
         school=school, course__year=year, course__classroom_id__in=room_ids
     ).values_list("course__classroom_id").annotate(total=Count("pk"))) if can_assess else {}
@@ -108,6 +118,7 @@ def annual_snapshot(request, school_id):
         "enrolled": enrollments.get(room.pk) if can_students else None,
         "published_reports": reports.get(room.pk) if can_reports else None,
         "staff_assignments": assignments.get(room.pk) if can_staff else None,
+        "team": annual_team.get(room.pk, []) if can_staff else None,
         "assessments": assessments.get(room.pk) if can_assess else None,
     } for room in rooms]
 
