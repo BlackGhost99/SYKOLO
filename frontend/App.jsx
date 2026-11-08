@@ -27,14 +27,14 @@ function RealApp() {
   },[]);
   if (authenticated && !platformAdmin) return <AuthPanel />;
   return <div>
-    {!authenticated && <nav className="yem-mode-switch" aria-label="Mode d'application YEM">
+    {!authenticated && <nav className={mode === "workspace" ? "yem-mode-switch yem-mode-switch-login" : "yem-mode-switch"} aria-label="Mode d'application YEM">
       <strong>YEM</strong>
       <button type="button" aria-pressed={mode==="workspace"} onClick={()=>setMode("workspace")}>Espace de gestion réel</button>
       <button type="button" aria-pressed={mode==="preview"} onClick={()=>setMode("preview")}>Maquettes PC (référence statique)</button>
       <button type="button" onClick={()=>{window.location.hash="#/demo";}}>Démonstration interactive · Présentation</button>
     </nav>}
     {mode==="workspace"||authenticated ?
-      <div className={authenticated?"yem-live-workspace yem-auth-app":"yem-live-workspace"}>
+      <div className={authenticated?"yem-live-workspace yem-auth-app":"yem-live-workspace yem-entry-workspace"}>
         {apiAvailable===false && <div role="status" className="yem-deploy-note">L'API YEM est indisponible. Vérifiez le service Django pour enregistrer des données.</div>}
         <AuthPanel />
         <footer className="yem-company">YEM · Développé par BWETEK Informatyk</footer>

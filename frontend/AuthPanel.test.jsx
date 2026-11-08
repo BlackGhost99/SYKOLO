@@ -104,3 +104,20 @@ it("laisse corriger l’inscription pilote quand la connexion est refusée", asy
   await ui.click(screen.getByRole("button", {name: "Connexion", exact: true}));
   expect(screen.getByRole("heading", {name: "Espace parents"})).toBeTruthy();
 });
+
+it("conserve les trois parcours de connexion dans la nouvelle interface YEM", async () => {
+  setup();
+  render(<AuthPanel />);
+  const ui = userEvent.setup();
+  expect(await screen.findByRole("heading", { name: "Accès sécurisé à YEM" })).toBeTruthy();
+  const scopes = screen.getByRole("group", { name: "Choisir votre espace de connexion" });
+  const school = scopes.querySelector('button[aria-pressed="true"]');
+  expect(school?.textContent).toBe("Établissement");
+  await ui.click(screen.getByRole("button", { name: "Parents", exact: true }));
+  expect(screen.queryByLabelText("Code de l'établissement")).toBeNull();
+  expect(screen.getByRole("heading", { name: "Espace parents" })).toBeTruthy();
+  await ui.click(screen.getByRole("button", { name: "Administration plateforme", exact: true }));
+  expect(screen.getByRole("heading", { name: "Administration YEM" })).toBeTruthy();
+  await ui.click(screen.getByRole("button", { name: "Établissement", exact: true }));
+  expect(screen.getByLabelText("Code de l'établissement")).toBeTruthy();
+});
