@@ -27,6 +27,11 @@ function mockApi({scope="school", role="direction", permissions=[], restricted=f
     [prefix+"/organization/my-appointments"]: {appointments:[]},
     [prefix+"/parent-links"]: {links:[]},
     [prefix+"/students"]: {students:[student]},
+    [prefix+"/academic/years"]: {years:[{id:"year",name:"2026–2027"}]},
+    [prefix+"/academic/classes"]: {classes:[{id:"room",name:"4e A",year:"year"}]},
+    [prefix+"/guardians-by-class?classroom=room"]: {families:[{
+      student_id:student.id, student_name:"Élève Test", guardians:[{id:guardian.id, name:guardian.full_name, relationship:guardian.relationship}],
+    }]},
     [prefix+"/students/student-1/guardians"]: {guardians:[guardian]},
     "/api/v1/parents/children": {children:[]},
     "/api/v1/parents/family-children": {children:[]},
@@ -45,14 +50,18 @@ function mockApi({scope="school", role="direction", permissions=[], restricted=f
   return fetch;
 }
 
-test("une directrice gère les accès dans son école depuis Parents", async ()=>{
-  const fetch = mockApi({permissions:["school.parents.manage","school.students.read","school.members.write"]});
+test("une directrice consulte les parents par classe puis gère les accès dans Paramètres", async ()=>{
+  const fetch = mockApi({permissions:["school.parents.manage","school.students.read","school.members.write","school.academic.read"]});
   const user = userEvent.setup();
   render(<AuthPanel/>);
   const nav = await screen.findByRole("navigation", {name:"Navigation principale"});
   await user.click(await within(nav).findByRole("button", {name:"Parents", exact:true}));
-  expect(await screen.findByRole("heading", {name:"Gestion des accès parents"})).toBeTruthy();
-  expect(screen.getByText("Vérifiez les accès des responsables légaux de Lycée Privé MBELE.")).toBeTruthy();
+  await user.selectOptions(await screen.findByLabelText("Classe", {exact:true}), "room");
+  expect(await screen.findByRole("row", {name:/Élève Test Responsable Test/})).toBeTruthy();
+  expect(screen.queryByLabelText("Identifiant du compte parent existant")).toBeNull();
+  await user.click(within(nav).getByRole("button", {name:"Paramètres"}));
+  await user.click(within(screen.getByRole("group", {name:"Rubriques des paramètres"})).getByRole("button", {name:"Parents", exact:true}));
+  expect(await screen.findByRole("heading", {name:"Responsables légaux et comptes parents"})).toBeTruthy();
   expect(screen.queryByRole("button", {name:"Installer YEM sur mon téléphone"})).toBeNull();
   expect(screen.queryByRole("button", {name:"Mes demandes"})).toBeNull();
   await screen.findByRole("option", {name:"Test Élève · 001"});

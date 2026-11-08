@@ -5,7 +5,7 @@ from uuid import UUID
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods
 from accounts.views import authorized
 from .views import access, refuse, parse_body, log_event
 from .services import has_permission, quota_reached
@@ -224,6 +224,40 @@ def guardians(request, school_id, student_id):
     except ValueError as exc: return JsonResponse({"error":str(exc)},status=422)
     except ValidationError as exc: return validation_response(exc)
     return JsonResponse(describe(g),status=201)
+
+
+@require_GET
+@authorized
+def guardians_by_class(request, school_id):
+    school, error = check(request, school_id, "school.parents.manage")
+    if error is not None:
+        return error
+    if not has_permission(request.user, school, "school.students.read"):
+        return refuse()
+    try:
+        classroom_id = UUID(request.GET.get("classroom", ""))
+    except ValueError:
+        return JsonResponse({"error": "Classe invalide."}, status=422)
+    if not AcademicClass.objects.filter(school=school, pk=classroom_id).exists():
+        return JsonResponse({"error": "Classe introuvable."}, status=404)
+    roster = visible_enrollments(request.user, school).filter(
+        classroom_id=classroom_id, active=True, student__active=True,
+    ).select_related("student").prefetch_related("student__guardians").order_by(
+        "student__last_name", "student__first_name", "pk",
+    )
+    return JsonResponse({"families": [
+        {
+            "student_id": str(row.student_id),
+            "student_name": f"{row.student.first_name} {row.student.last_name}",
+            "guardians": [
+                {"id": str(guardian.pk), "name": guardian.full_name, "relationship": guardian.relationship,
+                 "phone": guardian.phone, "email": guardian.email}
+                for guardian in row.student.guardians.all()
+                if guardian.active and guardian.school_id == school.pk
+            ],
+        }
+        for row in roster
+    ]})
 
 
 @require_http_methods(["PATCH"])

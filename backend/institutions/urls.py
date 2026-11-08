@@ -148,6 +148,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/overview/finance", overview_views.finance_overview),
     path("schools/<uuid:school_id>/students", student_views.students),
     path("schools/<uuid:school_id>/students/<uuid:student_id>", student_views.student_detail),
+    path("schools/<uuid:school_id>/guardians-by-class", student_views.guardians_by_class),
     path("schools/<uuid:school_id>/students/<uuid:student_id>/guardians", student_views.guardians),
     path("schools/<uuid:school_id>/students/<uuid:student_id>/guardians/<uuid:guardian_id>", student_views.guardian_detail),
     path("schools/<uuid:school_id>/enrollments", student_views.enrollments),

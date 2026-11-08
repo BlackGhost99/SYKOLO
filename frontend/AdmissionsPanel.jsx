@@ -2,6 +2,7 @@ import React, {useEffect, useState} from "react";
 import {AdmissionPolicyEditor,AdmissionProofPanel,ROUTES} from "./AdmissionRoutesPanel.jsx";
 import {SchoolCatalogSettings} from "./ParentDiscovery.jsx";
 import SchoolPaymentSetup from "./SchoolPaymentSetup.jsx";
+import {useSchoolData} from "./SchoolSettings.jsx";
 
 async function admissionApi(path, body){
   if(body!==undefined) await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
@@ -18,7 +19,43 @@ async function admissionApi(path, body){
 }
 
 const STATES={submitted:"Déposée",review:"En étude",accepted:"Admise",rejected:"Refusée",enrolled:"Inscrite"};
-export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePayment=false}){
+export function AdmissionSettings({schoolId, canDecide, canConfigureCatalog}) {
+  const root = "schools/" + schoolId + "/";
+  const {data, error} = useSchoolData(root, "academic/years academic/levels");
+  const [year, setYear] = useState("");
+  const [level, setLevel] = useState("");
+  return <section className="card">
+    <h3>Voies d’admission et pièces à fournir</h3>
+    {error && <p role="alert">{error}</p>}
+    {data && <div className="two">
+      <label className="field">Année scolaire
+        <select value={year} onChange={event => setYear(event.target.value)}>
+          <option value="">Choisir l’année…</option>
+          {data.years.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+      </label>
+      <label className="field">Niveau
+        <select value={level} onChange={event => setLevel(event.target.value)}>
+          <option value="">Tous les niveaux</option>
+          {data.levels.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+      </label>
+    </div>}
+    {year && <AdmissionPolicyEditor api={admissionApi} base={root + "admissions"} year={year} level={level || null} canDecide={canDecide}/>}
+    {canConfigureCatalog && <SchoolCatalogSettings schoolId={schoolId}/>}
+  </section>;
+}
+
+export function AdmissionPaymentSettings({schoolId}) {
+  const {data, error} = useSchoolData("schools/" + schoolId + "/", "academic/years academic/classes academic/levels");
+  if (!data) return <p role="status">{error || "Chargement des années et des niveaux…"}</p>;
+  const classes = data.classes.filter(item => item.active).map(item => ({
+    ...item, level_name: data.levels.find(level => level.id === item.level)?.name,
+  }));
+  return <SchoolPaymentSetup schoolId={schoolId} years={data.years} classes={classes}/>;
+}
+
+export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canEnroll=true}){
   const root="schools/"+schoolId+"/";
   const base=root+"admissions";
   const [years,setYears]=useState([]),[classes,setClasses]=useState([]),
@@ -26,7 +63,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
   const [year,setYear]=useState(""),[classroom,setClassroom]=useState(""),
     [first,setFirst]=useState(""),[last,setLast]=useState(""),[birth,setBirth]=useState(""),
     [guardian,setGuardian]=useState(""),[relation,setRelation]=useState(""),
-    [phone,setPhone]=useState(""),[email,setEmail]=useState(""),[source,setSource]=useState("guichet"),
+    [phone,setPhone]=useState(""),[email,setEmail]=useState(""),
     [route,setRoute]=useState("direct"),[origin,setOrigin]=useState(""),
     [routeReference,setRouteReference]=useState(""),[orientationAuthority,setOrientationAuthority]=useState(""),
     [routePolicy,setRoutePolicy]=useState(null),
@@ -34,7 +71,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
     [reason,setReason]=useState(""),
     [enrollDate,setEnrollDate]=useState(""),[capacity,setCapacity]=useState(null),
     [history,setHistory]=useState(null),[busy,setBusy]=useState(false),
-    [message,setMessage]=useState(""),[visible,setVisible]=useState(true);
+    [message,setMessage]=useState(""),[loadError,setLoadError]=useState("");
   async function refresh(){
     const [applications]=await Promise.all([admissionApi(base)]);
     setApplications(applications.applications||[]);
@@ -48,7 +85,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
       if(!active)return;
       setYears(ys.years||[]);setClasses(cs.classes||[]);
       setStudents(ss.students||[]);setApplications(apps.applications||[]);
-    }).catch(()=>{if(active)setVisible(false)});
+    }).catch(error=>{if(active)setLoadError(error.message);});
     return()=>{active=false};
   },[schoolId]);
   useEffect(()=>{
@@ -73,26 +110,20 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
     try{await fn();await refresh()}catch(error){setMessage(error.message)}
     finally{setBusy(false)}
   }
-  if(!visible)return null;
+  if(loadError)return <p role="alert">{loadError}</p>;
   const current=applications.find(x=>x.id===chosen);
   const availableClasses=classes.filter(x=>x.active&&x.year===year);
   return <section className="card" style={{marginTop:"1rem"}} aria-label="Admissions et préinscriptions">
     <h2>Admissions et préinscriptions</h2>
-    <SchoolCatalogSettings schoolId={schoolId}/>
-    {canConfigurePayment&&<details><summary>Tarifs et paiements Mobile Money</summary><SchoolPaymentSetup schoolId={schoolId} years={years} classes={classes}/></details>}
-    <p className="hint">Trois voies possibles : inscription directe, concours/test ou affectation. Le secrétariat prépare les dossiers ; la direction statue. Une admission ne vaut ni inscription définitive ni paiement.</p>
-    <details className="ar-settings">
-      <summary>Configurer les voies et pièces exigées par année / niveau</summary>
-      <AdmissionPolicyEditor api={admissionApi} base={base} year={year} level={selectedLevel}
-        canDecide={canDecide} onSaved={next=>{setRoutePolicy(next);if(!next.enabled_routes.includes(route))setRoute(next.enabled_routes[0]);}}/>
-    </details>
-    <h3>Nouvelle candidature</h3>
+    <p className="hint">Consultez les demandes reçues ou enregistrez un dossier au secrétariat.</p>
+    {canCreate && <details>
+    <summary>Nouvelle candidature</summary>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       const application=await admissionApi(base,{
         year,classroom,first_name:first,last_name:last,
         date_of_birth:birth||null,guardian_name:guardian,
         guardian_relationship:relation,guardian_phone:phone,
-        guardian_email:email,source,existing_student:existing||null,
+        guardian_email:email,source:"guichet",existing_student:existing||null,
         route,origin_school:origin,route_reference:route==="direct"?"":routeReference,
         orientation_authority:route==="orientation"?orientationAuthority:""
       });
@@ -151,9 +182,6 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
         <label className="field">Email
           <input type="email" maxLength={254} value={email} onChange={e=>setEmail(e.target.value)}/>
         </label>
-        <label className="field">Canal de demande (code libre)
-          <input required maxLength={48} pattern="[a-z0-9][a-z0-9_-]*" value={source} onChange={e=>setSource(e.target.value)}/>
-        </label>
         <label className="field">Dossier élève existant (facultatif)
           <select value={existing} onChange={e=>setExisting(e.target.value)}>
             <option value="">Nouvel élève</option>
@@ -165,7 +193,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
         {capacity.remaining===null?" Capacité non plafonnée.":" Places restantes à l'inscription : "+capacity.remaining+"."}
       </p>}
       <button disabled={busy||!year||!classroom} type="submit">Déposer la candidature</button>
-    </form>
+    </form></details>}
     <h3>Traitement des candidatures</h3>
     <label className="field">Candidature
       <select value={chosen} onChange={e=>{setChosen(e.target.value);setReason("");setHistory(null);}}>
@@ -200,7 +228,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
           setReason("");
         })}>Refuser la candidature (direction)</button>
       </form>}
-      {current.status==="accepted"&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
+      {current.status==="accepted"&&canEnroll&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
         await admissionApi(base+"/"+current.id+"/convert",{
           revision:current.revision,enrolled_on:enrollDate
         });
@@ -214,7 +242,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canConfigurePa
         </div>
         <button disabled={busy||!enrollDate} type="submit">Transformer en inscription officielle</button>
       </form>}
-      {current.status==="enrolled"&&<p>Inscription confirmée : {current.enrollment}</p>}
+      {current.status==="enrolled"&&<p>Inscription confirmée</p>}
       <button type="button" disabled={busy} onClick={()=>run(async()=>{
         const result=await admissionApi(base+"/"+current.id+"/history");
         setHistory(result.history||[]);

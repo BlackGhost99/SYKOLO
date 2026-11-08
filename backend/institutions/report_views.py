@@ -16,7 +16,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, 
 
 from .views import access, refuse, parse_body, log_event
 from .services import has_permission
-from .academic_models import AcademicPeriod
+from .academic_models import AcademicClass, AcademicPeriod
 from .assessment_models import Assessment
 from .student_models import Enrollment
 from .report_models import SchoolReport
@@ -73,8 +73,41 @@ def reports(request,school_id):
     school,error=permission(request,school_id,action)
     if error is not None:return error
     if request.method=="GET":
-        rows=SchoolReport.objects.filter(school=school).order_by("-created_at","pk")[:250]
-        return JsonResponse({"reports":[report_output(r) for r in rows]})
+        rows = SchoolReport.objects.filter(school=school).order_by("-created_at", "pk")
+        classroom = request.GET.get("classroom")
+        if classroom is None:
+            return JsonResponse({"reports": [report_output(row) for row in rows[:250]]})
+        try:
+            room_id = UUID(classroom)
+        except ValueError:
+            return JsonResponse({"error": "Classe invalide."}, status=422)
+        if not AcademicClass.objects.filter(school=school, pk=room_id).exists():
+            return JsonResponse({"error": "Classe introuvable."}, status=404)
+
+        # Published bulletins belong to their recorded class, even after a transfer.
+        reports = list(rows.filter(snapshot__class__id=str(room_id))[:500])
+        people = {}
+        for report in reports:
+            pupil = report.snapshot["student"]
+            people.setdefault(str(report.enrollment_id), {
+                "id": str(report.enrollment_id), "year": str(report.year_id),
+                "name": f"{pupil['last_name']} {pupil['first_name']} · {pupil['code']}",
+                "can_prepare": False,
+            })
+        if has_permission(request.user, school, "school.reports.manage"):
+            for enrollment in Enrollment.objects.filter(
+                school=school, classroom_id=room_id, active=True, student__active=True,
+            ).select_related("student"):
+                pupil = enrollment.student
+                people[str(enrollment.pk)] = {
+                    "id": str(enrollment.pk), "year": str(enrollment.year_id),
+                    "name": f"{pupil.last_name} {pupil.first_name} · {pupil.student_code}",
+                    "can_prepare": True,
+                }
+        return JsonResponse({
+            "reports": [report_output(report) for report in reports],
+            "pupils": sorted(people.values(), key=lambda pupil: (pupil["name"].casefold(), pupil["id"])),
+        })
     data,error=parse_body(request)
     if error is not None:return error
     if set(data)-{"enrollment","period","revision"}:

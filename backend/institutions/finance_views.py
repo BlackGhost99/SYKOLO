@@ -180,7 +180,18 @@ def schedules(request, school_id):
         return error
     if request.method == "GET":
         rows = FeeSchedule.objects.filter(school=school).order_by("year__start_date", "label")[:500]
-        return JsonResponse({"schedules": [schedule_data(row) for row in rows]})
+        result = {"schedules": [schedule_data(row) for row in rows]}
+        if request.GET.get("choices") == "1":
+            if not has_permission(request.user, school, "school.finance.manage"):
+                return refuse()
+            years = AcademicYear.objects.filter(school=school, active=True).order_by("-start_date")
+            classes = AcademicClass.objects.filter(school=school, year__active=True, active=True).order_by("name", "pk")
+            result["years"] = list(years.values("id", "name", "active"))
+            result["classes"] = [
+                {"id": room.pk, "name": room.name, "year": room.year_id, "active": room.active}
+                for room in classes
+            ]
+        return JsonResponse(result)
     data, error = parse_body(request)
     if error is not None:
         return error

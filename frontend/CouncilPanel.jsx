@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from "react";
+import {ClassField} from "./SchoolSettings.jsx";
 
 async function api(path, data) {
   if (data !== undefined) await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
@@ -15,9 +16,11 @@ async function api(path, data) {
   return result;
 }
 
-export default function CouncilPanel({schoolId}) {
+export default function CouncilPanel({schoolId, mode = "daily", canManage = true, canFinalize = true}) {
   const base = "schools/" + schoolId + "/";
+  const needsPupils = canManage || mode==="amendments";
   const [classes, setClasses] = useState([]);
+  const [years, setYears] = useState([]);
   const [periods, setPeriods] = useState([]);
   const [enrollments, setEnrollments] = useState([]);
   const [students, setStudents] = useState([]);
@@ -41,30 +44,31 @@ export default function CouncilPanel({schoolId}) {
   const [amendReason, setAmendReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [allowed, setAllowed] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   async function load() {
-    const [c,p,e,s,r,session] = await Promise.all([
+    const [c,p,e,s,r,session,y] = await Promise.all([
       api(base+"academic/classes"), api(base+"academic/periods"), api(base+"enrollments"),
-      api(base+"students"), api(base+"reports"), api(base+"councils"),
+      api(base+"students"), api(base+"reports"), api(base+"councils"), api(base+"academic/years"),
     ]);
     setClasses(c.classes || []);setPeriods(p.periods || []);
     setEnrollments(e.enrollments || []);setStudents(s.students || []);
-    setReports(r.reports || []);setCouncils(session.councils || []);
+    setReports(r.reports || []);setCouncils(session.councils || []);setYears(y.years || []);
   }
   useEffect(() => {
     let alive=true;
     Promise.all([
-      api(base+"academic/classes"),api(base+"academic/periods"),api(base+"enrollments"),
-      api(base+"students"),api(base+"reports"),api(base+"councils"),
-    ]).then(([c,p,e,s,r,session]) => {
+      api(base+"academic/classes"),api(base+"academic/periods"),needsPupils?api(base+"enrollments"):{},
+      needsPupils?api(base+"students"):{},needsPupils?api(base+"reports"):{},
+      mode==="amendments"?{}:api(base+"councils"),api(base+"academic/years"),
+    ]).then(([c,p,e,s,r,session,y]) => {
       if(!alive)return;
       setClasses(c.classes||[]);setPeriods(p.periods||[]);
       setEnrollments(e.enrollments||[]);setStudents(s.students||[]);
-      setReports(r.reports||[]);setCouncils(session.councils||[]);
-    }).catch(() => {if(alive)setAllowed(false);});
+      setReports(r.reports||[]);setCouncils(session.councils||[]);setYears(y.years||[]);
+    }).catch(error => {if(alive)setLoadError(error.message);});
     return () => {alive=false;};
-  },[schoolId]);
+  },[schoolId,needsPupils,mode]);
   useEffect(() => {
     const relevantClass = councilData?.classroom || selectedClass;
     if (!relevantClass) {setChoices([]);return;}
@@ -82,7 +86,8 @@ export default function CouncilPanel({schoolId}) {
     return()=>{alive=false;};
   },[schoolId,selectedCouncil]);
   useEffect(() => {
-    if(!selectedReport){setReportData(null);setAmendments([]);return;}
+    setReportData(null);setAmendments([]);
+    if(mode!=="amendments"||!selectedReport)return;
     let alive=true;
     Promise.all([api(base+"reports/"+selectedReport),api(base+"reports/"+selectedReport+"/amendments")])
       .then(([r,a])=>{if(alive){setReportData(r);setAmendments(a.amendments||[]);}})
@@ -96,7 +101,7 @@ export default function CouncilPanel({schoolId}) {
     catch(e) {setMessage(e.message);}
     finally {setBusy(false);}
   }
-  if(!allowed)return null;
+  if(loadError)return <p role="alert">{loadError}</p>;
   const classroom=classes.find(c=>c.id===selectedClass);
   const council=councilData;
   const pupilList=enrollments.filter(e=>e.classroom===council?.classroom);
@@ -105,8 +110,13 @@ export default function CouncilPanel({schoolId}) {
   const chosenCourse=reportSubjects.find(s=>s.course===amendCourse);
 
   return <section className="card" aria-label="Conseils et délibérations" style={{marginTop:"1rem"}}>
-    <h2>Conseils de classe et décisions</h2>
-    <p className="hint">Les décisions possibles sont configurées par l'établissement dans les paramètres « deliberation.decisions ». Aucune décision de passage n'est automatique.</p>
+    <h2>{mode==="amendments"?"Rectifier un bulletin publié":"Conseils de classe et décisions"}</h2>
+    <ClassField classes={classes} years={years} value={selectedClass} disabled={busy} onChange={value=>{
+      setSelectedClass(value);setSelectedPeriod("");setSelectedCouncil("");setCouncilData(null);
+      setSelectedEnrollment("");setSelectedReport("");setReportData(null);setDecisionCode("");setMessage("");
+    }}/>
+    {selectedClass && mode==="daily" && <>
+    {canManage && <details><summary>Planifier un conseil</summary>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       const created=await api(base+"councils",{
         classroom:selectedClass,period:selectedPeriod||null,title,meeting_date:meetingDate,
@@ -115,12 +125,6 @@ export default function CouncilPanel({schoolId}) {
       setMessage("Conseil créé : préparez les décisions avant clôture.");
     });}}>
       <div className="two">
-        <label className="field">Classe
-          <select required value={selectedClass} onChange={e=>{setSelectedClass(e.target.value);setSelectedPeriod("");}}>
-            <option value="">Choisir...</option>
-            {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </label>
         <label className="field">Période
           <select value={selectedPeriod} onChange={e=>setSelectedPeriod(e.target.value)}>
             <option value="">Année entière</option>
@@ -135,17 +139,17 @@ export default function CouncilPanel({schoolId}) {
         </label>
       </div>
       <button type="submit" disabled={busy || !selectedClass}>Créer le conseil</button>
-    </form>
+    </form></details>}
     <label className="field">Conseils enregistrés
-      <select value={selectedCouncil} onChange={e=>{setSelectedCouncil(e.target.value);setSelectedEnrollment("");}}>
+      <select value={selectedCouncil} onChange={e=>{setSelectedCouncil(e.target.value);setCouncilData(null);setSelectedEnrollment("");setSelectedReport("");setDecisionCode("");}}>
         <option value="">Choisir...</option>
-        {councils.map(c=><option key={c.id} value={c.id}>{c.title} · {c.status==="closed"?"Clôturé":"Brouillon"}</option>)}
+        {councils.filter(c=>c.classroom===selectedClass).map(c=><option key={c.id} value={c.id}>{c.title} · {c.status==="closed"?"Clôturé":"Brouillon"}</option>)}
       </select>
     </label>
     {council&&<>
       <p><strong>{council.title}</strong> · {council.status==="closed"?"Clôturé":"En préparation"} · {council.decisions?.length||0} décision(s)</p>
-      {council.decisions?.map(d=><p key={d.id}>{students.find(s=>s.id===enrollments.find(e=>e.id===d.enrollment)?.student)?.last_name||"Élève"} : {d.label}</p>)}
-      {council.status==="draft"&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
+      {council.decisions?.map(d=><p key={d.id}>{d.student_name||"Élève"} : {d.label}</p>)}
+      {canManage&&council.status==="draft"&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
         const current=council.decisions?.find(d=>d.enrollment===selectedEnrollment);
         await api(base+"councils/"+council.id+"/decisions",{
           enrollment:selectedEnrollment,report:selectedReport,code:decisionCode,rationale,
@@ -158,13 +162,13 @@ export default function CouncilPanel({schoolId}) {
         <label className="field">Élève de la classe
           <select required value={selectedEnrollment} onChange={e=>{setSelectedEnrollment(e.target.value);setSelectedReport("");}}>
             <option value="">Choisir...</option>
-            {pupilList.map(e=><option key={e.id} value={e.id}>{students.find(s=>s.id===e.student)?.last_name||e.id.slice(0,8)}</option>)}
+            {pupilList.map(e=><option key={e.id} value={e.id}>{students.find(s=>s.id===e.student)?.last_name||"Élève archivé"}</option>)}
           </select>
         </label>
         <label className="field">Bulletin publié de la période
           <select required value={selectedReport} onChange={e=>setSelectedReport(e.target.value)}>
             <option value="">Choisir...</option>
-            {reportsForPupil.map(r=><option key={r.id} value={r.id}>{r.id.slice(0,8)} · Publié</option>)}
+            {reportsForPupil.map(r=><option key={r.id} value={r.id}>{periods.find(p=>p.id===r.period)?.name || "Année complète"} · Publié</option>)}
           </select>
         </label>
         <label className="field">Décision
@@ -178,18 +182,24 @@ export default function CouncilPanel({schoolId}) {
         </label>
         <button type="submit" disabled={busy||!selectedReport||!decisionCode}>Enregistrer la décision</button>
       </form>}
-      {council.status==="draft"&&<button type="button" disabled={busy||!council.decisions?.length} onClick={()=>run(async()=>{
+      {canFinalize&&council.status==="draft"&&<button type="button" disabled={busy||!council.decisions?.length} onClick={()=>run(async()=>{
         const result=await api(base+"councils/"+council.id+"/close",{revision:council.revision});
         setCouncilData({...council,...result});
         await load();setMessage("Conseil clôturé et décisions verrouillées.");
       })}>Clôturer le conseil</button>}
     </>}
-    <h3>Rectifications des bulletins publiés</h3>
+    </>}
+    {selectedClass && mode==="amendments" && <>
     <p className="hint">Chaque rectification est un document supplémentaire : le bulletin original reste inchangé.</p>
     <label className="field">Bulletin à rectifier
       <select value={selectedReport} onChange={e=>{setSelectedReport(e.target.value);setAmendCourse("");}}>
         <option value="">Choisir...</option>
-        {reports.filter(r=>r.status==="published").map(r=><option key={r.id} value={r.id}>{r.id.slice(0,8)} · Élève {r.enrollment.slice(0,8)}</option>)}
+        {reports.filter(r=>r.status==="published" && enrollments.some(e=>e.id===r.enrollment && e.classroom===selectedClass)).map(r=>{
+          const student = students.find(s=>s.id===enrollments.find(e=>e.id===r.enrollment)?.student);
+          return <option key={r.id} value={r.id}>{student ? student.first_name+" "+student.last_name : "Élève archivé"} · {
+            periods.find(p=>p.id===r.period)?.name || "Année complète"
+          }</option>;
+        })}
       </select>
     </label>
     {selectedReport && reportData?.status==="published"&&<>
@@ -220,6 +230,7 @@ export default function CouncilPanel({schoolId}) {
         <button disabled={busy||!amendCourse} type="submit">Créer un rectificatif</button>
       </form>
       {amendments.map(a=><p key={a.id}>Rectificatif n° {a.sequence} · {a.before_percent??"—"} % → {a.after_percent} % · <a href={"/api/v1/"+base+"reports/"+selectedReport+"/amendments/"+a.id+"/pdf"}>PDF A4</a></p>)}
+    </>}
     </>}
     {message&&<p role="status" aria-live="polite">{message}</p>}
   </section>;

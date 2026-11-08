@@ -101,6 +101,25 @@ class SchoolReportTests(TestCase):
         immutable=self.client.get(self.base+"reports/"+report["id"]).json()["snapshot"]
         self.assertEqual(immutable["overall"]["percent"],"83.33")
 
+    def test_bulletins_by_class_keep_published_reports_in_the_original_class(self):
+        self.assessment(self.math, 80)
+        report = self.create_report().json()
+        self.assertEqual(self.write("reports/" + report["id"] + "/publish", {"revision": 1}).status_code, 200)
+        next_room = AcademicClass.objects.create(
+            school=self.school, year=self.year, level=self.classroom.level, code="cm2b", name="CM2 B",
+        )
+        self.enrollment.classroom = next_room
+        self.enrollment.save(update_fields=["classroom"])
+        current = self.client.get(self.base + f"reports?classroom={next_room.pk}").json()
+        self.assertEqual(current["reports"], [])
+        self.assertTrue(current["pupils"][0]["can_prepare"])
+        self.login(self.secretary)
+        original = self.client.get(self.base + f"reports?classroom={self.classroom.pk}").json()
+        self.assertEqual([item["id"] for item in original["reports"]], [report["id"]])
+        self.assertEqual(original["pupils"][0]["name"], "Nkomo Lina · BG-100")
+        self.assertFalse(original["pupils"][0]["can_prepare"])
+        self.assertEqual(self.client.get(self.base + f"reports?classroom={next_room.pk}").json()["pupils"], [])
+
     def test_only_published_assessments_and_locked_grades(self):
         a=self.assessment(self.math,80,published=False)
         self.assessment(self.french,90)

@@ -15,7 +15,8 @@ async function financeApi(url, body, method) {
   return data;
 }
 
-export default function FinancePanel({schoolId}) {
+export default function FinancePanel({schoolId, mode = "all"}) {
+  const settings = mode === "settings";
   const root = "schools/" + schoolId + "/";
   const finance = root + "finance/";
   const [years, setYears] = useState([]);
@@ -60,6 +61,10 @@ export default function FinancePanel({schoolId}) {
   }, [schoolId]);
 
   async function refresh() {
+    if (settings) {
+      setSchedules((await financeApi(finance+"schedules")).schedules || []);
+      return;
+    }
     const [ys, cs, es, ss, fs, ch] = await Promise.all([
       financeApi(root+"academic/years"), financeApi(root+"academic/classes"),
       financeApi(root+"enrollments"), financeApi(root+"students"),
@@ -72,6 +77,13 @@ export default function FinancePanel({schoolId}) {
 
   useEffect(() => {
     let mounted = true;
+    if (settings) {
+      financeApi(finance+"schedules?choices=1").then(data => {
+        if (!mounted) return;
+        setYears(data.years || []);setClasses(data.classes || []);setSchedules(data.schedules || []);
+      }).catch(error => {if(mounted){setAllowed(false);setMessage(error.message);}});
+      return () => {mounted=false;};
+    }
     Promise.all([
       financeApi(root+"academic/years"),financeApi(root+"academic/classes"),
       financeApi(root+"enrollments"),financeApi(root+"students"),
@@ -81,7 +93,7 @@ export default function FinancePanel({schoolId}) {
       setYears(ys.years||[]);setClasses(cs.classes||[]);
       setEnrollments(es.enrollments||[]);setStudents(ss.students||[]);
       setSchedules(fs.schedules||[]);setCharges(ch.charges||[]);
-    }).catch(()=>{if(mounted)setAllowed(false);});
+    }).catch(error=>{if(mounted){setAllowed(false);setMessage(error.message);}});
     return()=>{mounted=false;};
   },[schoolId]);
 
@@ -109,7 +121,7 @@ export default function FinancePanel({schoolId}) {
     catch(e){setMessage(e.message);}
     finally {setBusy(false);}
   }
-  if(!allowed)return null;
+  if(!allowed)return <p role="alert">{message}</p>;
 
   const current = charges.find(c=>c.id===selectedCharge);
   const selectedEnrollment = enrollments.find(e=>e.id===selectedStudent);
@@ -118,9 +130,8 @@ export default function FinancePanel({schoolId}) {
   const visibleCharges=charges.filter(c=>!selectedStudent||c.enrollment===selectedStudent);
 
   return <section className="card" aria-label="Frais scolaires et caisse" style={{marginTop:"1rem"}}>
-    <h2>Frais scolaires et caisse</h2>
-    <p className="hint">Comptabilité interne : les paiements sont enregistrés manuellement et ne déclenchent aucun transfert bancaire ou Mobile Money.</p>
-    {canManage && <>
+    <h2>{settings ? "Tarifs et échéances" : "Frais scolaires et caisse"}</h2>
+    {canManage && mode !== "daily" && <>
     <h3>Configurer les frais d'une année</h3>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       await financeApi(finance+"schedules",{
@@ -162,6 +173,13 @@ export default function FinancePanel({schoolId}) {
       <button disabled={busy||!selectedYear} type="submit">Créer le tarif</button>
     </form>
     </>}
+    {settings ? <div>
+      <h3>Tarifs enregistrés</h3>
+      {schedules.length === 0 && <p>Aucun tarif configuré.</p>}
+      {schedules.map(item => <p key={item.id}><strong>{item.label}</strong> · {item.amount} {item.currency} · {
+        years.find(year => year.id === item.year)?.name
+      } · {classes.find(room => room.id === item.classroom)?.name || "Toutes les classes"}</p>)}
+    </div> : <>
     <h3>Consulter les frais d’un élève</h3>
     <label className="field">Inscription de l'élève
       <select value={selectedStudent} onChange={e=>{setSelectedStudent(e.target.value);setSelectedSchedule("");setSelectedCharge("");}}>
@@ -243,6 +261,7 @@ export default function FinancePanel({schoolId}) {
         <button disabled={busy} type="submit">Confirmer l'annulation</button>
         <button type="button" onClick={()=>setCancelPayment("")}>Ne pas annuler</button>
       </form>}
+    </>}
     </>}
     {message&&<p role="status" aria-live="polite">{message}</p>}
   </section>;

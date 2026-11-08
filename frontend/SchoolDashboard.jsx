@@ -1,7 +1,6 @@
 import DelegationManager from "./DelegationManager.jsx";
 import React, {useEffect,useState} from "react";
 import AcademicPanel from "./AcademicPanel.jsx";
-import StudentPanel from "./StudentPanel.jsx";
 import StaffPanel from "./StaffPanel.jsx";
 import StaffOnboarding from "./StaffOnboarding.jsx";
 import CycleWorkspace from "./CycleWorkspace.jsx";
@@ -14,7 +13,9 @@ import CouncilPanel from "./CouncilPanel.jsx";
 import FinancePanel from "./FinancePanel.jsx";
 import AttendancePanel from "./AttendancePanel.jsx";
 import TimetablePanel from "./TimetablePanel.jsx";
-import AdmissionsPanel from "./AdmissionsPanel.jsx";
+import AdmissionsPanel, {AdmissionSettings, AdmissionPaymentSettings} from "./AdmissionsPanel.jsx";
+import {SchoolSettings, TeachingSettings} from "./SchoolSettings.jsx";
+import {FamilyDirectory, StaffDirectory} from "./SchoolDirectories.jsx";
 import StudentNumberingSettings from "./StudentNumberingSettings.jsx";
 import {FamilyWorkspace, SchoolParentAccess} from "./ParentPortal.jsx";
 import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens.jsx";
@@ -28,7 +29,6 @@ import "./yem-desktop.css";
 const modules = {
   onboarding:{label:"Ajouter un collaborateur",read:"school.staff.manage",view:StaffOnboarding},
   academic:{label:"Années, cycles et classes",read:"school.academic.read",view:AcademicPanel},
-  students:{label:"Élèves et inscriptions",read:"school.students.read",view:StudentPanel},
   staff:{label:"Personnel et enseignants",read:"school.staff.read",view:StaffPanel},
   organization:{label:"Organigramme et fonctions",read:"school.organization.read",view:OrganisationPanel},
   roles:{label:"Rôles et permissions",read:"school.roles.read",view:RoleManager},
@@ -48,21 +48,57 @@ const sections = {
     {key:"byclass",label:"Inscriptions par classe",need:["school.students.read","school.academic.read"]}],
     hidden:{new:"school.students.manage",import:"school.students.manage",fiche:"school.students.read"}},
   classes:{modules:[],lives:[{key:"live",label:"Classes et effectifs",need:["school.academic.read"]}]},
-  admissions:{title:"Admissions & préinscriptions",subtitle:"Demandes, inscriptions au secrétariat, capacité d’accueil et paiement",modules:["admissions"]},
-  payments:{title:"Encaissements et caisse journalière",subtitle:"Suivi des paiements, reçus et méthodes d’encaissement",modules:["finance"],manage:"Tarifs, frais et relevés",lives:[
+  admissions:{title:"Admissions et préinscriptions",subtitle:"Consultez les demandes et suivez leur inscription",modules:["admissions"]},
+  payments:{title:"Encaissements et caisse journalière",subtitle:"Suivi des paiements, reçus et méthodes d’encaissement",modules:["finance"],lives:[
     {key:"live",label:"Caisse du jour",need:["school.finance.read"]},
     {key:"tracking",label:"Suivi des paiements",need:["school.finance.read","school.students.read"]}]},
   arrears:{title:"Impayés & relances",subtitle:"Suivi des échéances, retards et soldes des familles",modules:[],lives:[{key:"live",label:"Impayés",need:["school.finance.read"]}]},
-  bulletins:{title:"Bulletins et résultats scolaires",subtitle:"Évaluations, préparation, contrôle et publication des bulletins",modules:["assessments","reports","council"]},
-  absences:{title:"Absences et retards",subtitle:"Appels, absences, retards et justificatifs",modules:["attendance","timetable"]},
-  staff:{title:"Personnel",subtitle:"Équipe pédagogique et administrative, affectations et comptes",modules:["onboarding","staff","organization","roles"],extra:"users"},
-  settings:{title:"Paramétrage de l’établissement",subtitle:"Années, classes, fiche d’inscription, matières, barèmes et emplois du temps",modules:["academic","curriculum","timetable"],lives:[
-    {key:"classes",label:"Classes",need:["school.academic.read"]},
-    {key:"form",label:"Fiche d’inscription",need:["school.students.read"]},
-    {key:"numbering",label:"Matricules",need:["school.settings.write"]}]},
+  bulletins:{title:"Évaluations et notes",subtitle:"Retrouvez les notes, bulletins et décisions à partir de la classe",modules:["assessments","reports","council"]},
+  absences:{title:"Absences et retards",subtitle:"Consultez les appels et les retards par classe",modules:["attendance"]},
+  parents:{title:"Parents",subtitle:"Les responsables légaux de chaque élève, par classe",modules:[],lives:[
+    {key:"directory",label:"Parents par classe",need:["school.parents.manage","school.students.read","school.academic.read"]}]},
+  staff:{title:"Personnel",subtitle:"Retrouvez les collaborateurs et gérez leurs affectations",modules:["onboarding"],lives:[
+    {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]}]},
 };
-const schoolNav=[...NAV.slice(0,2),["classes","layers","Classes"],...NAV.slice(2)];
+const schoolNav = [...NAV.slice(0,2), ["classes","layers","Classes"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
 const sectionIcon=Object.fromEntries(schoolNav.map(([id,icon])=>[id,icon]));
+
+const settingsSections = [
+  {id:"access", title:"Droits généraux", icon:"shield", items:[
+    {id:"users", label:"Comptes et accès", need:["school.members.write"]},
+    {id:"roles", label:"Rôles et droits d’accès", need:["school.roles.read"], owner:true},
+    {id:"cycle-access", label:"Accès par cycle", ownerOnly:true},
+  ]},
+  {id:"school", title:"Classes de l’établissement", icon:"school", items:[
+    {id:"classes", label:"Classes", need:["school.academic.read"]},
+    {id:"form", label:"Fiche d’inscription", need:["school.students.read"]},
+    {id:"numbering", label:"Matricules", need:["school.settings.write"]},
+    {id:"curriculum", label:"Matières et programmes", need:["school.curriculum.read"]},
+    {id:"report-policy", label:"Barèmes et bulletins", need:["school.settings.read"]},
+    {id:"council-policy", label:"Décisions du conseil", need:["school.settings.read"]},
+    {id:"amendments", label:"Rectifier un bulletin", need:["school.reports.amend","school.reports.read","school.students.read","school.academic.read"]},
+    {id:"timetable", label:"Emplois du temps", need:["school.timetable.read"]},
+    {id:"academic", label:"Années et cycles", need:["school.academic.read"]},
+  ]},
+  {id:"admissions", title:"Admissions", icon:"adduser", items:[
+    {id:"admission-policy", label:"Voies d’admission et fiche publique", need:["school.admissions.read","school.academic.read"], any:["school.admissions.manage","school.admissions.decide"]},
+  ]},
+  {id:"payments", title:"Paiements", icon:"card", items:[
+    {id:"fees", label:"Tarifs et échéances", need:["school.finance.manage","school.finance.read"]},
+    {id:"gateway", label:"Paiement des dossiers et Mobile Money", need:["school.admissions.manage","school.finance.manage","school.academic.read"]},
+  ]},
+  {id:"attendance", title:"Absences et retards", icon:"calendar", items:[
+    {id:"attendance-policy", label:"Statuts de présence", need:["school.settings.read"]},
+  ]},
+  {id:"parents", title:"Parents", icon:"users", items:[
+    {id:"parent-access", label:"Vérification et accès des responsables légaux", need:["school.parents.manage"]},
+  ]},
+  {id:"staff", title:"Personnel", icon:"idcard", items:[
+    {id:"organization", label:"Organigramme et fonctions", need:["school.organization.read"]},
+    {id:"staff-setup", label:"Comptes du personnel et affectations", need:["school.staff.manage","school.staff.read","school.academic.read"]},
+  ]},
+];
+const teachingKinds = {"report-policy":"bulletin","council-policy":"deliberation","attendance-policy":"attendance"};
 
 async function get(path) {
   const r=await fetch("/api/v1/"+path,{credentials:"same-origin"});
@@ -71,7 +107,6 @@ async function get(path) {
   return data;
 }
 const defaultPerson={username:"",email:"",first_name:"",last_name:"",password:"",role:"enseignant",function_codes:null};
-const DEFAULT_ROLE_OPTIONS=[["direction","Directeur / Directrice"],["secretariat","Secrétariat"],["enseignant","Enseignant"],["comptabilite","Comptabilité"],["parent","Parent"],["eleve","Élève"]];
 async function addUser(schoolId, body, endpoint="users") {
   await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
   const token=document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1]||"";
@@ -125,7 +160,7 @@ function UsersForm({schoolId,onMessage}) {
 function ModuleGrid({visibleSections,navigate}) {
   const entries=Object.entries(visibleSections);
   return <div className="yd-real-body">{entries.length===0?<Card title="Aucun module attribué" icon="info"><p className="yd-card-sub">Aucun module n'est attribué à votre rôle dans cet établissement.</p></Card>:
-    <div className="pc-module-grid">{entries.map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{schoolNav.find(n=>n[0]===id)?.[2]}</b><small>{[...s.lives.map(l=>l.label),...s.modules.map(k=>modules[k].label)].filter(Boolean).concat(s.users?["Comptes et accès"]:[]).join(" · ")}</small></button>)}</div>}</div>;
+    <div className="pc-module-grid">{entries.map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{schoolNav.find(n=>n[0]===id)?.[2]}</b><small>{[...s.lives.map(l=>l.label),...s.modules.map(k=>modules[k].label)].filter(Boolean).join(" · ") || s.subtitle}</small></button>)}</div>}</div>;
 }
 
 function UserMenu({user,roleLabel,onAccount,onFamilyWorkspace,onLogout}) {
@@ -152,6 +187,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [page,setPage]=useState("dashboard");
   const [sub,setSub]=useState("");
   const [params,setParams]=useState(null);
+  const [settingsSelection,setSettingsSelection]=useState(null);
   const [showWorkspace,setShowWorkspace]=useState(false);
   const [message,setMessage]=useState("");
   useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
@@ -162,26 +198,72 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     setPage("dashboard");return ()=>{alive=false;};
   },[chosen]);
   const perms=access?.permissions||[];
-  const allowed=key=>key==="onboarding"
-    ? (perms.includes("school.staff.manage")||access?.role==="proprietaire")
-    : perms.includes(modules[key].read) || (key==="attendance" && perms.includes("school.attendance.assigned"));
-  const canUsers=perms.includes("school.members.write");
-  const restricted=Boolean(access?.cycle_scope_restricted);
-  const canManageParents=!restricted&&perms.includes("school.parents.manage");
-  const visibleSections=restricted
+  const can = permission => perms.includes(permission);
+  const isOwner = Boolean(access?.is_owner || access?.role === "proprietaire");
+  const allowed = key => key === "onboarding"
+    ? can("school.staff.manage") || isOwner
+    : can(modules[key].read) || (key==="attendance" && can("school.attendance.assigned"));
+  const canUsers = can("school.members.write");
+  const restricted = Boolean(access?.cycle_scope_restricted);
+  const availableSettings = restricted ? [] : settingsSections.map(section => ({
+    ...section, items: section.items.filter(item =>
+      item.ownerOnly ? isOwner :
+        (item.owner && isOwner) || (item.need.every(can) && (!item.any || item.any.some(can)))),
+  })).filter(section => section.items.length);
+  const visibleSections = restricted
     ? Object.fromEntries([
-        ...(perms.includes("school.students.read")?[["students",{...sections.students,modules:[],users:false,lives:[{key:"cycle-list",label:"Élèves autorisés",need:[]}]}]]:[]),
-        ...(perms.includes("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],users:false,lives:[]}]]:[]),
+        ...(can("school.students.read")?[["students",{...sections.students,modules:[],lives:[{key:"cycle-list",label:"Élèves autorisés",need:[]}]}]]:[]),
+        ...(can("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],lives:[]}]]:[]),
       ])
-    : Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers,lives:(s.lives||[]).filter(l=>l.need.every(p=>perms.includes(p)))}]).filter(([,s])=>s.modules.length||s.users||s.lives.length));
-  const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]||(id==="parents"&&canManageParents));
-  function navigate(id,subTab="",extra=null){setPage(id);setSub(subTab);setParams(extra);setMessage("");window.scrollTo?.(0,0);}
+    : Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{
+        ...s,modules:s.modules.filter(allowed),lives:(s.lives||[]).filter(l=>l.need.every(can)),
+      }]).filter(([,s])=>s.modules.length||s.lives.length));
+  if (availableSettings.length) visibleSections.settings = {
+    subtitle:"Réglages de l’établissement", modules:[], lives:[],
+  };
+  const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]);
+  function navigate(id,subTab="",extra=null){
+    setPage(id);setSub(subTab);setParams(extra);setMessage("");
+    if(id==="settings"){
+      const group=availableSettings.find(group=>group.items.some(item=>item.id===subTab));
+      setSettingsSelection(group ? {section:group.id,item:subTab} : null);
+    }
+    window.scrollTo?.(0,0);
+  }
   const section=visibleSections[page];
-  const tabs=section?[...section.lives.map(l=>[l.key,l.label]),...section.modules.map(k=>[k,(section.lives.length&&section.manage)||(page==="settings"&&k==="academic"?"Structure détaillée":modules[k].label)]),...(section.users?[["users","Comptes et accès"]]:[])]:[];
+  const tabs=section?[...section.lives.map(l=>[l.key,l.label]),...section.modules.map(k=>[k,modules[k].label])]:[];
   const hiddenTab=section?.hidden?.[sub]&&perms.includes(section.hidden[sub])?sub:null;
   const tab=hiddenTab||tabs.find(t=>t[0]===sub)?.[0]||tabs[0]?.[0];
   const View=tab&&modules[tab]?.view;
-  const tabBar=tabs.length>1?<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>:null;
+  const roleLabel=isOwner && access?.role!=="proprietaire"
+    ? ["Propriétaire", access?.role_label].filter(Boolean).join(" · ")
+    : access?.role_label;
+  const panelProps={
+    schoolId:chosen,canDecide:can("school.admissions.decide"),
+    canCreate:can("school.admissions.manage"),canEnroll:can("school.admissions.enroll"),
+    canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),
+    canPublish:can("school.reports.publish"),
+  };
+  function renderSetting(id){
+    if(teachingKinds[id])return <TeachingSettings key={chosen+id} schoolId={chosen} kind={teachingKinds[id]}
+      canEdit={can("school.settings.write")} canReadAcademic={can("school.academic.read")}/>;
+    const common={schoolId:chosen,schoolName,onNavigate:navigate};
+    const SettingView=modules[id]?.view;
+    return {
+      users:<UsersForm key={chosen} schoolId={chosen} onMessage={setMessage}/>,
+      "cycle-access":<StaffOnboarding key={chosen+"-cycle"} schoolId={chosen} mode="access"/>,
+      classes:<ClassSetup key={chosen} {...common}/>,
+      numbering:<StudentNumberingSettings key={chosen} {...common}/>,
+      form:<FormSettings key={chosen} {...common} canEdit={can("school.students.manage")}/>,
+      "admission-policy":<AdmissionSettings key={chosen} {...panelProps} canConfigureCatalog={can("school.admissions.manage")}/>,
+      fees:<FinancePanel key={chosen} schoolId={chosen} mode="settings"/>,
+      gateway:<AdmissionPaymentSettings key={chosen} schoolId={chosen}/>,
+      amendments:<CouncilPanel key={chosen} schoolId={chosen} mode="amendments"/>,
+      "parent-access":<SchoolParentAccess key={chosen} schoolId={chosen} canAssignRole={canUsers} canReadStudents={can("school.students.read")}/>,
+      "staff-setup":<StaffPanel key={chosen} schoolId={chosen} mode="settings"/>,
+    }[id] || (SettingView && <SettingView key={chosen+id} {...panelProps}/>);
+  }
+  const tabBar=tabs.length>1&&page!=="staff"?<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>:null;
   const schoolName=access?.school?.name||schools.find(s=>s.id===chosen)?.name||"Mon établissement";
   const selector=<div className="yd-school-select-wrap"><label className="yd-school-select"><Icon name="school" size={24}/>
     {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>{
@@ -196,13 +278,10 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   }
   let content;
   if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
-  else if (page==="parents"&&canManageParents) content=<>
-    <PageHeader title="Gestion des accès parents" subtitle={"Vérifiez les accès des responsables légaux de "+schoolName+"."} banner={false}/>
-    <div className="yd-real-body"><SchoolParentAccess key={chosen} schoolId={chosen}
-      canAssignRole={canUsers} canReadStudents={perms.includes("school.students.read")}/></div>
-  </>;
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p></Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
+  else if (page==="settings"&&availableSettings.length) content=<SchoolSettings sections={availableSettings}
+    selection={settingsSelection} onSelect={setSettingsSelection} render={renderSetting} isOwner={isOwner}/>;
   else if (section&&(hiddenTab||section.lives.some(l=>l.key===tab))) {
     const props={schoolId:chosen,schoolName,tabs:tabBar,onNavigate:navigate,params,canManage:perms.includes("school.students.manage"),canIssueTransfer:perms.includes("school.students.manage")&&perms.includes("school.admissions.decide"),canReceive:perms.includes("school.finance.receive")};
     const k=chosen+JSON.stringify(params);
@@ -213,34 +292,48 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "students:new":<StudentForm key={k} {...props}/>,
       "students:fiche":<StudentFile key={k} {...props}/>,
       "students:import":<ImportStudents key={chosen} {...props}/>,
-      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={perms.includes("school.students.read")}/>,
+      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.read")}/>,
       "payments:live":<LivePayments key={k} {...props}/>,
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
       "arrears:live":<LiveArrears key={chosen} {...props}/>,
-      "settings:classes":<ClassSetup key={chosen} {...props}/>,
-      "settings:numbering":<StudentNumberingSettings key={chosen} {...props}/>,
-      "settings:form":<FormSettings key={chosen} {...props} canEdit={perms.includes("school.students.manage")}/>,
+      "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle}/>
+        <div className="yd-real-body"><FamilyDirectory key={chosen} schoolId={chosen} onNavigate={navigate}/></div></>,
+      "staff:directory":<><PageHeader title={section.title} subtitle={section.subtitle}/>
+        <div className="yd-real-body"><StaffDirectory key={chosen} schoolId={chosen}
+          onAdd={allowed("onboarding")?()=>navigate("staff","onboarding"):undefined}
+          onAssign={availableSettings.some(group=>group.items.some(item=>item.id==="staff-setup"))
+            ?()=>navigate("settings","staff-setup"):undefined}/></div></>,
     }[page+":"+tab];
   }
   else if (section) content=<>
-    <PageHeader title={section.title} subtitle={section.subtitle}/>
+    <PageHeader title={section.title} subtitle={section.subtitle} actions={page==="staff"&&
+      section.lives.length>0&&<Button onClick={()=>navigate("staff")}>Retour à l’équipe</Button>}/>
     {tabBar}
-    <div className="yd-real-body">{tab==="users"?<UsersForm schoolId={chosen} onMessage={setMessage}/>:View&&<View key={chosen+"-"+tab} schoolId={chosen} attendanceAssignedOnly={tab==="attendance" && !perms.includes("school.attendance.read")} attendanceCanWrite={perms.includes("school.attendance.write") || perms.includes("school.attendance.assigned")} attendanceCanFinalize={perms.includes("school.attendance.finalize")} canDecide={perms.includes("school.admissions.decide")} canConfigurePayment={perms.includes("school.admissions.manage")&&perms.includes("school.finance.manage")} canManage={perms.includes("school.organization.manage")} canManageRoles={perms.includes("school.roles.manage")}/>}</div>
+    <div className="yd-real-body">{View&&<View key={chosen+"-"+tab} {...panelProps}
+      {...(["finance","onboarding"].includes(tab)?{mode:"daily"}:{})}
+      {...(tab==="assessments"?{canEdit:can("school.assessments.manage")}:{})}
+      {...(tab==="reports"?{canPrepare:can("school.reports.manage")}:{})}
+      {...(tab==="council"?{canManage:can("school.deliberations.manage"),canFinalize:can("school.deliberations.finalize")}:{})}
+      {...(tab==="attendance"?{
+        attendanceAssignedOnly:!can("school.attendance.read")&&can("school.attendance.assigned"),
+        attendanceCanWrite:can("school.attendance.write")||can("school.attendance.assigned"),
+        attendanceCanFinalize:can("school.attendance.finalize"),
+        onSettings:can("school.settings.write")&&can("school.settings.read")?()=>navigate("settings","attendance-policy"):undefined}:{})}/>}</div>
   </>;
   else if (perms.includes("school.finance.read")) content=<>
-    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={access.role_label} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")}/>
+    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")}/>
     <MySchoolFunctions schoolId={chosen}/>
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   else content=<>
-    <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={access.role_label||"Membre"} badgeIcon="crown"/>
+    <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={roleLabel||"Membre"} badgeIcon="crown"/>
     <MySchoolFunctions schoolId={chosen}/>
     {restricted&&<div className="yd-real-body"><p className="hint">Ce compte est limité aux cycles autorisés. Les modules non encore sécurisés par cycle sont temporairement indisponibles.</p></div>}
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
-    userMenu={<UserMenu user={user} roleLabel={access?.role_label} onAccount={()=>navigate("account")}
+    userMenu={<UserMenu user={user} roleLabel={roleLabel} onAccount={()=>navigate("account")}
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
     {message&&<p role="status" className="pc-alert">{message}</p>}
     {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school">

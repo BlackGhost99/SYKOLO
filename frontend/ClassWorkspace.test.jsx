@@ -63,6 +63,7 @@ test("l'espace établissement permet de créer une classe et de consulter ses é
   await user.click(screen.getByRole("button", {name: "Fermer"}));
 
   await user.click(within(nav).getByRole("button", {name: "Paramètres"}));
-  expect(screen.getByRole("tab", {name: "Classes", exact: true})).toBeTruthy();
-  expect(screen.getByRole("tab", {name: "Structure détaillée"})).toBeTruthy();
+  await user.click(screen.getByRole("button", {name: /Classes de l’établissement/}));
+  expect(screen.getByRole("button", {name: "Classes", exact: true, pressed: true})).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Années et cycles", pressed: false})).toBeTruthy();
 });

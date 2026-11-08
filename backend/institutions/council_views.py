@@ -136,8 +136,11 @@ def council_detail(request,school_id,council_id):
     if error is not None:return error
     council=SchoolCouncil.objects.filter(school=school,pk=council_id).first()
     if council is None:return JsonResponse({"error":"Conseil introuvable."},status=404)
-    return JsonResponse({**council_data(council),
-        "decisions":[decision_data(d) for d in council.decisions.order_by("pk")]})
+    decisions = council.decisions.select_related("enrollment__student").order_by("pk")
+    return JsonResponse({**council_data(council), "decisions": [
+        {**decision_data(row), "student_name": f"{row.enrollment.student.first_name} {row.enrollment.student.last_name}"}
+        for row in decisions
+    ]})
 
 
 @require_POST

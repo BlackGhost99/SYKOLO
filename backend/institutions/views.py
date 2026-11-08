@@ -197,7 +197,9 @@ def school_members(request, school_id):
     if error is not None:
         return error
     perm = "school.members.read" if request.method == "GET" else "school.members.write"
-    if not has_permission(request.user, school, perm):
+    if not has_permission(request.user, school, perm) and not (
+        request.method == "GET" and owns_organization(request.user, school.organization)
+    ):
         return refuse()
     if request.method == "GET":
         rows = SchoolMember.objects.select_related("user", "role").filter(
@@ -290,6 +292,7 @@ def my_school_access(request, school_id):
         "school": school_response(school),
         "role": member.role.code if member else ("proprietaire" if founder else None),
         "role_label": public_role_label(member.role, school) if member else ("Propriétaire" if founder else ""),
+        "is_owner": founder,
         "roles": [member.role.code, *member.additional_roles.filter(school=school).values_list("code", flat=True)] if member else [],
         "permissions": allowed_school_permissions(permitted,cycle_ids),
         "cycle_scope_restricted": cycle_ids is not None,
@@ -469,8 +472,12 @@ def school_settings(request, school_id):
             context = validate_scope(dict(request.GET.items()))
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=422)
+        local = SchoolSetting.objects.filter(school=school, scope_key=key_for_scope(context)).first()
         effective, layers = resolve_settings(school, context)
-        return JsonResponse({"effective": effective, "layers": layers})
+        return JsonResponse({
+            "effective": effective, "layers": layers,
+            "local": {"values": local.values, "revision": local.revision} if local else None,
+        })
     data, error = parse_body(request)
     if error is not None:
         return error
