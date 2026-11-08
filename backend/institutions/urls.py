@@ -156,6 +156,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/enrollments/<uuid:enrollment_id>", student_views.enrollment_detail),
     path("schools/<uuid:school_id>/enrollments/<uuid:enrollment_id>/history", student_views.enrollment_history),
     path("schools/<uuid:school_id>/academic/annual-snapshot", annual_views.annual_snapshot),
+    path("schools/<uuid:school_id>/academic/years/<uuid:year_id>/activate", annual_views.activate_year),
     path("schools/<uuid:school_id>/academic/prepare-year", annual_views.prepare_year),
     path("schools/<uuid:school_id>/academic/<str:resource>", academic_views.collection),
     path("schools/<uuid:school_id>/academic/<str:resource>/<uuid:object_id>", academic_views.detail),
