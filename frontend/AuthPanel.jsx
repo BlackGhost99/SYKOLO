@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import brand from "./assets/yem-brand.webp";
+import "./yem-login.css";
 import PlatformConsole from "./PlatformConsole.jsx";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 import {FamilyWorkspace} from "./ParentPortal.jsx";
@@ -132,8 +133,10 @@ export default function AuthPanel() {
 
   const accountCard = (
     <section className="card pc-account-card" id="compte" aria-label="Sécurité du compte" style={{ marginBottom: "1rem" }}>
-      <h2>Compte YEM · Accès sécurisé</h2>
-      <p className="hint">Gérez votre mot de passe, votre double authentification et vos codes de récupération. Les informations affichées ici concernent votre compte réel.</p>
+      <h2>{account?.authenticated ? "Compte YEM · Accès sécurisé" : "Accès sécurisé à YEM"}</h2>
+      <p className="hint">{account?.authenticated
+        ? "Gérez votre mot de passe, votre double authentification et vos codes de récupération. Les informations affichées ici concernent votre compte réel."
+        : "Choisissez votre espace et connectez-vous avec les identifiants associés à votre compte."}</p>
       {account?.authenticated ? (
         <>
           <p>Connecté : <strong>{account.user.username}</strong> · MFA : {account.mfa_enabled ? "activé" : "désactivé"}</p>
@@ -209,7 +212,7 @@ export default function AuthPanel() {
         </>
       ) : (
         <>
-          <div className="actions">
+          <div className="actions yem-login-actions">
             <button type="button" onClick={() => { setTab("login"); setMessage(""); }}>Connexion</button>
             <button type="button" onClick={() => { setTab("reset"); setMessage(""); }}>Mot de passe oublié</button>
             <button type="button" onClick={() => { setTab("register"); setMessage(""); }}>Créer un compte parent</button>
@@ -278,10 +281,10 @@ export default function AuthPanel() {
               setMessage("Connexion réussie.");
             }); }}>
               <h3>{loginScope === "platform" ? "Administration YEM" : loginScope === "parent" ? "Espace parents" : "Connexion établissement"}</h3>
-              <div className="actions">
-                <button type="button" onClick={()=>{setLoginScope("school");setPassword("");window.history.replaceState(null,"","#/ecole");}}>Établissement</button>
-                <button type="button" onClick={()=>{setLoginScope("parent");setPassword("");window.history.replaceState(null,"","#/parents");}}>Parents</button>
-                <button type="button" onClick={()=>{setLoginScope("platform");setPassword("");window.history.replaceState(null,"","#/admin");}}>Administration plateforme</button>
+              <div className="actions yem-login-scopes" role="group" aria-label="Choisir votre espace de connexion">
+                <button type="button" aria-pressed={loginScope === "school"} onClick={()=>{setLoginScope("school");setPassword("");setCode("");window.history.replaceState(null,"","#/ecole");}}>Établissement</button>
+                <button type="button" aria-pressed={loginScope === "parent"} onClick={()=>{setLoginScope("parent");setPassword("");setCode("");window.history.replaceState(null,"","#/parents");}}>Parents</button>
+                <button type="button" aria-pressed={loginScope === "platform"} onClick={()=>{setLoginScope("platform");setPassword("");setCode("");window.history.replaceState(null,"","#/admin");}}>Administration plateforme</button>
               </div>
               {loginScope === "school" && <label className="field">Code de l'établissement
                 <input required value={schoolCode} onChange={e=>setSchoolCode(e.target.value)} placeholder="Code fourni par votre établissement" autoComplete="organization"/>
@@ -300,7 +303,7 @@ export default function AuthPanel() {
           )}
         </>
       )}
-      {message && <p role="status" aria-live="polite">{message}</p>}
+      {message && <p role="status" aria-live="polite" className="yem-auth-message">{message}</p>}
     </section>
   );
 
@@ -313,5 +316,26 @@ export default function AuthPanel() {
   if (account?.authenticated) {
     return <SchoolDashboard user={account.user} initialSchoolId={account.school_id} accountView={accountCard} onLogout={() => run(logout)} />;
   }
-  return <div className="yem-login-screen"><header className="yem-login-brand"><img src={brand} alt="Logo officiel YEM"/><div><strong>YEM</strong><span>Gestion scolaire &amp; universitaire</span></div></header>{accountCard}</div>;
+  return (
+    <div className="yem-login-screen">
+      <div className="yem-login-shade" aria-hidden="true" />
+      <main className="yem-login-layout">
+        <div className="yem-login-story">
+          <span className="yem-login-kicker">YEM · Le savoir nous rassemble</span>
+          <h1>Nos racines.<br />Leur avenir.</h1>
+          <p>Une nouvelle façon de faire grandir nos établissements, en préservant ce qui nous unit.</p>
+        </div>
+        <div className="yem-login-panel">
+          <header className="yem-login-brand">
+            <img src={brand} alt="Emblème de YEM" />
+            <div><strong>YEM</strong><span>Gestion scolaire &amp; universitaire</span></div>
+          </header>
+          <p className="yem-login-intro">Votre établissement, votre communauté, votre avenir.</p>
+          {accountCard}
+          <p className="yem-login-assurance">Accès personnel · Espace protégé · Assistance locale</p>
+        </div>
+      </main>
+      <div className="yem-login-credit">Développé par <strong>BWETEK informatyk</strong></div>
+    </div>
+  );
 }
