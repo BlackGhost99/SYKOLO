@@ -167,7 +167,7 @@ def collection(request, school_id, resource):
                 School.objects.select_for_update().get(pk=school.pk)
                 if AcademicYear.objects.filter(
                     school=school, start_date__lte=clean["end_date"], end_date__gte=clean["start_date"]
-                ).exists():
+                ).exclude(code=clean["code"]).exists():
                     return JsonResponse({"error": "Ces dates chevauchent une année existante."}, status=409)
             if resource == "periods":
                 # Serialize competing period creations for the same school year.
