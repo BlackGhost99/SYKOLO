@@ -65,8 +65,9 @@ function scale(values) {
 function Empty({ children }) { return <p className="yd-card-sub yd-empty">{children}</p>; }
 
 /* ---------- Élèves ---------- */
-export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings }) {
-  const [viewYear, setViewYear] = useState("");
+export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange }) {
+  const [viewYear, setViewYear] = useState(workingYearId);
+  useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
   const state = useData(`schools/${schoolId}/overview/students?currency=${viewCurrency}&year=${viewYear}`);
   const [query, setQuery] = useState("");
@@ -92,7 +93,7 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
   const current = rows.find(r => r.id === selected) || rows[0];
   const m = d?.metrics;
   return <>
-    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={setViewYear}/>
+    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
     <PageHeader title="Gestion des élèves" subtitle="Inscriptions, classes, responsables et suivi administratif" actions={advancedSettings}/>
     {tabs}
     <Loading state={state}>{d && <>
@@ -143,8 +144,9 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
 /* ---------- Paiements ---------- */
 function newKey() { return (crypto.randomUUID && crypto.randomUUID()) || "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)); }
 
-export function LivePayments({ schoolId, canReceive, params, tabs, advancedSettings }) {
-  const [viewYear, setViewYear] = useState("");
+export function LivePayments({ schoolId, canReceive, params, tabs, advancedSettings, workingYearId = "", onWorkingYearChange }) {
+  const [viewYear, setViewYear] = useState(workingYearId);
+  useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
   const roster = useData(`schools/${schoolId}/overview/students`);
@@ -210,7 +212,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   const share = v => total ? `${(v / total * 100).toFixed(1).replace(".", ",")} %` : "0,0 %";
   const donutRows = METHODS.map(([k, l]) => [l, Number(byMethod[k] || 0)]);
   return <>
-    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={setViewYear}/>
+    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
     <PageHeader title="Encaissements et caisse journalière" subtitle="Suivi des paiements, reçus et méthodes d’encaissement" badge="Économe" badgeIcon="coins" actions={advancedSettings}/>
     {tabs}
     <Loading state={fin}>{d && <>
@@ -261,8 +263,9 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
 }
 
 /* ---------- Impayés & relances ---------- */
-export function LiveArrears({ schoolId, schoolName, tabs }) {
-  const [viewYear, setViewYear] = useState("");
+export function LiveArrears({ schoolId, schoolName, tabs, workingYearId = "", onWorkingYearChange }) {
+  const [viewYear, setViewYear] = useState(workingYearId);
+  useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
   const [selected, setSelected] = useState(0);
@@ -278,7 +281,7 @@ export function LiveArrears({ schoolId, schoolName, tabs }) {
     const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "impayes.csv"; link.click(); URL.revokeObjectURL(link.href);
   }
   return <>
-    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={setViewYear}/>
+    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
     <PageHeader banner={false} title="Impayés & relances" subtitle="Suivi des échéances, retards et messages aux familles" actions={d && <>
       {sendHref ? <a className="yd-btn primary" href={sendHref} target="_blank" rel="noreferrer"><Icon name="send" size={20}/><span>Envoyer la relance</span></a> : <Button primary icon="send" disabled>Envoyer la relance</Button>}
       <Button icon="whatsapp" onClick={() => setChannel("WhatsApp")}>WhatsApp</Button><Button icon="message" onClick={() => setChannel("SMS")}>SMS</Button><Button icon="download" disabled={!d.arrears.length} onClick={exportCsv}>Exporter</Button></>}/>
@@ -312,8 +315,9 @@ export function LiveArrears({ schoolId, schoolName, tabs }) {
 }
 
 /* ---------- Tableau de bord ---------- */
-export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs }) {
-  const [viewYear, setViewYear] = useState("");
+export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange }) {
+  const [viewYear, setViewYear] = useState(workingYearId);
+  useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
   const d = fin.data;
@@ -324,7 +328,7 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
   const monthTotal = Number(d?.month.total || 0);
   const share = v => monthTotal ? `${Math.round(v / monthTotal * 100)} %` : "0 %";
   return <>
-    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={setViewYear}/>
+    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName} — ${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`} badge={roleLabel || "Membre"} badgeIcon="crown"/>
     {tabs}
     <Loading state={fin}>{d && <>
