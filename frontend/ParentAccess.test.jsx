@@ -59,6 +59,10 @@ test("une directrice consulte les parents par classe puis gère les accès dans 
   await user.selectOptions(await screen.findByLabelText("Classe", {exact:true}), "room");
   expect(await screen.findByRole("row", {name:/Élève Test Responsable Test/})).toBeTruthy();
   expect(screen.queryByLabelText("Identifiant du compte parent existant")).toBeNull();
+  await user.click(screen.getByRole("button", {name:"Paramètres avancés"}));
+  expect(await screen.findByRole("heading", {name:"Responsables légaux et comptes parents"})).toBeTruthy();
+  await user.click(screen.getByRole("button", {name:"Retour au module"}));
+  expect(await screen.findByRole("heading", {name:"Parents par classe"})).toBeTruthy();
   await user.click(within(nav).getByRole("button", {name:"Paramètres"}));
   await user.click(within(screen.getByRole("group", {name:"Rubriques des paramètres"})).getByRole("button", {name:"Parents", exact:true}));
   expect(await screen.findByRole("heading", {name:"Responsables légaux et comptes parents"})).toBeTruthy();

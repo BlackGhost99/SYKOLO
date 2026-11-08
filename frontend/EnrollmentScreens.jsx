@@ -319,7 +319,7 @@ export function StudentFile({ schoolId, params, canManage, canIssueTransfer, can
 }
 
 /* ---------- Inscriptions par classe ---------- */
-export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, tabs }) {
+export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings }) {
   const [year, setYear] = useState("");
   const overview = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
   const roster = useLoad(`schools/${schoolId}/overview/students${year ? `?year=${year}` : ""}`);
@@ -348,7 +348,7 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
   const fin = c => c.finance;
   return <>
     <PageHeader title="Inscriptions par classe" subtitle="Effectifs, places restantes, élèves inscrits et situation des paiements par classe"
-      actions={o && <label className="yd-select plain"><select aria-label="Année scolaire" value={year || o.year?.id || ""} onChange={e => { setYear(e.target.value); setSelected(""); }}>{o.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>}/>
+      actions={(advancedSettings || o) && <>{o && <label className="yd-select plain"><select aria-label="Année scolaire" value={year || o.year?.id || ""} onChange={e => { setYear(e.target.value); setSelected(""); }}>{o.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>}{advancedSettings}</>}/>
     {tabs}
     <Msg {...message}/>
     <Loading state={overview}>{o && (!o.year || o.classes.length === 0 ? <Card title={o.year ? `Aucune classe en ${o.year.name}` : "Aucune année scolaire"} icon="school">
@@ -609,7 +609,7 @@ export function FormSettings({ schoolId, canEdit, tabs }) {
 }
 
 /* ---------- Suivi des paiements ---------- */
-export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs }) {
+export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs, advancedSettings }) {
   const roster = useLoad(`schools/${schoolId}/overview/students`);
   const fin = useLoad(`schools/${schoolId}/overview/finance`);
   const [query, setQuery] = useState("");
@@ -627,7 +627,7 @@ export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs }) {
   const yearTotal = Number(fin.data?.year_total || 0);
   const currency = d?.currency || fin.data?.currency;
   return <>
-    <PageHeader title="Suivi des paiements" subtitle="Qui a payé, qui reste à payer et par quel moyen, élève par élève" badge="Économe" badgeIcon="coins"/>
+    <PageHeader title="Suivi des paiements" subtitle="Qui a payé, qui reste à payer et par quel moyen, élève par élève" badge="Économe" badgeIcon="coins" actions={advancedSettings}/>
     {tabs}
     <Loading state={roster}>{d && (!d.finance_visible ? <Empty>Votre rôle ne donne pas accès aux informations financières.</Empty> : <>
       <div className="yd-metrics four">

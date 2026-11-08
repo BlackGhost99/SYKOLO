@@ -91,7 +91,7 @@ function ClassRoster({schoolId, year, classroom, onClose, onStudent}) {
   </ClassDialog>;
 }
 
-export default function ClassWorkspace({schoolId, canReadStudents, onNavigate}) {
+export default function ClassWorkspace({schoolId, canReadStudents, onNavigate, advancedSettings}) {
   const [year, setYear] = useState("");
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -113,6 +113,7 @@ export default function ClassWorkspace({schoolId, canReadStudents, onNavigate}) 
         }}>{data.years.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <Icon name="chevron" size={18} className="chev"/>
       </label>}
+      {advancedSettings}
       {canCreate && <Button primary icon="plus" disabled={switchingYear || overview.loading} onClick={() => setCreating(true)}>Créer une classe</Button>}
     </>}/>
     <Msg text={message}/>
