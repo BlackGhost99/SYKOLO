@@ -56,7 +56,7 @@ function dateText(value) {
 }
 const fmt = n => (typeof n === "number" ? new Intl.NumberFormat("fr-GA").format(n) : "—");
 const orgBlank = {name:""};
-const schoolBlank = {organization_name:"",organization_id:"",school_name:"",school_type:"",education_cycles:[],username:"",email:"",first_name:"",last_name:"",password:"",role:"direction"};
+const schoolBlank = {organization_name:"",organization_id:"",school_name:"",school_type:"",education_cycles:[],username:"",email:"",first_name:"",last_name:"",password:"",role:""};
 const userBlank = {username:"",email:"",first_name:"",last_name:"",password:"",role:"",function_codes:null};
 const icons = {
   home:<><path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-6h6v6"/></>,
@@ -162,7 +162,8 @@ function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onP
   if (loading && !detail) return <section className="ya-box ya-detail"><div className="ya-empty">Chargement de la fiche…</div></section>;
   if (!detail) return <section className="ya-box ya-detail"><div className="ya-empty">Sélectionnez un établissement dans le répertoire pour consulter sa fiche et ses accès.</div></section>;
   const s=detail.school,people=detail.members||[];
-  const director=people.find(m=>m.active&&!m.is_platform_admin&&["direction","proprietaire"].includes(m.role_code));
+  const director=people.find(m=>m.active&&!m.is_platform_admin&&["direction","principal","proviseur"].includes(m.role_code));
+  const owner=people.find(m=>m.active&&!m.is_platform_admin&&m.role_code==="proprietaire");
   return <section className="ya-box ya-detail">
     <div className="ya-detail-top"><span className="ya-detail-building"><Icon name="school" size={34}/></span><div className="ya-detail-title"><h2>{s.name}</h2><p>{s.organization}</p><small>ID : {s.id.slice(0,8).toUpperCase()}</small></div><Status active={s.active}/></div>
     {detail.login_code&&<Field label="Code de connexion de l’établissement">
@@ -173,6 +174,7 @@ function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onP
     </div>
     {tab==="info"&&<div className="ya-detail-content">
       <div className="ya-info-row"><Icon name="users" size={20}/><span>Direction principale</span><strong>{director?director.name:"Non désignée"}</strong></div>
+      <div className="ya-info-row"><Icon name="shield" size={20}/><span>Propriétaire</span><strong>{owner?.name || "À attribuer"}</strong></div>
       <div className="ya-info-row"><Icon name="mail" size={20}/><span>Contact</span><strong>{director?.email || "Non renseigné"}</strong></div>
       <div className="ya-info-row"><Icon name="shield" size={20}/><span>Rôle principal</span><strong>{director?.role || "À attribuer"}</strong></div>
       <div className="ya-info-row"><Icon name="school" size={20}/><span>Type d’établissement</span><strong>{s.school_type_label||"À classifier"}</strong></div>
@@ -231,6 +233,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const [organizations,setOrganizations]=useState([]);
   const [allSchools,setAllSchools]=useState([]);
   const [schoolProfiles,setSchoolProfiles]=useState([]);
+  const [initialRoleCatalog,setInitialRoleCatalog]=useState(null);
   const [cycleLabels,setCycleLabels]=useState({});
   const [profileForm,setProfileForm]=useState({school_type:"",education_cycles:[]});
   const [events,setEvents]=useState([]);
@@ -251,6 +254,13 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const searchRef=useRef(null);
   const selectedDetail=detail?.school?.id===schoolId?detail:null;
   const selectedName=selectedDetail?.school?.name||dashboard.schools.find(s=>s.id===schoolId)?.name||"établissement";
+  const initialRolePath=view==="newSchool"&&schoolForm.school_type&&schoolForm.education_cycles.length
+    ? "platform/schools?"+new URLSearchParams([
+      ["school_type",schoolForm.school_type], ...schoolForm.education_cycles.map(cycle=>["cycle",cycle]),
+    ]).toString() : "";
+  const initialRoles=initialRoleCatalog?.path===initialRolePath ? initialRoleCatalog.roles||[] : [];
+  const initialRole=initialRoles.find(role=>role.code===schoolForm.role)
+    || initialRoles.find(role=>role.code===initialRoleCatalog?.default_role);
   const goto=useCallback(page=>{setView(page);setMenuOpen(false);setProfileOpen(false);setNotice(null);window.scrollTo?.(0,0);},[]);
   const update=(setter,name,val)=>setter(old=>({...old,[name]:val}));
   const reload=()=>{setRefreshKey(k=>k+1);setDetailKey(k=>k+1);};
@@ -279,6 +289,13 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       .catch(e=>{if(live)setNotice({type:"error",message:e.message});});
     return()=>{live=false;};
   },[mfaEnabled,refreshKey]);
+  useEffect(()=>{
+    if(!mfaEnabled||!initialRolePath)return;
+    let live=true;
+    api(initialRolePath).then(result=>{if(live)setInitialRoleCatalog({...result,path:initialRolePath});})
+      .catch(error=>{if(live)setNotice({type:"error",message:error.message});});
+    return()=>{live=false;};
+  },[mfaEnabled,initialRolePath]);
   useEffect(()=>{
     if(!mfaEnabled||!schoolId){setDetail(null);return;}
     let live=true;setDetailLoading(true);
@@ -330,7 +347,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     } catch(e) {setNotice({type:"error",message:e.message});return null;}
     finally {setBusy(false);}
   }
-  function chooseSchool(id) {setSchoolId(String(id));setDetailTab("info");setMemberPage(1);}
+  function chooseSchool(id) {if(String(id)!==schoolId)setPerson(userBlank);setSchoolId(String(id));setDetailTab("info");setMemberPage(1);}
   function openModal(type, member=null) {
     if(type==="role"&&!member) member=(selectedDetail?.members||[]).find(x=>!x.is_platform_admin)||null;
     setRoleId(member?.role_id||selectedDetail?.roles?.[0]?.id||"");
@@ -379,10 +396,14 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   }
   async function newSchool(e) {
     e.preventDefault();
-    const result=await execute(()=>api("platform/schools",schoolForm),"Établissement et responsable créés.");
+    if(!initialRole)return;
+    const result=await execute(()=>api("platform/schools",{...schoolForm,role:initialRole.code}),"Établissement et premier compte créés.");
     if(result){setSchoolId(result.id);setSchoolForm(schoolBlank);goto("schools");setNotice({type:"success",message:"Établissement "+result.name+" créé, compte "+result.username+" opérationnel."});}
   }
-  const selectedRole = selectedDetail?.roles?.find(role => role.code === person.role) || selectedDetail?.roles?.[0];
+  const schoolRoles=selectedDetail?.roles||[];
+  const accountRoles=schoolRoles.filter(role=>role.code!=="direction"||!schoolRoles.some(other=>
+    ["principal","proviseur"].includes(other.code)&&other.label===role.label));
+  const selectedRole=accountRoles.find(role=>role.code===person.role);
   const proposedFunction = selectedRole?.suggested_function;
   const personFunctions = person.function_codes ?? (proposedFunction ? [proposedFunction] : []);
   async function newUser(e) {
@@ -476,7 +497,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           <button className="ya-btn ya-btn-primary" disabled={busy} type="submit"><Icon name="plus" size={18}/> Créer l'organisation</button>
         </form></section>
       </div>}
-      {view==="newSchool"&&<div className="ya-box ya-form-page"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="school"/></div><div><h2>Créer une école et son responsable</h2><p>L'organisation, l'établissement et le compte sont créés de façon atomique.</p></div></div>
+      {view==="newSchool"&&<div className="ya-box ya-form-page"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="school"/></div><div><h2>Créer un établissement et son premier compte</h2><p>L'organisation, l'établissement et le compte sont créés ensemble.</p></div></div>
         <form onSubmit={newSchool}><h3>01 — Établissement</h3><div className="ya-form-grid">
           <Field label="Organisation propriétaire"><select value={schoolForm.organization_id?"existing":"new"} onChange={e=>setSchoolForm(old=>({...old,organization_id:e.target.value==="new"?"":dashboard.organization_options?.[0]?.id||""}))}><option value="new">Nouvelle organisation</option>{dashboard.organization_options?.length>0&&<option value="existing">Organisation existante</option>}</select></Field>
           {schoolForm.organization_id?<Field label="Sélectionner l'organisation"><select value={schoolForm.organization_id} required onChange={e=>update(setSchoolForm,"organization_id",e.target.value)}>{(dashboard.organization_options||[]).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></Field>
@@ -484,11 +505,14 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           <Field label="Nom de l'établissement"><input required maxLength={180} value={schoolForm.school_name} onChange={e=>update(setSchoolForm,"school_name",e.target.value)}/></Field>
           <Field label="Type d’établissement"><select required value={schoolForm.school_type} onChange={e=>chooseProfile(e.target.value,setSchoolForm)}><option value="">Choisir la catégorie…</option>{schoolProfiles.map(p=><option value={p.code} key={p.code}>{p.label}</option>)}</select></Field>
           {schoolForm.school_type&&<div className="ya-field"><span>Cycles réellement enseignés</span><div role="group" aria-label="Cycles enseignés" style={{display:"grid",gap:8}}>{(schoolProfiles.find(p=>p.code===schoolForm.school_type)?.allowed_cycles||[]).map(c=><label key={c}><input type="checkbox" checked={schoolForm.education_cycles.includes(c)} onChange={()=>toggleCycle(c,setSchoolForm)}/> {cycleLabels[c]||c}</label>)}</div><small>Les classes ne sont pas créées automatiquement.</small></div>}
-        </div><h3>02 — Compte du responsable</h3><div className="ya-form-grid">
+        </div><h3>02 — Premier compte</h3><div className="ya-form-grid">
           {[["first_name","Prénom"],["last_name","Nom"],["username","Identifiant"],["email","Adresse e-mail"]].map(([k,l])=><Field key={k} label={l}><input type={k==="email"?"email":"text"} required maxLength={k==="email"?254:150} value={schoolForm[k]} onChange={e=>update(setSchoolForm,k,e.target.value)}/></Field>)}
-          <Field label="Fonction du responsable"><select value={schoolForm.role} onChange={e=>update(setSchoolForm,"role",e.target.value)}><option value="direction">{schoolForm.school_type==="primaire"?"Direction du primaire":schoolForm.school_type==="maternelle"?"Direction de la maternelle":"Direction"}</option><option value="proprietaire">Propriétaire de l'école</option></select></Field>
+          <Field label="Rôle du premier compte"><select required value={initialRole?.code||""} disabled={!initialRoles.length} onChange={e=>update(setSchoolForm,"role",e.target.value)}>
+            {!initialRoles.length&&<option value="">Sélectionner le type et les cycles</option>}
+            {initialRoles.map(role=><option key={role.code} value={role.code}>{role.label}</option>)}
+          </select></Field>
           <Field label="Mot de passe initial (12 caractères minimum)"><input type="password" required minLength={12} autoComplete="new-password" value={schoolForm.password} onChange={e=>update(setSchoolForm,"password",e.target.value)}/></Field>
-        </div><div className="ya-form-footer"><button className="ya-btn ya-btn-primary" type="submit" disabled={busy||!schoolForm.school_type||!schoolForm.education_cycles.length}>{busy?"Création…":"Créer l’établissement et son responsable"}</button><button className="ya-btn ya-btn-outline" type="button" onClick={()=>goto("schools")}>Annuler</button></div>
+        </div><div className="ya-form-footer"><button className="ya-btn ya-btn-primary" type="submit" disabled={busy||!initialRole}>{busy?"Création…":"Créer l’établissement et le compte"}</button><button className="ya-btn ya-btn-outline" type="button" onClick={()=>goto("schools")}>Annuler</button></div>
         </form>
       </div>}
       {view==="profile"&&<div className="ya-box ya-form-page"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="school"/></div><div><h2>Type et cycles enseignés</h2><p>Classification de l’établissement ; aucune classe ou inscription ne sera modifiée.</p></div></div>
@@ -522,13 +546,14 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
         </section>
         <section className="ya-box ya-form-box"><h2>Créer un compte</h2><p>Identifiants et permissions isolés par établissement.</p><form onSubmit={newUser}>
           <p className="ya-selected-school">Établissement : <b>{selectedName}</b></p>
+          {selectedDetail?.school?.school_type_label&&<p>{selectedDetail.school.school_type_label} · <button type="button" className="ya-link" onClick={()=>{setReason("");goto("profile");}}>Modifier le type et les cycles</button></p>}
           <div className="ya-form-grid">
             {[["first_name","Prénom"],["last_name","Nom"],["username","Identifiant de connexion"],["email","E-mail"]].map(([k,l])=><Field key={k} label={l}><input required type={k==="email"?"email":"text"} value={person[k]} onChange={e=>update(setPerson,k,e.target.value)}/></Field>)}
-            <Field label="Rôle dans l'établissement"><select required value={selectedRole?.code||""} onChange={e=>setPerson(old=>({...old,role:e.target.value,function_codes:null}))}>{(selectedDetail?.roles||[]).map(r=><option key={r.id} value={r.code}>{r.label}</option>)}</select></Field>
+            <Field label="Rôle dans l'établissement"><select required value={selectedRole?.code||""} onChange={e=>setPerson(old=>({...old,role:e.target.value,function_codes:null}))}><option value="">Choisir un rôle…</option>{accountRoles.map(r=><option key={r.id} value={r.code}>{r.label}</option>)}</select></Field>
             <p>Code de connexion : <strong>{selectedDetail?.login_code||""}</strong></p>
             <fieldset><legend>Fonctions facultatives (sans droits automatiques)</legend>{(selectedDetail?.functions||[]).map(f=><label key={f.code}><input type="checkbox" checked={personFunctions.includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...personFunctions,f.code]:personFunctions.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset>
             <Field label="Mot de passe initial"><input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>update(setPerson,"password",e.target.value)}/></Field>
-          </div><button type="submit" disabled={busy||!schoolId||!selectedDetail?.school?.active} className="ya-btn ya-btn-primary"><Icon name="userplus" size={18}/> Créer le compte</button>
+          </div><button type="submit" disabled={busy||!selectedRole||!selectedDetail?.school?.active} className="ya-btn ya-btn-primary"><Icon name="userplus" size={18}/> Créer le compte</button>
         </form></section>
       </div>}
       {view==="audit"&&<div className="ya-box ya-audit-page"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="shield"/></div><div><h2>Journal d'audit de la plateforme</h2><p>Dernières opérations enregistrées, avec utilisateur et horodatage.</p></div><button className="ya-btn ya-btn-outline" onClick={reload}><Icon name="refresh" size={17}/> Actualiser</button></div>

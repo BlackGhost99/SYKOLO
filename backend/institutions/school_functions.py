@@ -19,6 +19,7 @@ FUNCTIONS = {
     "principal": ("Principal du collège", "Direction", "cycle", ("college",), ()),
     "proviseur": ("Proviseur du lycée", "Direction", "cycle", LYCEE, ()),
     "directeur_etudes": ("Directeur des études", "Pédagogie", "cycle", SECONDARY, ()),
+    "charge_etudes": ("Chargé / Chargée des études", "Pédagogie", "cycle", SECONDARY, ()),
     "censeur_principal": ("Censeur principal", "Pédagogie", "cycle", LYCEE, ()),
     "censeur_etudes": ("Censeur des études", "Pédagogie", "cycle", LYCEE, ()),
     "censeur_pedagogique": ("Censeur pédagogique", "Pédagogie", "cycle", LYCEE, ()),
@@ -29,6 +30,7 @@ FUNCTIONS = {
     "educateur_prescolaire": ("Éducateur / Éducatrice de maternelle", "Pédagogie", "cycle", ("prescolaire",), ()),
     "enseignant": ("Enseignant", "Pédagogie", "cycle", ALL_CYCLES, ()),
     "censeur_vie_scolaire": ("Censeur de la vie scolaire", "Vie scolaire", "cycle", LYCEE, ()),
+    "directeur_vie_scolaire": ("Directeur / Directrice de la vie scolaire", "Vie scolaire", "cycle", SECONDARY, ()),
     "conseiller_education": ("Conseiller d'éducation", "Vie scolaire", "cycle", SECONDARY, ()),
     "surveillant_general": ("Surveillant général", "Vie scolaire", "cycle", SECONDARY, ()),
     "surveillant_general_adjoint": ("Surveillant général adjoint", "Vie scolaire", "cycle", SECONDARY, ()),
@@ -38,6 +40,7 @@ FUNCTIONS = {
     "responsable_formation_continue": ("Direction des études · formation continue", "Technique", "cycle", ("lycee_technique",), ()),
     "responsable_atelier": ("Responsable d'atelier", "Technique", "cycle", ("lycee_technique",), ()),
     "secretaire": ("Secrétaire administratif", "Administration", "school", ALL_CYCLES, ()),
+    "secretaire_pedagogique": ("Secrétaire pédagogique", "Administration", "cycle", SECONDARY, ()),
     "intendant": ("Intendant", "Administration", "school", ALL_CYCLES, ()),
     "econome": ("Économe", "Administration", "school", ALL_CYCLES, ()),
     "comptable": ("Comptable", "Administration", "school", ALL_CYCLES, ()),
@@ -63,6 +66,7 @@ FUNCTION_ALIASES = {
     },
 }
 SECONDARY_COMMON_POSITIONS = (
+    "charge_etudes", "directeur_vie_scolaire", "secretaire_pedagogique",
     "enseignant", "professeur_principal", "responsable_pedagogique",
     "responsable_discipline", "surveillant_general", "surveillant_general_adjoint",
     "conseiller_education", "surveillant", "conseiller_orientation",
@@ -164,12 +168,12 @@ def account_functions(school):
 
 def suggested_account_function(school, role_code, options):
     aliases = function_aliases(school)
-    if not aliases:
-        return ""
     code = {
-        "direction": aliases["direction_etablissement"],
+        "direction": aliases.get("direction_etablissement", "direction_generale"),
+        "principal": "principal", "proviseur": "proviseur",
         "enseignant": aliases.get("enseignant", "enseignant"),
         "secretariat": "secretaire", "econome": "caissier", "comptabilite": "comptable",
+        "secretariat_pedagogique": "secretaire_pedagogique",
         "etudes": "censeur_pedagogique" if school.school_type == "lycee_general" else "directeur_etudes",
         "vie_scolaire": "surveillant_general" if school.school_type == "college" else "censeur_vie_scolaire",
         "censeur_principal": "censeur_principal", "surveillance_generale": "surveillant_general",

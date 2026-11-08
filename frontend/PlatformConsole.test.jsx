@@ -35,6 +35,18 @@ beforeEach(()=>{
       return json(dashboard);
     }
     if(value.includes("/platform/audit"))return json({events:[]});
+    if(value.endsWith("/platform/schools"))return json({schools:[school],school_profiles:[
+      {code:"college",label:"Collège",allowed_cycles:["college"],default_cycles:["college"]},
+      {code:"lycee_general",label:"Lycée général",allowed_cycles:["college","lycee_general"],default_cycles:["lycee_general"]},
+    ]});
+    if(value.includes("/platform/schools?")) {
+      const cycles=new URL(value,"https://yem.local").searchParams.getAll("cycle");
+      return json({default_role:cycles.includes("lycee_general")?"proviseur":"principal",roles:[
+        {code:"proprietaire",label:"Propriétaire de l’établissement"},
+        ...(cycles.includes("college")?[{code:"principal",label:"Principal / Principale du collège"}]:[]),
+        ...(cycles.includes("lycee_general")?[{code:"proviseur",label:"Proviseur / Proviseure du lycée"}]:[]),
+      ]});
+    }
     if(value.includes("/platform/organizations"))return json({organizations:[{id:school.organization_id,name:"Groupe Test",schools_count:1}]});
     if(value.includes("/platform/schools/")&&value.endsWith("/detail"))return json(detail);
     if(value.includes("/platform/schools/")&&value.includes("/members?"))return json({
@@ -103,6 +115,26 @@ test("la page Utilisateurs & rôles recherche les comptes auprès du serveur",as
   expect(screen.getByRole("button",{name:"Changer le rôle"})).toBeTruthy();
   await u.type(screen.getByRole("searchbox",{name:"Rechercher un compte"}),"directrice");
   await waitFor(()=>expect(fetch).toHaveBeenCalledWith(expect.stringContaining("q=directrice"),expect.anything()));
+});
+
+test("le premier compte suit les cycles sélectionnés, sans reprendre les choix du profil précédent",async()=>{
+  mount();
+  const u=userEvent.setup();
+  await u.click((await screen.findAllByRole("button",{name:"Nouvel établissement"}))[0]);
+  const type=screen.getByRole("combobox",{name:"Type d’établissement"});
+  const role=screen.getByRole("combobox",{name:"Rôle du premier compte"});
+  await screen.findByRole("option",{name:"Lycée général",exact:true});
+  await u.selectOptions(type,"lycee_general");
+  await within(role).findByRole("option",{name:/Proviseur/});
+  expect(role.value).toBe("proviseur");
+  expect(within(role).queryByRole("option",{name:/Principal/})).toBeNull();
+  await u.click(within(screen.getByRole("group",{name:"Cycles enseignés"})).getByRole("checkbox",{name:"college"}));
+  await within(role).findByRole("option",{name:/Principal/});
+  await u.selectOptions(role,"proprietaire");
+  await u.selectOptions(type,"college");
+  await within(role).findByRole("option",{name:/Principal/});
+  expect(within(role).queryByRole("option",{name:/Proviseur/})).toBeNull();
+  expect(role.value).toBe("proprietaire");
 });
 
 test("le MFA bloque totalement la console",()=>{

@@ -279,7 +279,11 @@ export default function StaffOnboarding({schoolId, mode = "all", onNavigate, wor
               <input required type="password" minLength={12} value={account.password} onChange={e=>changeAccount("password",e.target.value)} autoComplete="new-password"/>
             </label>
             <label className="field">Rôle applicatif principal
-              <select required value={account.role} onChange={e=>setAccount(old=>({...old,role:e.target.value,additional_roles:old.additional_roles.filter(r=>r!==e.target.value)}))}>
+              <select required value={account.role} onChange={e=>{
+                const role=e.target.value;
+                setAccount(old=>({...old,role,additional_roles:old.additional_roles.filter(r=>r!==role)}));
+                if(role==="proprietaire"){setLimitAccess(false);setChosenCycles([]);}
+              }}>
                 <option value="">Choisir un rôle…</option>
                 {roles.map(r=><option key={r.code} value={r.code}>{r.label}</option>)}
               </select>
@@ -288,14 +292,14 @@ export default function StaffOnboarding({schoolId, mode = "all", onNavigate, wor
           <fieldset><legend>Périmètre des autorisations</legend>
             <p className="hint">Sélectionnez les cycles académiques réels que ce compte pourra consulter et administrer. Les anciennes API non compatibles avec cette restriction seront bloquées.</p>
             {!actorRestricted&&<label style={{display:"flex",gap:8}}><input type="radio" name="staff-cycle-scope" checked={!limitAccess} onChange={()=>{setLimitAccess(false);setChosenCycles([]);}}/><span>Accès à tout l’établissement (réservé aux comptes de confiance)</span></label>}
-            <label style={{display:"flex",gap:8}}><input type="radio" name="staff-cycle-scope" checked={limitAccess} onChange={()=>setLimitAccess(true)}/><span>Limiter aux cycles sélectionnés</span></label>
+            <label style={{display:"flex",gap:8}}><input type="radio" name="staff-cycle-scope" checked={limitAccess} disabled={account.role==="proprietaire"} onChange={()=>setLimitAccess(true)}/><span>Limiter aux cycles sélectionnés</span></label>
             {limitAccess&&academicCycles.map(c=><label key={c.id} style={{display:"flex",gap:8,alignItems:"center",marginLeft:16}}>
               <input type="checkbox" checked={chosenCycles.includes(c.id)} onChange={e=>setChosenCycles(old=>e.target.checked?[...old,c.id]:old.filter(x=>x!==c.id))}/><span>{c.name}</span>
             </label>)}
             {limitAccess&&!academicCycles.length&&<p className="hint">Aucun cycle académique disponible. Un responsable doit d’abord configurer les cycles scolaires.</p>}
           </fieldset>
           <fieldset><legend>Rôles applicatifs supplémentaires (facultatif)</legend>
-            {roles.filter(r=>r.code!==account.role).map(r=><label key={r.code} style={{display:"flex",gap:8,alignItems:"center"}}>
+            {roles.filter(r=>r.code!==account.role&&r.code!=="proprietaire").map(r=><label key={r.code} style={{display:"flex",gap:8,alignItems:"center"}}>
               <input type="checkbox" checked={account.additional_roles.includes(r.code)} onChange={e=>setAccount(old=>({...old,additional_roles:e.target.checked?[...old.additional_roles,r.code]:old.additional_roles.filter(c=>c!==r.code)}))}/>
               <span>{r.label}</span>
             </label>)}
