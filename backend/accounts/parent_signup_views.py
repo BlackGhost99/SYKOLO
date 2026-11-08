@@ -1,4 +1,4 @@
-"""Public parent account signup with email verification.
+"""Public parent signup with optional email verification for a temporary pilot.
 
 No self-registered account receives membership, privileges or access to a
 student. Every school guardian link still requires human verification.
@@ -28,9 +28,17 @@ User = get_user_model()
 USERNAME = re.compile(r"[A-Za-z0-9_.@+-]{3,50}\Z")
 GENERIC = ("Si ces informations permettent de créer un compte, un lien d’activation sera envoyé "
            "à l’adresse indiquée. Vérifiez aussi les courriers indésirables.")
+PILOT_GENERIC = ("Si le compte est nouveau, il a été créé et est utilisable immédiatement. "
+                 "Vous pouvez vous connecter avec votre identifiant et votre mot de passe.")
+
+
+def registration_message():
+    return GENERIC if settings.PARENT_EMAIL_VERIFICATION_REQUIRED else PILOT_GENERIC
 
 
 def registration_ready():
+    if not settings.PARENT_EMAIL_VERIFICATION_REQUIRED:
+        return True  # No mail service is required for the temporary parent pilot.
     return bool(settings.PASSWORD_RESET_ENABLED and settings.AUTH_PUBLIC_BASE_URL.startswith("https://")) or (
         bool(settings.PASSWORD_RESET_ENABLED and settings.ENVIRONMENT in ("development", "test"))
     )
@@ -44,9 +52,11 @@ def registration_test_mode():
 @require_GET
 def registration_status(request):
     ready = registration_ready()
+    required = settings.PARENT_EMAIL_VERIFICATION_REQUIRED
     return JsonResponse({"email_registration_available": ready,
-                         "email_test_mode": ready and registration_test_mode(),
-                         "confirmation_valid_minutes": settings.PASSWORD_RESET_TIMEOUT // 60})
+                         "email_verification_required": required,
+                         "email_test_mode": ready and required and registration_test_mode(),
+                         "confirmation_valid_minutes": settings.PASSWORD_RESET_TIMEOUT // 60 if required else 0})
 
 
 def send_verification_email(user):
@@ -91,16 +101,18 @@ def register(request):
     failure(key, limit=5)
     if User.objects.filter(username__iexact=username).exists() or User.objects.filter(email__iexact=email).exists():
         audit(request,"parent_registration_duplicate")
-        return JsonResponse({"message": GENERIC})
+        return JsonResponse({"message": registration_message()})
     try:
         with transaction.atomic():
             user = User.objects.create_user(
                 username=username, first_name=first.strip(), last_name=last.strip(),
-                email=email, password=password, is_active=False, is_staff=False, is_superuser=False,
+                email=email, password=password, is_active=not settings.PARENT_EMAIL_VERIFICATION_REQUIRED,
+                is_staff=False, is_superuser=False,
             )
-            send_verification_email(user)
+            if settings.PARENT_EMAIL_VERIFICATION_REQUIRED:
+                send_verification_email(user)
     except IntegrityError:
-        return JsonResponse({"message": GENERIC})
+        return JsonResponse({"message": registration_message()})
     except Exception:
         audit(request,"parent_registration_mail_error")
         message = ("La création du compte a échoué : le service d’envoi du lien d’activation "
@@ -110,9 +122,10 @@ def register(request):
                         "recevoir ce lien. Pour inscrire les parents, utilisez un domaine "
                         "d’envoi vérifié (compatible avec le forfait gratuit).")
         return JsonResponse({"error": message}, status=503)
-    audit(request,"parent_registration_requested",user)
-    # A successful request and an existing identity must have the same HTTP status.
-    return JsonResponse({"message":GENERIC},status=200)
+    audit(request, "parent_registration_requested" if settings.PARENT_EMAIL_VERIFICATION_REQUIRED
+          else "parent_registration_pilot", user)
+    # New signups and duplicates share status and message to reduce account enumeration.
+    return JsonResponse({"message": registration_message()}, status=200)
 
 
 @require_POST
@@ -139,6 +152,8 @@ def verify(request):
 @require_POST
 def resend_verification(request):
     """Reissue an expired mail only for identities created through parent signup."""
+    if not settings.PARENT_EMAIL_VERIFICATION_REQUIRED:
+        return JsonResponse({"error": "La confirmation par e-mail est désactivée en mode test."}, status=409)
     if not registration_ready():
         return JsonResponse({"error":"Messagerie de confirmation indisponible."}, status=503)
     data, error = payload(request)
@@ -153,7 +168,7 @@ def resend_verification(request):
     except ValidationError:
         return JsonResponse({"error":"Adresse e-mail invalide."}, status=422)
     key = throttle_key(request, "parent-resend", email)
-    generic = JsonResponse({"message": GENERIC})
+    generic = JsonResponse({"message": registration_message()})
     if is_locked(key):
         return generic
     failure(key, limit=3)
