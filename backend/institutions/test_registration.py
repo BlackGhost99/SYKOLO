@@ -144,6 +144,27 @@ class RegistrationTests(TestCase):
         self.client.force_login(self.secretary)
         self.assertEqual(self.post("academic/quick-classes", {"year": str(self.year.pk), "level": str(self.level.pk), "names": ["6e C"]}).status_code, 403)
 
+    def test_class_students_returns_only_active_enrollments_for_the_requested_class(self):
+        c6b = AcademicClass.objects.create(school=self.school, year=self.year, level=self.level, code="6b", name="6e B")
+        for name, classroom, active in (("Ada", self.c6a, True), ("Camille", self.c6a, False), ("David", c6b, True)):
+            student = Student.objects.create(school=self.school, first_name=name, last_name="TEST")
+            Enrollment.objects.create(school=self.school, student=student, year=self.year, classroom=classroom,
+                                      enrolled_on=self.year.start_date, active=active)
+        self.client.force_login(self.secretary)
+        path = self.base + f"classes/{self.c6a.pk}/students"
+        response = self.client.get(path)
+        self.assertEqual(response.status_code, 200)
+        ada = Student.objects.get(school=self.school, first_name="Ada")
+        self.assertEqual(response.json(), {"students": [{"id": str(ada.pk), "first_name": "Ada", "last_name": "TEST",
+                                                         "student_code": ada.student_code}]})
+        self.assertEqual(self.client.get(self.base + f"classes/{uuid.uuid4()}/students").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/v1/schools/{self.other.pk}/classes/{self.c6a.pk}/students").status_code, 404)
+        self.client.force_login(self.teacher)
+        self.assertEqual(self.client.get(path).status_code, 403)
+        SchoolMember.objects.filter(school=self.school, user=self.secretary).update(access_cycle_ids=[str(self.level.cycle_id)])
+        self.client.force_login(self.secretary)
+        self.assertEqual(self.client.get(path).status_code, 403)
+
     def test_class_presets_are_atomic_and_delegation_is_limited_to_one_cycle(self):
         self.school.school_type = "groupe_scolaire"
         self.school.education_cycles = ["college", "lycee_general"]

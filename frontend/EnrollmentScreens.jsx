@@ -18,7 +18,7 @@ export async function req(path, body, method) {
   if (!r.ok) { const e = Error(data.error || "Requête refusée."); e.status = r.status; throw e; }
   return data;
 }
-function useLoad(path) {
+export function useLoad(path) {
   const [state, setState] = useState({ data: null, error: "", loading: true });
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -43,14 +43,14 @@ const FIN = { a_jour: ["green", "Payé"], partiel: ["yellow", "Partiel"], impaye
 const slug = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^(\d)/, "q_$1").slice(0, 40) || "champ";
 const uniqueKey = (label, taken) => { let k = slug(label), n = 2; while (taken.includes(k)) k = `${slug(label).slice(0, 36)}_${n++}`; return k; };
 
-function Msg({ text, error }) { return text ? <p role={error ? "alert" : "status"} className={error ? "pc-alert" : "yd-form-msg"}>{text}</p> : null; }
-function Empty({ children }) { return <p className="yd-card-sub yd-empty">{children}</p>; }
-function Loading({ state, children }) {
+export function Msg({ text, error }) { return text ? <p role={error ? "alert" : "status"} className={error ? "pc-alert" : "yd-form-msg"}>{text}</p> : null; }
+export function Empty({ children }) { return <p className="yd-card-sub yd-empty">{children}</p>; }
+export function Loading({ state, children }) {
   if (state.loading && !state.data) return <Card title="Chargement…" icon="clock"/>;
   if (state.error) return <p role="alert" className="pc-alert">{state.error}</p>;
   return children;
 }
-function Field({ label, required, children, wide, hint }) {
+export function Field({ label, required, children, wide, hint }) {
   return <label className={`yf-field ${wide ? "wide" : ""}`}><span>{label}{required && <i> *</i>}</span>{children}{hint && <small>{hint}</small>}</label>;
 }
 function downloadCsv(name, lines) {

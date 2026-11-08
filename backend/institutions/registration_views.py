@@ -28,7 +28,8 @@ from .school_profiles import class_level_options
 from .models import School
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import (
-    parse_fields, describe, validate_enrollment_slot, validation_response, STUDENT_INFO, GUARDIAN_INFO,
+    parse_fields, describe, validate_enrollment_slot, validation_response, visible_enrollments,
+    STUDENT_INFO, GUARDIAN_INFO,
 )
 from .views import access, parse_body, log_event, refuse
 from .enrollment_form import load_config, clean_answers, check_base, missing_documents
@@ -309,6 +310,28 @@ def classes_overview(request, school_id):
                         if finance_visible else None),
         } for c in classes],
     })
+
+
+@require_GET
+@authorized
+def class_students(request, school_id, class_id):
+    school, error = gate(request, school_id, "school.students.read")
+    if error is not None:
+        return error
+    if not has_permission(request.user, school, "school.academic.read"):
+        return refuse()
+    classroom = AcademicClass.objects.filter(school=school, pk=class_id).first()
+    if classroom is None:
+        return JsonResponse({"error": "Classe introuvable."}, status=404)
+    students = visible_enrollments(request.user, school).filter(
+        classroom=classroom, year_id=classroom.year_id, active=True, student__school=school,
+    ).order_by("student__last_name", "student__first_name", "student_id").values_list(
+        "student_id", "student__first_name", "student__last_name", "student__student_code",
+    )
+    return JsonResponse({"students": [
+        {"id": str(student_id), "first_name": first, "last_name": last, "student_code": code}
+        for student_id, first, last, code in students
+    ]}, headers={"Cache-Control": "no-store"})
 
 
 @require_POST

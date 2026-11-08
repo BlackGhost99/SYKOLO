@@ -12,7 +12,7 @@ async function api(path,body,method) {
   return data;
 }
 
-export default function StaffPanel({schoolId}){
+export default function StaffPanel({schoolId, mode = "all"}){
   const base="schools/"+schoolId+"/";
   const [staff,setStaff]=useState([]);
   const [years,setYears]=useState([]);
@@ -44,7 +44,7 @@ export default function StaffPanel({schoolId}){
     .then(([a,b,c,d])=>{
       if(!active)return;
       setStaff(a.staff);setYears(b.years);setClasses(c.classes);setAssignments(d.assignments);
-    }).catch(()=>{if(active)setVisible(false);});
+    }).catch(error=>{if(active){setVisible(false);setError(error.message);}});
     return()=>{active=false;};
   },[schoolId]);
   async function run(fn){
@@ -53,12 +53,12 @@ export default function StaffPanel({schoolId}){
     catch(e){setError(e.message);}
     finally{setBusy(false);}
   }
-  if(!visible)return null;
+  if(!visible)return <p role="alert">{error}</p>;
   return (
     <section className="card" aria-label="Personnel et affectations" style={{marginTop:"1rem"}}>
       <h2>Personnel et affectations</h2>
       <p className="hint">Une fiche du personnel peut être créée avant son compte YEM. L'affectation relie le personnel à une classe et une année.</p>
-      <form onSubmit={e=>{e.preventDefault();run(async()=>{
+      {mode === "all" && <form onSubmit={e=>{e.preventDefault();run(async()=>{
         await api(base+"staff",{staff_code:staffCode,first_name:first,last_name:last,position,username:username||null});
         setStaffCode("");setFirst("");setLast("");setPosition("");setUsername("");setError("Personnel enregistré.");
       });}}>
@@ -81,7 +81,7 @@ export default function StaffPanel({schoolId}){
           </label>
         </div>
         <button disabled={busy} type="submit">Enregistrer le personnel</button>
-      </form>
+      </form>}
       <form onSubmit={e=>{e.preventDefault();run(async()=>{
         const record=staff.find(p=>p.id===linkStaff);
         if(!record)throw Error("Sélectionnez une fiche du personnel.");

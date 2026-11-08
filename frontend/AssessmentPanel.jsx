@@ -1,4 +1,5 @@
 import React, {useEffect,useState} from "react";
+import {ClassField} from "./SchoolSettings.jsx";
 
 async function request(path,body,method){
   if(body!==undefined)await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
@@ -15,12 +16,14 @@ async function request(path,body,method){
   return data;
 }
 
-export default function AssessmentPanel({schoolId}){
+export default function AssessmentPanel({schoolId, canEdit = true, canPublish = false}){
   const base="schools/"+schoolId+"/";
   const [courses,setCourses]=useState([]);
   const [periods,setPeriods]=useState([]);
   const [subjects,setSubjects]=useState([]);
   const [classes,setClasses]=useState([]);
+  const [years,setYears]=useState([]);
+  const [classroom,setClassroom]=useState("");
   const [course,setCourse]=useState("");
   const [assessment,setAssessment]=useState("");
   const [assessments,setAssessments]=useState([]);
@@ -33,7 +36,7 @@ export default function AssessmentPanel({schoolId}){
   const [period,setPeriod]=useState("");
   const [weight,setWeight]=useState("1");
   const [message,setMessage]=useState("");
-  const [visible,setVisible]=useState(true);
+  const [loadError,setLoadError]=useState("");
   const [busy,setBusy]=useState(false);
   const chosen=assessments.find(a=>a.id===assessment);
   const currentCourse=courses.find(c=>c.id===course);
@@ -41,11 +44,11 @@ export default function AssessmentPanel({schoolId}){
   useEffect(()=>{
     let active=true;
     Promise.all([request(base+"courses"),request(base+"academic/periods"),
-      request(base+"subjects"),request(base+"academic/classes")])
-    .then(([a,b,c,d])=>{
+      request(base+"subjects"),request(base+"academic/classes"),request(base+"academic/years")])
+    .then(([a,b,c,d,y])=>{
       if(!active)return;
-      setCourses(a.courses);setPeriods(b.periods);setSubjects(c.subjects);setClasses(d.classes);
-    }).catch(()=>{if(active)setVisible(false);});
+      setCourses(a.courses);setPeriods(b.periods);setSubjects(c.subjects);setClasses(d.classes);setYears(y.years);
+    }).catch(error=>{if(active)setLoadError(error.message);});
     return()=>{active=false;};
   },[schoolId]);
 
@@ -94,22 +97,35 @@ export default function AssessmentPanel({schoolId}){
     </select>;
   }
 
-  if(!visible)return null;
+  if(loadError)return <p role="alert">{loadError}</p>;
+  const activeCourses = courses.filter(item => item.active && item.classroom === classroom);
   return <section className="card" aria-label="Évaluations et notes" style={{marginTop:"1rem"}}>
     <h2>Évaluations et saisie des notes</h2>
-    <p className="hint">Résultats non publiés. Les barèmes proviennent des paramètres pédagogiques de l’établissement et restent figés pour chaque évaluation.</p>
-    <label className="field">Cours
-      <select value={course} onChange={e=>{setCourse(e.target.value);setMessage("");}}>
-        <option value="">Sélectionner un cours autorisé…</option>
-        {courses.filter(c=>c.active).map(c=><option key={c.id} value={c.id}>{
-          subjects.find(s=>s.id===c.subject)?.name||"Matière"
-        } · {classes.find(cl=>cl.id===c.classroom)?.name||"Classe"}</option>)}
+    <ClassField classes={classes.filter(room => courses.some(item => item.active && item.classroom === room.id))}
+      years={years} value={classroom} disabled={busy} onChange={value => {setClassroom(value);setCourse("");setMessage("");}}/>
+    {classroom && <label className="field">Matière
+      <select value={course} disabled={busy} onChange={e=>{setCourse(e.target.value);setMessage("");}}>
+        <option value="">Choisir une matière…</option>
+        {activeCourses.map(item => <option key={item.id} value={item.id}>{
+          subjects.find(subject => subject.id === item.subject)?.name || "Matière"
+        }</option>)}
       </select>
-    </label>
+    </label>}
     {course&&<>
+      <label className="field">Évaluation
+        <select value={assessment} disabled={busy} onChange={e=>{setAssessment(e.target.value);setMessage("");}}>
+          <option value="">Choisir une évaluation…</option>
+          {assessments.filter(item=>item.active).map(item=><option key={item.id} value={item.id}>{item.name} · {item.assessment_date}</option>)}
+        </select>
+      </label>
+      {!assessments.length && <p>Aucune évaluation dans cette matière.</p>}
+      {canEdit && <details><summary>Créer une évaluation</summary>
       <form onSubmit={e=>{e.preventDefault();run(async()=>{
         const created=await request(base+"courses/"+course+"/assessments",{
-          name,assessment_date:assessmentDate,kind,weight,period:period||null,
+          name,assessment_date:assessmentDate,
+          kind:kind.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/^[^a-z]+/, "").replace(/[^a-z0-9]+/g, "_").replace(/_$/, "") || "devoir",
+          weight,period:period||null,
         });
         const result=await request(base+"courses/"+course+"/assessments");
         setAssessments(result.assessments);setAssessment(created.id);
@@ -123,11 +139,11 @@ export default function AssessmentPanel({schoolId}){
           <label className="field">Date
             <input required type="date" value={assessmentDate} onChange={e=>setAssessmentDate(e.target.value)}/>
           </label>
-          <label className="field">Type (code personnalisable)
-            <input required pattern="[a-z][a-z0-9_-]*" value={kind} maxLength={50} onChange={e=>setKind(e.target.value)}/>
+          <label className="field">Type d’évaluation
+            <input required maxLength={50} value={kind} onChange={e=>setKind(e.target.value)} placeholder="Devoir, contrôle continu…"/>
           </label>
-          <label className="field">Poids de l'évaluation
-            <input required type="number" min="0.001" max="1000" step="0.001" value={weight} onChange={e=>setWeight(e.target.value)}/>
+          <label className="field">Coefficient
+            <input required type="number" min="0.01" max="1000" step="0.001" value={weight} onChange={e=>setWeight(e.target.value)}/>
           </label>
           <label className="field">Période (facultative)
             <select value={period} onChange={e=>setPeriod(e.target.value)}>
@@ -137,21 +153,23 @@ export default function AssessmentPanel({schoolId}){
           </label>
         </div>
         <button disabled={busy} type="submit">Créer l'évaluation</button>
-      </form>
-      <label className="field">Évaluation existante
-        <select value={assessment} onChange={e=>{setAssessment(e.target.value);setMessage("");}}>
-          <option value="">Sélectionner…</option>
-          {assessments.filter(a=>a.active).map(a=><option key={a.id} value={a.id}>{a.name} · {a.assessment_date}</option>)}
-        </select>
-      </label>
+      </form></details>}
     </>}
     {chosen&&<>
       <h3>Notes de l'évaluation : {chosen.name}</h3>
-      <p className="hint">Barème : {chosen.policy.scale.kind} · {chosen.policy.scale.max} · poids {chosen.weight}. Les absences suivent les paramètres du barème.</p>
+      <p>{chosen.policy.name} · Coefficient {chosen.weight} · {chosen.published ? "Publiée" : "Brouillon"}</p>
+      {canPublish && !chosen.published && <button type="button" disabled={busy} onClick={()=>run(async()=>{
+        await request(base+"assessments/"+assessment+"/publish",{revision:chosen.revision});
+        setAssessments((await request(base+"courses/"+course+"/assessments")).assessments);
+        setMessage("Évaluation publiée.");
+      })}>Publier les résultats</button>}
       {roster.length===0?<p className="hint">Aucune inscription active dans cette classe.</p>:
         <div>
           {roster.map(s=>{
             const existing=grades.find(g=>g.enrollment===s.enrollment_id);
+            if (!canEdit || chosen.published) return <p key={s.enrollment_id}>
+              <strong>{s.first_name} {s.last_name}</strong> · {existing?.score ?? "Sans note"} {existing?.label || ""}
+            </p>;
             return <form key={s.enrollment_id} onSubmit={e=>{e.preventDefault();run(async()=>{
               const raw=Object.hasOwn(scoreDraft,s.enrollment_id)?scoreDraft[s.enrollment_id]:(existing?.score??"");
               const numeric=["numeric","percentage"].includes(chosen.policy.scale.kind);

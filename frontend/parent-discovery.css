@@ -1,6 +1,6 @@
 /* Mobile-first YEM Parents. Class names isolated from school admin styles. */
 .yp-app{--yp-green:#175c46;--yp-pale:#edf7f0;--yp-line:#e4ece8;color:#17382d;max-width:900px;margin:0 auto;padding:12px 4px 30px;font-size:15px}
-.yp-head{display:flex;justify-content:space-between;gap:18px;align-items:center;background:linear-gradient(115deg,#155b43,#298264);color:white;border-radius:20px;padding:24px;margin-bottom:16px}
+.yp-head{display:flex;justify-content:space-between;gap:18px;align-items:center;height:auto;border:0;background:linear-gradient(115deg,#155b43,#298264);color:white;border-radius:20px;padding:24px;margin-bottom:16px;font-size:inherit}
 .yp-head h2{margin:6px 0 8px;font-size:clamp(23px,5vw,31px);color:white;line-height:1.17}
 .yp-head p{color:#e9f6ef;margin:0;max-width:580px}.yp-eyebrow{font-weight:750;letter-spacing:.08em;font-size:12px;text-transform:uppercase}
 .yp-stat{min-width:80px;text-align:center;font-size:32px;font-weight:850;padding:12px;background:#ffffff24;border:1px solid #ffffff50;border-radius:15px}

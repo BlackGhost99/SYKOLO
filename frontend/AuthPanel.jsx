@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import brand from "./assets/yem-brand.webp";
 import PlatformConsole from "./PlatformConsole.jsx";
 import SchoolDashboard from "./SchoolDashboard.jsx";
+import {FamilyWorkspace} from "./ParentPortal.jsx";
 
 const csrfToken = () =>
   document.cookie.split("; ").find((item) => item.startsWith("csrftoken="))?.split("=")[1] || "";
@@ -28,7 +29,9 @@ async function authApi(path, body) {
 export default function AuthPanel() {
   const [account, setAccount] = useState(null);
   const [tab, setTab] = useState("login");
-  const [loginScope, setLoginScope] = useState(window.location.hash === "#/admin" ? "platform" : "school");
+  const [loginScope, setLoginScope] = useState(() => (
+    {"#/admin":"platform", "#/parents":"parent"}[window.location.hash] || "school"
+  ));
   const [schoolCode, setSchoolCode] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -256,11 +259,14 @@ export default function AuthPanel() {
     </section>
   );
 
-  if (account?.authenticated && !account.user?.is_platform_admin) {
-    return <SchoolDashboard user={account.user} accountView={accountCard} onLogout={() => run(logout)} />;
-  }
   if (account?.authenticated && account.user?.is_platform_admin) {
     return <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} accountView={accountCard} onLogout={() => run(logout)}/>;
+  }
+  if (account?.authenticated && account.login_scope === "parent") {
+    return <FamilyWorkspace accountView={accountCard} onLogout={() => run(logout)} />;
+  }
+  if (account?.authenticated) {
+    return <SchoolDashboard user={account.user} initialSchoolId={account.school_id} accountView={accountCard} onLogout={() => run(logout)} />;
   }
   return <div className="yem-login-screen"><header className="yem-login-brand"><img src={brand} alt="Logo officiel YEM"/><div><strong>YEM</strong><span>Gestion scolaire &amp; universitaire</span></div></header>{accountCard}</div>;
 }

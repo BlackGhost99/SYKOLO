@@ -46,7 +46,11 @@ class InstitutionTests(TestCase):
         self.assertFalse(SchoolMember.objects.filter(school_id=self.school["id"], user=self.founder).exists())
         self.assertTrue(OrganizationMember.objects.filter(organization_id=self.org["id"], user=self.founder).exists())
         self.assertEqual(self.client.get(self.school_url + "/settings").status_code, 403)
-        self.assertEqual(self.client.get(self.school_url + "/members").status_code, 403)
+        self.assertEqual(self.client.get(self.school_url + "/members").status_code, 200)
+        access = self.client.get(self.school_url + "/my-access").json()
+        self.assertTrue(access["is_owner"])
+        self.assertEqual(access["role"], "proprietaire")
+        self.assertNotIn("school.settings.write", access["permissions"])
         self.as_user(self.other)
         self.assertEqual(self.client.get(self.school_url).status_code, 404)
         self.assertEqual(self.client.get(self.school_url + "/settings").status_code, 404)
@@ -65,6 +69,10 @@ class InstitutionTests(TestCase):
         self.assertEqual(self.client.get(self.school_url + "/settings").status_code, 403)
         self.as_user(self.director)
         self.assertEqual(self.client.get(self.school_url + "/settings").status_code, 200)
+        access = self.client.get(self.school_url + "/my-access").json()
+        self.assertFalse(access["is_owner"])
+        self.assertEqual(access["role"], "direction")
+        self.assertIn("school.settings.write", access["permissions"])
         self.assertEqual(self.client.get(self.school_url + "/members").status_code, 200)
         self.assertEqual(self.client.get(self.school_url + "/audit").status_code, 200)
         self.assertEqual(self.post(self.school_url + "/members", {
@@ -98,7 +106,9 @@ class InstitutionTests(TestCase):
         self.assertEqual(self.post(self.school_url + "/settings", {
             "scope": {}, "values": {"notifications": {"sms": True}}, "revision": 0,
         }).status_code, 409)
-        self.assertEqual(self.client.get(self.school_url + "/settings?cycle=primaire").json()["effective"]["grading"]["scale"]["max"], 20)
+        settings = self.client.get(self.school_url + "/settings?cycle=primaire").json()
+        self.assertEqual(settings["effective"]["grading"]["scale"]["max"], 20)
+        self.assertEqual(settings["local"], {"values": {"notifications": {"sms": True}}, "revision": 1})
         self.assertTrue(self.client.get(self.school_url + "/settings?cycle=primaire").json()["effective"]["notifications"]["sms"])
         self.assertFalse(self.client.get(self.school_url + "/settings?cycle=secondaire").json()["effective"]["notifications"]["sms"])
         self.assertEqual(self.post(self.school_url + "/settings", {

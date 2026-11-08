@@ -14,6 +14,12 @@ class ResponseHeadersMiddleware:
 
 class SchoolSessionMiddleware:
     """Bind every school request, including legacy routes, to the login tenant."""
+    _PUBLIC_FAMILY_PATHS = {
+        "/api/v1/parents/catalog",
+        "/api/v1/parents/paycentral/webhook",
+        "/api/v1/parents/singpay/webhook",
+    }
+
     def __init__(self, get_response):
         self.get_response = get_response
 
@@ -29,6 +35,17 @@ class SchoolSessionMiddleware:
             match = re.match(r"/api/v1/schools/([^/]+)(?:/|$)", request.path)
             if (match and match.group(1) != tenant) or request.path.startswith(("/api/v1/platform/", "/api/v1/organizations")):
                 return JsonResponse({"error": "Session limitée à l'établissement choisi."}, status=403)
+        path = request.path_info.rstrip("/")
+        if (path.startswith("/api/v1/parents/") and path not in self._PUBLIC_FAMILY_PATHS
+                and request.user.is_authenticated):
+            from institutions.models import SchoolMember
+            # Older school-issued parent accounts can still sign in with a school code.
+            if request.user.is_superuser or (tenant and not SchoolMember.objects.filter(
+                user=request.user, school_id=tenant, active=True,
+                role__school_id=tenant, role__code="parent",
+            ).exists()):
+                return JsonResponse({"error": "Cette action est réservée à l’espace familles."},
+                                    status=403, headers={"Cache-Control": "no-store"})
         return self.get_response(request)
 
 

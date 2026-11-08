@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from "react";
+import {ClassField} from "./SchoolSettings.jsx";
 
 async function request(path, data) {
   if (data !== undefined) await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
@@ -15,10 +16,13 @@ async function request(path, data) {
   return v;
 }
 
-export default function AttendancePanel({schoolId,attendanceAssignedOnly=false,attendanceCanWrite=true,attendanceCanFinalize=true}) {
+export default function AttendancePanel({schoolId, onSettings, attendanceAssignedOnly = false,
+  attendanceCanWrite = true, attendanceCanFinalize = true}) {
   const root = "schools/" + schoolId + "/";
   const base = root + "attendance/";
   const [classes,setClasses]=useState([]);
+  const [years,setYears]=useState([]);
+  const [markFilter,setMarkFilter]=useState("all");
   const [selectedClass,setSelectedClass]=useState("");
   const [sessions,setSessions]=useState([]);
   const [selectedSession,setSelectedSession]=useState("");
@@ -41,12 +45,14 @@ export default function AttendancePanel({schoolId,attendanceAssignedOnly=false,a
     let active=true;
     Promise.all([
       request(root+"academic/classes"),
+      request(root+"academic/years"),
       attendanceAssignedOnly ? request(root+"staff/me/assignments") : null,
-    ]).then(([v, assigned])=>{
-      if (!active) return;
-      const ids = new Set(assigned?.assignments.map(a=>a.classroom));
-      setClasses((v.classes||[]).filter(c=>!attendanceAssignedOnly || ids.has(c.id)));
-    }).catch(()=>{if(active)setClasses([])});
+    ]).then(([c,y,assigned])=>{
+      if(!active)return;
+      const ids=new Set(assigned?.assignments.map(item=>item.classroom));
+      setClasses((c.classes||[]).filter(room=>!attendanceAssignedOnly||ids.has(room.id)));
+      setYears(y.years||[]);
+    }).catch(error=>{if(active)setMessage(error.message);});
     return()=>{active=false;};
   },[schoolId,attendanceAssignedOnly]);
 
@@ -54,13 +60,12 @@ export default function AttendancePanel({schoolId,attendanceAssignedOnly=false,a
     let active=true;
     setSessions([]);setSelectedSession("");setStatuses([]);setDrafts({});setPolicyMessage("");setSummary(null);setHistory(null);
     if (!selectedClass) return()=>{active=false};
-    Promise.all([
-      request(base+"options?classroom="+encodeURIComponent(selectedClass)),
-      request(base+"sessions?classroom="+encodeURIComponent(selectedClass)),
-    ]).then(([opts,s])=>{
-      if (!active)return;
-      setStatuses(opts.statuses||[]);setSessions(s.sessions||[]);
-    }).catch(e=>{if(active)setPolicyMessage(e.message)});
+    request(base+"options?classroom="+encodeURIComponent(selectedClass))
+      .then(opts=>{if(active)setStatuses(opts.statuses||[]);})
+      .catch(()=>{if(active)setPolicyMessage("Les statuts de présence sont indisponibles pour cette classe.");});
+    request(base+"sessions?classroom="+encodeURIComponent(selectedClass))
+      .then(result=>{if(active)setSessions(result.sessions||[]);})
+      .catch(error=>{if(active)setMessage(error.message);});
     return()=>{active=false};
   },[schoolId,selectedClass]);
 
@@ -102,60 +107,58 @@ export default function AttendancePanel({schoolId,attendanceAssignedOnly=false,a
   function edit(enrollment,key,value) {
     setDrafts(prev=>({...prev,[enrollment]:{...prev[enrollment],[key]:value}}));
   }
-  const chosenClass=classes.find(x=>x.id===selectedClass);
+
   const roster=sessionData?.roster||[];
   const recorded=roster.filter(x=>x.mark).length;
   const prepared=roster.filter(x=>{
     const d=drafts[x.enrollment];
-    if(!d?.status)return false;
+    if(!d?.status || (attendanceAssignedOnly && x.mark?.justified))return false;
     const m=x.mark;
     return !m || d.status!==m.status || d.note!==m.note || d.justification!==m.justification || d.justified!==m.justified;
   });
   return <section className="card" style={{marginTop:"1rem"}} aria-label="Appels et assiduité">
-    <h2>Appels et assiduité</h2>
-    <p className="hint">Une séance par classe, date et créneau. Aucune présence présumée : les élèves non renseignés restent sans statut.</p>
-    <label className="field">Classe
-      <select value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>
-        <option value="">Choisir une classe...</option>
-        {classes.filter(x=>x.active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-      </select>
-    </label>
-    {policyMessage&&<p role="status">{policyMessage} Ajoutez par exemple dans les paramètres de l'école :
-      <code>{'{"attendance":{"statuses":[{"code":"p","label":"Présent","group":"present"},{"code":"a","label":"Absent","group":"absent"},{"code":"r","label":"Retard","group":"late"}]}}'}</code>
-    </p>}
-    {selectedClass&&statuses.length>0&&<>
-      {attendanceCanWrite&&<>
-        <h3>Créer une séance</h3>
-        <form onSubmit={e=>{e.preventDefault();run(async()=>{
-          const result=await request(base+"sessions",{
-            classroom:selectedClass,date,slot,label,
-          });
-          await reloadSessions();setSelectedSession(result.id);setMessage("Nouvel appel créé.");
-        })}}>
-          <div className="two">
-            <label className="field">Date
-              <input type="date" required value={date} onChange={e=>setDate(e.target.value)} />
-            </label>
-            <label className="field">Code du créneau
-              <input required maxLength={48} pattern="[a-z0-9][a-z0-9_-]*" value={slot} onChange={e=>setSlot(e.target.value)} placeholder="matin, cours1..." />
-            </label>
-            <label className="field">Intitulé
-              <input required maxLength={120} value={label} onChange={e=>setLabel(e.target.value)} placeholder="Appel du matin" />
-            </label>
-          </div>
-          <button disabled={busy} type="submit">Créer la séance</button>
-        </form>
-      </>}
-      <label className="field">Séances enregistrées
-        <select value={selectedSession} onChange={e=>setSelectedSession(e.target.value)}>
-          <option value="">Choisir une séance...</option>
-          {sessions.map(s=><option key={s.id} value={s.id}>{s.date} · {s.label} {s.closed_at?"· Clôturée":""}</option>)}
+    <h2>Absences, retards et appels</h2>
+    <ClassField classes={classes} years={years} value={selectedClass} disabled={busy} onChange={value=>{
+      setSelectedClass(value);setMessage("");setMarkFilter("all");setDate("");setDateFrom("");setDateTo("");
+    }}/>
+    {policyMessage&&<p role="status">{policyMessage} {onSettings&&<button type="button" onClick={onSettings}>Configurer les statuts</button>}</p>}
+    {selectedClass&&<>
+      <label className="field">Appels enregistrés
+        <select value={selectedSession} disabled={busy} onChange={e=>{setSelectedSession(e.target.value);setMarkFilter("all");}}>
+          <option value="">Choisir un appel…</option>
+          {sessions.map(s=><option key={s.id} value={s.id}>{s.date} · {s.label} {s.closed_at?"· Clôturé":""}</option>)}
         </select>
       </label>
+      {!sessions.length && <p>Aucun appel enregistré pour cette classe.</p>}
+      {attendanceCanWrite && statuses.length>0 && <details><summary>Faire un nouvel appel</summary>
+      <form onSubmit={e=>{e.preventDefault();run(async()=>{
+        const result=await request(base+"sessions",{
+          classroom:selectedClass,date,slot:slot.replace(":", "-"),label:label.trim() ? slot+" · "+label.trim() : slot,
+        });
+        await reloadSessions();setSelectedSession(result.id);setMessage("Nouvel appel créé.");
+      })}}>
+        <div className="two">
+          <label className="field">Date
+            <input type="date" required value={date} onChange={e=>setDate(e.target.value)} />
+          </label>
+          <label className="field">Heure de l’appel
+            <input required type="time" value={slot} onChange={e=>setSlot(e.target.value)} />
+          </label>
+          <label className="field">Intitulé (facultatif)
+            <input maxLength={110} value={label} onChange={e=>setLabel(e.target.value)} placeholder="Appel du matin" />
+          </label>
+        </div>
+        <button disabled={busy} type="submit">Créer la séance</button>
+      </form></details>}
     </>}
     {sessionData&&<>
       <h3>Feuille d'appel du {sessionData.date} — {sessionData.label}</h3>
       <p>{recorded}/{roster.length} élèves renseignés. {sessionData.closed_at?"Séance clôturée.":"Modifications encore possibles."}</p>
+      <label className="field">Afficher
+        <select value={markFilter} onChange={e=>setMarkFilter(e.target.value)}>
+          <option value="all">Tous les élèves</option><option value="absent">Absents</option><option value="late">En retard</option>
+        </select>
+      </label>
       <form onSubmit={e=>{e.preventDefault();run(async()=>{
         const marks=prepared.map(e=>({
           enrollment:e.enrollment,...drafts[e.enrollment],
@@ -166,39 +169,42 @@ export default function AttendancePanel({schoolId,attendanceAssignedOnly=false,a
         await reloadSession();await reloadSessions();setReason("");
         setMessage(result.marks.length+" saisie(s) enregistrée(s).");
       })}}>
-        {roster.map(e=>{
+        {roster.filter(e=>markFilter==="all" || e.mark?.group===markFilter).map(e=>{
           const d=drafts[e.enrollment]||{};
-          const readOnly = Boolean(!attendanceCanWrite || sessionData.closed_at || (attendanceAssignedOnly && e.mark?.justified));
+          const readOnly=!attendanceCanWrite||sessionData.closed_at||(attendanceAssignedOnly&&e.mark?.justified);
           return <div key={e.enrollment} style={{padding:"0.6rem 0",borderBottom:"1px solid var(--border,#ddd)"}}>
             <strong>{e.last_name} {e.first_name}</strong> <small>({e.student_code})</small>
-            <div className="two">
-              <label className="field">Statut
-                <select disabled={readOnly} value={d.status||""} onChange={ev=>edit(e.enrollment,"status",ev.target.value)}>
+            {e.mark && <p>{e.mark.label}{e.mark.justified?" · Justifié":""}</p>}
+            {!readOnly&&statuses.length>0&&<div className="two">
+              <label className="field">Présence
+                <select value={d.status||""} onChange={ev=>edit(e.enrollment,"status",ev.target.value)}>
                   <option value="">Non renseigné</option>
                   {statuses.map(s=><option key={s.code} value={s.code}>{s.label}</option>)}
                 </select>
               </label>
+              <details><summary>Ajouter une observation ou un justificatif</summary>
               <label className="field">Observation
-                <input disabled={readOnly} maxLength={500} value={d.note||""} onChange={ev=>edit(e.enrollment,"note",ev.target.value)} />
+                <input maxLength={500} value={d.note||""} onChange={ev=>edit(e.enrollment,"note",ev.target.value)} />
               </label>
-              <label className="field">Justification déposée (texte administratif)
-                <input disabled={readOnly} maxLength={500} value={d.justification||""} onChange={ev=>edit(e.enrollment,"justification",ev.target.value)} />
+              <label className="field">Justificatif
+                <input maxLength={500} value={d.justification||""} onChange={ev=>edit(e.enrollment,"justification",ev.target.value)} />
               </label>
-              <label className="field">Justification vérifiée
-                <input type="checkbox" disabled={readOnly || attendanceAssignedOnly} checked={!!d.justified}
+              {!attendanceAssignedOnly && <label className="field">Justification vérifiée
+                <input type="checkbox" checked={!!d.justified}
                   onChange={ev=>edit(e.enrollment,"justified",ev.target.checked)} />
-              </label>
-            </div>
+              </label>}
+              </details>
+            </div>}
             {e.mark&&<button type="button" disabled={busy} onClick={()=>run(async()=>{
               const h=await request(base+"sessions/"+selectedSession+"/marks/"+e.enrollment+"/history");
               setHistory({name:e.first_name+" "+e.last_name,items:h.history||[]});
             })}>Voir l'historique</button>}
           </div>;
         })}
-        {attendanceCanWrite&&!sessionData.closed_at&&<>
-          <label className="field">Motif obligatoire des corrections (si statut déjà enregistré)
-            <textarea maxLength={500} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Pourquoi cette correction ?" />
-          </label>
+        {attendanceCanWrite&&!sessionData.closed_at&&statuses.length>0&&<>
+          {prepared.some(row=>row.mark) && <label className="field">Motif de la correction
+            <textarea maxLength={500} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Pourquoi cette correction ?" required />
+          </label>}
           <button disabled={busy||prepared.length===0||prepared.length>100} type="submit">Enregistrer {prepared.length} modification(s)</button>
         </>}
       </form>
@@ -213,8 +219,8 @@ export default function AttendancePanel({schoolId,attendanceAssignedOnly=false,a
         Révision {h.revision} · {h.after.label} {h.after.justified?"· Justifié":""} · {h.reason||"Première saisie"} · {new Date(h.created_at).toLocaleString("fr-FR")}
       </p>)}
     </div>}
-    {selectedClass&&statuses.length>0&&<>
-      <h3>Statistiques d'assiduité</h3>
+    {selectedClass&&<details>
+      <summary>Bilan des absences et retards sur une période</summary>
       <form onSubmit={e=>{e.preventDefault();run(async()=>{
         setSummary(await request(base+"summary?classroom="+selectedClass+"&from="+dateFrom+"&to="+dateTo));
       })}}>
@@ -229,11 +235,11 @@ export default function AttendancePanel({schoolId,attendanceAssignedOnly=false,a
         <button type="submit" disabled={busy}>Calculer la synthèse</button>
       </form>
       {summary&&<p>
-        Séances : {summary.sessions} · Marques renseignées : {summary.recorded} ·
+        Appels : {summary.sessions} ·
         Présences : {summary.groups.present} · Absences : {summary.groups.absent} ·
         Retards : {summary.groups.late} · Autres : {summary.groups.other}
       </p>}
-    </>}
+    </details>}
     {message&&<p role="status" aria-live="polite">{message}</p>}
   </section>;
 }

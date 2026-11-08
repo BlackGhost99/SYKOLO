@@ -1,5 +1,6 @@
 import React, {useEffect,useState} from "react";
 import {TableScroll} from "./yem-ui.jsx";
+import {ClassField} from "./SchoolSettings.jsx";
 
 async function call(path,body){
   if(body!==undefined)await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
@@ -15,49 +16,48 @@ async function call(path,body){
   return data;
 }
 
-export default function ReportPanel({schoolId}){
+export default function ReportPanel({schoolId, canPrepare = true, canPublish = true}){
   const base="schools/"+schoolId+"/";
-  const [enrollments,setEnrollments]=useState([]);
-  const [students,setStudents]=useState([]);
+  const [pupils,setPupils]=useState([]);
   const [periods,setPeriods]=useState([]);
   const [reports,setReports]=useState([]);
-  const [courses,setCourses]=useState([]);
+  const [classes,setClasses]=useState([]);
+  const [years,setYears]=useState([]);
+  const [room,setRoom]=useState("");
   const [selectedEnrollment,setSelectedEnrollment]=useState("");
   const [selectedPeriod,setSelectedPeriod]=useState("");
   const [selectedReport,setSelectedReport]=useState("");
   const [preview,setPreview]=useState(null);
-  const [selectedCourse,setSelectedCourse]=useState("");
-  const [assessments,setAssessments]=useState([]);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
-  const [visible,setVisible]=useState(true);
+  const [loadError,setLoadError]=useState("");
 
+  const classReports = base+"reports?classroom="+encodeURIComponent(room);
   const updateReports=async()=>{
-    const result=await call(base+"reports");setReports(result.reports);
+    const result=await call(classReports);
+    setReports(result.reports);setPupils(result.pupils);
   };
   useEffect(()=>{
     let active=true;
     Promise.all([
-      call(base+"reports"),call(base+"enrollments"),call(base+"students"),
-      call(base+"academic/periods"),call(base+"courses"),
-    ]).then(([r,e,s,p,c])=>{
+      call(base+"academic/periods"),call(base+"academic/classes"),call(base+"academic/years"),
+    ]).then(([p,c,y])=>{
       if(!active)return;
-      setReports(r.reports);setEnrollments(e.enrollments);setStudents(s.students);
-      setPeriods(p.periods);setCourses(c.courses);
-    }).catch(()=>{if(active)setVisible(false);});
+      setPeriods(p.periods);setClasses(c.classes);setYears(y.years);
+    }).catch(error=>{if(active)setLoadError(error.message);});
     return()=>{active=false;};
   },[schoolId]);
   useEffect(()=>{
-    setAssessments([]);
-    if(!selectedCourse)return;
+    if(!room)return;
     let active=true;
-    call(base+"courses/"+selectedCourse+"/assessments")
-      .then(data=>{if(active)setAssessments(data.assessments);})
-      .catch(e=>{if(active)setMessage(e.message);});
+    call(classReports).then(result=>{
+      if(active){setReports(result.reports);setPupils(result.pupils);}
+    }).catch(error=>{if(active)setMessage(error.message);});
     return()=>{active=false;};
-  },[selectedCourse,schoolId]);
+  },[room,classReports]);
   useEffect(()=>{
-    if(!selectedReport){setPreview(null);return;}
+    setPreview(null);
+    if(!selectedReport)return;
     let active=true;
     call(base+"reports/"+selectedReport)
       .then(data=>{if(active)setPreview(data);})
@@ -72,51 +72,31 @@ export default function ReportPanel({schoolId}){
     finally{setBusy(false);}
   }
 
-  if(!visible)return null;
-  const activeEnrollment=enrollments.find(e=>e.id===selectedEnrollment);
+  if(loadError)return <p role="alert">{loadError}</p>;
+  const activeEnrollment=pupils.find(e=>e.id===selectedEnrollment);
   const applicablePeriods=periods.filter(p=>p.year===activeEnrollment?.year);
   const current=reports.find(r=>r.enrollment===selectedEnrollment&&r.period===(selectedPeriod||null));
   const snapshot=preview?.snapshot;
 
   return <section className="card" aria-label="Bulletins et résultats" style={{marginTop:"1rem"}}>
     <h2>Bulletins et résultats</h2>
-    <p className="hint">Seules les évaluations validées par la direction alimentent les bulletins. La publication fige une copie contrôlée ; les brouillons PDF sont marqués non officiels.</p>
-    <div className="two">
-      <label className="field">Cours à valider
-        <select value={selectedCourse} onChange={e=>setSelectedCourse(e.target.value)}>
-          <option value="">Choisir un cours…</option>
-          {courses.map(c=><option key={c.id} value={c.id}>{c.subject.slice(0,8)} · {c.classroom.slice(0,8)}</option>)}
-        </select>
-      </label>
-      {selectedCourse&&<label className="field">Évaluations de ce cours
-        <div>
-          {assessments.map(a=><div key={a.id} style={{padding:"0.25rem 0"}}>
-            <span>{a.name} · {a.published?"Publiée":"Brouillon"}</span>
-            {!a.published&&<button type="button" disabled={busy} style={{marginLeft:"0.5rem"}} onClick={()=>run(async()=>{
-              await call(base+"assessments/"+a.id+"/publish",{revision:a.revision});
-              const result=await call(base+"courses/"+selectedCourse+"/assessments");
-              setAssessments(result.assessments);setMessage("Évaluation publiée et verrouillée.");
-            })}>Publier</button>}
-          </div>)}
-        </div>
-      </label>}
-    </div>
-    <form onSubmit={e=>{e.preventDefault();run(async()=>{
+    <ClassField classes={classes} years={years} value={room} disabled={busy} onChange={value=>{
+      setRoom(value);setPupils([]);setReports([]);setSelectedEnrollment("");setSelectedPeriod("");setSelectedReport("");setPreview(null);setMessage("");
+    }}/>
+    {room && <>
+    {!pupils.length && <p>Aucun élève ou bulletin disponible pour cette classe.</p>}
+    <form onSubmit={e=>{e.preventDefault();if(!canPrepare || !activeEnrollment?.can_prepare)return;run(async()=>{
       const result=await call(base+"reports",{
         enrollment:selectedEnrollment,period:selectedPeriod||null,revision:current?.revision||0,
       });
       await updateReports();setSelectedReport(result.id);setPreview(result);
       setMessage("Bulletin préparé. Vérifiez son contenu avant publication.");
     });}}>
-      <h3>Générer ou actualiser un brouillon</h3>
       <div className="two">
         <label className="field">Élève inscrit
-          <select required value={selectedEnrollment} onChange={e=>{setSelectedEnrollment(e.target.value);setSelectedPeriod("");}}>
+          <select required value={selectedEnrollment} onChange={e=>{setSelectedEnrollment(e.target.value);setSelectedPeriod("");setSelectedReport("");setPreview(null);}}>
             <option value="">Sélectionner…</option>
-            {enrollments.map(e=>{
-              const s=students.find(st=>st.id===e.student);
-              return <option key={e.id} value={e.id}>{s?s.last_name+" "+s.first_name+" · "+s.student_code:e.id.slice(0,8)}</option>;
-            })}
+            {pupils.map(pupil=><option key={pupil.id} value={pupil.id}>{pupil.name}</option>)}
           </select>
         </label>
         <label className="field">Période à présenter
@@ -126,15 +106,17 @@ export default function ReportPanel({schoolId}){
           </select>
         </label>
       </div>
-      <button type="submit" disabled={busy||!selectedEnrollment||current?.status==="published"}>Préparer le bulletin</button>
+      {canPrepare && activeEnrollment?.can_prepare && <button type="submit" disabled={busy||!selectedEnrollment||current?.status==="published"}>Préparer le bulletin</button>}
       {current?.status==="published"&&<p className="hint">Ce bulletin est déjà publié et reste immuable.</p>}
     </form>
     <label className="field">Bulletins enregistrés
       <select value={selectedReport} onChange={e=>setSelectedReport(e.target.value)}>
         <option value="">Choisir…</option>
-        {reports.map(r=><option key={r.id} value={r.id}>{r.year.slice(0,8)} · {r.enrollment.slice(0,8)} · {r.status}</option>)}
+        {reports.filter(r=>selectedEnrollment && r.enrollment===selectedEnrollment).map(r=>
+          <option key={r.id} value={r.id}>{periods.find(p=>p.id===r.period)?.name || "Année complète"} · {r.status==="published"?"Publié":"Brouillon"}</option>)}
       </select>
     </label>
+    </>}
     {preview&&snapshot&&<>
       <h3>{snapshot.template.title} · {preview.status==="published"?"Publié":"Brouillon"}</h3>
       <p><strong>{snapshot.student.last_name} {snapshot.student.first_name}</strong> — {snapshot.student.code}</p>
@@ -144,13 +126,17 @@ export default function ReportPanel({schoolId}){
           <thead><tr><th>Matière</th><th>Coefficient</th><th>Résultat</th></tr></thead>
           <tbody>{snapshot.subjects.map(s=><tr key={s.course}>
             <td>{s.subject}</td><td>{s.coefficient}</td>
-            <td>{s.result.score||"—"} {s.result.label||""}</td>
+            <td>{snapshot.template.show_score && (s.result.score ?? "—")} {
+              snapshot.template.show_label && (s.result.label || "")
+            }</td>
           </tr>)}</tbody>
         </table></TableScroll>
-      <p><strong>Résultat général :</strong> {snapshot.overall.score??"—"} · {snapshot.overall.label??"Non calculé"}</p>
+      <p><strong>Résultat général :</strong> {snapshot.template.show_score && (snapshot.overall.score ?? "—")} {
+        snapshot.template.show_label && (snapshot.overall.label ?? "Non calculé")
+      }</p>
       <div className="actions">
         <a href={"/api/v1/"+base+"reports/"+preview.id+"/pdf"}>Exporter le bulletin PDF (A4)</a>
-        {preview.status==="draft"&&<button type="button" disabled={busy} onClick={()=>run(async()=>{
+        {canPublish&&preview.status==="draft"&&<button type="button" disabled={busy} onClick={()=>run(async()=>{
           const issued=await call(base+"reports/"+preview.id+"/publish",{revision:preview.revision});
           await updateReports();setPreview(issued);setMessage("Bulletin publié et verrouillé.");
         })}>Publier le bulletin</button>}

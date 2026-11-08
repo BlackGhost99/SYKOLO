@@ -69,6 +69,29 @@ class StudentAdmissionsTests(TestCase):
         self.assertEqual(self.write(f"students/{s['id']}",{"revision":1,"active":False},method="patch").status_code,409)
         self.assertEqual(StudentGuardian.objects.count(),1)
 
+    def test_guardians_directory_uses_active_enrollments_and_school_permissions(self):
+        first = self.add_student("EL001")
+        second = self.add_student("EL002")
+        self.assertEqual(self.enroll(first).status_code, 201)
+        self.assertEqual(self.enroll(second, self.second_class).status_code, 201)
+        for student, name in [(first, "Parent A"), (second, "Parent B")]:
+            self.assertEqual(self.write(f"students/{student['id']}/guardians", {
+                "full_name": name, "relationship": "Mère", "phone": "+241 01 02 03 04",
+            }).status_code, 201)
+        self.assertEqual(self.write(f"students/{first['id']}/guardians", {
+            "full_name": "Ancien responsable", "active": False,
+        }).status_code, 201)
+        path = self.base + f"guardians-by-class?classroom={self.classroom.id}"
+        families = self.client.get(path).json()["families"]
+        self.assertEqual([family["student_id"] for family in families], [first["id"]])
+        self.assertEqual([guardian["name"] for guardian in families[0]["guardians"]], ["Parent A"])
+        self.assertEqual(self.client.get(self.base.replace(str(self.school.id), str(self.other.id)) +
+                         f"guardians-by-class?classroom={self.classroom.id}").status_code, 404)
+        self.login(self.secretary)
+        self.assertEqual(self.client.get(path).status_code, 403)
+        self.login(self.founder)
+        self.assertEqual(self.client.get(path).status_code, 403)
+
     def test_capacity_and_transfer_history(self):
         a=self.add_student("EL001")
         b=self.add_student("EL002")

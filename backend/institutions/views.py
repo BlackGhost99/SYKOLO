@@ -197,7 +197,9 @@ def school_members(request, school_id):
     if error is not None:
         return error
     perm = "school.members.read" if request.method == "GET" else "school.members.write"
-    if not has_permission(request.user, school, perm):
+    if not has_permission(request.user, school, perm) and not (
+        request.method == "GET" and owns_organization(request.user, school.organization)
+    ):
         return refuse()
     if request.method == "GET":
         rows = SchoolMember.objects.select_related("user", "role").filter(
@@ -214,6 +216,9 @@ def school_members(request, school_id):
         return error
     if not string(data.get("username"), 150) or not string(data.get("role"), 48):
         return JsonResponse({"error": "Identifiant ou rôle invalide."}, status=422)
+    create_only = data.get("create_only", False)
+    if not isinstance(create_only, bool):
+        return JsonResponse({"error": "Mode de rattachement invalide."}, status=422)
     identity = SchoolLogin.objects.filter(school=school, username=data["username"].strip(), user__is_active=True).first()
     user = identity.user if identity else get_user_model().objects.filter(
         username=data["username"].strip(), is_active=True).filter(
@@ -249,6 +254,10 @@ def school_members(request, school_id):
         if not financial_grant_allowed(request.user, school, user, granted):
             return refuse()
         previous = SchoolMember.objects.filter(school=school, user=user).first()
+        if create_only and previous:
+            if previous.role_id != role.pk or not previous.active:
+                return JsonResponse({"error": "Ce compte possède déjà un rattachement qui nécessite une vérification dans Personnel."}, status=409)
+            return JsonResponse({"user_id": str(user.id), "role": role.code})
         before = {"role": previous.role.code, "additional_roles": list(previous.additional_roles.values_list("code", flat=True)), "functions": previous.function_codes} if previous else {}
         member, created = SchoolMember.objects.update_or_create(
             school=school, user=user, defaults={"role": role, "active": True}
@@ -283,6 +292,7 @@ def my_school_access(request, school_id):
         "school": school_response(school),
         "role": member.role.code if member else ("proprietaire" if founder else None),
         "role_label": public_role_label(member.role, school) if member else ("Propriétaire" if founder else ""),
+        "is_owner": founder,
         "roles": [member.role.code, *member.additional_roles.filter(school=school).values_list("code", flat=True)] if member else [],
         "permissions": allowed_school_permissions(permitted,cycle_ids),
         "cycle_scope_restricted": cycle_ids is not None,
@@ -462,8 +472,12 @@ def school_settings(request, school_id):
             context = validate_scope(dict(request.GET.items()))
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=422)
+        local = SchoolSetting.objects.filter(school=school, scope_key=key_for_scope(context)).first()
         effective, layers = resolve_settings(school, context)
-        return JsonResponse({"effective": effective, "layers": layers})
+        return JsonResponse({
+            "effective": effective, "layers": layers,
+            "local": {"values": local.values, "revision": local.revision} if local else None,
+        })
     data, error = parse_body(request)
     if error is not None:
         return error

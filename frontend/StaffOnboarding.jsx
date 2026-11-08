@@ -33,7 +33,7 @@ const domains = {
   deliberations:"Conseils", finance:"Finances", settings:"Paramètres",
 };
 
-export default function StaffOnboarding({schoolId}) {
+export default function StaffOnboarding({schoolId, mode = "all"}) {
   const [context,setContext] = useState(null);
   const [loading,setLoading] = useState(true);
   const [step,setStep] = useState(0);
@@ -143,6 +143,10 @@ export default function StaffOnboarding({schoolId}) {
 
   if(loading) return <section className="card" aria-label="Ajouter un collaborateur"><h2>Ajouter un collaborateur</h2><p>Chargement des autorisations…</p></section>;
   if(!context) return <section className="card"><h2>Ajouter un collaborateur</h2><p role="alert">{error||"Accès indisponible."}</p></section>;
+  const cycleAccess=context.can_manage_cycle_access&&<CycleScopeManager schoolId={schoolId}
+    cycles={academicCycles} accounts={context.existing_accounts||[]}
+    onSaved={async()=>setContext(await request(base))}/>;
+  if(mode==="access")return cycleAccess||<p>Gestion des accès réservée au propriétaire.</p>;
   return <section className="card" aria-label="Ajouter un collaborateur">
     <h2>Ajouter un collaborateur</h2>
     <p className="hint">Un seul parcours pour enregistrer une personne, ses fonctions, ses classes et, si nécessaire, son compte YEM dans <strong>{context.school_name}</strong>.</p>
@@ -301,8 +305,6 @@ export default function StaffOnboarding({schoolId}) {
           <button type="submit" className="pc-primary" disabled={busy||!ready}>{busy?"Enregistrement…":"Créer le collaborateur"}</button>}
       </div>
     </form>}
-    {context.can_manage_cycle_access&&<CycleScopeManager schoolId={schoolId}
-      cycles={academicCycles} accounts={context.existing_accounts||[]}
-      onSaved={async()=>setContext(await request(base))}/>}
+    {mode==="all"&&cycleAccess}
   </section>;
 }
