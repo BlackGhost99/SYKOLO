@@ -148,6 +148,7 @@ def annual_snapshot(request, school_id):
 
 def _year_closure_authorized(request, school):
     return (has_permission(request.user, school, "school.academic.manage")
+            and has_permission(request.user, school, "school.finance.read")
             and scoped_cycle_ids(request.user, school) is None)
 
 
