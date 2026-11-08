@@ -28,7 +28,7 @@ async function request(path, body, method) {
   return value;
 }
 
-export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearChange}) {
+export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearChange,onYearsUpdated}) {
   const [resource,setResource] = useState("years");
   const [yearId,setYearId] = useState(workingYearId);
   const changeYear = id=>{setYearId(id);onWorkingYearChange?.(id);};
@@ -120,7 +120,7 @@ export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearCh
           </select>
         </label>
         {resource==="years"
-          ? <AnnualWorkspace schoolId={schoolId} yearId={yearId} onYearChange={changeYear} onPrepared={refresh}/>
+          ? <AnnualWorkspace schoolId={schoolId} yearId={yearId} onYearChange={changeYear} onPrepared={async()=>{await refresh();onYearsUpdated?.();}}/>
           : <>
             {(resource==="classes"||resource==="periods")&&yearId&&<p className="hint">Année scolaire sélectionnée : {(all.years||[]).find(y=>y.id===yearId)?.name}. Les opérations ci-dessous concernent uniquement cette année.</p>}
             <form onSubmit={submit}>
@@ -136,14 +136,14 @@ export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearCh
           <button type="submit" disabled={busy}>Ajouter : {type.label.toLowerCase()}</button>
             </form>
           </>}
-        <h3>{type.label} déjà créés ({visibleRows.length})</h3>
+        {resource!=="years"&&<><h3>{type.label} déjà créés ({visibleRows.length})</h3>
         {visibleRows.length===0 ? <p className="hint">Aucun élément enregistré pour cette sélection.</p>
           : <ul>{visibleRows.map(row=><li key={row.id} style={{marginBottom:"0.8rem"}}>
             <strong>{row.name}</strong> <small>({row.code}) {row.active ? "" : "· Archivé"}</small>
             <button type="button" style={{marginLeft:"0.8rem"}} disabled={busy}
               onClick={()=>setActive(row)}>{row.active?"Archiver":"Réactiver"}</button>
           </li>)}</ul>}
-        <p className="hint">L’archivage conserve l’historique. Les corrections détaillées peuvent être effectuées via l’API sécurisée et les révisions.</p>
+        <p className="hint">L’archivage conserve l’historique. Les corrections détaillées peuvent être effectuées via l’API sécurisée et les révisions.</p></>}
         {message && <p role="status" aria-live="polite">{message}</p>}
       </>}
     </section>
