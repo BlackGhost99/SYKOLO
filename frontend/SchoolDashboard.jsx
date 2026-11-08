@@ -18,6 +18,7 @@ import AdmissionsPanel from "./AdmissionsPanel.jsx";
 import StudentNumberingSettings from "./StudentNumberingSettings.jsx";
 import {FamilyWorkspace, SchoolParentAccess} from "./ParentPortal.jsx";
 import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens.jsx";
+import ClassWorkspace from "./ClassWorkspace.jsx";
 import {StudentForm,StudentFile,ClassEnrollments,ClassSetup,FormSettings,PaymentTracking,ImportStudents} from "./EnrollmentScreens.jsx";
 import {Shell,NAV,PageHeader,Card,Icon,Button} from "./yem-ui.jsx";
 import "./yem-desktop.css";
@@ -46,6 +47,7 @@ const sections = {
     {key:"live",label:"Liste des élèves",need:["school.students.read"]},
     {key:"byclass",label:"Inscriptions par classe",need:["school.students.read","school.academic.read"]}],
     hidden:{new:"school.students.manage",import:"school.students.manage",fiche:"school.students.read"}},
+  classes:{modules:[],lives:[{key:"live",label:"Classes et effectifs",need:["school.academic.read"]}]},
   admissions:{title:"Admissions & préinscriptions",subtitle:"Demandes, inscriptions au secrétariat, capacité d’accueil et paiement",modules:["admissions"]},
   payments:{title:"Encaissements et caisse journalière",subtitle:"Suivi des paiements, reçus et méthodes d’encaissement",modules:["finance"],manage:"Tarifs, frais et relevés",lives:[
     {key:"live",label:"Caisse du jour",need:["school.finance.read"]},
@@ -59,7 +61,8 @@ const sections = {
     {key:"form",label:"Fiche d’inscription",need:["school.students.read"]},
     {key:"numbering",label:"Matricules",need:["school.settings.write"]}]},
 };
-const sectionIcon=Object.fromEntries(NAV.map(([id,icon])=>[id,icon]));
+const schoolNav=[...NAV.slice(0,2),["classes","layers","Classes"],...NAV.slice(2)];
+const sectionIcon=Object.fromEntries(schoolNav.map(([id,icon])=>[id,icon]));
 
 async function get(path) {
   const r=await fetch("/api/v1/"+path,{credentials:"same-origin"});
@@ -122,7 +125,7 @@ function UsersForm({schoolId,onMessage}) {
 function ModuleGrid({visibleSections,navigate}) {
   const entries=Object.entries(visibleSections);
   return <div className="yd-real-body">{entries.length===0?<Card title="Aucun module attribué" icon="info"><p className="yd-card-sub">Aucun module n'est attribué à votre rôle dans cet établissement.</p></Card>:
-    <div className="pc-module-grid">{entries.map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{NAV.find(n=>n[0]===id)?.[2]}</b><small>{[...s.lives.map(l=>l.label),...s.modules.map(k=>modules[k].label)].filter(Boolean).concat(s.users?["Comptes et accès"]:[]).join(" · ")}</small></button>)}</div>}</div>;
+    <div className="pc-module-grid">{entries.map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{schoolNav.find(n=>n[0]===id)?.[2]}</b><small>{[...s.lives.map(l=>l.label),...s.modules.map(k=>modules[k].label)].filter(Boolean).concat(s.users?["Comptes et accès"]:[]).join(" · ")}</small></button>)}</div>}</div>;
 }
 
 function UserMenu({user,roleLabel,onAccount,onFamilyWorkspace,onLogout}) {
@@ -171,7 +174,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         ...(perms.includes("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],users:false,lives:[]}]]:[]),
       ])
     : Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{...s,modules:s.modules.filter(allowed),users:s.extra==="users"&&canUsers,lives:(s.lives||[]).filter(l=>l.need.every(p=>perms.includes(p)))}]).filter(([,s])=>s.modules.length||s.users||s.lives.length));
-  const nav=NAV.filter(([id])=>id==="dashboard"||visibleSections[id]||(id==="parents"&&canManageParents));
+  const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]||(id==="parents"&&canManageParents));
   function navigate(id,subTab="",extra=null){setPage(id);setSub(subTab);setParams(extra);setMessage("");window.scrollTo?.(0,0);}
   const section=visibleSections[page];
   const tabs=section?[...section.lives.map(l=>[l.key,l.label]),...section.modules.map(k=>[k,(section.lives.length&&section.manage)||(page==="settings"&&k==="academic"?"Structure détaillée":modules[k].label)]),...(section.users?[["users","Comptes et accès"]]:[])]:[];
@@ -210,6 +213,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "students:new":<StudentForm key={k} {...props}/>,
       "students:fiche":<StudentFile key={k} {...props}/>,
       "students:import":<ImportStudents key={chosen} {...props}/>,
+      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={perms.includes("school.students.read")}/>,
       "payments:live":<LivePayments key={k} {...props}/>,
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
       "arrears:live":<LiveArrears key={chosen} {...props}/>,
