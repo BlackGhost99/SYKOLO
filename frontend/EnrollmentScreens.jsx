@@ -75,7 +75,9 @@ const emptyGuardian = { full_name: "", relationship: "", phone: "", email: "", p
 export function StudentForm({ schoolId, params, onNavigate, tabs, workingYearId = "", onWorkingYearChange }) {
   const form = useLoad(`schools/${schoolId}/enrollment-form`);
   const [year, setYear] = useState(workingYearId);
-  useEffect(() => {setYear(workingYearId);setClassroom("");}, [schoolId, workingYearId]);
+  useEffect(() => {
+    if (year !== workingYearId) {setYear(workingYearId);setClassroom("");}
+  }, [schoolId, workingYearId]);
   const classes = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
   const [student, setStudent] = useState({ last_name: "", first_name: "", date_of_birth: "", gender: "", place_of_birth: "", nationality: "", address: "", previous_school: "" });
   const [extra, setExtra] = useState({});
