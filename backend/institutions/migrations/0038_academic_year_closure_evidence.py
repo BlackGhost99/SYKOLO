@@ -4,6 +4,22 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+def enable_closure_rls(apps, schema_editor):
+    """Protect newly created closure evidence in Supabase's public schema.
+
+    Migration 0029 secures all existing Django tables, but this table is
+    created later. Ensure it is protected in the same migration transaction.
+    """
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    table = apps.get_model("institutions", "AcademicYearClosure")._meta.db_table
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(
+            "ALTER TABLE " + schema_editor.quote_name(table) +
+            " ENABLE ROW LEVEL SECURITY"
+        )
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("institutions", "0037_closed_year_guards"),
@@ -33,4 +49,5 @@ class Migration(migrations.Migration):
                 )),
             ],
         ),
+        migrations.RunPython(enable_closure_rls, migrations.RunPython.noop),
     ]
