@@ -76,3 +76,31 @@ test("l'activation exige un motif et actualise le statut sans toucher aux archiv
   expect(await screen.findByText("Année scolaire activée.")).toBeTruthy();
   expect(screen.queryByRole("button",{name:"Activer cette année scolaire"})).toBeNull();
 });
+
+test("la clôture affiche les contrôles et reste bloquée sans sauvegarde autorisée",async()=>{
+  const year={id:"year-current",code:"2026-2027",name:"2026-2027",
+    start_date:"2026-09-01",end_date:"2027-07-31",
+    active:true,status:"current",revision:2};
+  const urlCalls=[];
+  vi.stubGlobal("fetch",vi.fn(async url=>{
+    urlCalls.push(String(url));
+    if(String(url).endsWith("years/year-current/closure-review"))return Response.json({
+      year,closure_enabled:false,can_close:false,evidence:null,
+      checks:{ready:false,blockers:[{code:"year_not_finished",message:"Année non terminée."}],
+        warnings:[]},
+      snapshot:{counts:{classes:2,enrollments:31},finance:{XAF:{billed:"1000",received:"700",outstanding:"300"}}},
+    });
+    return Response.json({
+      years:[year],year,can_prepare_year:true,can_activate_year:false,
+      classes:[],periods:[],stats:{classes:2,enrollments:31},
+    });
+  }));
+  const user=userEvent.setup();
+  render(<AnnualWorkspace schoolId="school" yearId="year-current"/>);
+  await user.click(await screen.findByRole("button",{name:"Consulter le bilan et les contrôles de clôture"}));
+  expect(await screen.findByLabelText("Blocages de clôture")).toBeTruthy();
+  expect(screen.getByText("Année non terminée.")).toBeTruthy();
+  expect(screen.getByLabelText("Résumé annuel de clôture").textContent).toContain("31");
+  expect(screen.queryByRole("button",{name:"Lancer la clôture définitive"})).toBeNull();
+  expect(urlCalls.some(x=>x.endsWith("years/year-current/closure-review"))).toBe(true);
+});
