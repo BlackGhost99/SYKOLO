@@ -145,6 +145,8 @@ class ParentRegistrationTests(TestCase):
         self.assertEqual(SchoolMember.objects.count(),0)
         self.assertEqual(GuardianAccountLink.objects.count(),0)
         self.assertEqual(len(mail.outbox),0)
+        self.assertEqual(self.post("parents/resend-verification",
+            {"email":self.user_payload()["email"]}).status_code,409)
         login=self.post("login",{
             "username":self.user_payload()["username"],
             "password":self.user_payload()["password"],
@@ -152,8 +154,6 @@ class ParentRegistrationTests(TestCase):
         })
         self.assertEqual(login.status_code,200,login.content)
         self.assertTrue(login.json()["authenticated"])
-        self.assertEqual(self.post("parents/resend-verification",
-            {"email":self.user_payload()["email"]}).status_code,409)
         send_email.assert_not_called()
 
     @override_settings(PARENT_EMAIL_VERIFICATION_REQUIRED=False,PASSWORD_RESET_ENABLED=False)
