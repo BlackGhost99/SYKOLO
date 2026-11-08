@@ -28,9 +28,10 @@ async function request(path, body, method) {
   return value;
 }
 
-export default function AcademicPanel({schoolId}) {
+export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearChange}) {
   const [resource,setResource] = useState("years");
-  const [yearId,setYearId] = useState("");
+  const [yearId,setYearId] = useState(workingYearId);
+  const changeYear = id=>{setYearId(id);onWorkingYearChange?.(id);};
   const [all,setAll] = useState({});
   const [form,setForm] = useState(init);
   const [busy,setBusy] = useState(false);
@@ -58,6 +59,7 @@ export default function AcademicPanel({schoolId}) {
     return () => {active = false;};
   }, [schoolId]);
 
+  useEffect(()=>setYearId(workingYearId),[workingYearId,schoolId]);
   const type = TYPES.find(t => t.key === resource);
   useEffect(()=>{
     if(resource==="classes"||resource==="periods")setForm(old=>({...old,year:yearId}));
@@ -118,7 +120,7 @@ export default function AcademicPanel({schoolId}) {
           </select>
         </label>
         {resource==="years"
-          ? <AnnualWorkspace schoolId={schoolId} yearId={yearId} onYearChange={setYearId} onPrepared={refresh}/>
+          ? <AnnualWorkspace schoolId={schoolId} yearId={yearId} onYearChange={changeYear} onPrepared={refresh}/>
           : <>
             {(resource==="classes"||resource==="periods")&&yearId&&<p className="hint">Année scolaire sélectionnée : {(all.years||[]).find(y=>y.id===yearId)?.name}. Les opérations ci-dessous concernent uniquement cette année.</p>}
             <form onSubmit={submit}>
