@@ -28,13 +28,13 @@
   background-position:center,center;
   background-size:cover,cover;
   filter:saturate(.84) brightness(.78);
-  transform:scale(1.025);
+  transform:scale(1.14);
 }
 .yem-login-shade {
   position:absolute;z-index:-1;inset:0;pointer-events:none;
   background:
     linear-gradient(90deg,rgba(25,28,19,.35),transparent 28%,rgba(21,18,15,.14) 74%,rgba(23,20,17,.24)),
-    linear-gradient(0deg,rgba(21,16,12,.36),transparent 25%,rgba(27,20,14,.09) 80%);
+    linear-gradient(0deg,rgba(21,16,12,.98),rgba(21,16,12,.48) 10%,transparent 25%,rgba(27,20,14,.09) 80%);
 }
 .yem-login-screen main.yem-login-layout {
   display:grid;
