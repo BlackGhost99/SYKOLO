@@ -44,6 +44,12 @@ MFA_ENCRYPTION_KEY = os.environ.get("MFA_ENCRYPTION_KEY", SECRET_KEY if not DEPL
 if DEPLOYED and len(MFA_ENCRYPTION_KEY) < 32:
     raise ImproperlyConfigured("MFA_ENCRYPTION_KEY (32 caractères minimum) est requise.")
 PASSWORD_RESET_TIMEOUT = 1800
+# Temporary YEM pilot: no email activation until a verified sending domain is ready.
+# Re-enable via YEM_PARENT_EMAIL_VERIFICATION_REQUIRED=true before opening to families.
+# This does not grant any school membership or access to student records.
+PARENT_EMAIL_VERIFICATION_REQUIRED = os.environ.get(
+    "YEM_PARENT_EMAIL_VERIFICATION_REQUIRED", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
 # Never enable real payments without a reviewed merchant contract and environment secrets.
 YEM_PAYMENTS_LIVE_ENABLED = os.environ.get("YEM_PAYMENTS_LIVE_ENABLED", "false").lower() == "true"
 # OFF until SingPay confirms callback authentication and school merchant acceptance.
