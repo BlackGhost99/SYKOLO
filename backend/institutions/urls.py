@@ -3,6 +3,7 @@ from . import import_views
 from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views
+from . import annual_views
 from . import staff_onboarding_views
 from . import cycle_access_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
@@ -154,6 +155,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/enrollments", student_views.enrollments),
     path("schools/<uuid:school_id>/enrollments/<uuid:enrollment_id>", student_views.enrollment_detail),
     path("schools/<uuid:school_id>/enrollments/<uuid:enrollment_id>/history", student_views.enrollment_history),
+    path("schools/<uuid:school_id>/academic/annual-snapshot", annual_views.annual_snapshot),
+    path("schools/<uuid:school_id>/academic/prepare-year", annual_views.prepare_year),
     path("schools/<uuid:school_id>/academic/<str:resource>", academic_views.collection),
     path("schools/<uuid:school_id>/academic/<str:resource>/<uuid:object_id>", academic_views.detail),
     path("organizations", views.organizations),
