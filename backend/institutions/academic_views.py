@@ -13,6 +13,7 @@ from .academic_models import (
     AcademicYear, AcademicCycle, AcademicLevel, AcademicTrack, AcademicClass, AcademicPeriod,
 )
 from .cycle_scope import scoped_cycle_ids
+from .models import School
 from .services import can_manage_classes, has_permission
 from .student_models import Enrollment
 from .views import access, delete_unused, log_event, parse_body, refuse
@@ -162,14 +163,24 @@ def collection(request, school_id, resource):
         return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
+            if resource == "years":
+                School.objects.select_for_update().get(pk=school.pk)
+                if AcademicYear.objects.filter(
+                    school=school, start_date__lte=clean["end_date"], end_date__gte=clean["start_date"]
+                ).exclude(code=clean["code"]).exists():
+                    return JsonResponse({"error": "Ces dates chevauchent une année existante."}, status=409)
             if resource == "periods":
                 # Serialize competing period creations for the same school year.
-                AcademicYear.objects.select_for_update().get(school=school, pk=clean["year_id"])
+                year = AcademicYear.objects.select_for_update().get(school=school, pk=clean["year_id"])
+                if not year.active:
+                    return JsonResponse({"error": "L'année scolaire est archivée."}, status=409)
             if resource == "classes":
                 level = AcademicLevel.objects.select_related("cycle").get(school=school, pk=clean["level_id"])
                 if not can_manage_classes(request.user, school, level.cycle.code):
                     return refuse()
-                AcademicYear.objects.select_for_update(no_key=True).get(school=school, pk=clean["year_id"])
+                year = AcademicYear.objects.select_for_update(no_key=True).get(school=school, pk=clean["year_id"])
+                if not year.active:
+                    return JsonResponse({"error": "L'année scolaire est archivée."}, status=409)
                 if class_name_taken(school, clean["year_id"], clean["name"]):
                     return duplicate_class_name()
             obj = model(school=school, **clean)
@@ -231,10 +242,22 @@ def detail(request, school_id, resource, object_id):
                 return JsonResponse({"error": "Objet introuvable."}, status=404)
             if resource == "classes" and not can_manage_classes(request.user, school, obj.level.cycle.code):
                 return refuse()
+            if resource in ("classes", "periods") and not obj.year.active:
+                return JsonResponse({"error": "L'année scolaire est archivée."}, status=409)
             if obj.revision != revision:
                 return JsonResponse({"error": "Conflit de version.", "revision": obj.revision}, status=409)
             if resource == "periods":
                 AcademicYear.objects.select_for_update().get(school=school, pk=obj.year_id)
+            if resource == "years" and {"start_date", "end_date"} & clean.keys():
+                School.objects.select_for_update().get(pk=school.pk)
+                start = clean.get("start_date", obj.start_date)
+                end = clean.get("end_date", obj.end_date)
+                if AcademicYear.objects.filter(
+                    school=school, start_date__lte=end, end_date__gte=start
+                ).exclude(pk=obj.pk).exists():
+                    return JsonResponse({"error": "Ces dates chevauchent une année existante."}, status=409)
+                if obj.enrollments.exists():
+                    return JsonResponse({"error": "Dates verrouillées : l'année contient des inscriptions."}, status=409)
             if resource == "classes" and "name" in clean and clean["name"] != obj.name:
                 AcademicYear.objects.select_for_update(no_key=True).get(school=school, pk=obj.year_id)
                 if class_name_taken(school, obj.year_id, clean["name"], exclude=obj.pk):

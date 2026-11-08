@@ -33,7 +33,7 @@ const domains = {
   deliberations:"Conseils", finance:"Finances", settings:"Paramètres",
 };
 
-export default function StaffOnboarding({schoolId, mode = "all"}) {
+export default function StaffOnboarding({schoolId, mode = "all", onNavigate, workingYearId=""}) {
   const [context,setContext] = useState(null);
   const [loading,setLoading] = useState(true);
   const [step,setStep] = useState(0);
@@ -188,6 +188,21 @@ export default function StaffOnboarding({schoolId, mode = "all"}) {
         <h3>2. Quelles fonctions exerce-t-elle ?</h3>
         <p className="hint">Les fonctions sont facultatives : une personne peut exercer plusieurs responsabilités dans différents cycles. Une nomination ne donne pas automatiquement accès aux données.</p>
         {!context.can_appoint&&<p>Vous pouvez enregistrer la fiche mais les nominations officielles requièrent une autorisation supplémentaire.</p>}
+        {context.can_appoint&&positions.length===0&&<p role="alert">{context.position_setup_notice||"Aucune fonction disponible pour cet établissement."}</p>}
+        {context.can_appoint&&positions.length>0&&<label className="field">Choisir une fonction à ajouter
+          <select aria-label="Choisir une fonction à ajouter" value="" disabled={appointments.length>=20}
+            onChange={e=>{
+              const position=positions.find(p=>p.code===e.target.value);
+              if(position) setAppointments(old=>[...old,{...EMPTY_APPOINTMENT,function_code:position.code,
+                cycle_code:position.scope==="cycle"&&position.allowed_cycles.length===1?position.allowed_cycles[0]:""}]);
+            }}>
+            <option value="">Sélectionner une fonction…</option>
+            {Object.entries(positions.reduce((groups,p)=>({...groups,
+              [p.family]:[...(groups[p.family]||[]),p]}),{})).map(([family,items])=>
+              <optgroup label={family} key={family}>{items.map(p=><option key={p.code} value={p.code}>{p.label}</option>)}</optgroup>)}
+          </select>
+          <small>La fonction choisie s’ajoute directement. Vous pouvez en ajouter plusieurs ou n’en choisir aucune.</small>
+        </label>}
         {appointments.map((item,index)=><fieldset key={index} style={{marginBottom:"0.9rem"}}>
           <legend>Fonction {index+1}</legend>
           <div className="two">
@@ -212,9 +227,15 @@ export default function StaffOnboarding({schoolId, mode = "all"}) {
           </div>
           <button type="button" onClick={()=>setAppointments(old=>old.filter((_,i)=>i!==index))}>Retirer cette fonction</button>
         </fieldset>)}
-        {context.can_appoint&&<button type="button" onClick={()=>setAppointments(old=>[...old,{...EMPTY_APPOINTMENT}])} disabled={appointments.length>=20}>Ajouter une fonction</button>}
+        {context.can_appoint&&positions.length>0&&<p className="hint">{appointments.length} fonction(s) sélectionnée(s). Le choix est facultatif.</p>}
         <h3 style={{marginTop:"1.5rem"}}>Affectations à des classes (facultatif)</h3>
-        <p className="hint">L'affectation relie une personne, une année scolaire et une classe. Répétez pour les autres classes.</p>
+        <p className="hint">Chaque affectation appartient à une année scolaire précise. Les enseignants restent dans le répertoire du personnel ; leurs classes peuvent changer d’une année à l’autre.</p>
+        {!context.years.length&&<p role="status">Aucune année scolaire active. Configurez d’abord l’année et ses classes.
+          {onNavigate&&<button type="button" onClick={()=>onNavigate("settings","academic")}>Gérer les années scolaires</button>}
+        </p>}
+        {context.years.length>0&&!context.classes.length&&<p role="status">Aucune classe active dans les années configurées.
+          {onNavigate&&<button type="button" onClick={()=>onNavigate("classes")}>Consulter les classes</button>}
+        </p>}
         {classes.map((item,index)=><fieldset key={index}>
           <legend>Affectation {index+1}</legend>
           <div className="two">
@@ -236,7 +257,8 @@ export default function StaffOnboarding({schoolId, mode = "all"}) {
           </div>
           <button type="button" onClick={()=>setClasses(old=>old.filter((_,i)=>i!==index))}>Retirer l'affectation</button>
         </fieldset>)}
-        <button type="button" disabled={!context.years.length||!context.classes.length||classes.length>=30} onClick={()=>setClasses(old=>[...old,{...EMPTY_CLASS}])}>Ajouter une classe</button>
+        <button type="button" disabled={!context.years.length||!context.classes.length||classes.length>=30}
+          onClick={()=>setClasses(old=>[...old,{...EMPTY_CLASS,year:context.years.some(y=>y.id===workingYearId)?workingYearId:context.years[0].id}])}>Ajouter une classe</button>
       </div>}
       {step===2&&<div>
         <h3>3. Cette personne doit-elle utiliser YEM ?</h3>

@@ -102,7 +102,12 @@ def students_overview(request, school_id):
         return JsonResponse({"error": "Année scolaire introuvable."}, status=422)
     if request.GET.get("currency") and not CURRENCY_PATTERN.fullmatch(request.GET["currency"]):
         return JsonResponse({"error": "Devise ISO invalide."}, status=422)
-    students = list(Student.objects.filter(school=school).order_by("last_name", "first_name")[:1000])
+    student_queryset = Student.objects.filter(school=school)
+    # When explicitly viewing a historical cohort, hide pupils who joined
+    # only in another year. The default all-pupils directory remains unchanged.
+    if request.GET.get("year") and year:
+        student_queryset = student_queryset.filter(enrollments__year=year).distinct()
+    students = list(student_queryset.order_by("last_name", "first_name")[:1000])
     ids = [s.pk for s in students]
     enrollments = {}
     if year:
@@ -257,5 +262,8 @@ def finance_overview(request, school_id):
         "families_late": len(arrears),
         "arrears": arrears[:100],
         "arrears_by_class": [{"classroom": c, "families": n} for c, n in by_class.most_common(8)],
-        "active_students": Student.objects.filter(school=school, active=True).count(),
+        "active_students": Student.objects.filter(
+            school=school, active=True,
+            **({"enrollments__year": year} if request.GET.get("year") and year else {}),
+        ).distinct().count(),
     })

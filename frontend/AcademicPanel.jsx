@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import AnnualWorkspace from "./AnnualWorkspace.jsx";
 
 const TYPES = [
   {key:"years",label:"Années scolaires",fields:["start_date","end_date"]},
@@ -27,8 +28,10 @@ async function request(path, body, method) {
   return value;
 }
 
-export default function AcademicPanel({schoolId}) {
+export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearChange}) {
   const [resource,setResource] = useState("years");
+  const [yearId,setYearId] = useState(workingYearId);
+  const changeYear = id=>{setYearId(id);onWorkingYearChange?.(id);};
   const [all,setAll] = useState({});
   const [form,setForm] = useState(init);
   const [busy,setBusy] = useState(false);
@@ -46,7 +49,7 @@ export default function AcademicPanel({schoolId}) {
   }
   useEffect(() => {
     let active = true;
-    setAll({}); setForm(init()); setAllowed(true); setMessage("");
+    setAll({}); setYearId(""); setForm(init()); setAllowed(true); setMessage("");
     Promise.all(TYPES.map(async item => {
       const result = await request("schools/" + schoolId + "/academic/" + item.key);
       return [item.key, result[item.key] || []];
@@ -56,7 +59,14 @@ export default function AcademicPanel({schoolId}) {
     return () => {active = false;};
   }, [schoolId]);
 
+  useEffect(()=>setYearId(workingYearId),[workingYearId,schoolId]);
   const type = TYPES.find(t => t.key === resource);
+  useEffect(()=>{
+    if(resource==="classes"||resource==="periods")setForm(old=>({...old,year:yearId}));
+  },[resource,yearId]);
+  const visibleRows=(all[resource]||[]).filter(row=>(
+    (resource==="classes"||resource==="periods")&&yearId?row.year===yearId:true
+  ));
   function update(name,value) {setForm(previous => ({...previous,[name]:value}));}
   async function submit(event) {
     event.preventDefault(); setBusy(true); setMessage("");
@@ -69,7 +79,7 @@ export default function AcademicPanel({schoolId}) {
         else data[field] = form[field];
       }
       await request(prefix + resource, data);
-      setForm(init()); await refresh();
+      setForm({...init(),year:yearId}); await refresh();
       setMessage("Enregistrement réussi.");
     } catch (e) {setMessage(e.message);} finally {setBusy(false);}
   }
@@ -81,6 +91,12 @@ export default function AcademicPanel({schoolId}) {
     } catch (e) {setMessage(e.message);} finally {setBusy(false);}
   }
   function fieldControl(field) {
+    if (field==="year"&&yearId&&(resource==="classes"||resource==="periods")) {
+      const name=(all.years||[]).find(y=>y.id===yearId)?.name||"Année sélectionnée";
+      return <select value={yearId} disabled aria-label="Année du contexte sélectionné">
+        <option value={yearId}>{name}</option>
+      </select>;
+    }
     if (PARENT[field]) {
       const options = all[PARENT[field]] || [];
       return <select value={form[field]} required={field !== "track"} onChange={e => update(field,e.target.value)}>
@@ -99,11 +115,15 @@ export default function AcademicPanel({schoolId}) {
       <p className="hint">Années, cycles, niveaux, filières, classes et périodes. Aucun calendrier scolaire n’est imposé.</p>
       {!allowed ? <p role="status">{message}</p> : <>
         <label className="field">Élément à gérer
-          <select value={resource} onChange={e=>{setResource(e.target.value);setForm(init());setMessage("");}}>
+          <select value={resource} onChange={e=>{setResource(e.target.value);setForm({...init(),year:yearId});setMessage("");}}>
             {TYPES.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
           </select>
         </label>
-        <form onSubmit={submit}>
+        {resource==="years"
+          ? <AnnualWorkspace schoolId={schoolId} yearId={yearId} onYearChange={changeYear} onPrepared={refresh}/>
+          : <>
+            {(resource==="classes"||resource==="periods")&&yearId&&<p className="hint">Année scolaire sélectionnée : {(all.years||[]).find(y=>y.id===yearId)?.name}. Les opérations ci-dessous concernent uniquement cette année.</p>}
+            <form onSubmit={submit}>
           <div className="two">
             <label className="field">Code
               <input required maxLength={40} pattern="[a-z0-9][a-z0-9_-]*" value={form.code} onChange={e=>update("code",e.target.value)} placeholder="ex : 2026-2027" />
@@ -114,10 +134,11 @@ export default function AcademicPanel({schoolId}) {
             {type.fields.map(field=><label className="field" key={field}>{LABELS[field]}{fieldControl(field)}</label>)}
           </div>
           <button type="submit" disabled={busy}>Ajouter : {type.label.toLowerCase()}</button>
-        </form>
-        <h3>{type.label} déjà créés ({(all[resource]||[]).length})</h3>
-        {(all[resource]||[]).length===0 ? <p className="hint">Aucun élément enregistré dans cette école.</p>
-          : <ul>{all[resource].map(row=><li key={row.id} style={{marginBottom:"0.8rem"}}>
+            </form>
+          </>}
+        <h3>{type.label} déjà créés ({visibleRows.length})</h3>
+        {visibleRows.length===0 ? <p className="hint">Aucun élément enregistré pour cette sélection.</p>
+          : <ul>{visibleRows.map(row=><li key={row.id} style={{marginBottom:"0.8rem"}}>
             <strong>{row.name}</strong> <small>({row.code}) {row.active ? "" : "· Archivé"}</small>
             <button type="button" style={{marginLeft:"0.8rem"}} disabled={busy}
               onClick={()=>setActive(row)}>{row.active?"Archiver":"Réactiver"}</button>

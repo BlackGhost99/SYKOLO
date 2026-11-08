@@ -143,3 +143,28 @@ class StaffOnboardingTests(TestCase):
         self.assertFalse(SchoolMember.objects.filter(school=self.other).exists())
         self.assertFalse(StaffRecord.objects.filter(school=self.other).exists())
         self.assertFalse(SchoolLogin.objects.filter(school=self.other).exists())
+
+    def test_positions_are_not_hidden_by_login_function_filter(self):
+        """Organizational nominations remain possible even when no login functions are enabled."""
+        self.school.enabled_functions = []
+        self.school.save(update_fields=["enabled_functions"])
+        choices = self.client.get(self.url)
+        self.assertEqual(choices.status_code, 200)
+        codes = {p["code"] for p in choices.json()["positions"]}
+        self.assertIn("directeur_maternelle", codes)
+        self.assertIn("directeur_primaire", codes)
+        response = self.send(self.payload(account=True))
+        self.assertEqual(response.status_code, 201, response.content)
+        member = SchoolMember.objects.get(school=self.school, user__email="marie@example.test")
+        self.assertEqual(member.function_codes, [])
+        self.assertEqual(SchoolAppointment.objects.filter(school=self.school).count(), 2)
+
+    def test_unclassified_school_explains_missing_function_catalogue(self):
+        self.school.school_type = "non_classe"
+        self.school.education_cycles = []
+        self.school.save(update_fields=["school_type", "education_cycles"])
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["positions"], [])
+        self.assertTrue(response.json()["position_setup_required"])
+        self.assertIn("administrateur de la plateforme", response.json()["position_setup_notice"])

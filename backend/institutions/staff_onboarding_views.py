@@ -131,7 +131,9 @@ def _account(school, actor, owner, data, appointments):
         "manage", "receive", "reverse", "approve", "deposit"
     } for p in granted):
         raise PermissionError("Les droits financiers sensibles sont réservés au propriétaire.")
-    validate_account_functions(school, [row[0] for row in appointments])
+    # A professional appointment is independent of a login's enabled functions.
+    # An account can have a valid school appointment even when its account-function
+    # catalogue is deliberately restricted.
     scope = validate_cycle_scope(school, data.get("access_cycle_ids"))
     actor_scope = scoped_cycle_ids(actor, school)
     if actor_scope is not None and (scope is None or not set(scope) <= actor_scope):
@@ -170,7 +172,7 @@ def onboard_staff(request, school_id):
         years = AcademicYear.objects.filter(school=school, active=True).order_by("-start_date")
         classes = AcademicClass.objects.filter(school=school, active=True, year__active=True).order_by("name")
         academic_cycles = AcademicCycle.objects.filter(school=school,active=True).order_by("order","name")
-        positions = account_functions(school) if can_appoint else []
+        positions = positions_for_school(school) if can_appoint else []
         if actor_scope is not None:
             classes = classes.filter(level__cycle_id__in=actor_scope)
             years = years.filter(pk__in=classes.values("year_id"))
@@ -199,6 +201,14 @@ def onboard_staff(request, school_id):
             "can_appoint": can_appoint,
             "roles": [{"code": r.code, "label": public_role_label(r, school), "permissions": r.permissions} for r in roles] if can_account else [],
             "positions": positions,
+            "position_setup_required": (school.school_type == "non_classe" or not school.education_cycles),
+            "position_setup_notice": (
+                "Le type d'établissement ou ses cycles enseignés ne sont pas configurés. "
+                "Demandez à l'administrateur de la plateforme de les renseigner dans la fiche établissement."
+            ) if school.school_type == "non_classe" or not school.education_cycles else (
+                "Aucune fonction disponible dans votre périmètre d'autorisation."
+                if can_appoint and not positions else ""
+            ),
             "academic_cycles": [{"id": str(c.id), "code": c.code, "name": c.name} for c in academic_cycles],
             "actor_access_cycle_ids": sorted(actor_scope) if actor_scope is not None else None,
             "years": [{"id": str(y.id), "name": y.name} for y in years],
@@ -286,7 +296,10 @@ def onboard_staff(request, school_id):
                 )
                 member = SchoolMember.objects.create(
                     school=school, user=user, role=primary,
-                    function_codes=validate_account_functions(school, [row[0] for row in appointments]),
+                    function_codes=validate_account_functions(
+                        school, [code for code, _, _, _ in appointments
+                                 if code in {p["code"] for p in account_functions(school)}]
+                    ),
                     access_cycle_ids=scope,
                 )
                 member.additional_roles.set(extra)

@@ -113,3 +113,33 @@ class OverviewTests(TestCase):
     def test_requires_login(self):
         self.assertIn(self.client.get(self.base + "students").status_code, (401, 403))
 
+
+    def test_explicit_year_hides_students_who_only_joined_another_cohort(self):
+        next_year = AcademicYear.objects.create(
+            school=self.school, code="next-year", name="Année suivante",
+            start_date=self.today + timedelta(days=365),
+            end_date=self.today + timedelta(days=520),
+        )
+        future_class = AcademicClass.objects.create(
+            school=self.school, year=next_year, level=self.c6b.level,
+            code="6c", name="6e C",
+        )
+        future_student = Student.objects.create(
+            school=self.school, student_code="F-2027",
+            first_name="Élève", last_name="FUTUR",
+        )
+        Enrollment.objects.create(
+            school=self.school, student=future_student, year=next_year,
+            classroom=future_class,
+            enrolled_on=next_year.start_date,
+        )
+        self.client.force_login(self.director)
+        current = self.client.get(self.base + "students?year=" + str(self.year.pk))
+        later = self.client.get(self.base + "students?year=" + str(next_year.pk))
+        self.assertEqual(current.status_code, 200)
+        self.assertEqual(later.status_code, 200)
+        self.assertNotIn("FUTUR", [item["last_name"] for item in current.json()["students"]])
+        self.assertEqual([item["last_name"] for item in later.json()["students"]], ["FUTUR"])
+        financial = self.client.get(self.base + "finance?year=" + str(self.year.pk))
+        self.assertEqual(financial.status_code, 200)
+        self.assertEqual(financial.json()["active_students"], 3)

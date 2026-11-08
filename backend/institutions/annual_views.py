@@ -1,0 +1,213 @@
+"""Annual academic workspace.
+
+A school year is a historical partition, not another instance of YEM.
+Preparing a year may copy class *structure*, never pupils, grades, payments,
+reports, timetables or staff assignments from the source year.
+"""
+import re
+from datetime import date
+from uuid import UUID
+
+from accounts.views import authorized
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
+from django.db.models import Count
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET, require_POST
+
+from .academic_models import AcademicYear, AcademicClass, AcademicPeriod
+from .assessment_models import Assessment
+from .models import School
+from .report_models import SchoolReport
+from .staff_models import StaffAssignment
+from .student_models import Enrollment
+from .cycle_scope import scoped_cycle_ids
+from .services import has_permission
+from .views import access, log_event, parse_body, refuse
+
+
+def _year_id(value):
+    try:
+        return UUID(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def _year_dict(year):
+    return {
+        "id": str(year.pk), "code": year.code, "name": year.name,
+        "start_date": year.start_date.isoformat(), "end_date": year.end_date.isoformat(),
+        "active": year.active,
+    }
+
+
+@require_GET
+@authorized
+def annual_snapshot(request, school_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if not has_permission(request.user, school, "school.academic.read"):
+        return refuse()
+
+    years = AcademicYear.objects.filter(school=school).order_by("-start_date", "pk")
+    selected = request.GET.get("year")
+    if selected:
+        year_id = _year_id(selected)
+        year = years.filter(pk=year_id).first() if year_id else None
+        if year is None:
+            return JsonResponse({"error": "Année scolaire introuvable dans cet établissement."}, status=422)
+    else:
+        from .overview_views import current_year
+        year = current_year(school)
+
+    result = {
+        "years": [_year_dict(item) for item in years[:100]],
+        "year": _year_dict(year) if year else None,
+        "can_prepare_year": has_permission(request.user, school, "school.academic.manage")
+                            and scoped_cycle_ids(request.user, school) is None,
+        "classes": [],
+        "periods": [],
+        "stats": {},
+    }
+    if year is None:
+        return JsonResponse(result)
+
+    classes = AcademicClass.objects.select_related("level__cycle", "track").filter(
+        school=school, year=year
+    ).order_by("level__order", "name", "pk")
+    scope = scoped_cycle_ids(request.user, school)
+    if scope is not None:
+        classes = classes.filter(level__cycle_id__in=scope)
+    rooms = list(classes[:500])
+    room_ids = [room.pk for room in rooms]
+
+    can_students = has_permission(request.user, school, "school.students.read")
+    can_reports = has_permission(request.user, school, "school.reports.read")
+    can_staff = has_permission(request.user, school, "school.staff.read")
+    can_assess = has_permission(request.user, school, "school.assessments.read")
+
+    enrollments = dict(Enrollment.objects.filter(
+        school=school, year=year, classroom_id__in=room_ids, active=True
+    ).values_list("classroom_id").annotate(total=Count("pk"))) if can_students else {}
+    reports = dict(SchoolReport.objects.filter(
+        school=school, year=year, enrollment__classroom_id__in=room_ids,
+        status="published"
+    ).values_list("enrollment__classroom_id").annotate(total=Count("pk"))) if can_reports else {}
+    assignments = dict(StaffAssignment.objects.filter(
+        school=school, year=year, classroom_id__in=room_ids, active=True
+    ).values_list("classroom_id").annotate(total=Count("pk"))) if can_staff else {}
+    annual_team = {}
+    if can_staff:
+        for assignment in StaffAssignment.objects.select_related("staff").filter(
+            school=school, year=year, classroom_id__in=room_ids, active=True
+        ).order_by("staff__last_name", "staff__first_name", "duty"):
+            annual_team.setdefault(assignment.classroom_id, []).append({
+                "staff_id": str(assignment.staff_id),
+                "name": f"{assignment.staff.first_name} {assignment.staff.last_name}".strip(),
+                "duty": assignment.duty,
+            })
+    assessments = dict(Assessment.objects.filter(
+        school=school, course__year=year, course__classroom_id__in=room_ids
+    ).values_list("course__classroom_id").annotate(total=Count("pk"))) if can_assess else {}
+
+    result["classes"] = [{
+        "id": str(room.pk), "code": room.code, "name": room.name, "active": room.active,
+        "level": room.level.name, "cycle": room.level.cycle.name,
+        "track": room.track.name if room.track_id else None, "capacity": room.capacity,
+        "enrolled": enrollments.get(room.pk) if can_students else None,
+        "published_reports": reports.get(room.pk) if can_reports else None,
+        "staff_assignments": assignments.get(room.pk) if can_staff else None,
+        "team": annual_team.get(room.pk, []) if can_staff else None,
+        "assessments": assessments.get(room.pk) if can_assess else None,
+    } for room in rooms]
+
+    result["periods"] = [{
+        "id": str(p.pk), "code": p.code, "name": p.name,
+        "start_date": p.start_date.isoformat(), "end_date": p.end_date.isoformat(),
+        "active": p.active,
+    } for p in AcademicPeriod.objects.filter(school=school, year=year).order_by("order", "start_date")]
+    result["stats"] = {
+        "classes": len(rooms),
+        "periods": len(result["periods"]),
+        "enrollments": sum(enrollments.values()) if can_students else None,
+        "published_reports": sum(reports.values()) if can_reports else None,
+        "staff_assignments": sum(assignments.values()) if can_staff else None,
+        "assessments": sum(assessments.values()) if can_assess else None,
+    }
+    return JsonResponse(result)
+
+
+@require_POST
+@authorized
+def prepare_year(request, school_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    # Creating a school-wide year cannot be done with cycle-scoped privileges.
+    if not has_permission(request.user, school, "school.academic.manage") or (
+        scoped_cycle_ids(request.user, school) is not None
+    ):
+        return refuse()
+    body, error = parse_body(request)
+    if error is not None:
+        return error
+    required = {"code", "name", "start_date", "end_date", "copy_classes", "source_year"}
+    if not isinstance(body, dict) or set(body) != required:
+        return JsonResponse({"error": "Paramètres de nouvelle année incomplets."}, status=422)
+    code, name = body["code"], body["name"]
+    if not isinstance(code, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,39}", code):
+        return JsonResponse({"error": "Code de l'année invalide."}, status=422)
+    if not isinstance(name, str) or not (1 <= len(name.strip()) <= 120):
+        return JsonResponse({"error": "Nom de l'année invalide."}, status=422)
+    if type(body["copy_classes"]) is not bool:
+        return JsonResponse({"error": "Option de reprise des classes invalide."}, status=422)
+    try:
+        start, end = date.fromisoformat(body["start_date"]), date.fromisoformat(body["end_date"])
+        if (start.isoformat() != body["start_date"] or end.isoformat() != body["end_date"]
+                or start >= end):
+            raise ValueError()
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Dates de l'année scolaire invalides."}, status=422)
+    source_id = _year_id(body["source_year"])
+    if (body["copy_classes"] and source_id is None) or (
+        body["source_year"] is not None and source_id is None
+    ):
+        return JsonResponse({"error": "Choisissez une année de référence valide."}, status=422)
+    try:
+        with transaction.atomic():
+            # Serialize concurrent annual preparations and guard against duplicate cohorts.
+            School.objects.select_for_update().get(pk=school.pk)
+            years = AcademicYear.objects.filter(school=school)
+            if years.filter(code=code).exists() or years.filter(name__iexact=name.strip()).exists():
+                return JsonResponse({"error": "Cette année scolaire existe déjà."}, status=409)
+            if years.filter(start_date__lte=end, end_date__gte=start).exists():
+                return JsonResponse({"error": "Ces dates chevauchent une année existante."}, status=409)
+            source = years.filter(pk=source_id).first() if source_id else None
+            if body["copy_classes"] and not source:
+                return JsonResponse({"error": "Année de référence introuvable dans cette école."}, status=422)
+            year = AcademicYear(school=school, code=code, name=name.strip(),
+                                start_date=start, end_date=end)
+            year.full_clean()
+            year.save()
+            copied = 0
+            if body["copy_classes"]:
+                for old in AcademicClass.objects.filter(school=school, year=source, active=True):
+                    room = AcademicClass(school=school, year=year, code=old.code, name=old.name,
+                                         level=old.level, track=old.track,
+                                         capacity=old.capacity, active=True)
+                    room.full_clean()
+                    room.save()
+                    copied += 1
+            log_event(school, request, "academic_year_prepared", str(year.pk), {
+                "source_year": str(source.pk) if source else None,
+                "classes_copied": copied, "copy_classes": body["copy_classes"],
+            })
+    except ValidationError as exc:
+        return JsonResponse({"error": " ".join(exc.messages)[:500]}, status=422)
+    except IntegrityError:
+        return JsonResponse({"error": "Année ou classe déjà existante."}, status=409)
+    return JsonResponse({
+        "year": _year_dict(year), "classes_copied": copied,
+        "message": "Année préparée. Les élèves, affectations, évaluations, bulletins, paiements et périodes n'ont pas été copiés.",
+    }, status=201)
