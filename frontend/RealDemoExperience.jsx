@@ -17,6 +17,21 @@ const OPTIONS=[
   ["platform","Super-administrateur"],
   ["parent","Parent d'élève"],
 ];
+// Empêche qu'une erreur d'une rubrique simulée efface toute la page.
+class DemoRuntimeBoundary extends React.Component {
+  constructor(props){super(props);this.state={failed:false};}
+  static getDerivedStateFromError(){return {failed:true};}
+  render(){
+    if(this.state.failed)return <main className="yem-demo-error" role="alert">
+      <h1>Cette rubrique de démonstration ne peut pas s'afficher.</h1>
+      <p>Les données fictives de cette rubrique sont incomplètes. Aucun compte, paiement ni dossier réel n'a été modifié.</p>
+      <button type="button" onClick={()=>{this.setState({failed:false});this.props.onReset();}}>
+        Réinitialiser la démonstration
+      </button>
+    </main>;
+    return this.props.children;
+  }
+}
 export default function RealDemoExperience(){
   const backend=useMemo(()=>createOfflineDemoBackend(),[]);
   const [ready,setReady]=useState(false);
@@ -46,11 +61,13 @@ export default function RealDemoExperience(){
   const account=<p>Profil de visite fictif : aucun mot de passe ou accès réel n'est utilisé.</p>;
   return <div className="yem-demo-real" data-demo="true" onClickCapture={interceptLinks}
     onSubmitCapture={event=>event.preventDefault()}>
-    {ready&&<div className="yem-demo-real-app" key={role+"-"+iteration}>
-      {role==="school"?<SchoolDashboard user={DEMO_USER} accountView={account} onLogout={returnToReal} initialSchoolId="lycee"/>:
-       role==="platform"?<PlatformConsole user={DEMO_USER} mfaEnabled accountView={account} onLogout={returnToReal}/>:
-       <FamilyWorkspace accountView={account} onLogout={returnToReal}/>}
-    </div>}
+    {ready&&<DemoRuntimeBoundary key={role+"-"+iteration} onReset={reset}>
+      <div className="yem-demo-real-app">
+        {role==="school"?<SchoolDashboard user={DEMO_USER} accountView={account} onLogout={returnToReal} initialSchoolId="lycee"/>:
+         role==="platform"?<PlatformConsole user={DEMO_USER} mfaEnabled accountView={account} onLogout={returnToReal}/>:
+         <FamilyWorkspace accountView={account} onLogout={returnToReal}/>}
+      </div>
+    </DemoRuntimeBoundary>}
     <aside className={"yem-demo-pilot"+(showControls?"":" collapsed")} aria-label="Pilotage de la démonstration">
       <button type="button" className="yem-demo-pilot-toggle"
         onClick={()=>setShowControls(o=>!o)}
