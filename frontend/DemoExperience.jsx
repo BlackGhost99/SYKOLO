@@ -1,5 +1,5 @@
 import React, {useState} from "react";
-import {Shell,Icon,Card,Metric,PageHeader,Status,Button,YemLogo,NAV} from "./yem-ui.jsx";
+import {Shell,Icon,Card,Metric,PageHeader,Status,Button,YemLogo,NAV,LineChart,Donut,Table,InfoRow,SearchBox} from "./yem-ui.jsx";
 import {SchoolSettings} from "./SchoolSettings.jsx";
 import {createDemoState,ROUTE_LABELS,DEMO_YEARS,DEMO_CURRENT_YEAR,SCHOOL_ROLES,fcfa,remaining,schoolOf,availableRoutes,fakeId} from "./demo-data.js";
 import "./yem-desktop.css";
@@ -401,34 +401,70 @@ export default function DemoExperience(){
       amount:String(remaining(inv)),method:channels[0]});
   }
   function dashboard(){
-    return <><PageHeader title="Tableau de bord" subtitle={school.name+" — situation illustrative"} badge="Exemple fictif" badgeIcon="info"/>
-      <div className="demo-metrics">
-        <Metric icon="users" label="Élèves" value={String(currentStudents.length)}/>
-        <Metric icon="layers" label="Classes" value={String(currentClasses.length)}/>
-        <Metric icon="adduser" label="Admissions" value={String(currentApplications.length)}/>
-        <Metric icon="coins" label="Restant dû (démo)" value={fcfa(pendingTotal)}/>
+    const totalPaid=currentInvoices.reduce((sum,f)=>sum+f.paid,0);
+    const arrears=currentInvoices.filter(f=>remaining(f)>0);
+    const lateFamilies=new Set(arrears.map(f=>f.student)).size;
+    const months=["Juin","Juil.","Août","Sept.","Oct.","Nov."];
+    const monthSeries=[.38,.53,.31,.7,.86,1].map(x=>Math.round(totalPaid*x));
+    const max=Math.max(100000,Math.ceil(totalPaid/25000)*25000);
+    const byMethod=[Math.floor(totalPaid*.45),Math.floor(totalPaid*.3),Math.floor(totalPaid*.2),
+      Math.max(0,totalPaid-Math.floor(totalPaid*.45)-Math.floor(totalPaid*.3)-Math.floor(totalPaid*.2))];
+    return <>
+      <div className="yd-view-filters">
+        <label>Année scolaire <select aria-label="Année de consultation" value={year}
+          onChange={e=>setYear(e.target.value)}>{DEMO_YEARS.map(y=><option key={y}>{y}</option>)}</select></label>
+        <label>Devise de consultation <select aria-label="Devise de consultation" defaultValue="XAF">
+          <option value="XAF">XAF</option></select></label>
       </div>
-      <p className="demo-hint">Année scolaire : <b>{year}</b>{isClosed?" · Archives clôturées (lecture seule)":""}</p>
-      <div className="demo-grid-two">
-        <Card title="Actions rapides" icon="bolt"><div className="demo-quick">
-          <DemoButton icon="adduser" primary onClick={()=>open("student",{level:school.levels[0]+" A"})}>Ajouter un élève</DemoButton>
-          <DemoButton icon="users" onClick={()=>{setPage("admissions");open("admission",{school:school.id,route:"direct",level:school.levels[0]});}}>Nouvelle demande</DemoButton>
-          <DemoButton icon="layers" onClick={()=>open("classroom")}>Créer une classe</DemoButton>
-          <DemoButton icon="card" onClick={()=>setPage("payments")}>Voir les paiements</DemoButton>
-        </div></Card>
-        <Card title="Activité illustrative" icon="clock"><ul className="demo-activity">
-          {state.events.length?state.events.slice(0,5).map((v,i)=><li key={i}>{v.kind} — {v.who}</li>):
-            <><li>Préinscription reçue — exemple</li><li>Absences consultées — exemple</li>
-              <li>Rapprochement financier — exemple</li></>}</ul></Card>
+      <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${school.name} — novembre 2026`}
+        badge="Direction" badgeIcon="crown"/>
+      <div className="yd-metrics five">
+        <Metric icon="coins" label="Encaissé ce mois" value={fcfa(totalPaid)} trend="none" trendLabel="données de présentation"/>
+        <Metric icon="file" label="Restant dû" value={fcfa(pendingTotal)} trend="none" trendLabel="toutes échéances"/>
+        <Metric icon="users" label="Élèves actifs" value={String(currentStudents.length)} trend="none" trendLabel={year}/>
+        <Metric icon="alert" label="Familles en retard" value={String(lateFamilies)} trend="none" trendLabel={fcfa(pendingTotal)+" échus"}/>
+        <Metric icon="receipt" label="Paiements aujourd’hui" value={String(state.events.filter(x=>x.kind==="Paiement simulé").length)}
+          trend="none" trendLabel="simulations uniquement"/>
       </div>
-      <div className="demo-grid-two"><Card title="Admissions en cours" icon="adduser">
-        {currentApplications.slice(0,4).map(a=><button className="demo-line demo-line-button" type="button" key={a.id}
-          onClick={()=>{setSelectedAdmission(a.id);setPage("admissions");}}><b>{a.name}</b><span>{ROUTE_LABELS[a.route]}</span><Status>{a.status}</Status></button>)}
-      </Card><Card title="Dossier de l'établissement" icon="school">
-        <p><b>Type :</b> {school.type}</p><p><b>Ville :</b> {school.city}</p>
-        <p><b>Direction :</b> {school.head}</p>
-        <DemoButton onClick={()=>setPage("settings")} icon="settings">Configurer la démonstration</DemoButton>
-      </Card></div></>;
+      <div className="yd-grid dash-main">
+        <Card title="Évolution des encaissements" icon="barchart" subtitle="Montants encaissés (FCFA) sur les 6 derniers mois — exemple fictif">
+          <LineChart points={monthSeries} labels={months} min={0} max={max} step={max/4}/>
+        </Card>
+        <Card title="Répartition des moyens de paiement" icon="wallet">
+          <Donut size={160} values={byMethod} centerTop={totalPaid.toLocaleString("fr-FR")} centerBottom={"FCFA\nencaissés"}
+            legend={["Airtel Money","Moov Money","Espèces","Virement"].map((label,i)=>
+              [label+" : "+(totalPaid?Math.round(byMethod[i]/totalPaid*100):0)+" %","("+fcfa(byMethod[i])+")"])}/>
+        </Card>
+        <Card title="Actions rapides" icon="bolt" className="quick">
+          <DemoButton icon="card" primary onClick={()=>navigate("payments","live")}>Nouvel encaissement</DemoButton>
+          <DemoButton icon="mail" onClick={()=>navigate("arrears")}>Préparer les relances</DemoButton>
+          <DemoButton icon="adduser" onClick={()=>{navigate("students","live");open("student",{level:school.levels[0]+" A"});}}>Inscrire un élève</DemoButton>
+          <DemoButton icon="users" onClick={()=>navigate("students","byclass")}>Inscriptions par classe</DemoButton>
+          <DemoButton icon="file" onClick={()=>navigate("bulletins")}>Générer les bulletins</DemoButton>
+        </Card>
+      </div>
+      <div className="yd-grid dash-bottom">
+        <Card title="Retardataires prioritaires" icon="users">
+          <Table headers={["#","Élève","Classe","Montant dû","Statut"]}
+            rows={arrears.slice(0,5).map((f,i)=>{
+              const pupil=currentStudents.find(s=>s.id===f.student);
+              return [i+1,pupil?.name||"—",pupil?.level||"—",fcfa(remaining(f)),<Status tone="red">En retard</Status>];
+            })}/>
+        </Card>
+        <Card title="Derniers paiements du jour" icon="receipt">
+          <Table headers={["Élève","Classe","Montant","Mode","Heure"]}
+            rows={state.events.filter(x=>x.kind==="Paiement simulé").slice(0,5)
+              .map((x)=>[x.who,"—","Simulé","Démo","—"])}/>
+          {!state.events.some(x=>x.kind==="Paiement simulé")&&<Empty>Aucun paiement simulé aujourd’hui.</Empty>}
+        </Card>
+      </div>
+      <div className="yd-real-body"><Card title="Modules de l'établissement" icon="school">
+        <div className="pc-module-grid">{SCHOOL_NAV.filter(([id])=>id!=="dashboard").map(([id,icon,label])=>
+          <button type="button" key={id} onClick={()=>navigate(id)}>
+            <Icon name={icon} size={26}/><b>{label}</b><small>Consulter les données de démonstration</small>
+          </button>)}</div>
+      </Card></div>
+    </>;
   }
   function students(advancedAction=null,tabs=null){
     return <><PageHeader title="Gestion des élèves" subtitle="Inscriptions, classes, responsables et suivi administratif" actions={advancedAction}/>{tabs}
