@@ -3,7 +3,7 @@
 -- Their PDF exports use the existing server-side bulletin generator.
 DO $reports$
 DECLARE
-  r record; co record; period_row record; st record; school_row record;
+  r record; co record;
   snapshot jsonb; subjects jsonb; sources jsonb; result_item jsonb;
   overall jsonb; policy jsonb; scope_json jsonb; layers jsonb; template jsonb;
   pct numeric; overall_sum numeric; weight_sum numeric;
