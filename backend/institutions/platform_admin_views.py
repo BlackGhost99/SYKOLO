@@ -295,6 +295,7 @@ def platform_school_action(request, school_id):
             school.school_type = school_type
             school.education_cycles = education_cycles
             school.save(update_fields=["school_type", "education_cycles"])
+            ensure_preschool_levels(school)
             provision_appointment_roles(school)
             log_event(school, request, "school_profile_updated", reason)
             audit(request, "school_profile_updated", school.name, school, reason)
