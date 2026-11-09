@@ -58,7 +58,7 @@ test("Paiements affiche les statistiques de caisse et le formulaire sans page bl
   const user=userEvent.setup();
   render(<RealDemoExperience/>);
   const nav=await screen.findByRole("navigation",{name:"Navigation principale"});
-  await user.click(within(nav).getByRole("button",{name:"Paiements"}));
+  await user.click(await within(nav).findByRole("button",{name:"Paiements"}));
   expect(await screen.findByText("Encaissé aujourd’hui")).toBeTruthy();
   expect(screen.getByText("Nombre de paiements")).toBeTruthy();
   expect(screen.getByText("Nouvel encaissement")).toBeTruthy();
@@ -72,7 +72,7 @@ test("Évaluations et notes charge cours, élèves et notes d'un vrai écran YEM
   const user=userEvent.setup();
   render(<RealDemoExperience/>);
   const nav=await screen.findByRole("navigation",{name:"Navigation principale"});
-  await user.click(within(nav).getByRole("button",{name:"Évaluations et notes"}));
+  await user.click(await within(nav).findByRole("button",{name:"Évaluations et notes"}));
   const section=await screen.findByRole("region",{name:"Évaluations et notes"});
   expect(within(section).getByText("Évaluations et saisie des notes")).toBeTruthy();
   await user.selectOptions(within(section).getByRole("combobox",{name:"Classe"}),"c1");
@@ -92,7 +92,7 @@ test("Bulletins reste visitable et affiche des exemples de résultats",async()=>
   const user=userEvent.setup();
   render(<RealDemoExperience/>);
   const nav=await screen.findByRole("navigation",{name:"Navigation principale"});
-  await user.click(within(nav).getByRole("button",{name:"Évaluations et notes"}));
+  await user.click(await within(nav).findByRole("button",{name:"Évaluations et notes"}));
   await user.click(screen.getByRole("tab",{name:"Bulletins"}));
   const section=await screen.findByRole("region",{name:"Bulletins et résultats"});
   expect(within(section).getByText("Bulletins et résultats")).toBeTruthy();
