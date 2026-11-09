@@ -397,7 +397,7 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
 }
 
 /* ---------- Paramètres : classes ---------- */
-export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearChange }) {
+export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearChange, onNavigate }) {
   const [year, setYear] = useState(workingYearId);
   useEffect(() => {setYear(workingYearId);setPreview([]);setEditing(null);setCloning(null);setSeriesPreview([]);setArchivedSource("");}, [schoolId, workingYearId]);
   const o = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
@@ -495,7 +495,7 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
     {tabs}
     {!editing && <Msg {...message}/>}
     <Loading state={o}>{d && (year && year !== d.year?.id ? <p role="status">Chargement de l’année…</p> : <>
-      {!d.year ? <Card title="Commencez par l’année scolaire" icon="calendar">{d.can_manage_academic ? yearForm : <Empty>La direction doit créer l’année scolaire.</Empty>}</Card> : <div className="yd-grid yf-two">
+      {!d.year ? <Card title="Commencez par l’année scolaire" icon="calendar">{d.can_manage_academic ? (onNavigate ? <button type="button" onClick={()=>onNavigate("calendar")}>Ouvrir le Calendrier pédagogique et créer l’année</button> : yearForm) : <Empty>La direction doit créer l’année scolaire dans le Calendrier pédagogique.</Empty>}</Card> : <div className="yd-grid yf-two">
         {standardCycles.length > 0 && d.year.active !== false && <Card title="Classes standards en un clic" icon="school" subtitle={`${standardsCount} niveaux disponibles · Une division par niveau · Noms modifiables`}>
           <p>YEM propose les classes de votre établissement : {standardCycles.map(cycle => cycle.name).join(" · ")}.</p>
           <p>Ajoutez uniquement les divisions manquantes. Les classes existantes, même renommées, restent intactes.</p>
@@ -671,7 +671,7 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
                     <button type="button" className="yf-link" aria-label={`${c.active ? "Archiver" : "Réactiver"} ${c.name}`}
                       disabled={busy} onClick={() => toggleArchive(c)}>{c.active ? "Archiver" : "Réactiver"}</button>}</td>
               </tr>)}</tbody></table></TableScroll>}
-          {d.can_manage_academic && <details className="yf-details"><summary>Créer une autre année scolaire</summary>{yearForm}</details>}
+          {d.can_manage_academic && (onNavigate ? <div className="yf-inline-form"><button type="button" className="yf-link" onClick={()=>onNavigate("calendar")}>Gérer les années dans le Calendrier pédagogique</button></div> : <details className="yf-details"><summary>Créer une autre année scolaire</summary>{yearForm}</details>)}
         </Card>
       </div>}
     </>)}</Loading>

@@ -1,6 +1,7 @@
 import DelegationManager from "./DelegationManager.jsx";
 import React, {useEffect,useState} from "react";
 import AcademicPanel from "./AcademicPanel.jsx";
+import PedagogicalCalendar from "./PedagogicalCalendar.jsx";
 import StaffPanel from "./StaffPanel.jsx";
 import StaffOnboarding from "./StaffOnboarding.jsx";
 import CycleWorkspace from "./CycleWorkspace.jsx";
@@ -48,6 +49,8 @@ const sections = {
     {key:"byclass",label:"Inscriptions par classe",need:["school.students.read","school.academic.read"]}],
     hidden:{new:"school.students.manage",import:"school.students.manage",fiche:"school.students.read"}},
   classes:{modules:[],lives:[{key:"live",label:"Classes et effectifs",need:["school.academic.read"]}]},
+  calendar:{title:"Calendrier pédagogique",subtitle:"Année, trimestres, vacances et événements",modules:[],lives:[
+    {key:"live",label:"Calendrier pédagogique",need:["school.academic.read"]}]},
   admissions:{title:"Admissions et préinscriptions",subtitle:"Consultez les demandes et suivez leur inscription",modules:["admissions"]},
   payments:{title:"Encaissements et caisse journalière",subtitle:"Suivi des paiements, reçus et méthodes d’encaissement",modules:["finance"],lives:[
     {key:"live",label:"Caisse du jour",need:["school.finance.read"]},
@@ -60,7 +63,7 @@ const sections = {
   staff:{title:"Personnel",subtitle:"Retrouvez les collaborateurs et gérez leurs affectations",modules:["onboarding"],lives:[
     {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]}]},
 };
-const schoolNav = [...NAV.slice(0,2), ["classes","layers","Classes"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
+const schoolNav = [...NAV.slice(0,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
 const sectionIcon=Object.fromEntries(schoolNav.map(([id,icon])=>[id,icon]));
 
 const settingsSections = [
@@ -78,7 +81,7 @@ const settingsSections = [
     {id:"council-policy", label:"Décisions du conseil", need:["school.settings.read"]},
     {id:"amendments", label:"Rectifier un bulletin", need:["school.reports.amend","school.reports.read","school.students.read","school.academic.read"]},
     {id:"timetable", label:"Emplois du temps", need:["school.timetable.read"]},
-    {id:"academic", label:"Années et cycles", need:["school.academic.read"]},
+    {id:"academic", label:"Structure académique avancée", need:["school.academic.read"]},
   ]},
   {id:"admissions", title:"Admissions", icon:"adduser", items:[
     {id:"admission-policy", label:"Voies d’admission et fiche publique", need:["school.admissions.read","school.academic.read"], any:["school.admissions.manage","school.admissions.decide"]},
@@ -342,6 +345,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "students:fiche":<StudentFile key={k} {...props}/>,
       "students:import":<ImportStudents key={chosen} {...props}/>,
       "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.read")} advancedSettings={advancedSettings} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
+      "calendar:live":<PedagogicalCalendar key={chosen} schoolId={chosen} workingYearId={workingYearId}
+        onWorkingYearChange={setWorkingYearId} onYearsUpdated={()=>setYearCatalogVersion(v=>v+1)}/>,
       "payments:live":<LivePayments key={k} {...props}/>,
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
       "arrears:live":<LiveArrears key={chosen} {...props}/>,

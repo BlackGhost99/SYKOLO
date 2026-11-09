@@ -65,7 +65,7 @@ test("l'espace établissement permet de créer une classe et de consulter ses é
   await user.click(within(nav).getByRole("button", {name: "Paramètres"}));
   await user.click(screen.getByRole("button", {name: /Classes de l’établissement/}));
   expect(screen.getByRole("button", {name: "Classes", exact: true, pressed: true})).toBeTruthy();
-  expect(screen.getByRole("button", {name: "Années et cycles", pressed: false})).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Structure académique avancée", pressed: false})).toBeTruthy();
 });
 
 test.each([true,false])("le raccourci des évaluations respecte les droits et le sous-onglet (accès : %s)", async canReadSettings => {

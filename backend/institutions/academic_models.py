@@ -165,3 +165,63 @@ class AcademicPeriod(models.Model):
                 start_date__lte=self.end_date, end_date__gte=self.start_date
             ).exclude(pk=self.pk).exists():
                 raise ValidationError("Les périodes actives ne doivent pas se chevaucher.")
+
+
+class PedagogicalCalendarEvent(models.Model):
+    """Repère daté d'une année : vacances, évaluations, examens, réunions, etc.
+
+    Une entrée n'affecte pas automatiquement les notes, absences ou paiements.
+    Les dates ministérielles restent des références explicitement configurées.
+    """
+    KIND_CHOICES = [
+        ("rentree", "Rentrée"),
+        ("cours", "Cours et reprise"),
+        ("evaluation", "Évaluations / arrêt des notes"),
+        ("bulletins", "Bulletins / conseils"),
+        ("vacances", "Vacances et congés"),
+        ("examen", "Examens / concours"),
+        ("ferie", "Jour férié"),
+        ("reunion", "Réunion / activité"),
+        ("autre", "Autre"),
+    ]
+    SOURCE_CHOICES = [("school", "Établissement"), ("official", "Référence nationale")]
+    SCOPE_CHOICES = [
+        ("all", "Tous les cycles"), ("prescolaire", "Maternelle"),
+        ("primaire", "Primaire"), ("college", "Collège"),
+        ("lycee_general", "Lycée général"), ("lycee_technique", "Lycée technique"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="calendar_events")
+    year = models.ForeignKey(AcademicYear, on_delete=models.PROTECT, related_name="calendar_events")
+    title = models.CharField(max_length=160)
+    kind = models.CharField(max_length=24, choices=KIND_CHOICES, default="autre")
+    scope = models.CharField(max_length=24, choices=SCOPE_CHOICES, default="all")
+    start_date = models.DateField()
+    end_date = models.DateField()
+    description = models.CharField(max_length=500, blank=True, default="")
+    source = models.CharField(max_length=16, choices=SOURCE_CHOICES, default="school")
+    source_url = models.URLField(max_length=500, blank=True, default="")
+    active = models.BooleanField(default=True)
+    revision = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["start_date", "end_date", "title"]
+
+    def clean(self):
+        from datetime import timedelta
+        if self.year_id and self.school_id and self.year.school_id != self.school_id:
+            raise ValidationError("L'année appartient à un autre établissement.")
+        if self.start_date and self.end_date:
+            if self.end_date < self.start_date:
+                raise ValidationError({"end_date": "La fin de l'événement précède le début."})
+            if self.year_id:
+                # La rentrée administrative peut précéder le premier jour des cours.
+                first = self.year.start_date - timedelta(days=45)
+                last = self.year.end_date + timedelta(days=45)
+                if not first <= self.start_date <= self.end_date <= last:
+                    raise ValidationError("Dates hors de l'année scolaire (marge administrative de 45 jours).")
+        if self.scope != "all" and self.school_id and self.scope not in (self.school.education_cycles or []):
+            raise ValidationError("Ce cycle n'est pas ouvert dans l'établissement.")
+        if self.title and not self.title.strip():
+            raise ValidationError({"title": "Le titre est obligatoire."})

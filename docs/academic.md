@@ -82,3 +82,27 @@ Le cycle **lycée général** n'ouvre plus automatiquement « Seconde A », « P
 - Les droits de gestion sont limités au cycle effectivement délégué. Aucune migration du schéma n'est requise.
 
 Sources : annuaire statistique du secteur Éducation/Formation du Gabon (publié en 2023, description scolaire 2020–2021), `https://instatgabon.org/uploads/folder_1/RGOE/Annuaire_2020-2021_31_10_2023_.pdf` ; catalogue BacTech `https://bactechgabon.com/affiche_listinscritserie.php` ; Lycée technique de Ntoum (appellations locales ACA/ACC, ACG).
+
+
+## Calendrier pédagogique : point d'entrée unique pour la gestion des années (novembre 2026)
+
+Une école qui a créé par erreur une année nommée « Année 1 » peut maintenant **modifier son nom affiché** depuis la navigation principale **Calendrier pédagogique**, sans recréer la période ni changer l'identifiant UUID, le code technique, les classes, les inscriptions, les tarifs ou les bilans. Le sélecteur global des années se rafraîchit après l'édition.
+
+### Écrans et règles
+
+- **Année scolaire** : sélection d'une année existante, son état (préparation, en cours, clôturée), dates réelles et bouton « Corriger le nom ou les dates ». Le code technique reste stable. La modification exige `school.academic.manage` non limité à un cycle, ainsi qu'une révision valide. Un doublon de nom est refusé. Les dates restent protégées si des élèves sont inscrits, si des périodes en sortiraient ou si des années se chevaucheraient ; une année clôturée demeure en lecture seule.
+- **Périodes pédagogiques** : trimestres ou semestres déjà implémentés (`AcademicPeriod`) ; création, édition, archivage et réactivation dans le même calendrier. Une période active ne peut pas se superposer à une autre ; les années clôturées sont verrouillées.
+- **Échéances et événements** : nouvel objet `PedagogicalCalendarEvent` par établissement et par année, avec catégorie (rentrée, vacances, évaluations, bulletins, examen, jour férié, réunion…), cycle concerné, dates, origine « établissement / référence nationale », notes, lien source et archivage. Contrairement aux trimestres, les événements peuvent se chevaucher. Ils **ne modifient pas directement** les évaluations, les absences, les caisses ou les bulletins ; ce sont des repères de planification.
+- **Historique et année suivante** : les contrôles de clôture, bilans et préparation/activation annuelle restent fournis par `AnnualWorkspace`, à présent accessible dans une section déroulante du Calendrier pédagogique ; aucune ancienne fonction n'a été dupliquée. Dans les réglages avancés, le module « Structure académique » se concentre sur cycles/niveaux/filières. Dans « Classes », le lien renvoie au nouveau calendrier au lieu d'ouvrir un second formulaire annuel.
+- **API** : `GET/POST /schools/{id}/academic/pedagogical-calendar?year={uuid}`, `PATCH /schools/{id}/academic/pedagogical-calendar/{event_id}` ; endpoints existants `PATCH /academic/years/{id}` et `POST/PATCH /academic/periods` réutilisés. Isolation d'école, révisions optimistes, audit, permissions par cycle et validation des dates ; une marge administrative de 45 jours autour de l'année autorise une rentrée du personnel avant celle des élèves.
+- **Protection base** : migration additive `0040_pedagogical_calendar`, activation de RLS sur la nouvelle table pour Supabase et trigger PostgreSQL refusant toute écriture sur les événements d'une année clôturée. Aucun événement n'est ajouté automatiquement à une école existante.
+
+### Références Gabon, configuration volontaire seulement
+
+Le calendrier scolaire national **2026–2027**, annoncé en août 2026, prévoit pour les établissements publics et privés gabonais la rentrée administrative **31 août 2026**, la rentrée des élèves **7 septembre 2026**, les trois périodes **7 septembre – 28 novembre 2026**, **7 décembre 2026 – 6 mars 2027**, **15 mars – 10 juillet 2027**, une fin de cours **5 juin 2027** pour les classes sans examen et une période d'examens **24 mai – 10 juillet 2027**. Références : [Gabonreview, 10 août 2026](https://www.gabonreview.com/gabon-la-rentree-des-classes-fixee-au-7-septembre-2026/), [ministère de l'Éducation nationale – calendrier scolaire](https://education-nationale.gouv.ga/calendrier-scolaire/). Le calendrier scolaire gabonais **2025–2026 a été modifié en cours d'année** par arrêté n°000008/MENIC du 30 janvier 2026 : **ne jamais coder des dates ministérielles comme obligations permanentes**.
+
+L'interface propose ces données seulement pour l'année correspondante et permet de préremplir individuellement des périodes/repères ; l'établissement doit **confirmer** et peut les éditer. Les jours précis de concours et de chaque examen ne sont pas inventés. Pour les autres années et les autres pays, une direction peut créer ses propres périodes et événements sans toucher au code.
+
+### Consolidation
+
+Ce module est la **dernière nouvelle rubrique fonctionnelle** prévue dans cette phase. Priorité ensuite : cohérence des écrans, permissions, flux parents, tests de bout en bout, sauvegardes/restauration et documentation de prise en main avant l'ouverture commerciale.

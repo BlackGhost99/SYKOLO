@@ -4,6 +4,7 @@ from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views
 from . import annual_views
+from . import calendar_views
 from . import secondary_views
 from . import staff_onboarding_views
 from . import cycle_access_views
@@ -162,6 +163,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/enrollments/<uuid:enrollment_id>", student_views.enrollment_detail),
     path("schools/<uuid:school_id>/enrollments/<uuid:enrollment_id>/history", student_views.enrollment_history),
     path("schools/<uuid:school_id>/academic/annual-snapshot", annual_views.annual_snapshot),
+    path("schools/<uuid:school_id>/academic/pedagogical-calendar", calendar_views.events),
+    path("schools/<uuid:school_id>/academic/pedagogical-calendar/<uuid:event_id>", calendar_views.event_detail),
     path("schools/<uuid:school_id>/academic/years/<uuid:year_id>/activate", annual_views.activate_year),
     path("schools/<uuid:school_id>/academic/years/<uuid:year_id>/closure-review", annual_views.closure_review),
     path("schools/<uuid:school_id>/academic/years/<uuid:year_id>/close", annual_views.close_year),

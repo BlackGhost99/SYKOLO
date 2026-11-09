@@ -2,12 +2,9 @@ import React, { useEffect, useState } from "react";
 import AnnualWorkspace from "./AnnualWorkspace.jsx";
 
 const TYPES = [
-  {key:"years",label:"Années scolaires",fields:["start_date","end_date"]},
   {key:"cycles",label:"Cycles",fields:["order"]},
   {key:"levels",label:"Niveaux",fields:["cycle","order"]},
-  {key:"tracks",label:"Filières",fields:["level","order"]},
-  {key:"classes",label:"Classes",fields:["year","level","track","capacity"]},
-  {key:"periods",label:"Périodes",fields:["year","start_date","end_date","order"]},
+  {key:"tracks",label:"Filières et séries",fields:["level","order"]},
 ];
 const LABELS = {year:"Année",cycle:"Cycle",level:"Niveau",track:"Filière facultative",capacity:"Capacité facultative",start_date:"Début",end_date:"Fin",order:"Ordre"};
 const PARENT = {year:"years",cycle:"cycles",level:"levels",track:"tracks"};
@@ -29,7 +26,7 @@ async function request(path, body, method) {
 }
 
 export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearChange,onYearsUpdated}) {
-  const [resource,setResource] = useState("years");
+  const [resource,setResource] = useState("cycles");
   const [yearId,setYearId] = useState(workingYearId);
   const changeYear = id=>{setYearId(id);onWorkingYearChange?.(id);};
   const [all,setAll] = useState({});
@@ -129,8 +126,8 @@ export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearCh
   }
   return (
     <section className="card" aria-label="Structure académique" style={{marginTop:"1rem"}}>
-      <h2>Structure académique</h2>
-      <p className="hint">Années, cycles, niveaux, filières, classes et périodes. Les niveaux du primaire peuvent s’appeler 1re à 5e année, ou porter les noms choisis par l’établissement.</p>
+      <h2>Structure académique avancée</h2>
+      <p className="hint">Gérez les cycles, niveaux et séries de l’établissement. Les années, trimestres, vacances et examens sont désormais réunis dans « Calendrier pédagogique », et les divisions dans « Classes ».</p>
       {!allowed ? <p role="status">{message}</p> : <>
         <label className="field">Élément à gérer
           <select value={resource} onChange={e=>{setResource(e.target.value);setForm({...init(),year:yearId});setEditingLevel(null);setMessage("");}}>
