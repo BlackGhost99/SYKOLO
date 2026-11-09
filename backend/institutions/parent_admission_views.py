@@ -279,7 +279,9 @@ def family_applications(request):
         if child is None:
             return error("Enfant introuvable.", 404)
         with transaction.atomic():
-            classroom = AcademicClass.objects.select_for_update().select_related(
+            # PostgreSQL interdit FOR UPDATE sur la partie nullable (filière facultative).
+            # Verrouiller uniquement la classe, pas les jointures de lecture.
+            classroom = AcademicClass.objects.select_for_update(of=("self",)).select_related(
                 "school", "year", "level",
             ).filter(pk=class_id, active=True, school__is_active=True,
                      year__active=True, level__active=True, level__cycle__active=True,
