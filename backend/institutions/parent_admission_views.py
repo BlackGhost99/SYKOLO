@@ -280,8 +280,9 @@ def family_applications(request):
             classroom = AcademicClass.objects.select_for_update().select_related(
                 "school", "year", "level",
             ).filter(pk=class_id, active=True, school__is_active=True,
-                     year__active=True, level__active=True,
-                     school__public_listing__published=True).first()
+                     year__active=True, level__active=True, level__cycle__active=True,
+                     school__public_listing__published=True).filter(
+                         Q(track__isnull=True) | Q(track__active=True)).first()
             if classroom is None:
                 return error("Classe non publiée ou indisponible.", 404)
             listing = SchoolPublicListing.objects.get(school=classroom.school)
