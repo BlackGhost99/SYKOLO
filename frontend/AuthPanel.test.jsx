@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import React from "react";
-import {render,screen,cleanup} from "@testing-library/react";
+import {render,screen,cleanup,fireEvent} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {it,expect,vi,afterEach} from "vitest";
 import AuthPanel from "./AuthPanel.jsx";
+import loginArtwork from "./assets/yem-login-original.png";
 vi.mock("./SchoolDashboard.jsx",()=>({default:()=> <p>Espace scolaire ouvert</p>}));
 vi.mock("./PlatformConsole.jsx",()=>({default:()=> <p>Console plateforme ouverte</p>}));
 vi.mock("./ParentPortal.jsx",()=>({FamilyWorkspace:()=> <p>Espace famille ouvert</p>}));
@@ -127,7 +128,9 @@ it("utilise directement l'image originale et conserve les vrais champs de connex
   setup();
   render(<AuthPanel />);
   const picture = document.querySelector(".yem-original-login__image");
-  expect(picture?.getAttribute("src")).toBe("/yem-login-original.png");
+  expect(picture?.getAttribute("src")).toBe(loginArtwork);
+  expect(document.querySelector(".yem-original-login--exact")).toBeNull();
+  fireEvent.load(picture);
   expect(document.querySelector(".yem-original-login--exact")).toBeTruthy();
   expect(screen.getByLabelText("Code de l'établissement")).toBeTruthy();
   expect(screen.getByRole("button", {name:"Se connecter",exact:true})).toBeTruthy();
@@ -140,5 +143,15 @@ it("conserve la récupération de mot de passe sans confondre l'image et le form
   const ui=userEvent.setup();
   await ui.click(screen.getByRole("button",{name:"Mot de passe oublié",exact:true}));
   expect(screen.getByLabelText("Adresse email du compte")).toBeTruthy();
-  expect(document.querySelector(".yem-original-login__image")?.getAttribute("src")).toBe("/yem-login-original.png");
+  expect(document.querySelector(".yem-original-login__image")?.getAttribute("src")).toBe(loginArtwork);
+});
+
+it("laisse le formulaire utilisable si l’illustration ne se charge pas", async () => {
+  setup();
+  render(<AuthPanel />);
+  fireEvent.error(document.querySelector(".yem-original-login__image"));
+  expect(document.querySelector(".yem-original-login__image")).toBeNull();
+  expect(document.querySelector(".yem-original-login--exact")).toBeNull();
+  expect(await screen.findByRole("heading", { name: "Connexion établissement" })).toBeTruthy();
+  expect(screen.getByLabelText("Code de l'établissement")).toBeTruthy();
 });

@@ -63,6 +63,10 @@ jobs:
           curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/readyz
           curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/healthz
           curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/ > /dev/null
+          login_artwork=$(find dist/assets -maxdepth 1 -name 'yem-login-original-*.png' -print -quit)
+          test -n "$login_artwork"
+          curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:8000/${login_artwork#dist/}" -o "$RUNNER_TEMP/yem-login-original.png"
+          cmp frontend/assets/yem-login-original.png "$RUNNER_TEMP/yem-login-original.png"
       - name: Container logs on failure
         if: failure()
         run: docker logs yem-ci || true
