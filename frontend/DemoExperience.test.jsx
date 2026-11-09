@@ -14,8 +14,8 @@ test("la route de démonstration ne monte aucune requête API ni authentificatio
   const fetch=vi.fn(()=>{throw Error("Une requête réelle est interdite dans la démonstration");});
   vi.stubGlobal("fetch",fetch);
   render(<App/>);
-  expect(screen.getByText("MODE DÉMONSTRATION")).toBeTruthy();
-  expect(screen.getByRole("heading",{name:"Tableau de bord"})).toBeTruthy();
+  expect(screen.getByRole("button",{name:/MODE DÉMONSTRATION/})).toBeTruthy();
+  expect(await screen.findByRole("heading",{name:"Tableau de bord"})).toBeTruthy();
   expect(fetch).not.toHaveBeenCalled();
 });
 

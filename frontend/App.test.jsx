@@ -24,6 +24,6 @@ test("le bouton démonstration ouvre un parcours fictif isolé",async()=>{
   render(<App/>);
   await userEvent.setup().click(screen.getByRole("button",{name:/Démonstration interactive/}));
   expect(window.location.hash).toBe("#/demo");
-  expect(await screen.findByText("MODE DÉMONSTRATION")).toBeTruthy();
-  expect(screen.getByRole("heading",{name:"Tableau de bord"})).toBeTruthy();
+  expect(await screen.findByRole("button",{name:/MODE DÉMONSTRATION/})).toBeTruthy();
+  expect(await screen.findByRole("heading",{name:"Tableau de bord"})).toBeTruthy();
 });
