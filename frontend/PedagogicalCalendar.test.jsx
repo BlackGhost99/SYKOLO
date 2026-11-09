@@ -104,7 +104,7 @@ test("les événements peuvent être renseignés et un calendrier clôturé est 
     return makeResponse({year:{...year},years:[{...year}],can_edit_year:year.status!=="closed",
       periods:[],classes:[],stats:{}});
   }));
-  const {rerender}=render(<PedagogicalCalendar schoolId="school" workingYearId="annee"
+  const {rerender}=render(<PedagogicalCalendar key="current" schoolId="school" workingYearId="annee"
     onWorkingYearChange={vi.fn()}/>);
   const user=userEvent.setup();
   await user.click(await screen.findByRole("button",{name:"Ajouter un événement"}));
@@ -114,7 +114,7 @@ test("les événements peuvent être renseignés et un calendrier clôturé est 
   expect(sent[0].year).toBe("annee");
   expect(sent[0].title).toBe("Arrêt des notes");
   year.status="closed";year.active=false;
-  rerender(<PedagogicalCalendar schoolId="school" workingYearId="annee"
+  rerender(<PedagogicalCalendar key="closed" schoolId="school" workingYearId="annee"
     onWorkingYearChange={vi.fn()}/>);
   await screen.findByText("Arrêt des notes");
   expect(screen.queryByRole("button",{name:"Ajouter un événement"})).toBeNull();
