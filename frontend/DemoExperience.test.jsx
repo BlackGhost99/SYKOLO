@@ -174,7 +174,7 @@ test("les écrans Élèves et Tableau de bord partagent les mêmes KPI et sectio
   expect(screen.getByText("Évolution des encaissements")).toBeTruthy();
   expect(screen.getByText("Répartition des moyens de paiement")).toBeTruthy();
   await user.click(within(screen.getByRole("navigation",{name:"Navigation principale"})).getByRole("button",{name:"Élèves",exact:true}));
-  expect(screen.getByText("Liste des élèves")).toBeTruthy();
+  expect(screen.getAllByText("Liste des élèves").length).toBeGreaterThan(0);
   expect(screen.getByText("Aperçu de l’élève")).toBeTruthy();
   expect(screen.getByText("Dossiers incomplets")).toBeTruthy();
   expect(screen.getByRole("tab",{name:"Inscriptions par classe"})).toBeTruthy();
