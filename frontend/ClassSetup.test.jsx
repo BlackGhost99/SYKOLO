@@ -207,7 +207,7 @@ test("l'archive retire la classe active et une ancienne archive peut être repri
       method:"PATCH",body:JSON.stringify({revision:1,active:false}),
     }),
   ));
-  await user.selectOptions(screen.getByLabelText("Classe archivée à reprendre"),"prior");
+  await user.selectOptions(screen.getByLabelText(/Classe archivée à reprendre/),"prior");
   await user.click(screen.getByRole("button",{name:"Réouvrir dans cette année"}));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
     expect.stringContaining("academic/classes/prior/carry-forward"),
