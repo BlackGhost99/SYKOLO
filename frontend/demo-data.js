@@ -50,18 +50,50 @@ const SEED_STAFF = [
   {id:"p6",school:"maternelle",name:"Mme B. Nguema",role:"Directrice"},
   {id:"p7",school:"maternelle",name:"Mme P. Ella",role:"Éducatrice"},
 ];
+export const DEMO_YEARS = ["2025-2026","2026-2027","2027-2028"];
+export const DEMO_CURRENT_YEAR = "2026-2027";
+export const SCHOOL_ROLES = {
+  "Maternelle":["Propriétaire / Fondateur","Directrice","Directeur adjoint","Éducatrice / Maîtresse","Enseignant","Secrétaire","Économe","Comptable","Surveillant"],
+  "Primaire":["Propriétaire / Fondateur","Directeur","Directeur adjoint","Enseignant","Secrétaire","Économe","Comptable","Surveillant"],
+  "Collège / Lycée":["Propriétaire / Fondateur","Proviseur","Principal","Directeur des études","Directeur de la vie scolaire","Censeur principal","Censeur des études","Censeur de la vie scolaire","Surveillant général","Surveillant principal","Secrétaire pédagogique","Enseignant","Économe","Comptable"],
+  "Lycée technique":["Propriétaire / Fondateur","Proviseur","Directeur des études","Chef de travaux","Enseignant technique","Censeur des études","Directeur de la vie scolaire","Surveillant général","Secrétaire pédagogique","Économe","Comptable"],
+};
 export const ROUTE_LABELS = {direct:"Inscription directe",concours:"Concours / test",orientation:"Affectation / orientation"};
+const asCurrentYear = item => ({...item,year:DEMO_CURRENT_YEAR});
+const ARCHIVE_YEAR = "2025-2026";
 export function createDemoState(){
   return {
     schools:demoSchools.map(s=>({...s,levels:[...s.levels]})),
-    students:SEED_STUDENTS.map(s=>({...s})),
-    applications:SEED_APPLICATIONS.map(a=>({...a})),
-    invoices:SEED_INVOICES.map(f=>({...f})),
-    classes:SEED_CLASSES.map(c=>({...c})),
-    staff:SEED_STAFF.map(p=>({...p})),
-    marks:{},events:[],routes:{},
+    students:[...SEED_STUDENTS.map(asCurrentYear),{
+      id:"s8",school:"lycee",year:ARCHIVE_YEAR,name:"Moussavou Paul",level:"6e A",
+      guardian:"Mme Moussavou",phone:"+241 06 00 00 08",status:"Inscrit",average:13.4,absences:2
+    }],
+    applications:SEED_APPLICATIONS.map(asCurrentYear),
+    invoices:[...SEED_INVOICES.map(asCurrentYear),{
+      id:"f9",student:"s8",school:"lycee",year:ARCHIVE_YEAR,
+      label:"Scolarité — année clôturée",total:65000,paid:65000
+    }],
+    classes:[...SEED_CLASSES.map(asCurrentYear),{
+      id:"c8",school:"lycee",year:ARCHIVE_YEAR,name:"6e A",capacity:40
+    }],
+    staff:[...SEED_STAFF.map(s=>({...asCurrentYear(s),roles:[s.role],hasAccount:true,cycles:["Tous les cycles"]})),
+      {id:"p8",school:"lycee",year:ARCHIVE_YEAR,name:"M. J. Obiang",role:"Enseignant",
+       roles:["Enseignant"],hasAccount:false,cycles:["6e"]}],
+    subjects:[
+      {id:"m1",school:"lycee",year:DEMO_CURRENT_YEAR,name:"Mathématiques",level:"6e",coefficient:3},
+      {id:"m2",school:"lycee",year:DEMO_CURRENT_YEAR,name:"Français",level:"6e",coefficient:3},
+      {id:"m3",school:"lycee",year:DEMO_CURRENT_YEAR,name:"Histoire-Géographie",level:"6e",coefficient:2},
+      {id:"m4",school:"primaire",year:DEMO_CURRENT_YEAR,name:"Français",level:"4e année",coefficient:3},
+      {id:"m5",school:"maternelle",year:DEMO_CURRENT_YEAR,name:"Motricité",level:"Moyenne section",coefficient:1}
+    ],
+    timetable:[
+      {id:"t1",school:"lycee",year:DEMO_CURRENT_YEAR,className:"6e A",day:"Lundi",slot:"08:00–09:00",subject:"Mathématiques",teacher:"Mme C. Mba",room:"Salle 1"},
+      {id:"t2",school:"lycee",year:DEMO_CURRENT_YEAR,className:"6e A",day:"Lundi",slot:"09:00–10:00",subject:"Français",teacher:"Mme N. Obame",room:"Salle 1"}
+    ],
+    grading:{},numbering:{},marks:{},events:[],routes:{},
   };
 }
+
 export const fcfa = v => `${new Intl.NumberFormat("fr-FR").format(v)} FCFA`;
 export const remaining = f => Math.max(0,f.total-f.paid);
 export const schoolOf = (state,id) => state.schools.find(s=>s.id===id);

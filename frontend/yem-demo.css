@@ -146,3 +146,19 @@
   .demo-app .yd-hero h1{white-space:normal}
   .demo-app .yd-hero p{white-space:normal}
 }
+
+/* Navigation de présentation : année choisie dans tous les profils. */
+.demo-year-control{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:700;color:#224a31}
+.demo-year-control select{margin-left:0;min-width:150px;width:auto}
+.demo-rolebar>select{margin-left:auto}
+.demo-tiles .demo-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.demo-tiles .demo-actions button{font-size:11px}
+.demo-tiles>.demo-tile{min-width:0}
+.demo-person-inline small{display:block;color:#6b7b70;font-size:11px}
+@media(max-width:720px){
+  .demo-rolebar{padding:10px 12px;gap:7px}
+  .demo-year-control{width:100%;justify-content:space-between}
+  .demo-year-control select{min-width:150px}
+  .demo-rolebar>select{width:100%;max-width:none;margin-left:0}
+  .demo-tiles .demo-actions{flex-direction:row}
+}
