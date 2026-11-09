@@ -1,15 +1,17 @@
 import React, {useState} from "react";
 import {Shell,Icon,Card,Metric,PageHeader,Status,Button,YemLogo} from "./yem-ui.jsx";
-import {createDemoState,ROUTE_LABELS,fcfa,remaining,schoolOf,availableRoutes,fakeId} from "./demo-data.js";
+import {createDemoState,ROUTE_LABELS,DEMO_YEARS,DEMO_CURRENT_YEAR,SCHOOL_ROLES,fcfa,remaining,schoolOf,availableRoutes,fakeId} from "./demo-data.js";
 import "./yem-desktop.css";
 import "./yem-demo.css";
 
 const SCHOOL_NAV = [
   ["dashboard","home","Tableau de bord"],["students","users","Élèves"],
-  ["admissions","adduser","Admissions"],["classes","layers","Classes"],
-  ["payments","card","Paiements & finances"],["bulletins","file","Bulletins"],
-  ["absences","calendar","Absences"],["staff","idcard","Personnel"],
-  ["settings","settings","Paramètres"],
+  ["classes","layers","Classes"],["admissions","adduser","Admissions"],
+  ["payments","card","Paiements & finances"],["arrears","alert","Impayés & relances"],
+  ["bulletins","file","Bulletins"],["absences","calendar","Absences"],
+  ["staff","idcard","Personnel"],["organization","users","Organigramme & rôles"],
+  ["curriculum","file","Matières & programmes"],["timetable","calendar","Emplois du temps"],
+  ["years","calendar","Années scolaires"],["settings","settings","Paramètres"],
 ];
 const PARENT_NAV = [
   ["parent","home","Mes enfants"],["parent-payments","card","Frais & paiements"],
@@ -39,6 +41,8 @@ function DemoModal({mode,form,setForm,school,schools,student,invoice,onClose,onS
     school:"Créer un établissement — simulation",payment:"Simuler un règlement",
     receipt:"Reçu fictif de paiement",edit:"Modifier la fiche élève — simulation",
     export:"Aperçu d'export — démonstration",
+    generation:"Générer des divisions — simulation",subject:"Ajouter une matière — simulation",
+    timetable:"Planifier un cours — simulation",
   };
   const input=(key,label,placeholder="",type="text",required=true)=><F label={label}>
     <input type={type} required={required} placeholder={placeholder} value={form[key]||""}
@@ -89,14 +93,37 @@ function DemoModal({mode,form,setForm,school,schools,student,invoice,onClose,onS
         {mode==="classroom"&&<div className="demo-fields">{input("name","Nom de la classe","Ex. 6e C")}
           {input("capacity","Capacité maximale","35","number")}</div>}
         {mode==="staff"&&<div className="demo-fields">{input("name","Nom du personnel","Ex. Mme Mba")}
-          {selects("role","Fonction",school?.type==="Maternelle"?
-            ["Éducatrice","Directrice","Secrétaire","Comptable"]:
-            school?.type==="Primaire"?
-              ["Enseignant","Directeur","Secrétaire","Économe"]:
-              ["Enseignant","Proviseur","Censeur des études","Surveillant général","Comptable","Économe"])}</div>}
+          {selects("role","Fonction principale",SCHOOL_ROLES[school?.type]||SCHOOL_ROLES["Collège / Lycée"])}
+          {selects("secondaryRole","Seconde fonction (facultative)",["Aucune",...(SCHOOL_ROLES[school?.type]||SCHOOL_ROLES["Collège / Lycée"])])}
+          {selects("cycle","Affectation / cycle",["Tous les cycles",...school.levels])}
+          <label className="demo-check"><input type="checkbox" checked={Boolean(form.hasAccount)}
+            onChange={e=>change("hasAccount",e.target.checked)}/> Créer aussi un compte utilisateur (simulation)</label>
+          <p className="demo-hint">Un personnel peut exercer plusieurs fonctions. Le compte de connexion reste facultatif.</p>
+        </div>}
         {mode==="school"&&<div className="demo-fields">{input("name","Nom de l'établissement","Ex. Groupe scolaire Démonstration")}
-          {selects("type","Type d'établissement",["Primaire","Maternelle","Collège / Lycée"])}
-          {input("city","Ville","Libreville")}</div>}
+          {selects("type","Type d'établissement",["Primaire","Maternelle","Collège / Lycée","Lycée technique"])}
+          {input("city","Ville","Libreville")}{input("owner","Propriétaire / Fondateur (facultatif)","Ex. Mme Mba","text",false)}</div>}
+        {mode==="generation"&&<div className="demo-fields">
+          {selects("level","Niveau",school.levels)}
+          <F label="Nombre de divisions"><input type="number" required min={1} max={13} value={form.count??2}
+            onChange={e=>change("count",e.target.value)}/></F>
+          <F label="Capacité par division"><input type="number" required min={1} max={200} value={form.capacity??35}
+            onChange={e=>change("capacity",e.target.value)}/></F>
+          <p className="demo-hint">Exemple : 6e A, 6e B, 6e C. Les doublons sont ignorés.</p>
+        </div>}
+        {mode==="subject"&&<div className="demo-fields">
+          {input("name","Matière","Ex. Sciences physiques")}
+          {selects("level","Niveau",school.levels)}
+          {input("coefficient","Coefficient","2","number")}
+        </div>}
+        {mode==="timetable"&&<div className="demo-fields">
+          {selects("className","Classe",form.state.classes.filter(x=>x.school===school.id&&x.year===form.year).map(x=>x.name))}
+          {selects("day","Jour",["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"])}
+          {selects("slot","Créneau",["08:00–09:00","09:00–10:00","10:00–11:00","11:00–12:00","13:00–14:00","14:00–15:00"])}
+          {input("subject","Matière","Ex. Mathématiques")}
+          {input("teacher","Enseignant","Ex. Mme C. Mba")}
+          {input("room","Salle","Ex. Salle 1")}
+        </div>}
         {mode==="payment"&&<div className="demo-fields">
           <p>Élève : <b>{student?.name}</b><br/>Frais : <b>{invoice?.label}</b></p>
           <p>Solde à payer : <strong>{fcfa(invoice?remaining(invoice):0)}</strong></p>
@@ -107,7 +134,7 @@ function DemoModal({mode,form,setForm,school,schools,student,invoice,onClose,onS
         </div>}
         <div className="demo-dialog-footer"><button type="button" onClick={onClose}>Annuler</button>
           <button className="demo-main-btn" type="submit"><Icon name="check" size={19}/>
-            {mode==="payment"?"Confirmer la simulation":"Enregistrer dans la maquette"}</button></div>
+            {mode==="payment"?"Confirmer la simulation":"Enregistrer la simulation"}</button></div>
       </form>}
     </section>
   </div>;
@@ -188,7 +215,7 @@ export default function DemoExperience(){
     }:a)}));
     message(action==="verify"?"Pièces et éligibilité marquées vérifiées (simulation).":
       action==="approve"?"Admission acceptée. L'inscription reste une étape séparée.":
-        "Décision enregistrée uniquement dans la maquette.");
+        "Décision enregistrée uniquement dans la démonstration.");
   }
   function submit(kind,values){
     if(kind==="student"||kind==="edit"){
@@ -222,7 +249,7 @@ export default function DemoExperience(){
       }
       setState(old=>({...old,classes:[...old.classes,{id:fakeId("c",old.classes),
         school:school.id,name:values.name.trim(),capacity}]}));
-      message("Classe créée dans la maquette.");setModal(null);return;
+      message("Classe créée dans la démonstration.");setModal(null);return;
     }
     if(kind==="staff"){
       if(!values.name?.trim()){message("Nom requis.");return;}
@@ -256,7 +283,7 @@ export default function DemoExperience(){
     }
   }
   function showPayment(inv){
-    if(remaining(inv)<=0){message("Ce frais est déjà réglé dans la maquette.");return;}
+    if(remaining(inv)<=0){message("Ce frais est déjà réglé dans la démonstration.");return;}
     setSelectedInvoice(inv.id);open("payment",{invoiceId:inv.id,
       amount:String(remaining(inv)),method:channels[0]});
   }
@@ -372,7 +399,7 @@ export default function DemoExperience(){
             <td><button type="button" className="demo-table-action" onClick={()=>showPayment(inv)}
               disabled={!remaining(inv)}> {remaining(inv)?"Simuler paiement":"Réglé"} </button></td></tr>;
         })}</tbody></table>{!invoices.length&&<Empty>Aucune facture disponible.</Empty>}</div></Card>
-      <p className="demo-hint">L'intégration SingPay de l'application réelle n'est pas déclenchée. Tout paiement dans cette maquette est une simulation locale.</p></>;
+      <p className="demo-hint">L'intégration SingPay de l'application réelle n'est pas déclenchée. Tout paiement dans cette démonstration est une simulation locale.</p></>;
   }
   function reports(onlyChild=false){
     const students=onlyChild?[child]:currentStudents;
@@ -410,7 +437,7 @@ export default function DemoExperience(){
               aria-pressed={mark===v} className={mark===v?"active":""}
               onClick={()=>setState(old=>({...old,marks:{...old.marks,[s.id]:v}}))}>{v}</button>)}
           </div>}</div>})}
-        {!onlyChild&&<div className="demo-actions"><DemoButton primary icon="check" onClick={()=>message("Appel enregistré dans la maquette (aucune absence réelle créée).")}>Enregistrer l'appel</DemoButton></div>}
+        {!onlyChild&&<div className="demo-actions"><DemoButton primary icon="check" onClick={()=>message("Appel enregistré dans la démonstration (aucune absence réelle créée).")}>Enregistrer l'appel</DemoButton></div>}
       </Card></>;
   }
   function staff(){
