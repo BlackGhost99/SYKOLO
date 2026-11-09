@@ -9,7 +9,7 @@ DECLARE
   student_idx integer; grade_score integer; grade_percent integer; grade_label text;
   subject_list text[]; policy jsonb; enrolled_on date;
   doc jsonb; subject_rows jsonb; source_rows jsonb; overall_score numeric; totalgrades int;
-  firstname text; lastname text; local_code text; school_name text; short_name text; id_txt text;
+  school_name text; school_short_label text;
   demo_schools jsonb := '[
     {"id":"96f99506-a8d6-4dab-b292-4076800c9bd7","tag":"CES8","kind":"complexe","n":1},
     {"id":"b8ccefc7-c993-49f3-b2f3-70e59ca7db20","tag":"LP1","kind":"lycee","n":2},
@@ -41,7 +41,7 @@ BEGIN
     SELECT id INTO periodid FROM public.institutions_academicperiod
       WHERE school_id=sch AND year_id=yr AND code='demo26-trim1' LIMIT 1;
     IF periodid IS NULL THEN RAISE EXCEPTION 'Demo trimester missing in %',s.tag; END IF;
-    SELECT name,short_name INTO school_name,short_name FROM public.institutions_school WHERE id=sch;
+    SELECT name,short_name INTO school_name,school_short_label FROM public.institutions_school WHERE id=sch;
     class_pos:=0;
     FOR cl IN
       SELECT c.id,c.code,c.name, c.level_id,
@@ -218,7 +218,7 @@ BEGIN
         WHEN overall_score>=10 THEN 'Passable' ELSE 'Insuffisant' END;
       doc:=jsonb_build_object(
         'created_at',NOW()::text,
-        'school',jsonb_build_object('id',sch::text,'name',school_name,'short_name',short_name),
+        'school',jsonb_build_object('id',sch::text,'name',school_name,'short_name',school_short_label),
         'student',jsonb_build_object('id',en.student_id::text,
           'code',en.student_code,'matricule_yem','YEM-'||upper(replace(en.identity_id::text,'-','')),
           'first_name',en.first_name,'last_name',en.last_name),
