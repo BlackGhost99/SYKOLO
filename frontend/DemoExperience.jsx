@@ -837,33 +837,49 @@ export default function DemoExperience(){
       <span>Tout est fictif. Aucune donnée réelle, aucun paiement, aucun e-mail.</span>
       <button type="button" onClick={()=>{setState(createDemoState());setNotice("Scénario réinitialisé.");setModal(null);
         setSchoolId("lycee");setSelectedStudent("s1");setSelectedAdmission("a1");
-        setSelectedChild("s1");setSearch("");setYear(DEMO_CURRENT_YEAR);setPage(defaultPage[role]);}}>
+        setSelectedChild("s1");setSearch("");setSub("");setSettingsSelection(null);setYear(DEMO_CURRENT_YEAR);setPage(defaultPage[role]);}}>
         <Icon name="back" size={17}/> Réinitialiser
       </button>
       <a href="#/" aria-label="Revenir à l'application réelle">Retour à YEM réel <Icon name="chevronright" size={16}/></a>
     </div>
-    <div className="demo-rolebar"><span>Découvrir YEM comme :</span>
-      <label className="demo-year-control">Année scolaire
-        <select aria-label="Année scolaire de démonstration" value={year}
-          onChange={e=>{setYear(e.target.value);setSearch("");setNotice(e.target.value==="2025-2026"?
-            "Consultation de l'année clôturée en lecture seule.":"Année scolaire "+e.target.value+" — données fictives.");}}>
-          {DEMO_YEARS.map(y=><option key={y} value={y}>{y}{y==="2025-2026"?" (archive)":""}</option>)}
-        </select>
-      </label>
-      {[["platform","Super-administrateur"],["school","Direction / établissement"],["parent","Parent d'élève"]].map(([r,label])=>
-        <button type="button" key={r} aria-pressed={role===r} className={role===r?"active":""}
-          onClick={()=>enter(r)}>{label}</button>)}
-      {role==="school"&&<select aria-label="Établissement de démonstration" value={schoolId} onChange={e=>pickSchool(e.target.value)}>
-        {state.schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>}
-    </div>
+
     <div className="demo-main">
-      <Shell className="demo-shell" userName={title} nav={nav} active={page} onNavigate={p=>{setPage(p);setSearch("");setNotice("");}}
-        schoolSelector={<span className="demo-header-school"><Icon name="school"/>{role==="school"?school.name:"Visite guidée"}</span>}
+      <Shell className="demo-shell" userName={title} nav={nav} active={page} onNavigate={p=>navigate(p)}
+        schoolSelector={<div className="yd-school-select-wrap demo-real-selector">
+          <label className="yd-school-select"><Icon name="school" size={24}/>
+            {role==="school"?<select aria-label="Établissement de démonstration" value={schoolId}
+              onChange={e=>pickSchool(e.target.value)}>
+              {state.schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:
+              <b>{role==="platform"?"Console plateforme":"Espace parent"}</b>}
+            <Icon name="chevron" size={18} className="chev"/>
+          </label>
+          <label className="yd-school-select" title="Année scolaire de consultation">
+            <Icon name="calendar" size={18}/>
+            <select aria-label="Année scolaire de démonstration" value={year}
+              onChange={e=>{setYear(e.target.value);setSearch("");
+                setNotice(e.target.value==="2025-2026"?"Année clôturée — lecture seule.":"Année "+e.target.value+" chargée.");}}>
+              {DEMO_YEARS.map(y=><option key={y} value={y}>{y} · {y==="2025-2026"?"clôturée":y===DEMO_CURRENT_YEAR?"en cours":"en préparation"}</option>)}
+            </select>
+          </label>
+        </div>}
+        userMenu={<div className="demo-user-controls">
+          <label className="demo-role-select"><span className="sr-only">Profil de démonstration</span>
+            <select aria-label="Profil de démonstration" value={role} onChange={e=>enter(e.target.value)}>
+              <option value="school">Direction / établissement</option>
+              <option value="platform">Super-administrateur</option>
+              <option value="parent">Parent d'élève</option>
+            </select>
+          </label>
+          <div className="yd-user"><span className="yd-avatar"><Icon name="user" size={22}/></span>
+            <span><b>{role==="school"?school.head:"Visiteur YEM"}</b>
+              <small>{role==="school"?"Direction (simulation)":role==="platform"?"Administration plateforme":"Compte parent (simulation)"}</small>
+            </span><Icon name="chevron" size={18}/></div>
+        </div>}
         notifications={0}>
         {notice&&<div className="demo-notice" role="status"><Icon name="info" size={19}/>{notice}
           <button aria-label="Fermer le message" type="button" onClick={()=>setNotice("")}><Icon name="close" size={17}/></button></div>}
         {pageContent()}
-        <footer className="demo-footer">YEM · Démonstration interactive fictive · Développé par BWETEK Informatyk</footer>
+        <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire · Données fictives</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
       </Shell>
     </div>
     {modal&&<DemoModal mode={modal} form={form} setForm={setForm} school={school}
