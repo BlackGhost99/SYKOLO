@@ -6,17 +6,17 @@
 DO $fix$
 DECLARE
   sid uuid := '96f99506-a8d6-4dab-b292-4076800c9bd7';
-  year_id uuid; primary_id uuid; old_count integer;
-  item record; level_id uuid; classroom_id uuid; new_level_id uuid;
+  target_year_id uuid; primary_id uuid; old_count integer;
+  item record; demo_level_id uuid; classroom_id uuid; new_level_id uuid;
   scope_new jsonb; class_old text; class_new text; level_new text;
   settings_id uuid; report_count integer;
 BEGIN
   PERFORM pg_advisory_xact_lock(20261109);
-  SELECT id INTO year_id FROM institutions_academicyear
+  SELECT id INTO target_year_id FROM institutions_academicyear
     WHERE school_id=sid AND code='2026-2027';
   SELECT id INTO primary_id FROM institutions_academiccycle
     WHERE school_id=sid AND code='primaire';
-  IF year_id IS NULL OR primary_id IS NULL THEN
+  IF target_year_id IS NULL OR primary_id IS NULL THEN
     RAISE EXCEPTION 'The targeted demo school/year/primary cycle was not found';
   END IF;
 
@@ -47,22 +47,22 @@ BEGIN
      ('cm2','5e-annee','5e année','a',5)
   ) AS v(old_code,new_code,new_name,division,level_order)
   LOOP
-    level_id := md5('YEM-DEMO-2026:level:CES8:'||item.old_code)::uuid;
+    demo_level_id := md5('YEM-DEMO-2026:level:CES8:'||item.old_code)::uuid;
     classroom_id := md5('YEM-DEMO-2026:class:CES8:'||item.old_code)::uuid;
     class_old := 'demo26-'||item.old_code||'-a';
     class_new := 'demo26-'||item.new_code||'-'||item.division;
     IF NOT EXISTS (
        SELECT 1 FROM institutions_academiclevel
-       WHERE id=level_id AND school_id=sid AND cycle_id=primary_id AND code=item.old_code
+       WHERE id=demo_level_id AND school_id=sid AND cycle_id=primary_id AND code=item.old_code
     ) OR NOT EXISTS (
        SELECT 1 FROM institutions_academicclass
-       WHERE id=classroom_id AND school_id=sid AND year_id=year_id
-          AND level_id=level_id AND code=class_old
+       WHERE id=classroom_id AND school_id=sid AND year_id=target_year_id
+          AND level_id=demo_level_id AND code=class_old
     ) THEN RAISE EXCEPTION 'Refusing to modify unrecognized level/class: %',item.old_code;
     END IF;
     IF EXISTS (
        SELECT 1 FROM institutions_academicclass
-       WHERE school_id=sid AND year_id=year_id AND code=class_new
+       WHERE school_id=sid AND year_id=target_year_id AND code=class_new
     ) THEN RAISE EXCEPTION 'New target class code already exists: %',class_new; END IF;
     settings_id:=md5('YEM-DEMO-2026:settings:CES8:'||class_old)::uuid;
     IF NOT EXISTS (
@@ -105,7 +105,6 @@ BEGIN
   LOOP
     class_old:='demo26-'||item.old_code||'-a';
     class_new:='demo26-'||item.new_code||'-'||item.division;
-    level_id:=md5('YEM-DEMO-2026:level:CES8:'||item.new_code)::uuid;
     -- Actual level UUIDs are derived from their original code before renaming!
     new_level_id:=md5('YEM-DEMO-2026:level:CES8:'||
       CASE item.new_code WHEN '1re-annee' THEN 'cp1'
@@ -116,7 +115,7 @@ BEGIN
        code=class_new, name=item.new_name||' '||upper(item.division)||' (démo)',
        revision=revision+1
     WHERE id=md5('YEM-DEMO-2026:class:CES8:'||item.old_code)::uuid
-      AND school_id=sid AND year_id=year_id;
+      AND school_id=sid AND year_id=target_year_id;
     scope_new:=jsonb_build_object('year','2026-2027','cycle','primaire',
                   'level',item.new_code,'class',class_new);
     UPDATE institutions_schoolsetting SET
