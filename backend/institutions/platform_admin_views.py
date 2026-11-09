@@ -14,6 +14,7 @@ from .models import (
 from .platform_views import platform_only
 from .services import OWNER_ROLE_CODE, provision_appointment_roles, public_role_label, role_available
 from .school_profiles import validate_school_profile
+from .preschool_classes import ensure_preschool_levels
 from .views import parse_body, log_event, string
 
 
