@@ -122,6 +122,12 @@ class SchoolProfilesTests(TestCase):
         self.assertIn("educateur_prescolaire", functions)
         self.assertTrue({"enseignant", "instituteur", "proviseur"}.isdisjoint(functions))
         self.assertEqual(school.members.get().function_codes, ["directeur_maternelle"])
+        from .academic_models import AcademicCycle, AcademicLevel, AcademicClass
+        cycle = AcademicCycle.objects.get(school=school, code="prescolaire")
+        self.assertEqual(list(AcademicLevel.objects.filter(cycle=cycle).order_by("order")
+                              .values_list("code", flat=True)), ["creche", "ps", "ms", "gs"])
+        self.assertFalse(AcademicClass.objects.filter(school=school).exists())
+
         school.enabled_functions = ["enseignant"]
         self.assertEqual(validate_account_functions(school, ["enseignant", "educateur_prescolaire"]),
                          ["educateur_prescolaire"])
