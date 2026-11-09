@@ -7,7 +7,7 @@ DECLARE
   assignment_id uuid; instructor_id uuid; asmt_id uuid; draft_id uuid;
   teacher_index integer; slot_id uuid; grade_score integer;
   score_pct numeric; grade_label text; absent boolean; pos int;
-  selected_subject text; policy jsonb; setting_value jsonb; scope jsonb;
+  selected_subject text; source_class_code text; policy jsonb; setting_value jsonb; scope jsonb;
   scope_key text; att_id uuid; profile_id uuid;
 BEGIN
   PERFORM pg_advisory_xact_lock(20261109);
@@ -61,6 +61,18 @@ BEGIN
          AND (a.code LIKE 'demo26-%' OR a.code LIKE 'demo-%') AND a.active
        ORDER BY CASE WHEN a.code LIKE 'demo26-%' THEN 0 ELSE 1 END,a.code,a.id
     LOOP
+      -- Retain the UUIDs/assessments created under older demo class codes;
+      -- only the visible names and settings scope change.
+      source_class_code := CASE WHEN s.tag='CES8' THEN
+        CASE c.code
+          WHEN 'demo26-1re-annee-a' THEN 'demo26-cp1-a'
+          WHEN 'demo26-2e-annee-a' THEN 'demo26-cp2-a'
+          WHEN 'demo26-3e-annee-a' THEN 'demo26-ce1-a'
+          WHEN 'demo26-3e-annee-b' THEN 'demo26-ce2-a'
+          WHEN 'demo26-4e-annee-a' THEN 'demo26-cm1-a'
+          WHEN 'demo26-5e-annee-a' THEN 'demo26-cm2-a'
+          ELSE c.code END
+        ELSE c.code END;
       scope := jsonb_build_object(
         'year','2026-2027','cycle',c.cycle_code,
         'level',c.level_code,'class',c.code
@@ -69,7 +81,7 @@ BEGIN
         '{"class":"%s","cycle":"%s","level":"%s","year":"2026-2027"}',
         c.code,c.cycle_code,c.level_code
       );
-      profile_id := md5('YEM-DEMO-2026:settings:'||s.tag||':'||c.code)::uuid;
+      profile_id := md5('YEM-DEMO-2026:settings:'||s.tag||':'||source_class_code)::uuid;
       INSERT INTO institutions_schoolsetting
         (id,school_id,scope_key,scope,values,revision,updated_at)
       VALUES(profile_id,sch,scope_key,scope,setting_value,1,NOW())
@@ -88,7 +100,7 @@ BEGIN
         IF subj IS NULL THEN
           RAISE EXCEPTION 'Missing subject % for %',selected_subject,s.tag;
         END IF;
-        crs := md5('YEM-DEMO-2026:course:'||s.tag||':'||c.code||':'||subidx)::uuid;
+        crs := md5('YEM-DEMO-2026:course:'||s.tag||':'||source_class_code||':'||subidx)::uuid;
         INSERT INTO institutions_courseoffering
           (id,school_id,year_id,classroom_id,subject_id,coefficient,active,revision)
         VALUES(crs,sch,yr,c.id,subj,CASE WHEN subidx=2 THEN 3 ELSE 2 END,true,1)
@@ -97,12 +109,12 @@ BEGIN
         staff_id := md5('YEM-DEMO-2026:staff:'||s.tag||':'||subidx)::uuid;
         IF NOT EXISTS(SELECT 1 FROM institutions_staffrecord WHERE id=staff_id AND school_id=sch)
         THEN RAISE EXCEPTION 'Missing teacher % for %',subidx,s.tag; END IF;
-        assignment_id := md5('YEM-DEMO-2026:staffassign:'||s.tag||':'||c.code||':'||subidx)::uuid;
+        assignment_id := md5('YEM-DEMO-2026:staffassign:'||s.tag||':'||source_class_code||':'||subidx)::uuid;
         INSERT INTO institutions_staffassignment
          (id,school_id,staff_id,year_id,classroom_id,duty,active,revision)
         VALUES(assignment_id,sch,staff_id,yr,c.id,'enseignant',true,1)
         ON CONFLICT DO NOTHING;
-        instructor_id := md5('YEM-DEMO-2026:instructor:'||s.tag||':'||c.code||':'||subidx)::uuid;
+        instructor_id := md5('YEM-DEMO-2026:instructor:'||s.tag||':'||source_class_code||':'||subidx)::uuid;
         INSERT INTO institutions_courseinstructor
          (id,school_id,course_id,staff_assignment_id,active,revision)
         VALUES(instructor_id,sch,crs,assignment_id,true,1)
@@ -114,13 +126,13 @@ BEGIN
           (id,school_id,year_id,classroom_id,course_id,instructor_id,
            slot_id,room_id,weekday,effective_from,effective_to,
            active,revision,created_by_id,updated_at)
-        VALUES(md5('YEM-DEMO-2026:timetable:'||s.tag||':'||c.code||':'||subidx)::uuid,
+        VALUES(md5('YEM-DEMO-2026:timetable:'||s.tag||':'||source_class_code||':'||subidx)::uuid,
           sch,yr,c.id,crs,instructor_id,slot_id,NULL,
           ((c.idx-1+subidx-1)%5),DATE '2026-10-05',DATE '2027-06-30',
           true,1,NULL,NOW())
         ON CONFLICT DO NOTHING;
 
-        asmt_id := md5('YEM-DEMO-2026:assessment:'||s.tag||':'||c.code||':'||subidx)::uuid;
+        asmt_id := md5('YEM-DEMO-2026:assessment:'||s.tag||':'||source_class_code||':'||subidx)::uuid;
         INSERT INTO institutions_assessment
           (id,school_id,course_id,period_id,name,kind,assessment_date,
            weight,policy_snapshot,policy_layers,active,published,revision,created_at)
@@ -131,7 +143,7 @@ BEGIN
 
         -- A second unpublished evaluation remains available for grade-entry tests.
         IF subidx=1 THEN
-          draft_id := md5('YEM-DEMO-2026:draftassessment:'||s.tag||':'||c.code)::uuid;
+          draft_id := md5('YEM-DEMO-2026:draftassessment:'||s.tag||':'||source_class_code)::uuid;
           INSERT INTO institutions_assessment
             (id,school_id,course_id,period_id,name,kind,assessment_date,
              weight,policy_snapshot,policy_layers,active,published,revision,created_at)
@@ -159,7 +171,7 @@ BEGIN
           INSERT INTO institutions_assessmentgrade
             (id,school_id,assessment_id,enrollment_id,score,
              feedback,status,percent,label,revision,author_id,updated_at)
-          VALUES(md5('YEM-DEMO-2026:grade:'||s.tag||':'||c.code||':'||subidx||':'||e.n)::uuid,
+          VALUES(md5('YEM-DEMO-2026:grade:'||s.tag||':'||source_class_code||':'||subidx||':'||e.n)::uuid,
             sch,asmt_id,e.id,to_jsonb(grade_score),
             'Résultat fictif pour tester YEM','calculated',score_pct,
             grade_label,1,NULL,NOW())
@@ -168,7 +180,7 @@ BEGIN
       END LOOP;
 
       FOR sessionidx IN 1..2 LOOP
-        att_id:=md5('YEM-DEMO-2026:attendance:'||s.tag||':'||c.code||':'||sessionidx)::uuid;
+        att_id:=md5('YEM-DEMO-2026:attendance:'||s.tag||':'||source_class_code||':'||sessionidx)::uuid;
         INSERT INTO institutions_attendancesession
           (id,school_id,classroom_id,attendance_date,slot,label,revision,
            closed_at,created_by_id,closed_by_id,created_at)
@@ -189,7 +201,7 @@ BEGIN
             (id,school_id,session_id,enrollment_id,status_code,
              status_label,status_group,note,justification,justified,
              revision,updated_by_id,updated_at)
-          VALUES(md5('YEM-DEMO-2026:mark:'||s.tag||':'||c.code||':'||sessionidx||':'||e.n)::uuid,
+          VALUES(md5('YEM-DEMO-2026:mark:'||s.tag||':'||source_class_code||':'||sessionidx||':'||e.n)::uuid,
              sch,att_id,e.id,CASE WHEN absent THEN 'absent' ELSE 'present' END,
              CASE WHEN absent THEN 'Absent' ELSE 'Présent' END,
              CASE WHEN absent THEN 'absent' ELSE 'present' END,
