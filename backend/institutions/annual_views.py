@@ -365,12 +365,12 @@ def prepare_year(request, school_id):
                     room.full_clean()
                     room.save()
                     copied += 1
+            generated = []
             if not body["copy_classes"]:
-                created = ensure_preschool_classes(school, year)
-                copied += len(created)
-                if created:
+                generated = ensure_preschool_classes(school, year)
+                if generated:
                     log_event(school, request, "preschool_classes_generated", str(year.pk), {
-                        "class_ids": [str(room.pk) for room in created],
+                        "class_ids": [str(room.pk) for room in generated],
                     })
             log_event(school, request, "academic_year_prepared", str(year.pk), {
                 "source_year": str(source.pk) if source else None,
@@ -381,6 +381,6 @@ def prepare_year(request, school_id):
     except IntegrityError:
         return JsonResponse({"error": "Année ou classe déjà existante."}, status=409)
     return JsonResponse({
-        "year": _year_dict(year), "classes_copied": copied,
+        "year": _year_dict(year), "classes_copied": copied, "classes_generated": len(generated),
         "message": "Année préparée. Les élèves, affectations, évaluations, bulletins, paiements et périodes n'ont pas été copiés.",
     }, status=201)
