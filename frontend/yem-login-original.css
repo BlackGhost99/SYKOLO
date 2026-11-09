@@ -55,7 +55,7 @@
 }
 .yem-original-login--exact .pc-account-card .yem-login-actions {
   position:absolute;left:0;top:16%;width:81%;height:7%;
-  margin:0;padding:0;display:flex;gap:2.5%;border:0;
+  margin:0;padding:0;display:flex;gap:2.5%;border:0;z-index:3;
 }
 .yem-original-login--exact .yem-login-actions > button,
 .yem-original-login--exact .yem-login-scopes > button {
@@ -76,7 +76,7 @@
 .yem-original-login--exact .yem-login-actions > button:nth-child(2){flex:0 0 36%}
 .yem-original-login--exact .yem-login-actions > button:nth-child(3){flex:1 1 auto}
 .yem-original-login--exact .pc-account-card form {
-  position:absolute; inset:0; margin:0; padding:0;
+  position:absolute; inset:0; margin:0; padding:0;z-index:1;
 }
 .yem-original-login--exact .yem-login-scopes {
   position:absolute;
