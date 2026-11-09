@@ -72,7 +72,7 @@ test("le calendrier propose les trimestres gabonais sans insertion automatique",
   const user=userEvent.setup();
   await user.click(await screen.findByText(/Référence du Gabon 2026–2027/));
   expect(calls).toHaveLength(0);
-  await user.click(screen.getByRole("button",{name:/1er trimestre/}));
+  await user.click(screen.getByRole("button",{name:/^1er trimestre :/}));
   expect(screen.getByLabelText("Début").value).toBe("2026-09-07");
   expect(screen.getByLabelText("Fin").value).toBe("2026-11-28");
   await user.click(screen.getByRole("button",{name:"Enregistrer la période"}));
