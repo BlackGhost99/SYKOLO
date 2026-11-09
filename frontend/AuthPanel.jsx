@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import brand from "./assets/yem-brand.webp";
+import loginArtwork from "./assets/yem-login-original.png";
 import "./yem-login-original.css";
 import PlatformConsole from "./PlatformConsole.jsx";
 import SchoolDashboard from "./SchoolDashboard.jsx";
@@ -30,6 +31,7 @@ async function authApi(path, body) {
 
 export default function AuthPanel() {
   const [account, setAccount] = useState(null);
+  const [artworkStatus, setArtworkStatus] = useState("loading");
   const [tab, setTab] = useState("login");
   const [loginScope, setLoginScope] = useState(() => (
     {"#/admin":"platform", "#/parents":"parent"}[window.location.hash] || "school"
@@ -216,7 +218,7 @@ export default function AuthPanel() {
             <button type="button" onClick={() => { setTab("login"); setMessage(""); }}>Connexion</button>
             <button type="button" onClick={() => { setTab("reset"); setMessage(""); }}>Mot de passe oublié</button>
             <button type="button" onClick={() => { setTab("register"); setMessage(""); }}>Créer un compte parent</button>
-            {emailVerificationRequired && <button type="button" onClick={() => { setTab("resend"); setMessage(""); }}>Renvoyer mon lien d'activation</button>}
+            {emailVerificationRequired && <button type="button" className="yem-resend-activation" onClick={() => { setTab("resend"); setMessage(""); }}>Renvoyer mon lien d'activation</button>}
           </div>
           {isVerifyLink ? (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
@@ -293,7 +295,7 @@ export default function AuthPanel() {
                 <input disabled={loginScope === "school" && !schoolCode.trim()} autoComplete="username" placeholder="Identifiant" required value={username} onChange={(e) => setUsername(e.target.value)} />
               </label>
               <label className="field">Mot de passe
-                <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                <input type="password" autoComplete="current-password" placeholder="Mot de passe" required value={password} onChange={(e) => setPassword(e.target.value)} />
               </label>
               <label className="field">Code TOTP ou secours (si MFA activé)
                 <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Code (si activé)" autoComplete="one-time-code" />
@@ -318,16 +320,20 @@ export default function AuthPanel() {
   }
   // L'illustration approuvée est affichée comme un seul fichier, sans recréation
   // des logos, motifs ou zones graphiques. Seuls les champs HTML restent actifs.
-  const originalSchoolView = loginScope === "school" && tab === "login" && !isResetLink && !isVerifyLink;
+  const originalSchoolView = artworkStatus === "loaded" && loginScope === "school" && tab === "login" && !isResetLink && !isVerifyLink;
   return (
     <div className={originalSchoolView ? "yem-original-login yem-original-login--exact" : "yem-original-login"}>
       <div className="yem-original-login__frame">
-        <img
+        {artworkStatus !== "failed" && <img
           className="yem-original-login__image"
-          src="/yem-login-original.png"
+          src={loginArtwork}
+          width="1710"
+          height="920"
           alt=""
           draggable="false"
-        />
+          onLoad={() => setArtworkStatus("loaded")}
+          onError={() => setArtworkStatus("failed")}
+        />}
         <div className="yem-original-login__form">
           {accountCard}
         </div>

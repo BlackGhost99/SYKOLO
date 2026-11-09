@@ -10,8 +10,8 @@
   padding:10px 14px;font-size:12px;
 }
 
-.yem-mode-switch-login {opacity:0!important; position:fixed; top:0; z-index:100; transition:opacity .15s ease}
-.yem-mode-switch-login:is(:hover,:focus-within) {opacity:1!important}
+.yem-mode-switch.yem-mode-switch-login {opacity:0; position:fixed; top:0; z-index:100; transition:opacity .15s ease}
+.yem-mode-switch.yem-mode-switch-login:is(:hover,:focus-within) {opacity:1}
 .yem-original-login {
   display:grid;
   place-items:center;
@@ -34,12 +34,13 @@
   -webkit-user-drag:none;
 }
 .yem-original-login__form {position:absolute;inset:0}
+/* Le rectangle des contrôles va de (638, 388) à (1060, 856) dans le PNG 1710 × 920. */
 .yem-original-login--exact .pc-account-card {
   position:absolute;
-  left:36.33%;
-  top:31%;
-  width:23.95%;
-  height:62.4%;
+  left:calc(638 / 1710 * 100%);
+  top:calc(388 / 920 * 100%);
+  width:calc(422 / 1710 * 100%);
+  height:calc(468 / 920 * 100%);
   min-width:0;
   margin:0!important;
   padding:0;
@@ -54,7 +55,9 @@
   display:none;
 }
 .yem-original-login--exact .pc-account-card .yem-login-actions {
-  position:absolute;left:0;top:16%;width:81%;height:7%;
+  position:absolute;left:0;top:0;
+  width:calc(336 / 422 * 100%);
+  height:calc(35 / 468 * 100%);
   margin:0;padding:0;display:flex;gap:2.5%;border:0;z-index:3;
 }
 .yem-original-login--exact .yem-login-actions > button,
@@ -72,26 +75,22 @@
   font-size:0;
   cursor:pointer;
 }
-.yem-original-login--exact .yem-login-actions > button:nth-child(1){flex:0 0 22%}
-.yem-original-login--exact .yem-login-actions > button:nth-child(2){flex:0 0 36%}
-.yem-original-login--exact .yem-login-actions > button:nth-child(3){flex:1 1 auto}
 .yem-original-login--exact .pc-account-card form {
   position:absolute; inset:0; margin:0; padding:0;z-index:1;
 }
 .yem-original-login--exact .yem-login-scopes {
   position:absolute;
-  left:0;top:34.2%;width:72%;height:7%;
-  display:flex;gap:3%;align-items:stretch;
+  left:0;top:calc(107 / 468 * 100%);
+  width:calc(298 / 422 * 100%);
+  height:calc(36 / 468 * 100%);
+  display:flex;gap:2.85%;align-items:stretch;
   padding:0;margin:0;border:0;background:transparent;
 }
-.yem-original-login--exact .yem-login-scopes > button:nth-child(1) {flex:0 0 30%}
-.yem-original-login--exact .yem-login-scopes > button:nth-child(2) {flex:0 0 23%}
-.yem-original-login--exact .yem-login-scopes > button:nth-child(3) {flex:1 1 auto}
 .yem-original-login--exact .pc-account-card form > label.field {
   position:absolute;
   left:0;
   width:100%;
-  height:5.6%;
+  height:calc(30 / 468 * 100%);
   margin:0;
   padding:0;
   border:0;
@@ -99,10 +98,10 @@
   line-height:0;
   color:transparent;
 }
-.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(1){top:46.5%}
-.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(2){top:58.0%}
-.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(3){top:69.5%}
-.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(4){top:80.6%}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(1){top:calc(180 / 468 * 100%)}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(2){top:calc(246 / 468 * 100%)}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(3){top:calc(313 / 468 * 100%)}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(4){top:calc(380 / 468 * 100%)}
 .yem-original-login--exact .pc-account-card form > label.field input {
   display:block;
   width:100%;
@@ -127,8 +126,8 @@
 }
 .yem-original-login--exact .pc-account-card form > button[type="submit"] {
   position:absolute;
-  top:89%;left:0;
-  width:24%;height:6.4%;
+  top:calc(429 / 468 * 100%);left:0;
+  width:calc(103 / 422 * 100%);height:calc(39 / 468 * 100%);
   padding:0;margin:0;
   background:transparent;color:transparent;
   border:0;box-shadow:none;font-size:0;
@@ -136,8 +135,9 @@
 }
 .yem-original-login--exact .pc-account-card > .yem-auth-message {
   position:absolute;
-  left:-1%;bottom:-6%;
-  width:102%;
+  left:0;top:calc(100% + 8px);
+  width:100%;
+  margin:0;
   padding:7px 9px;
   background:rgba(250,245,237,.97);
   border:1px solid #9c7051;
@@ -166,6 +166,24 @@
 .yem-original-login:not(.yem-original-login--exact) .pc-account-card .actions {flex-wrap:wrap}
 .yem-original-login:not(.yem-original-login--exact) .pc-account-card .yem-login-scopes button[aria-pressed=true] {
   border-color:#7d654b;background:#ede2d1;
+}
+@media(width > 800px) {
+  .yem-original-login--exact .yem-login-actions > button:nth-child(1){flex:0 0 calc(75 / 336 * 100%)}
+  .yem-original-login--exact .yem-login-actions > button:nth-child(2){flex:0 0 calc(114 / 336 * 100%)}
+  .yem-original-login--exact .yem-login-scopes > button:nth-child(1){flex:0 0 calc(87 / 298 * 100%)}
+  .yem-original-login--exact .yem-login-scopes > button:nth-child(2){flex:0 0 calc(58 / 298 * 100%)}
+  .yem-original-login--exact :is(.yem-login-actions,.yem-login-scopes) > button:nth-child(3){flex:1 1 auto}
+  /* L'image reste visible quand le champ est vide. Pendant la saisie, son texte
+     imprimé est masqué sous le texte du champ HTML. */
+  .yem-original-login--exact .pc-account-card form > label.field input:is(:focus,:not(:placeholder-shown)) {
+    background:#332c22;
+  }
+  .yem-original-login--exact .yem-login-actions > .yem-resend-activation {
+    position:absolute;left:59%;top:calc(48 / 35 * 100%);
+    height:auto;padding:4px 6px;
+    color:#f8edde;background:#5d4131;
+    font-size:clamp(8px,.7vw,12px);white-space:nowrap;
+  }
 }
 @media(max-width:800px) {
   .yem-original-login{display:block;min-height:100svh;background:#f6f2ea}
