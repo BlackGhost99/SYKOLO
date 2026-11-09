@@ -22,3 +22,11 @@
 .yem-demo-pilot-actions button:last-child{background:#245d36;color:white}
 .yem-demo-pilot-body .yem-demo-pilot-notice{margin:8px 0 0;color:#a35117}
 @media(max-width:650px){.yem-demo-pilot{bottom:9px;right:9px;width:min(300px,calc(100vw - 18px))}}
+
+/* Récupération explicite en cas de données de démonstration incomplètes. */
+.yem-demo-error{min-height:70vh;margin:20px auto;padding:40px 24px;max-width:730px;
+  color:#24382b;background:#fff;border:1px solid #d5e2d7;border-radius:12px}
+.yem-demo-error h1{font-size:25px;margin:0 0 15px}
+.yem-demo-error p{line-height:1.6;color:#50635a}
+.yem-demo-error button{border:0;background:#21673d;color:#fff;border-radius:8px;
+  padding:12px 18px;font-weight:650;cursor:pointer}

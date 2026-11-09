@@ -27,6 +27,10 @@ const splitName=name=>{const parts=(name||"Élève").trim().split(/\s+/);return 
 const today="2026-11-09";
 export function createOfflineDemoBackend(){
   let data=createDemoState();
+  let assessments={};
+  let grades={};
+  let reports={};
+  let closings=[];
   const schoolList=()=>data.schools.map(s=>({id:s.id,name:s.name,school_type:s.type,active:true,login_code:"DEMO-"+s.id.toUpperCase()}));
   const years=()=>order.map(y=>({...y}));
   const findYear=raw=>order.find(y=>y.id===raw)||order[1];
@@ -51,6 +55,36 @@ export function createOfflineDemoBackend(){
       metrics:{active:ss.length,enrolled:rows.filter(s=>s.enrollment).length,
         new_30d:1,new_prev_30d:1,incomplete:0,missing_documents:0,missing_phone:0}};
   };
+  // Les mêmes écrans que la production exigent ces structures, même en démonstration.
+  const subjectsFor=(id,yr)=>data.subjects.filter(s=>s.school===id&&s.year===yr)
+    .map(s=>({...s,active:true,code:s.id}));
+  const coursesFor=(id,yr)=>classesFor(id,yr).flatMap(room=>subjectsFor(id,yr)
+    .filter(subject=>room.name.startsWith(subject.level+" "))
+    .map(subject=>({id:"course-"+room.id+"-"+subject.id,school:id,year:yr,
+      classroom:room.id,subject:subject.id,coefficient:subject.coefficient,active:true})));
+  const periodsFor=(yr)=>["1er trimestre","2e trimestre","3e trimestre"]
+    .map((name,i)=>({id:"period-"+yr+"-"+(i+1),year:yr,name,code:"T"+(i+1),active:true}));
+  const assessmentFor=(id,courseId,yr)=>{
+    if(!assessments[courseId]){
+      assessments[courseId]=[{id:"assessment-"+courseId,school:id,course:courseId,year:yr,
+        name:"Contrôle continu n°1",assessment_date:"2026-10-15",kind:"devoir",weight:1,
+        active:true,published:false,revision:1,
+        policy:{name:"Notation sur 20",scale:{kind:"numeric",max:20},bands:[]}}];
+    }
+    return assessments[courseId];
+  };
+  const invoicesFor=(id,yr)=>data.invoices.filter(f=>f.school===id&&f.year===yr);
+  const chargesFor=(id,yr)=>invoicesFor(id,yr).map(f=>({id:f.id,enrollment:"en-"+f.student,
+    label:f.label,amount:f.total,balance:remaining(f),paid:f.paid,currency:"XAF",
+    due_date:"2026-11-15",year:yr,active:true}));
+  const schedulesFor=(id,yr)=>invoicesFor(id,yr).map(f=>({
+    id:"schedule-"+f.id,year:yr,classroom:null,code:"demo-"+f.id,label:f.label,
+    amount:f.total,currency:"XAF",due_date:"2026-11-15",active:true}));
+  const enrollmentRows=(id,yr)=>studentsFor(id,yr).map(s=>{
+    const cl=classesFor(id,yr).find(c=>c.name===s.level);
+    return {id:"en-"+s.id,student:s.id,year:yr,classroom:cl?.id||"",
+      active:true,status:"Inscrit"};
+  });
   const classOverview=(id,yr)=>{
     const school=schoolData(id),cc=classesFor(id,yr),ss=studentsFor(id,yr);
     const cycle=school.type==="Maternelle"?"maternelle":school.type==="Primaire"?"primaire":"college";
@@ -72,13 +106,19 @@ export function createOfflineDemoBackend(){
     });
     const byClass=Object.values(arrears.reduce((o,a)=>{
       const k=a.classroom;if(!o[k])o[k]={classroom:k,families:0};o[k].families++;return o;},{}));
+    const yesterdayTotal=Math.floor(paid*.04);
+    const todayTotal=Math.floor(paid*.1);
+    const todayMethods={especes:Math.floor(todayTotal*.35),
+      airtel_money:Math.floor(todayTotal*.4),moov_money:Math.ceil(todayTotal*.25)};
     return {year:findYear(yr),years:years(),currency:"XAF",currencies:["XAF"],
       month:{total:paid,previous:Math.floor(paid*.75),by_method:{especes:Math.floor(paid*.35),airtel_money:Math.floor(paid*.4),moov_money:Math.floor(paid*.25)}},
       monthly:["2026-05","2026-06","2026-07","2026-08","2026-09","2026-10"].map((month,i)=>({month,total:Math.round((i+1)*paid/9)})),
       outstanding,active_students:ss.length,families_late:new Set(arrears.map(a=>a.enrollment)).size,
       overdue_total:outstanding,arrears,arrears_by_class:byClass,
-      today:{date:today,total:Math.floor(paid*.1),count:paid?2:0,
-        payments:paid?[{id:"demo-1",student:ss[0]?.name||"Élève",classroom:ss[0]?.level||"6e A",amount:Math.floor(paid*.1),method:"especes",recorded_at:"2026-11-09T09:15:00+01:00"}]:[]}};
+      yesterday:{date:"2026-11-08",total:yesterdayTotal,count:paid?1:0},
+      today:{date:today,total:todayTotal,count:paid?2:0,by_method:todayMethods,
+        payments:paid?[{id:"demo-1",student:ss[0]?.name||"Élève",classroom:ss[0]?.level||"6e A",
+          amount:todayTotal,method:"especes",recorded_at:"2026-11-09T09:15:00+01:00"}]:[]}};
   };
   const platformSchool=s=>({id:s.id,name:s.name,organization:"Groupe scolaire (exemple)",active:true,
     school_type_label:s.type,education_cycles:[s.type==="Maternelle"?"maternelle":s.type==="Primaire"?"primaire":"college"],
@@ -101,6 +141,22 @@ export function createOfflineDemoBackend(){
     return {school:s,login_code:"DEMO-"+id.toUpperCase(),members,students_count:s.students_count,
       members_count:members.length,roles:[{id:"role-directeur",label:"Directeur"}],
       events:[],members_truncated:false,policy:{plan_name:"Démonstration",max_users:50,max_students:1000,revision:1}};
+  }
+  function reportSnapshot(id,yr,rec){
+    const st=studentsFor(id,yr).find(s=>"en-"+s.id===rec.enrollment);
+    const classroom=classesFor(id,yr).find(c=>c.name===st?.level);
+    const names=splitName(st?.name||"Élève fictif");
+    return {
+      template:{title:"Bulletin scolaire — démonstration",show_score:true,show_label:true},
+      student:{...names,code:"DEMO-"+(st?.id||"ELEVE").toUpperCase()},
+      class:{name:classroom?.name||st?.level||"Classe"},
+      year:{name:yr},
+      period:periodsFor(yr).find(p=>p.id===rec.period)||null,
+      subjects:subjectsFor(id,yr).filter(s=>classroom?.name.startsWith(s.level+" "))
+        .map(s=>({course:"course-"+classroom.id+"-"+s.id,subject:s.name,
+          coefficient:s.coefficient,result:{score:st?.average??null,label:"Résultat fictif"}})),
+      overall:{score:st?.average??null,label:"Exemple non officiel"}
+    };
   }
   function schoolIdOf(path){return path.match(/^schools\/([^/]+)/)?.[1]||"lycee";}
   function fixtureFor(path,search,method,body){
@@ -141,8 +197,54 @@ export function createOfflineDemoBackend(){
     if(path.endsWith("/academic/classes"))return {classes:classOverview(id,yr).classes};
     if(path.endsWith("/academic/levels"))return {levels:classOverview(id,yr).levels};
     if(path.endsWith("/academic/cycles"))return {cycles:[{id:"cycle-demo",name:school.type,code:"college",active:true}]};
-    if(path.endsWith("/academic/terms"))return {terms:[]};
-    if(path.endsWith("/academic/subjects"))return {subjects:data.subjects.filter(s=>s.school===id)};
+    if(path.endsWith("/academic/terms"))return {terms:periodsFor(yr)};
+    if(path.endsWith("/academic/periods"))return {periods:periodsFor(yr)};
+    if(path.endsWith("/subjects"))return {subjects:subjectsFor(id,yr)};
+    if(path.endsWith("/courses"))return {courses:coursesFor(id,yr)};
+    const courseAssessments=path.match(/^schools\/[^/]+\/courses\/([^/]+)\/assessments$/);
+    if(courseAssessments){
+      const courseId=courseAssessments[1];
+      if(method!=="GET"){
+        const list=assessmentFor(id,courseId,yr);
+        const record={id:"assessment-demo-"+(list.length+1)+"-"+courseId,course:courseId,
+          name:String(body.name||"Évaluation fictive"),assessment_date:body.assessment_date||today,
+          kind:body.kind||"devoir",weight:Number(body.weight)||1,period:body.period||null,
+          active:true,published:false,revision:1,
+          policy:{name:"Notation sur 20",scale:{kind:"numeric",max:20},bands:[]}};
+        list.push(record);return record;
+      }
+      return {assessments:assessmentFor(id,courseId,yr)};
+    }
+    const assessmentRoute=path.match(/^schools\/[^/]+\/assessments\/([^/]+)(?:\/(roster|grades|publish))?(?:\/([^/]+))?$/);
+    if(assessmentRoute){
+      const assessmentId=assessmentRoute[1],section=assessmentRoute[2],gradeId=assessmentRoute[3];
+      const course=coursesFor(id,yr).find(x=>assessmentId.includes(x.id));
+      const classroom=classesFor(id,yr).find(c=>c.id===course?.classroom);
+      const pupils=studentsFor(id,yr).filter(s=>s.level===classroom?.name);
+      if(section==="roster")return {students:pupils.map(s=>({
+        enrollment_id:"en-"+s.id,...splitName(s.name),student_code:"DEMO-"+s.id.toUpperCase()
+      }))};
+      if(section==="grades"){
+        if(!grades[assessmentId])grades[assessmentId]=pupils.map(s=>({
+          id:"grade-"+assessmentId+"-"+s.id,enrollment:"en-"+s.id,score:s.average,
+          revision:1,label:s.average===null?"Non évalué":"Résultat fictif"}));
+        if(method!=="GET"){
+          const existing=grades[assessmentId].find(g=>g.id===gradeId||g.enrollment===body.enrollment);
+          if(existing){existing.score=body.score;existing.revision++;return {...existing};}
+          const record={id:"grade-"+assessmentId+"-"+(grades[assessmentId].length+1),
+            enrollment:body.enrollment,score:body.score,revision:1};
+          grades[assessmentId].push(record);return record;
+        }
+        return {grades:grades[assessmentId]};
+      }
+      if(section==="publish"){
+        const all=Object.values(assessments).flat();
+        const found=all.find(a=>a.id===assessmentId);
+        if(found){found.published=true;found.revision++;}
+        return found||{id:assessmentId,published:true};
+      }
+    }
+    if(path.endsWith("/academic/subjects"))return {subjects:subjectsFor(id,yr)};
     if(path.endsWith("/positions"))return {positions:[]};
     if(path.endsWith("/appointments"))return {appointments:[]};
     if(path.endsWith("/my-appointments"))return {appointments:[],functions:[]};
@@ -158,7 +260,90 @@ export function createOfflineDemoBackend(){
           guardians:[{id:"g-"+s.id,name:s.guardian,phone:"",email:"",relationship:"Parent"}]}))};
     }
     if(path.endsWith("/parent-links"))return {links:[]};
-    if(path.endsWith("/finance/charges"))return {charges:[]};
+    if(path.endsWith("/reports")){
+      const classroom=search.get("classroom");
+      const pupils=studentsFor(id,yr).filter(s=>!classroom||
+        classesFor(id,yr).some(cl=>cl.id===classroom&&cl.name===s.level)).map(s=>({
+          id:"en-"+s.id,name:s.name,year:yr,student:s.id,can_prepare:true
+        }));
+      if(method!=="GET"){
+        const enrollment=body.enrollment;
+        const sid=enrollment?.replace(/^en-/,"");
+        const rec={id:"report-"+sid,enrollment,period:body.period||null,
+          revision:1,status:"draft"};
+        reports[rec.id]=rec;
+        return {...rec,snapshot:reportSnapshot(id,yr,rec)};
+      }
+      const selected=pupils.map(p=>reports["report-"+p.student]).filter(Boolean);
+      if(!selected.length&&pupils.length){
+        const first=pupils[0];
+        const rec={id:"report-"+first.student,enrollment:first.id,
+          period:periodsFor(yr)[0].id,revision:1,status:"draft"};
+        reports[rec.id]=rec;selected.push(rec);
+      }
+      return {reports:selected,pupils};
+    }
+    const reportPath=path.match(/^schools\/[^/]+\/reports\/([^/]+)(?:\/(publish|pdf))?$/);
+    if(reportPath){
+      const reportId=reportPath[1],action=reportPath[2];
+      const rec=reports[reportId];
+      if(!rec)return {error:"Bulletin de démonstration introuvable."};
+      if(action==="publish"&&method!=="GET"){
+        rec.status="published";rec.revision++;
+      }
+      return {...rec,snapshot:reportSnapshot(id,yr,rec)};
+    }
+    if(path.endsWith("/enrollments"))return {enrollments:enrollmentRows(id,yr)};
+    if(path.endsWith("/finance/schedules")){
+      if(method!=="GET")return {id:"tarif-demo",label:body.label||"Tarif",amount:body.amount,currency:"XAF"};
+      return {schedules:schedulesFor(id,yr),years:years(),classes:classesFor(id,yr)};
+    }
+    if(path.endsWith("/finance/summary")){
+      const list=invoicesFor(id,yr),billed=list.reduce((n,f)=>n+f.total,0);
+      const paid=list.reduce((n,f)=>n+f.paid,0);
+      return {currencies:{XAF:{billed,paid,balance:billed-paid,overdue:billed-paid}}};
+    }
+    if(path.endsWith("/finance/cash/closings")){
+      if(method!=="GET"){
+        const entry={id:"close-demo-"+(closings.length+1),day:body.day||today,
+          currency:body.currency||"XAF",submitted_by:"Économe (simulation)",status:"pending",
+          expected:0,counted:Number(body.counted)||0,difference:Number(body.counted)||0,
+          adjustment_since_submission:"0.00",transfers:[]};
+        closings.push(entry);return entry;
+      }
+      return {closings};
+    }
+    if(path.endsWith("/finance/charges")){
+      if(method!=="GET")return {id:"charge-demo-"+(invoicesFor(id,yr).length+1),ok:true};
+      const enrollment=search.get("enrollment");
+      return {charges:chargesFor(id,yr).filter(f=>!enrollment||f.enrollment===enrollment)};
+    }
+    if(path.endsWith("/finance/batches")&&method!=="GET"){
+      const lines=Array.isArray(body.lines)?body.lines:[];
+      const applied=[];
+      for(const line of lines){
+        const invoice=data.invoices.find(f=>f.school===id&&f.id===line.charge&&f.year===yr);
+        const amount=Number(line.amount);
+        if(!invoice||!Number.isFinite(amount)||amount<=0||amount>remaining(invoice))
+          return {error:"Paiement fictif invalide : frais ou montant incorrect.",status:"rejected"};
+        applied.push({invoice,amount});
+      }
+      if(!applied.length)return {error:"Aucun frais sélectionné."};
+      for(const item of applied)item.invoice.paid+=item.amount;
+      const total=applied.reduce((sum,item)=>sum+item.amount,0);
+      return {id:"DEMO-BATCH-"+String(Date.now()),total,currency:"XAF",
+        receipt_url:"",simulated:true};
+    }
+    if(path.endsWith("/finance/payments")){
+      if(method!=="GET")return {id:"DEMO-PAYMENT-001"};
+      return {payments:[]};
+    }
+    const financeStatement=path.match(/^schools\/[^/]+\/finance\/enrollments\/([^/]+)\/statement$/);
+    if(financeStatement){
+      const list=chargesFor(id,yr).filter(f=>f.enrollment===financeStatement[1]);
+      const billed=list.reduce((sum,f)=>sum+f.amount,0),paid=list.reduce((sum,f)=>sum+f.paid,0);
+      return {totals:{XAF:{billed,paid,balance:billed-paid}}};
+    }
     if(path==="parents/children")return {children:data.students.filter(s=>["s1","s4","s7"].includes(s.id)).map(s=>({
       student:s.id,...splitName(s.name),school_name:schoolData(s.school).name,
       matricule_yem:"YEM-"+s.id,student_code:"DEMO-"+s.id}))};
@@ -206,6 +391,6 @@ export function createOfflineDemoBackend(){
     try{return response(fixtureFor(path,parsed.searchParams,method,body))}
     catch(error){return response({error:"Données de présentation indisponibles : "+error.message},400)}
   }
-  function reset(){data=createDemoState();}
+  function reset(){data=createDemoState();assessments={};grades={};reports={};closings=[];}
   return {fetch,reset};
 }
