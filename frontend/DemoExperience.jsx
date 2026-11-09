@@ -252,8 +252,15 @@ export default function DemoExperience(){
       if(!values.name?.trim()||!Number.isInteger(capacity)||capacity<1||capacity>200){
         message("Nom et capacité entre 1 et 200 requis.");return;
       }
-      setState(old=>({...old,classes:[...old.classes,{id:fakeId("c",old.classes),
-        school:school.id,name:values.name.trim(),capacity,year}]}));
+      if(values.id){
+        setState(old=>({...old,classes:old.classes.map(x=>x.id===values.id?{...x,name:values.name.trim(),capacity}:x)}));
+      }else{
+        if(currentClasses.some(x=>x.name.toLowerCase()===values.name.trim().toLowerCase())){
+          message("Cette classe existe déjà pour l'année sélectionnée.");return;
+        }
+        setState(old=>({...old,classes:[...old.classes,{id:fakeId("c",old.classes),
+          school:school.id,name:values.name.trim(),capacity,year}]}));
+      }
       message("Classe créée dans la démonstration.");setModal(null);return;
     }
     if(kind==="generation"){
@@ -348,6 +355,7 @@ export default function DemoExperience(){
         <Metric icon="adduser" label="Admissions" value={String(currentApplications.length)}/>
         <Metric icon="coins" label="Restant dû (démo)" value={fcfa(pendingTotal)}/>
       </div>
+      <p className="demo-hint">Année scolaire : <b>{year}</b>{isClosed?" · Archives clôturées (lecture seule)":""}</p>
       <div className="demo-grid-two">
         <Card title="Actions rapides" icon="bolt"><div className="demo-quick">
           <DemoButton icon="adduser" primary onClick={()=>open("student",{level:school.levels[0]+" A"})}>Ajouter un élève</DemoButton>
@@ -393,7 +401,7 @@ export default function DemoExperience(){
               <div><dt>Absences</dt><dd>{chosen.absences} jour(s)</dd></div>
               <div><dt>Évaluation</dt><dd>{chosen.average===null?"Compétences / non renseigné":chosen.average+"/20"}</dd></div></dl>
             <div className="demo-actions"><DemoButton primary icon="edit" onClick={()=>open("edit",chosen)}>Modifier la fiche</DemoButton>
-              <DemoButton icon="coins" onClick={()=>{setSelectedInvoice(state.invoices.find(f=>f.student===chosen.id)?.id||"");setPage("payments");}}>Frais de l'élève</DemoButton></div>
+              <DemoButton icon="coins" onClick={()=>{setSelectedInvoice(state.invoices.find(f=>f.student===chosen.id&&f.year===year)?.id||"");setPage("payments");}}>Frais de l'élève</DemoButton></div>
           </>:<Empty>Sélectionne un élève pour ouvrir sa fiche.</Empty>}
         </Card>
       </div></>;
@@ -429,12 +437,21 @@ export default function DemoExperience(){
       </div></>;
   }
   function classes(){
-    return <><PageHeader title="Classes et niveaux" subtitle={school.type+" — organisation configurable par établissement"}
-      actions={<DemoButton primary icon="plus" onClick={()=>open("classroom")}>Créer une classe</DemoButton>}/>
-      <div className="demo-tiles">{currentClasses.map(c=><button key={c.id} type="button"
-        onClick={()=>{setPage("students");setSearch(c.name);}} className="demo-tile">
-        <Icon name="layers" size={28}/><b>{c.name}</b><small>{currentStudents.filter(s=>s.level===c.name).length} élève(s) / {c.capacity} places</small><span>Consulter les élèves →</span>
-      </button>)}{!currentClasses.length&&<Empty>Aucune classe. Utilise « Créer une classe ».</Empty>}</div>
+    return <><PageHeader title="Classes et niveaux" subtitle={school.type+" — "+year+" — divisions configurables"}
+      actions={<div className="demo-actions">
+        <DemoButton icon="layers" primary onClick={()=>open("generation",{level:school.levels[0],count:2,capacity:35})}>Générer les classes</DemoButton>
+        <DemoButton icon="plus" onClick={()=>open("classroom",{capacity:35})}>Créer une classe</DemoButton>
+      </div>}/>
+      <div className="demo-tiles">{currentClasses.map(cl=><div key={cl.id} className="demo-tile">
+        <Icon name="layers" size={28}/><b>{cl.name}</b>
+        <small>{currentStudents.filter(s=>s.level===cl.name).length} élève(s) / {cl.capacity} places</small>
+        <div className="demo-actions">
+          <button className="demo-table-action" type="button" onClick={()=>{setPage("students");setSearch(cl.name);}}>Voir élèves</button>
+          <button className="demo-table-action" type="button" disabled={isClosed}
+            onClick={()=>open("classroom",cl)}>Modifier</button>
+          <button className="demo-table-action" type="button" disabled={isClosed}
+            onClick={()=>{setState(old=>({...old,classes:old.classes.filter(x=>x.id!==cl.id)}));message("Classe retirée des données fictives.");}}>Supprimer</button>
+        </div></div>)}{!currentClasses.length&&<Empty>Aucune classe pour {year}. Utilisez « Générer les classes ».</Empty>}</div>
     </>;
   }
   function arrears(){
@@ -473,6 +490,14 @@ export default function DemoExperience(){
   function reports(onlyChild=false){
     const students=onlyChild?(child?[child]:[]):currentStudents;
     const pupil=students.find(s=>s.id===selectedStudent)||students[0];
+    const grade=state.grading[pupil?.school]||"20";
+    const formattedAverage=()=>{
+      if(!pupil||pupil.average===null)return "";
+      if(grade==="letters")return pupil.average>=16?"A":pupil.average>=14?"B":pupil.average>=12?"C":"D";
+      if(grade==="percent")return (pupil.average*5).toFixed(1)+" %";
+      if(["10","15","100"].includes(grade))return (pupil.average*Number(grade)/20).toFixed(1)+" / "+grade;
+      return pupil.average.toFixed(1)+" / 20";
+    };
     const opts=students.filter(Boolean);
     return <><PageHeader title={onlyChild?"Notes et bulletins":"Bulletins et évaluations"}
       subtitle="Évaluations, résultats et compétences selon les cycles — valeurs fictives"/>
@@ -484,10 +509,10 @@ export default function DemoExperience(){
       <Card title={"Aperçu de bulletin — "+(pupil?.name||"")} icon="file">
         {pupil?<><p><b>Classe :</b> {pupil.level} · <b>Établissement :</b> {schoolOf(state,pupil.school)?.name}</p>
           <div className="demo-report">
-            {pupil.average===null?<><h3>Suivi par compétences</h3>
+            {pupil.average===null||grade==="skills"?<><h3>Suivi par compétences</h3>
               <p>Communication : En cours d'acquisition</p><p>Motricité : Acquis</p>
               <p>Autonomie : En cours d'acquisition</p></>:
-              <><h3>Moyenne générale indicative : {pupil.average.toFixed(1)} / 20</h3>
+              <><h3>Résultat indicatif : {formattedAverage()}</h3>
                 <div className="demo-line"><span>Français</span><b>15 / 20</b></div>
                 <div className="demo-line"><span>Mathématiques</span><b>13 / 20</b></div>
                 <div className="demo-line"><span>Histoire-Géographie</span><b>14 / 20</b></div></>}
@@ -504,9 +529,9 @@ export default function DemoExperience(){
           {onlyChild?<Status>{mark}</Status>:<div className="demo-segments">
             {["Présent","Absent","Retard"].map(v=><button key={v} type="button"
               aria-pressed={mark===v} className={mark===v?"active":""}
-              onClick={()=>setState(old=>({...old,marks:{...old.marks,[s.id]:v}}))}>{v}</button>)}
+              disabled={isClosed} onClick={()=>setState(old=>({...old,marks:{...old.marks,[s.id]:v}}))}>{v}</button>)}
           </div>}</div>})}
-        {!onlyChild&&<div className="demo-actions"><DemoButton primary icon="check" onClick={()=>message("Appel enregistré dans la démonstration (aucune absence réelle créée).")}>Enregistrer l'appel</DemoButton></div>}
+        {!onlyChild&&<div className="demo-actions"><DemoButton primary icon="check" disabled={isClosed} onClick={()=>message("Appel enregistré dans la démonstration (aucune absence réelle créée).")}>Enregistrer l'appel</DemoButton></div>}
       </Card></>;
   }
   function staff(){
@@ -699,12 +724,19 @@ export default function DemoExperience(){
       <span>Tout est fictif. Aucune donnée réelle, aucun paiement, aucun e-mail.</span>
       <button type="button" onClick={()=>{setState(createDemoState());setNotice("Scénario réinitialisé.");setModal(null);
         setSchoolId("lycee");setSelectedStudent("s1");setSelectedAdmission("a1");
-        setSelectedChild("s1");setSearch("");setPage(defaultPage[role]);}}>
+        setSelectedChild("s1");setSearch("");setYear(DEMO_CURRENT_YEAR);setPage(defaultPage[role]);}}>
         <Icon name="back" size={17}/> Réinitialiser
       </button>
       <a href="#/" aria-label="Revenir à l'application réelle">Retour à YEM réel <Icon name="chevronright" size={16}/></a>
     </div>
     <div className="demo-rolebar"><span>Découvrir YEM comme :</span>
+      <label className="demo-year-control">Année scolaire
+        <select aria-label="Année scolaire de démonstration" value={year}
+          onChange={e=>{setYear(e.target.value);setSearch("");setNotice(e.target.value==="2025-2026"?
+            "Consultation de l'année clôturée en lecture seule.":"Année scolaire "+e.target.value+" — données fictives.");}}>
+          {DEMO_YEARS.map(y=><option key={y} value={y}>{y}{y==="2025-2026"?" (archive)":""}</option>)}
+        </select>
+      </label>
       {[["platform","Super-administrateur"],["school","Direction / établissement"],["parent","Parent d'élève"]].map(([r,label])=>
         <button type="button" key={r} aria-pressed={role===r} className={role===r?"active":""}
           onClick={()=>enter(r)}>{label}</button>)}
