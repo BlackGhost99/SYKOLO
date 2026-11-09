@@ -15,7 +15,8 @@ test("la démonstration monte le vrai Shell de direction et les vraies rubriques
   expect(await screen.findByRole("heading",{name:"Tableau de bord"})).toBeTruthy();
   expect(screen.getByRole("navigation",{name:"Navigation principale"})).toBeTruthy();
   expect(screen.getByText("Encaissé ce mois")).toBeTruthy();
-  expect(screen.getByRole("button",{name:"Paramètres avancés"})).toBeTruthy();
+  await userEvent.setup().click(screen.getByRole("button",{name:"Élèves",exact:true}));
+  expect(await screen.findByRole("button",{name:"Paramètres avancés"})).toBeTruthy();
   expect(network).not.toHaveBeenCalled();
 });
 
