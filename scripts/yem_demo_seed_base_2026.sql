@@ -147,12 +147,24 @@ BEGIN
         address,previous_school,extra_fields,documents,active,revision,created_at)
       VALUES(sid,sch,ident,'DEMO26-'||s.tag||'-'||lpad(idx::text,3,'0'),
         firstname[idx],lastname[idx],
-        CASE WHEN cls_code ~ 'petite_section|moyenne_section|grande_section'
-          THEN DATE '2021-01-01' + ((idx%3)*180)
-        WHEN s.kind='complexe' THEN DATE '2014-01-01' + ((idx%4)*180)
-        WHEN cls_code ~ 'sixieme|cinquieme|quatrieme|troisieme|demo-[3456]'
-          THEN DATE '2011-01-01' + ((idx%4)*180)
-        ELSE DATE '2008-01-01' + ((idx%4)*180) END,
+        (CASE
+          WHEN cls_code ~ 'petite_section' THEN DATE '2022-06-15'
+          WHEN cls_code ~ 'moyenne_section' THEN DATE '2021-06-15'
+          WHEN cls_code ~ 'grande_section' THEN DATE '2020-06-15'
+          WHEN cls_code ~ 'cp1' THEN DATE '2019-06-15'
+          WHEN cls_code ~ 'cp2' THEN DATE '2018-06-15'
+          WHEN cls_code ~ 'ce1' THEN DATE '2017-06-15'
+          WHEN cls_code ~ 'ce2' THEN DATE '2016-06-15'
+          WHEN cls_code ~ 'cm1' THEN DATE '2015-06-15'
+          WHEN cls_code ~ 'cm2' THEN DATE '2014-06-15'
+          WHEN cls_code ~ 'sixieme|demo-6a' THEN DATE '2014-06-15'
+          WHEN cls_code ~ 'cinquieme|demo-5a' THEN DATE '2013-06-15'
+          WHEN cls_code ~ 'quatrieme|demo-4a' THEN DATE '2012-06-15'
+          WHEN cls_code ~ 'troisieme|demo-3a' THEN DATE '2011-06-15'
+          WHEN cls_code ~ 'seconde|demo-2nde' THEN DATE '2010-06-15'
+          WHEN cls_code ~ 'premiere' THEN DATE '2009-06-15'
+          WHEN cls_code ~ 'terminale' THEN DATE '2008-06-15'
+          ELSE DATE '2012-06-15' END + ((idx*11)%25)),
         DATE '2026-09-15',CASE WHEN idx%2=0 THEN 'M' ELSE 'F' END,
         'Libreville','Gabonaise','Quartier témoin '||idx||', Libreville',
         'Établissement fictif (démo)',
