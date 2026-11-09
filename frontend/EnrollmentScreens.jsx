@@ -433,6 +433,8 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
   const preset = d?.class_level_options?.[level];
   const selectedLevelName = preset?.name || d?.levels.find(l => l.id === level)?.name || levelName.trim();
   const canManageClasses = d?.can_manage_classes ?? d?.can_manage_academic;
+  const standardCycles = d?.standard_cycles_available || [];
+  const standardsCount = standardCycles.reduce((total, cycle) => total + cycle.level_count, 0);
   const count = preview.length || names.split(/[,;\n]/).map(x => x.trim()).filter(Boolean).length;
   function proposeNames() {
     const used = new Set(d.classes.map(c => c.name.toLowerCase()));
