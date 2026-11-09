@@ -1,0 +1,261 @@
+/* YEM – la composition est l'image originale fournie, affichée sans retouche.
+   Les contrôles HTML natifs sont superposés aux zones déjà présentes dans l'image. */
+.yem-live-workspace.yem-entry-workspace {
+  width:100%;max-width:none;min-height:100svh;margin:0;padding:0;
+}
+.yem-entry-workspace > .yem-company {display:none}
+.yem-entry-workspace .yem-deploy-note {
+  position:fixed;top:12px;right:12px;z-index:100;
+  max-width:min(440px,calc(100vw - 24px));margin:0;
+  padding:10px 14px;font-size:12px;
+}
+
+.yem-mode-switch-login {opacity:0!important; position:fixed; top:0; z-index:100; transition:opacity .15s ease}
+.yem-mode-switch-login:is(:hover,:focus-within) {opacity:1!important}
+.yem-original-login {
+  display:grid;
+  place-items:center;
+  min-height:100svh;
+  margin:0;
+  padding:0;
+  background:#211b17;
+}
+.yem-original-login__frame {
+  position:relative;
+  width:min(100vw,calc(100svh * 1710 / 920));
+  aspect-ratio:1710 / 920;
+}
+.yem-original-login__image {
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  user-select:none;
+  -webkit-user-drag:none;
+}
+.yem-original-login__form {position:absolute;inset:0}
+.yem-original-login--exact .pc-account-card {
+  position:absolute;
+  left:36.33%;
+  top:31%;
+  width:23.95%;
+  height:62.4%;
+  min-width:0;
+  margin:0!important;
+  padding:0;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  background:transparent;
+}
+.yem-original-login--exact .pc-account-card > h2,
+.yem-original-login--exact .pc-account-card > .hint,
+.yem-original-login--exact .pc-account-card form h3 {
+  display:none;
+}
+.yem-original-login--exact .pc-account-card .yem-login-actions {
+  position:absolute;left:0;top:16%;width:81%;height:7%;
+  margin:0;padding:0;display:flex;gap:2.5%;border:0;z-index:3;
+}
+.yem-original-login--exact .yem-login-actions > button,
+.yem-original-login--exact .yem-login-scopes > button {
+  display:block;
+  min-height:0;
+  height:100%;
+  padding:0;
+  margin:0;
+  border:0;
+  border-radius:2px;
+  color:transparent;
+  background:transparent;
+  box-shadow:none;
+  font-size:0;
+  cursor:pointer;
+}
+.yem-original-login--exact .yem-login-actions > button:nth-child(1){flex:0 0 22%}
+.yem-original-login--exact .yem-login-actions > button:nth-child(2){flex:0 0 36%}
+.yem-original-login--exact .yem-login-actions > button:nth-child(3){flex:1 1 auto}
+.yem-original-login--exact .pc-account-card form {
+  position:absolute; inset:0; margin:0; padding:0;z-index:1;
+}
+.yem-original-login--exact .yem-login-scopes {
+  position:absolute;
+  left:0;top:34.2%;width:72%;height:7%;
+  display:flex;gap:3%;align-items:stretch;
+  padding:0;margin:0;border:0;background:transparent;
+}
+.yem-original-login--exact .yem-login-scopes > button:nth-child(1) {flex:0 0 30%}
+.yem-original-login--exact .yem-login-scopes > button:nth-child(2) {flex:0 0 23%}
+.yem-original-login--exact .yem-login-scopes > button:nth-child(3) {flex:1 1 auto}
+.yem-original-login--exact .pc-account-card form > label.field {
+  position:absolute;
+  left:0;
+  width:100%;
+  height:5.6%;
+  margin:0;
+  padding:0;
+  border:0;
+  font-size:0;
+  line-height:0;
+  color:transparent;
+}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(1){top:46.5%}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(2){top:58.0%}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(3){top:69.5%}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(4){top:80.6%}
+.yem-original-login--exact .pc-account-card form > label.field input {
+  display:block;
+  width:100%;
+  height:100%;
+  padding:0 1.1%;
+  margin:0;
+  min-height:0;
+  border:0;
+  border-radius:3px;
+  background:transparent;
+  box-shadow:none;
+  color:#faf5eb;
+  font-size:clamp(8px,.8vw,13px);
+  line-height:1.25;
+  letter-spacing:.01em;
+}
+.yem-original-login--exact .pc-account-card form > label.field input::placeholder {color:transparent}
+.yem-original-login--exact .pc-account-card form > label.field input:focus-visible,
+.yem-original-login--exact .pc-account-card :is(button):focus-visible {
+  outline:2px solid #ffe6bb;
+  outline-offset:1px;
+}
+.yem-original-login--exact .pc-account-card form > button[type="submit"] {
+  position:absolute;
+  top:89%;left:0;
+  width:24%;height:6.4%;
+  padding:0;margin:0;
+  background:transparent;color:transparent;
+  border:0;box-shadow:none;font-size:0;
+  cursor:pointer;opacity:1;
+}
+.yem-original-login--exact .pc-account-card > .yem-auth-message {
+  position:absolute;
+  left:-1%;bottom:-6%;
+  width:102%;
+  padding:7px 9px;
+  background:rgba(250,245,237,.97);
+  border:1px solid #9c7051;
+  border-radius:5px;
+  color:#513322;
+  font-size:12px;
+  line-height:1.5;
+  box-shadow:0 4px 13px rgba(0,0,0,.18);
+}
+.yem-original-login:not(.yem-original-login--exact) .yem-original-login__form {
+  display:grid;
+  place-items:center;
+  padding:18px;
+}
+.yem-original-login:not(.yem-original-login--exact) .pc-account-card {
+  width:min(100%,460px);
+  max-height:min(90svh,95%);
+  overflow:auto;
+  border:1px solid #8a735d;
+  border-radius:10px;
+  padding:22px 24px;
+  color:#33291e;
+  background:rgba(249,245,238,.97);
+  box-shadow:0 10px 38px rgba(0,0,0,.36);
+}
+.yem-original-login:not(.yem-original-login--exact) .pc-account-card .actions {flex-wrap:wrap}
+.yem-original-login:not(.yem-original-login--exact) .pc-account-card .yem-login-scopes button[aria-pressed=true] {
+  border-color:#7d654b;background:#ede2d1;
+}
+@media(max-width:800px) {
+  .yem-original-login{display:block;min-height:100svh;background:#f6f2ea}
+  .yem-original-login__frame{display:block;width:100%;height:auto;aspect-ratio:auto}
+  .yem-original-login__image{height:auto;object-fit:contain}
+  .yem-original-login__form,
+  .yem-original-login:not(.yem-original-login--exact) .yem-original-login__form {
+    display:block;position:static;padding:16px;
+  }
+  .yem-original-login .pc-account-card,
+  .yem-original-login--exact .pc-account-card,
+  .yem-original-login:not(.yem-original-login--exact) .pc-account-card {
+    position:static;
+    display:block;
+    width:100%;
+    height:auto;
+    max-height:none;
+    overflow:visible;
+    margin:0!important;
+    padding:20px;
+    border:1px solid #cfc7ba;
+    border-radius:10px;
+    background:#fffdf8;
+    color:#33291e;
+    box-shadow:none;
+  }
+  .yem-original-login--exact .pc-account-card > h2,
+  .yem-original-login--exact .pc-account-card > .hint,
+  .yem-original-login--exact .pc-account-card form h3 {display:block}
+  .yem-original-login--exact .pc-account-card .yem-login-actions,
+  .yem-original-login--exact .pc-account-card form,
+  .yem-original-login--exact .yem-login-scopes,
+  .yem-original-login--exact .pc-account-card form > label.field,
+  .yem-original-login--exact .pc-account-card form > button[type="submit"],
+  .yem-original-login--exact .pc-account-card > .yem-auth-message {
+    position:static;
+    width:auto;
+    height:auto;
+    margin:10px 0;
+    padding:0;
+    background:transparent;
+    color:inherit;
+    border:0;
+    box-shadow:none;
+  }
+  .yem-original-login--exact .pc-account-card .yem-login-actions,
+  .yem-original-login--exact .yem-login-scopes {display:flex;flex-wrap:wrap;gap:8px}
+  .yem-original-login--exact .yem-login-actions > button,
+  .yem-original-login--exact .yem-login-scopes > button {
+    display:inline-flex;
+    flex:0 1 auto;
+    min-height:44px;
+    font-size:13px;
+    padding:9px 10px;
+    border:1px solid #cfc7ba;
+    border-radius:6px;
+    color:#463829;
+    background:#f5eee2;
+    box-shadow:none;
+  }
+  .yem-original-login--exact .pc-account-card form > label.field {
+    display:block;
+    margin:10px 0;
+    font-size:12px;
+    line-height:1.5;
+  }
+  .yem-original-login--exact .pc-account-card form > label.field input {
+    display:block;
+    width:100%;
+    height:44px;
+    margin-top:5px;
+    padding:10px;
+    background:white;
+    color:#263029;
+    border:1px solid #cfc7ba;
+    font-size:16px;
+  }
+  .yem-original-login--exact .pc-account-card form > label.field input::placeholder{color:#837b70}
+  .yem-original-login--exact .pc-account-card form > button[type="submit"] {
+    display:block;
+    margin-top:12px;
+    min-height:44px;
+    padding:10px 14px;
+    background:#5d4131;
+    color:white;
+    border-radius:6px;
+    border:1px solid #5d4131;
+    font-size:14px;
+  }
+  .yem-original-login--exact .pc-account-card > .yem-auth-message{
+    padding:10px 12px;border:1px solid #d7b98e;background:#fff4e0;
+  }
+}
