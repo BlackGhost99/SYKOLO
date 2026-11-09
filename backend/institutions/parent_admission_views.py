@@ -8,7 +8,7 @@ from uuid import UUID
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
