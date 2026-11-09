@@ -50,8 +50,8 @@ BEGIN
       yr:=md5('YEM-DEMO-2026:year:'||s.tag)::uuid;
       start_on:=DATE '2026-09-01'; end_on:=DATE '2027-07-31';
       INSERT INTO public.institutions_academicyear
-        (id,school_id,code,name,start_date,end_date,active,revision)
-      VALUES(yr,sch,'2026-2027','Année scolaire 2026-2027',start_on,end_on,true,1)
+        (id,school_id,code,name,start_date,end_date,active,revision,status)
+      VALUES(yr,sch,'2026-2027','Année scolaire 2026-2027',start_on,end_on,true,1,'current')
       ON CONFLICT DO NOTHING;
       SELECT id,start_date,end_date INTO yr,start_on,end_on
         FROM public.institutions_academicyear WHERE school_id=sch AND code='2026-2027';
