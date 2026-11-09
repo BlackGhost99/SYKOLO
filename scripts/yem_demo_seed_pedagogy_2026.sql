@@ -53,13 +53,13 @@ BEGIN
     END IF;
     FOR c IN SELECT a.id,a.code,a.name,lev.code AS level_code,
            cy.code AS cycle_code,
-           ROW_NUMBER() OVER(ORDER BY a.code,a.id)::integer AS idx
+           ROW_NUMBER() OVER(ORDER BY CASE WHEN a.code LIKE 'demo26-%' THEN 0 ELSE 1 END,a.code,a.id)::integer AS idx
        FROM institutions_academicclass a
        JOIN institutions_academiclevel lev ON lev.id=a.level_id
        JOIN institutions_academiccycle cy ON cy.id=lev.cycle_id
        WHERE a.school_id=sch AND a.year_id=yr
-         AND a.code LIKE 'demo26-%' AND a.active
-       ORDER BY a.code,a.id
+         AND (a.code LIKE 'demo26-%' OR a.code LIKE 'demo-%') AND a.active
+       ORDER BY CASE WHEN a.code LIKE 'demo26-%' THEN 0 ELSE 1 END,a.code,a.id
     LOOP
       scope := jsonb_build_object(
         'year','2026-2027','cycle',c.cycle_code,
