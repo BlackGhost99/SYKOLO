@@ -666,7 +666,10 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
                     <button type="button" className="yf-link" aria-label={`Dupliquer ${c.name}`} disabled={busy} onClick={() => {
                       setEditing(null); setMessage({text: ""});
                       setCloning({id: c.id, name: proposeCloneName(c), originalName: c.name});
-                    }}>Dupliquer</button>}</td>
+                    }}>Dupliquer</button>}
+                  {canManageClasses && d.year.active !== false && cycleAllowed(c.level.cycle_code) &&
+                    <button type="button" className="yf-link" aria-label={`${c.active ? "Archiver" : "Réactiver"} ${c.name}`}
+                      disabled={busy} onClick={() => toggleArchive(c)}>{c.active ? "Archiver" : "Réactiver"}</button>}</td>
               </tr>)}</tbody></table></TableScroll>}
           {d.can_manage_academic && <details className="yf-details"><summary>Créer une autre année scolaire</summary>{yearForm}</details>}
         </Card>
