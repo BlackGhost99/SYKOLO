@@ -1,5 +1,15 @@
 /* YEM – la composition est l'image originale fournie, affichée sans retouche.
    Les contrôles HTML natifs sont superposés aux zones déjà présentes dans l'image. */
+.yem-live-workspace.yem-entry-workspace {
+  width:100%;max-width:none;min-height:100svh;margin:0;padding:0;
+}
+.yem-entry-workspace > .yem-company {display:none}
+.yem-entry-workspace .yem-deploy-note {
+  position:fixed;top:12px;right:12px;z-index:100;
+  max-width:min(440px,calc(100vw - 24px));margin:0;
+  padding:10px 14px;font-size:12px;
+}
+
 .yem-mode-switch-login {opacity:0!important; position:fixed; top:0; z-index:100; transition:opacity .15s ease}
 .yem-mode-switch-login:is(:hover,:focus-within) {opacity:1!important}
 .yem-original-login {
