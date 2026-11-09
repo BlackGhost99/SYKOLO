@@ -504,6 +504,72 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
             return result.created ? `${result.created} classe(s) ajoutée(s), sans modifier les autres.` : "Toutes les classes standards sont déjà présentes.";
           })}>Compléter les classes standards</Button>
         </Card>}
+
+        {secondary.length > 0 && d.year.active !== false && <Card title="Ouvrir les séries du lycée" icon="school"
+          subtitle="Choisissez uniquement les séries enseignées : S, LE, A1, A2, B, C, D, ACC, ACG, etc.">
+          <p>Les séries proposées sont des suggestions, pas des classes ouvertes automatiquement. Vous pouvez saisir le code propre à votre lycée.</p>
+          <form className="yf-form" onSubmit={e => { e.preventDefault(); if (!seriesPreview.length) return;
+            run(async () => {
+              const result = await req(`schools/${schoolId}/academic/series-classes`, {
+                year: d.year.id, level: seriesLevel, series: seriesCode.trim().toUpperCase(),
+                names: seriesPreview, capacity: seriesCapacity === "" ? null : Number(seriesCapacity),
+              });
+              setSeriesPreview([]);
+              return `${result.classes.length} classe(s) ouvertes dans la série ${result.series.code.toUpperCase()}.`;
+            });
+          }}>
+            <div className="yf-grid">
+              <Field label="Niveau du lycée" required>
+                <select required value={seriesLevel} onChange={e => { setSeriesLevel(e.target.value); setSeriesCode(""); setSeriesPreview([]); }}>
+                  <option value="">Choisir un niveau…</option>
+                  {secondary.map(option => <option key={option.level} value={option.level}>{option.level_name} ({option.cycle === "lycee_technique" ? "Technique" : "Général"})</option>)}
+                </select>
+              </Field>
+              <Field label="Série ou spécialité" required hint="Ex. : S, LE, A1, ACC, ACG. Les variantes locales sont acceptées.">
+                <input list="yf-school-series-list" required maxLength={40} value={seriesCode} onChange={e => { setSeriesCode(e.target.value); setSeriesPreview([]); }} placeholder="S, A1, ACC…"/>
+                <datalist id="yf-school-series-list">{(seriesLevelInfo?.series || []).map(item =>
+                  <option key={item.code} value={item.code} label={item.name}/>)}</datalist>
+              </Field>
+              <Field label="Nombre de divisions">
+                <input type="number" min={1} max={30} value={seriesQuantity} onChange={e => { setSeriesQuantity(e.target.value); setSeriesPreview([]); }}/>
+              </Field>
+              <Field label="Capacité par classe">
+                <input type="number" min={1} max={5000} value={seriesCapacity} onChange={e => setSeriesCapacity(e.target.value)} placeholder="Facultatif"/>
+              </Field>
+            </div>
+            {seriesPreview.length > 0 && <div className="yf-grid">
+              {seriesPreview.map((name, index) => <Field key={index} label={`Nom de division ${index + 1}`} required>
+                <input required maxLength={120} value={name} onChange={e =>
+                  setSeriesPreview(current => current.map((value, i) => i === index ? e.target.value : value))}/>
+              </Field>)}
+            </div>}
+            <div className="yf-inline-form">
+              {seriesPreview.length
+                ? <Button primary type="submit" disabled={busy}>Ouvrir {seriesPreview.length} classe(s)</Button>
+                : <Button primary type="button" disabled={busy || !seriesLevelInfo || !seriesCode.trim() ||
+                  !Number.isInteger(Number(seriesQuantity)) || Number(seriesQuantity) < 1 || Number(seriesQuantity) > 30}
+                  onClick={proposeSeriesNames}>Préparer les divisions</Button>}
+            </div>
+            <small>Exemple : série S → Seconde S1, Seconde S2, ou Seconde SU en modifiant le nom proposé.</small>
+          </form>
+        </Card>}
+        {archivedReusable.length > 0 && canManageClasses && d.year.active !== false &&
+          <Card title="Réutiliser une classe archivée" icon="refresh-cw"
+            subtitle="Rouvrir la structure dans l'année sélectionnée sans déplacer les anciens élèves.">
+            <form className="yf-inline-form wrap" onSubmit={e => { e.preventDefault(); if (!archivedSource) return;
+              run(async () => {
+                const copy = await req(`schools/${schoolId}/academic/classes/${archivedSource}/carry-forward`, {year: d.year.id});
+                setArchivedSource("");
+                return `« ${copy.name} » réouverte pour ${d.year.name}. L'ancienne classe reste archivée.`;
+              });
+            }}>
+              <Field label="Classe archivée à reprendre" required><select required value={archivedSource} onChange={e => setArchivedSource(e.target.value)}>
+                <option value="">Sélectionner…</option>
+                {archivedReusable.map(room => <option key={room.id} value={room.id}>{room.name} — {room.year}</option>)}
+              </select></Field>
+              <Button primary type="submit" disabled={busy || !archivedSource}>Réouvrir dans cette année</Button>
+            </form>
+          </Card>}
         {canManageClasses && d.year.active !== false && <Card title={`Ajouter des classes en ${d.year.name}`} icon="plus" subtitle="Choisissez le niveau et le nombre de classes.">
           <form onSubmit={e => { e.preventDefault(); if (!(manual || preview.length)) return; run(async () => {
             const target = preset ? { preset: level } : level === "new" ? { level_name: levelName, cycle_name: cycleName } : { level };
