@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 import React from "react";
-import {render,screen,cleanup,fireEvent} from "@testing-library/react";
+import {render,screen,cleanup} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {it,expect,vi,afterEach} from "vitest";
 import AuthPanel from "./AuthPanel.jsx";
-import loginArtwork from "./assets/yem-login-original.png";
 vi.mock("./SchoolDashboard.jsx",()=>({default:()=> <p>Espace scolaire ouvert</p>}));
 vi.mock("./PlatformConsole.jsx",()=>({default:()=> <p>Console plateforme ouverte</p>}));
 vi.mock("./ParentPortal.jsx",()=>({FamilyWorkspace:()=> <p>Espace famille ouvert</p>}));
@@ -124,34 +123,18 @@ it("conserve les trois parcours de connexion dans la nouvelle interface YEM", as
 });
 
 
-it("utilise directement l'image originale et conserve les vrais champs de connexion", async () => {
+it("rétablit le formulaire initial et garde la récupération dans le même cadre", async () => {
   setup();
   render(<AuthPanel />);
-  const picture = document.querySelector(".yem-original-login__image");
-  expect(picture?.getAttribute("src")).toBe(loginArtwork);
-  expect(document.querySelector(".yem-original-login--exact")).toBeNull();
-  fireEvent.load(picture);
-  expect(document.querySelector(".yem-original-login--exact")).toBeTruthy();
-  expect(screen.getByLabelText("Code de l'établissement")).toBeTruthy();
-  expect(screen.getByRole("button", {name:"Se connecter",exact:true})).toBeTruthy();
-  expect(document.querySelector(".yem-login-story")).toBeNull();
-});
-
-it("conserve la récupération de mot de passe sans confondre l'image et le formulaire",async()=>{
-  setup();
-  render(<AuthPanel/>);
-  const ui=userEvent.setup();
-  await ui.click(screen.getByRole("button",{name:"Mot de passe oublié",exact:true}));
-  expect(screen.getByLabelText("Adresse email du compte")).toBeTruthy();
-  expect(document.querySelector(".yem-original-login__image")?.getAttribute("src")).toBe(loginArtwork);
-});
-
-it("laisse le formulaire utilisable si l’illustration ne se charge pas", async () => {
-  setup();
-  render(<AuthPanel />);
-  fireEvent.error(document.querySelector(".yem-original-login__image"));
+  const ui = userEvent.setup();
+  const card = await screen.findByRole("region", {name: "Sécurité du compte"});
+  expect(screen.getByAltText("Logo officiel YEM")).toBeTruthy();
   expect(document.querySelector(".yem-original-login__image")).toBeNull();
-  expect(document.querySelector(".yem-original-login--exact")).toBeNull();
-  expect(await screen.findByRole("heading", { name: "Connexion établissement" })).toBeTruthy();
-  expect(screen.getByLabelText("Code de l'établissement")).toBeTruthy();
+  await ui.type(screen.getByLabelText("Mot de passe", {exact: true}), "Exemple123!");
+  expect(screen.queryByLabelText("Adresse email du compte")).toBeNull();
+  await ui.click(screen.getByRole("button", {name: "Mot de passe oublié", exact: true}));
+  expect(screen.getByLabelText("Adresse email du compte")).toBeTruthy();
+  expect(screen.getByRole("region", {name: "Sécurité du compte"})).toBe(card);
+  await ui.click(screen.getByRole("button", {name: "Connexion", exact: true}));
+  expect(screen.getByLabelText("Mot de passe", {exact: true})).toBeTruthy();
 });
