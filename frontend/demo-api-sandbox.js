@@ -142,6 +142,22 @@ export function createOfflineDemoBackend(){
       members_count:members.length,roles:[{id:"role-directeur",label:"Directeur"}],
       events:[],members_truncated:false,policy:{plan_name:"Démonstration",max_users:50,max_students:1000,revision:1}};
   }
+  function reportSnapshot(id,yr,rec){
+    const st=studentsFor(id,yr).find(s=>"en-"+s.id===rec.enrollment);
+    const classroom=classesFor(id,yr).find(c=>c.name===st?.level);
+    const names=splitName(st?.name||"Élève fictif");
+    return {
+      template:{title:"Bulletin scolaire — démonstration",show_score:true,show_label:true},
+      student:{...names,code:"DEMO-"+(st?.id||"ELEVE").toUpperCase()},
+      class:{name:classroom?.name||st?.level||"Classe"},
+      year:{name:yr},
+      period:periodsFor(yr).find(p=>p.id===rec.period)||null,
+      subjects:subjectsFor(id,yr).filter(s=>classroom?.name.startsWith(s.level+" "))
+        .map(s=>({course:"course-"+classroom.id+"-"+s.id,subject:s.name,
+          coefficient:s.coefficient,result:{score:st?.average??null,label:"Résultat fictif"}})),
+      overall:{score:st?.average??null,label:"Exemple non officiel"}
+    };
+  }
   function schoolIdOf(path){return path.match(/^schools\/([^/]+)/)?.[1]||"lycee";}
   function fixtureFor(path,search,method,body){
     const id=schoolIdOf(path),school=schoolData(id);
@@ -228,7 +244,7 @@ export function createOfflineDemoBackend(){
         return found||{id:assessmentId,published:true};
       }
     }
-    if(path.endsWith("/academic/subjects"))return {subjects:data.subjects.filter(s=>s.school===id)};
+    if(path.endsWith("/academic/subjects"))return {subjects:subjectsFor(id,yr)};
     if(path.endsWith("/positions"))return {positions:[]};
     if(path.endsWith("/appointments"))return {appointments:[]};
     if(path.endsWith("/my-appointments"))return {appointments:[],functions:[]};
@@ -244,6 +260,39 @@ export function createOfflineDemoBackend(){
           guardians:[{id:"g-"+s.id,name:s.guardian,phone:"",email:"",relationship:"Parent"}]}))};
     }
     if(path.endsWith("/parent-links"))return {links:[]};
+    if(path.endsWith("/reports")){
+      const classroom=search.get("classroom");
+      const pupils=studentsFor(id,yr).filter(s=>!classroom||
+        classesFor(id,yr).some(cl=>cl.id===classroom&&cl.name===s.level)).map(s=>({
+          id:"en-"+s.id,name:s.name,year:yr,student:s.id,can_prepare:true
+        }));
+      if(method!=="GET"){
+        const enrollment=body.enrollment;
+        const sid=enrollment?.replace(/^en-/,"");
+        const rec={id:"report-"+sid,enrollment,period:body.period||null,
+          revision:1,status:"draft"};
+        reports[rec.id]=rec;
+        return {...rec,snapshot:reportSnapshot(id,yr,rec)};
+      }
+      const selected=pupils.map(p=>reports["report-"+p.student]).filter(Boolean);
+      if(!selected.length&&pupils.length){
+        const first=pupils[0];
+        const rec={id:"report-"+first.student,enrollment:first.id,
+          period:periodsFor(yr)[0].id,revision:1,status:"draft"};
+        reports[rec.id]=rec;selected.push(rec);
+      }
+      return {reports:selected,pupils};
+    }
+    const reportPath=path.match(/^schools\/[^/]+\/reports\/([^/]+)(?:\/(publish|pdf))?$/);
+    if(reportPath){
+      const reportId=reportPath[1],action=reportPath[2];
+      const rec=reports[reportId];
+      if(!rec)return {error:"Bulletin de démonstration introuvable."};
+      if(action==="publish"&&method!=="GET"){
+        rec.status="published";rec.revision++;
+      }
+      return {...rec,snapshot:reportSnapshot(id,yr,rec)};
+    }
     if(path.endsWith("/enrollments"))return {enrollments:enrollmentRows(id,yr)};
     if(path.endsWith("/finance/schedules")){
       if(method!=="GET")return {id:"tarif-demo",label:body.label||"Tarif",amount:body.amount,currency:"XAF"};
