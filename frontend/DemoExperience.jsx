@@ -206,7 +206,7 @@ export default function DemoExperience(){
   const parentsDue=state.invoices.filter(f=>f.student===child?.id&&f.year===year);
   const nav=role==="school"?SCHOOL_NAV:role==="parent"?PARENT_NAV:PLATFORM_NAV;
   const title=role==="school"?"Direction — "+school.name:role==="parent"?"Espace parent":"Console plateforme";
-  const visibleStudents=currentStudents.filter(x=>(x.name+" "+x.level+" "+x.guardian).toLowerCase().includes(search.toLowerCase())&&(statusFilter==="all"||x.status===statusFilter));
+  const visibleStudents=currentStudents.filter(x=>(x.name+" "+x.level+" "+x.guardian).toLowerCase().includes(search.toLowerCase())&&(statusFilter==="all"||(statusFilter.startsWith("class:")?x.level===statusFilter.slice(6):x.status===statusFilter)));
   const visibleAdmissions=currentApplications.filter(x=>(x.name+" "+x.level+" "+ROUTE_LABELS[x.route]).toLowerCase().includes(search.toLowerCase()));
 
   function message(txt){setNotice(txt);}
@@ -467,33 +467,73 @@ export default function DemoExperience(){
     </>;
   }
   function students(advancedAction=null,tabs=null){
-    return <><PageHeader title="Gestion des élèves" subtitle="Inscriptions, classes, responsables et suivi administratif" actions={advancedAction}/>{tabs}
-      <div className="demo-toolbar"><input type="search" aria-label="Rechercher un élève" placeholder="Rechercher élève, classe ou responsable…"
-        value={search} onChange={e=>setSearch(e.target.value)}/>
-        <select aria-label="Filtrer par statut" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
-          <option value="all">Tous les statuts</option><option value="Inscrit">Inscrit</option>
-        </select>
+    const charged=stu=>state.invoices.filter(f=>f.student===stu.id&&f.year===year);
+    const paymentBalance=stu=>charged(stu).reduce((n,f)=>n+remaining(f),0);
+    return <>
+      <PageHeader title="Gestion des élèves" subtitle="Inscriptions, classes, responsables et suivi administratif" actions={advancedAction}/>
+      {tabs}
+      <div className="yd-toolbar students">
+        <SearchBox placeholder="Rechercher un élève (nom, prénom, matricule...)" value={search} onChange={e=>setSearch(e.target.value)}/>
+        <label className="yd-select plain"><select aria-label="Classe" value={statusFilter.startsWith("class:")?statusFilter.slice(6):""}
+          onChange={e=>setStatusFilter(e.target.value?"class:"+e.target.value:"all")}>
+          <option value="">Toutes les classes</option>
+          {currentClasses.map(cl=><option key={cl.id} value={cl.name}>{cl.name}</option>)}
+        </select><Icon name="chevron" size={18} className="chev"/></label>
+        <label className="yd-select plain"><select aria-label="Statut" value={statusFilter==="Inscrit"?"Inscrit":""}
+          onChange={e=>setStatusFilter(e.target.value||"all")}>
+          <option value="">Tous les statuts</option><option value="Inscrit">Inscrit</option>
+        </select><Icon name="chevron" size={18} className="chev"/></label>
         <DemoButton primary icon="adduser" onClick={()=>open("student",{level:school.levels[0]+" A"})}>Nouvel élève</DemoButton>
-        <DemoButton icon="excel" onClick={()=>open("export")}>Aperçu d'export</DemoButton></div>
-      <div className="demo-grid-split">
-        <Card title={"Élèves ("+visibleStudents.length+")"} icon="users">
-          <div className="demo-table-wrap"><table><thead><tr><th>Élève</th><th>Classe</th><th>Statut</th></tr></thead>
-            <tbody>{visibleStudents.map(s=><tr key={s.id} className={chosen?.id===s.id?"demo-selected":""}>
-              <td><button type="button" className="demo-name" onClick={()=>setSelectedStudent(s.id)}>{s.name}</button></td>
-              <td>{s.level}</td><td><Status>{s.status}</Status></td>
-            </tr>)}</tbody></table>{!visibleStudents.length&&<Empty>Aucun élève ne correspond au filtre.</Empty>}</div>
-        </Card><Card title="Fiche élève" icon="idcard">
-          {chosen?<><div className="demo-profile"><PersonAvatar name={chosen.name}/>
-            <div><h3>{chosen.name}</h3><span>{chosen.level} · {chosen.status}</span></div></div>
-            <dl className="demo-dl"><div><dt>Responsable</dt><dd>{chosen.guardian}</dd></div>
-              <div><dt>Contact</dt><dd>{chosen.phone||"À compléter"}</dd></div>
-              <div><dt>Absences</dt><dd>{chosen.absences} jour(s)</dd></div>
-              <div><dt>Évaluation</dt><dd>{chosen.average===null?"Compétences / non renseigné":chosen.average+"/20"}</dd></div></dl>
-            <div className="demo-actions"><DemoButton primary icon="edit" onClick={()=>open("edit",chosen)}>Modifier la fiche</DemoButton>
-              <DemoButton icon="coins" onClick={()=>{setSelectedInvoice(state.invoices.find(f=>f.student===chosen.id&&f.year===year)?.id||"");setPage("payments");}}>Frais de l'élève</DemoButton></div>
-          </>:<Empty>Sélectionne un élève pour ouvrir sa fiche.</Empty>}
+        <DemoButton icon="excel" onClick={()=>open("export")}>Importer Excel</DemoButton>
+      </div>
+      <div className="yd-metrics four">
+        <Metric icon="users" label="Élèves actifs" value={String(currentStudents.length)} trend="none" trendLabel={year}/>
+        <Metric icon="cap" label="Nouveaux inscrits" value={String(currentStudents.length)} trend="none" trendLabel="exemple fictif"/>
+        <Metric icon="alert" label="Dossiers incomplets" value={String(currentStudents.filter(s=>!s.phone).length)} trend="none" trendLabel="responsables sans contact"/>
+        <Metric icon="whatsapp" label="Parents sans numéro WhatsApp"
+          value={String(currentStudents.filter(s=>!s.phone).length)} trend="none" trendLabel="contact à compléter"/>
+      </div>
+      <div className="yd-grid students-grid">
+        <Card title="Liste des élèves" count={`(${visibleStudents.length})`} icon="users">
+          <div className="yd-table-wrap demo-table-wrap" role="region" aria-label="Liste des élèves">
+            <table className="clickable nowrap dense"><thead><tr>
+              {["#","Élève","Classe","Parent / Tuteur","Téléphone","Situation financière","Statut","Actions"].map(h=>
+                <th key={h}>{h}</th>)}
+            </tr></thead><tbody>
+              {visibleStudents.map((s,i)=><tr key={s.id} className={chosen?.id===s.id?"selected":""}
+                onClick={()=>setSelectedStudent(s.id)}>
+                <td>{i+1}</td><td><b>{s.name}</b></td><td>{s.level}</td><td>{s.guardian}</td>
+                <td>{s.phone||"—"}</td><td>{paymentBalance(s)?"Impayé":"À jour"}</td>
+                <td><Status tone={paymentBalance(s)?"red":"green"}>{s.status}</Status></td>
+                <td><button type="button" className="yd-dots" aria-label={"Ouvrir la fiche de "+s.name}
+                  onClick={e=>{e.stopPropagation();setSelectedStudent(s.id);open("edit",s);}}>
+                  <Icon name="dots" size={22}/></button></td>
+              </tr>)}
+            </tbody></table>{!visibleStudents.length&&<Empty>Aucun élève trouvé.</Empty>}
+          </div>
         </Card>
-      </div></>;
+        <Card title="Aperçu de l’élève" icon="user" className="student-preview">
+          {chosen?<><div className="yd-person">
+            <div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div>
+            <div><h3>{chosen.name}</h3><span>Classe : {chosen.level}</span>
+              <span>Matricule : {((state.numbering[school.id]?.prefix)||"YEM")+"-"+chosen.id.toUpperCase().padStart(5,"0")}</span></div>
+            </div>
+            <div className="yd-info-list">
+              <InfoRow icon="user" k="Parent / Tuteur" v={chosen.guardian}/>
+              <InfoRow icon="whatsapp" k="Téléphone" v={chosen.phone||"—"}/>
+              <InfoRow icon="coins" k="Total annuel" v={fcfa(charged(chosen).reduce((n,f)=>n+f.total,0))}/>
+              <InfoRow icon="wallet" k="Montant payé" v={fcfa(charged(chosen).reduce((n,f)=>n+f.paid,0))}/>
+              <InfoRow icon="scale" k="Reste à payer" v={fcfa(paymentBalance(chosen))} highlight/>
+            </div>
+            <div className="yd-btn-stack">
+              <DemoButton icon="file" primary onClick={()=>open("edit",chosen)}>Voir la fiche</DemoButton>
+              <DemoButton icon="coins" onClick={()=>navigate("payments")}>Encaisser</DemoButton>
+              <DemoButton icon="whatsapp" disabled>Contacter le parent</DemoButton>
+            </div>
+          </>:<Empty>Sélectionnez un élève dans la liste.</Empty>}
+        </Card>
+      </div>
+    </>;
   }
   function admissions(advancedAction=null){
     return <><PageHeader title="Admissions et préinscriptions" subtitle="Consultez les demandes et suivez leur inscription" actions={advancedAction}/>
