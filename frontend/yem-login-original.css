@@ -12,24 +12,24 @@
 }
 .yem-original-login__frame {
   position:relative;
-  width:min(100vw,calc(100svh * 1372 / 738));
-  aspect-ratio:1372 / 738;
+  width:min(100vw,calc(100svh * 1710 / 920));
+  aspect-ratio:1710 / 920;
 }
 .yem-original-login__image {
   display:block;
   width:100%;
   height:100%;
-  object-fit:fill;
+  object-fit:contain;
   user-select:none;
   -webkit-user-drag:none;
 }
 .yem-original-login__form {position:absolute;inset:0}
 .yem-original-login--exact .pc-account-card {
   position:absolute;
-  left:37.4%;
-  top:32%;
-  width:24.6%;
-  height:62.5%;
+  left:36.33%;
+  top:31%;
+  width:23.95%;
+  height:62.4%;
   min-width:0;
   margin:0!important;
   padding:0;
@@ -89,10 +89,10 @@
   line-height:0;
   color:transparent;
 }
-.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(1){top:47.3%}
-.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(2){top:58.9%}
-.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(3){top:70.5%}
-.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(4){top:82.2%}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(1){top:46.5%}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(2){top:58.0%}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(3){top:69.5%}
+.yem-original-login--exact .pc-account-card form > label.field:nth-of-type(4){top:80.6%}
 .yem-original-login--exact .pc-account-card form > label.field input {
   display:block;
   width:100%;
@@ -117,7 +117,7 @@
 }
 .yem-original-login--exact .pc-account-card form > button[type="submit"] {
   position:absolute;
-  top:90.6%;left:0;
+  top:89%;left:0;
   width:24%;height:6.4%;
   padding:0;margin:0;
   background:transparent;color:transparent;
