@@ -7,7 +7,7 @@ DO $fix$
 DECLARE
   sid uuid := '96f99506-a8d6-4dab-b292-4076800c9bd7';
   target_year_id uuid; primary_id uuid; old_count integer;
-  item record; demo_level_id uuid; classroom_id uuid; new_level_id uuid;
+  item record; demo_level_id uuid; demo_classroom_id uuid; new_level_id uuid;
   scope_new jsonb; class_old text; class_new text; level_new text;
   settings_id uuid; report_count integer;
 BEGIN
@@ -48,7 +48,7 @@ BEGIN
   ) AS v(old_code,new_code,new_name,division,level_order)
   LOOP
     demo_level_id := md5('YEM-DEMO-2026:level:CES8:'||item.old_code)::uuid;
-    classroom_id := md5('YEM-DEMO-2026:class:CES8:'||item.old_code)::uuid;
+    demo_classroom_id := md5('YEM-DEMO-2026:class:CES8:'||item.old_code)::uuid;
     class_old := 'demo26-'||item.old_code||'-a';
     class_new := 'demo26-'||item.new_code||'-'||item.division;
     IF NOT EXISTS (
@@ -56,7 +56,7 @@ BEGIN
        WHERE id=demo_level_id AND school_id=sid AND cycle_id=primary_id AND code=item.old_code
     ) OR NOT EXISTS (
        SELECT 1 FROM institutions_academicclass
-       WHERE id=classroom_id AND school_id=sid AND year_id=target_year_id
+       WHERE id=demo_classroom_id AND school_id=sid AND year_id=target_year_id
           AND level_id=demo_level_id AND code=class_old
     ) THEN RAISE EXCEPTION 'Refusing to modify unrecognized level/class: %',item.old_code;
     END IF;
@@ -75,7 +75,7 @@ BEGIN
        SELECT 1 FROM institutions_enrollment e
        JOIN institutions_academicclass c ON c.id=e.classroom_id
        JOIN institutions_student s ON s.id=e.student_id
-       WHERE c.id=classroom_id AND s.student_code NOT LIKE 'DEMO26-CES8-%'
+       WHERE c.id=demo_classroom_id AND s.student_code NOT LIKE 'DEMO26-CES8-%'
     ) THEN RAISE EXCEPTION 'Real/other pupil found in %: do not alter class',class_old; END IF;
   END LOOP;
   -- Rename the five retained levels first; the CE2 legacy level is merged.
