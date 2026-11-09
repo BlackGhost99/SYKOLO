@@ -162,3 +162,50 @@
   .demo-rolebar>select{width:100%;max-width:none;margin-left:0}
   .demo-tiles .demo-actions{flex-direction:row}
 }
+
+/* Démonstration miroir : même géométrie que l'espace établissement connecté. */
+.demo-app{background:var(--yd-bg);color:var(--yd-text)}
+.demo-app .demo-shell.yd-app{background:var(--yd-bg)}
+.demo-app .demo-shell .yd-topbar{top:34px}
+.demo-app .demo-shell .yd-sidebar{top:122px;height:calc(100vh - 122px)}
+.demo-app .demo-shell .yd-global-search{display:flex}
+.demo-app .demo-shell .yd-bell{display:flex}
+.demo-app .demo-shell .yd-topbar-sep.small{display:block}
+.demo-real-selector{display:flex;flex-direction:column;gap:5px;flex:0 1 336px;min-width:210px}
+.demo-real-selector .yd-school-select{height:36px}
+.demo-real-selector .yd-school-select select{font-size:13px}
+.demo-real-selector .yd-school-select b{font-size:13px}
+.demo-user-controls{display:flex;align-items:center;gap:14px;margin-left:auto;min-width:0}
+.demo-user-controls .yd-user{min-width:0;cursor:default}
+.demo-user-controls .yd-user b{font-size:13px;max-width:175px;overflow:hidden;text-overflow:ellipsis}
+.demo-user-controls .yd-user small{display:block;font-size:11px;color:var(--yd-muted)}
+.demo-role-select select{border:1px solid var(--yd-line);background:#fff;color:var(--yd-text);
+  padding:7px 22px 7px 8px;border-radius:7px;font-size:12px;max-width:170px}
+.demo-ribbon{min-height:34px;padding:5px 18px;gap:8px;background:#16492c;box-shadow:none}
+.demo-ribbon strong{font-size:11px;letter-spacing:0}
+.demo-ribbon span{font-size:11px}
+.demo-ribbon button,.demo-ribbon a{min-height:25px;padding:3px 8px;font-size:11px}
+.demo-app .yd-content>.yd-brand-footer,.demo-app .yd-content .yd-brand-footer{margin-top:24px}
+.demo-app .demo-table-wrap table{font-size:14px}
+.demo-app .demo-table-wrap th{background:var(--yd-th);color:var(--yd-text)}
+.demo-app .demo-table-wrap td{color:var(--yd-text)}
+.demo-app .demo-settings-panel .yd-page-header{margin-top:8px}
+.demo-app .yd-real-tabs{margin:12px 0 14px}
+.demo-app .yd-view-filters{margin-bottom:12px}
+.demo-app .demo-tiles>.demo-tile{box-shadow:var(--yd-shadow);border:1px solid var(--yd-line);background:#fff}
+@media(max-width:1100px){
+ .demo-user-controls .yd-user{display:none}
+ .demo-real-selector{min-width:170px;flex-basis:250px}
+ .demo-role-select select{max-width:150px}
+}
+@media(max-width:760px){
+ .demo-app .demo-shell .yd-topbar{top:0}
+ .demo-app .demo-shell .yd-sidebar{position:static;top:auto;height:auto}
+ .demo-app .demo-shell .yd-global-search{display:none}
+ .demo-app .demo-shell .yd-bell{display:none}
+ .demo-app .demo-shell .yd-topbar-sep.small{display:none}
+ .demo-real-selector{width:100%;flex:1 1 100%;order:3}
+ .demo-user-controls{margin-left:auto}
+ .demo-ribbon span{display:none}
+ .demo-role-select select{max-width:170px}
+}
