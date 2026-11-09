@@ -399,7 +399,7 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
 /* ---------- Paramètres : classes ---------- */
 export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearChange }) {
   const [year, setYear] = useState(workingYearId);
-  useEffect(() => {setYear(workingYearId);setPreview([]);setEditing(null);}, [schoolId, workingYearId]);
+  useEffect(() => {setYear(workingYearId);setPreview([]);setEditing(null);setCloning(null);}, [schoolId, workingYearId]);
   const o = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
   const y0 = new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1;
   const [newYear, setNewYear] = useState({ name: `${y0}-${y0 + 1}`, start_date: `${y0}-09-01`, end_date: `${y0 + 1}-07-31` });
@@ -411,6 +411,7 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
   const [suffix, setSuffix] = useState("letters");
   const [preview, setPreview] = useState([]);
   const [editing, setEditing] = useState(null);
+  const [cloning, setCloning] = useState(null);
   const [manual, setManual] = useState(false);
   const [capacity, setCapacity] = useState("");
   const [busy, setBusy] = useState(false);
@@ -444,13 +445,30 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
     }
     setPreview(proposed);
   }
+  function proposeCloneName(source) {
+    const used = new Set(d.classes.map(room => room.name.toLocaleLowerCase("fr")));
+    const base = source.name.replace(/\\s+(?:[A-Z]|[1-9][0-9]*)$/, "").trim();
+    for (let i = 1; i <= 500; i++) {
+      const suffix = i <= 26 ? String.fromCharCode(64 + i) : String(i);
+      const name = `${base.slice(0, 119 - suffix.length).trimEnd()} ${suffix}`;
+      if (!used.has(name.toLocaleLowerCase("fr"))) return name;
+    }
+    return `${source.name.slice(0, 117)} 2`;
+  }
   return <>
     <PageHeader title="Classes de l’établissement" subtitle="Créez les classes de l’année en quelques secondes, réglez leur capacité d’accueil" banner={false}
-      actions={d?.years.length > 0 && <label className="yd-select plain"><select aria-label="Année scolaire" value={year || d.year?.id || ""} onChange={e => { setYear(e.target.value); setPreview([]); setEditing(null); onWorkingYearChange?.(e.target.value); }}>{d.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>}/>
+      actions={d?.years.length > 0 && <label className="yd-select plain"><select aria-label="Année scolaire" value={year || d.year?.id || ""} onChange={e => { setYear(e.target.value); setPreview([]); setEditing(null); setCloning(null); onWorkingYearChange?.(e.target.value); }}>{d.years.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select><Icon name="chevron" size={18} className="chev"/></label>}/>
     {tabs}
     {!editing && <Msg {...message}/>}
     <Loading state={o}>{d && (year && year !== d.year?.id ? <p role="status">Chargement de l’année…</p> : <>
       {!d.year ? <Card title="Commencez par l’année scolaire" icon="calendar">{d.can_manage_academic ? yearForm : <Empty>La direction doit créer l’année scolaire.</Empty>}</Card> : <div className="yd-grid yf-two">
+        {d.preschool_standards_available && d.year.active !== false && <Card title="Maternelle : classes prêtes à l’emploi" icon="school" subtitle="Une classe Crèche, 3 ans, 4 ans et 5 ans. Les noms restent personnalisables.">
+          <p>Complétez automatiquement les niveaux manquants sans modifier vos classes existantes.</p>
+          <Button type="button" primary disabled={busy} onClick={() => run(async () => {
+            const result = await req(`schools/${schoolId}/academic/preschool-standard-classes`, {year: d.year.id});
+            return result.created ? `${result.created} classe(s) maternelle(s) ajoutée(s).` : "Toutes les classes standards sont déjà présentes.";
+          })}>Compléter les classes standards</Button>
+        </Card>}
         {canManageClasses && d.year.active !== false && <Card title={`Ajouter des classes en ${d.year.name}`} icon="plus" subtitle="Choisissez le niveau et le nombre de classes.">
           <form onSubmit={e => { e.preventDefault(); if (!(manual || preview.length)) return; run(async () => {
             const target = preset ? { preset: level } : level === "new" ? { level_name: levelName, cycle_name: cycleName } : { level };
@@ -499,6 +517,18 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
           </form>
         </Card>}
         <Card title={`Classes ${d.year.name}`} count={`(${d.classes.length})`} icon="school">
+          {cloning && <><Msg {...message}/><form className="yf-form" onSubmit={e => { e.preventDefault(); run(async () => {
+            const result = await req(`schools/${schoolId}/academic/classes/${cloning.id}/clone`, {name: cloning.name});
+            setCloning(null);
+            return `Classe « ${result.name} » créée. Aucun élève, cours ou paiement n’a été dupliqué.`;
+          }); }}>
+            <p>Dupliquer « {cloning.originalName} » dans le même niveau et la même année, sans recopier les élèves.</p>
+            <Field label="Nom de la nouvelle classe" required><input autoFocus required maxLength={120} value={cloning.name} onChange={e => setCloning({...cloning, name: e.target.value})}/></Field>
+            <div className="yf-inline-form">
+              <Button primary type="submit" disabled={busy}>Créer la copie</Button>
+              <Button type="button" disabled={busy} onClick={() => setCloning(null)}>Annuler</Button>
+            </div>
+          </form></>}
           {editing && <><Msg {...message}/><form className="yf-form" onSubmit={e => { e.preventDefault(); run(async () => {
             const saved = await req(`schools/${schoolId}/academic/classes/${editing.id}`, {
               revision: editing.revision, name: editing.name, active: editing.active,
@@ -530,7 +560,12 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
               <tbody>{d.classes.map(c => <tr key={c.id}>
                 <td><b>{c.name}</b><br/><small>{c.level.name}</small></td><td>{c.enrolled}</td><td>{c.capacity ?? "—"}</td>
                 <td><Status tone={c.active ? "green" : "gray"}>{c.active ? "Active" : "Archivée"}</Status></td>
-                <td>{canManageClasses && cycleAllowed(c.level.cycle_code) && <button type="button" className="yf-link" aria-label={`Modifier ${c.name}`} disabled={busy} onClick={() => { setMessage({text: ""}); setEditing({ ...c, capacity: c.capacity ?? "", originalName: c.name }); }}>Modifier</button>}</td>
+                <td>{canManageClasses && cycleAllowed(c.level.cycle_code) && <button type="button" className="yf-link" aria-label={`Modifier ${c.name}`} disabled={busy} onClick={() => { setCloning(null); setMessage({text: ""}); setEditing({ ...c, capacity: c.capacity ?? "", originalName: c.name }); }}>Modifier</button>}
+                  {canManageClasses && d.year.active !== false && c.active && cycleAllowed(c.level.cycle_code) &&
+                    <button type="button" className="yf-link" aria-label={`Dupliquer ${c.name}`} disabled={busy} onClick={() => {
+                      setEditing(null); setMessage({text: ""});
+                      setCloning({id: c.id, name: proposeCloneName(c), originalName: c.name});
+                    }}>Dupliquer</button>}}</td>
               </tr>)}</tbody></table></TableScroll>}
           {d.can_manage_academic && <details className="yf-details"><summary>Créer une autre année scolaire</summary>{yearForm}</details>}
         </Card>
