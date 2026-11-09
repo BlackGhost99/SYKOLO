@@ -293,7 +293,9 @@ def load_relations(school, values):
 def validate_enrollment_slot(classroom, student, year, *, active=True, enrollment=None):
     if classroom.year_id != year.pk or classroom.school_id != student.school_id:
         raise ValueError("Classe et inscription incohérentes.")
-    if active and (not classroom.active or not year.active or not student.active):
+    if active and (not classroom.active or not year.active or year.status == AcademicYear.STATUS_CLOSED
+                   or not student.active or not classroom.level.active or not classroom.level.cycle.active
+                   or (classroom.track_id and not classroom.track.active)):
         raise ValueError("Impossible d'inscrire dans une classe, une année ou un dossier archivé.")
     if active and classroom.capacity is not None:
         active_rows=Enrollment.objects.filter(classroom=classroom,active=True)
