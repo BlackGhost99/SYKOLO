@@ -79,8 +79,8 @@ test("la maternelle complète les classes standards et duplique une division ren
     expect.stringContaining("preschool-standard-classes"),
     expect.objectContaining({body: JSON.stringify({year: "y-presco"})}),
   ));
-  await user.click(screen.getByRole("button", {name: "Dupliquer Petite section A"}));
-  const newName = screen.getByLabelText("Nom de la nouvelle classe");
+  await user.click(await screen.findByRole("button", {name: "Dupliquer Petite section A"}));
+  const newName = await screen.findByLabelText("Nom de la nouvelle classe");
   expect(newName.value).toBe("Petite section B");
   await user.clear(newName);
   await user.type(newName, "Petite section Papillons");
