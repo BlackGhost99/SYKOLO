@@ -136,7 +136,7 @@ export default function PedagogicalCalendar({
   async function saveEvent(e) {
     e.preventDefault();
     const existing=eventDraft.id;
-    const {id,revision,...fields}=eventDraft;
+    const {id,revision,year,...fields}=eventDraft;
     const body=existing?{revision,...fields}:{year:selectedYear.id,...fields};
     const result=await run(()=>calendarRequest(prefix+"pedagogical-calendar"+
       (existing?"/"+existing:""),body,existing?"PATCH":"POST"));
