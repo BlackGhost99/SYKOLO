@@ -4,6 +4,7 @@ from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views
 from . import annual_views
+from . import secondary_views
 from . import staff_onboarding_views
 from . import cycle_access_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
@@ -148,6 +149,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/academic/quick-classes", registration_views.quick_classes),
     path("schools/<uuid:school_id>/academic/preschool-standard-classes", registration_views.standard_preschool_classes),
     path("schools/<uuid:school_id>/academic/standard-classes", registration_views.standard_school_classes),
+    path("schools/<uuid:school_id>/academic/series-classes", secondary_views.series_classes),
+    path("schools/<uuid:school_id>/academic/classes/<uuid:class_id>/carry-forward", secondary_views.carry_forward_class),
     path("schools/<uuid:school_id>/academic/classes/<uuid:class_id>/clone", registration_views.clone_class),
     path("schools/<uuid:school_id>/overview/finance", overview_views.finance_overview),
     path("schools/<uuid:school_id>/students", student_views.students),
