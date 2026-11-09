@@ -14,7 +14,7 @@ from .models import (
 from .platform_views import platform_only
 from .services import OWNER_ROLE_CODE, provision_appointment_roles, public_role_label, role_available
 from .school_profiles import validate_school_profile
-from .preschool_classes import ensure_preschool_levels
+from .standard_classes import ensure_standard_levels
 from .views import parse_body, log_event, string
 
 
@@ -295,7 +295,7 @@ def platform_school_action(request, school_id):
             school.school_type = school_type
             school.education_cycles = education_cycles
             school.save(update_fields=["school_type", "education_cycles"])
-            ensure_preschool_levels(school)
+            ensure_standard_levels(school)
             provision_appointment_roles(school)
             log_event(school, request, "school_profile_updated", reason)
             audit(request, "school_profile_updated", school.name, school, reason)
