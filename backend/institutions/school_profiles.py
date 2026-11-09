@@ -1,8 +1,9 @@
 """Catalogue des profils d'établissements YEM (Gabon).
 
 La catégorie administrative est distincte des cycles effectivement ouverts.
-Les profils sont des recommandations, pas des créations automatiques de classes
-ou des autorisations accordées au personnel.
+Les profils définissent des recommandations. Pour le préscolaire, le catalogue
+des niveaux est initialisé à la création de l'établissement, et ses classes
+standards sont créées dès la préparation de l'année scolaire.
 """
 CYCLE_LABELS = {
     "prescolaire": "Maternelle / préscolaire",
@@ -14,7 +15,8 @@ CYCLE_LABELS = {
 
 SECOND_CYCLE_LEVELS = (("seconde", "Seconde"), ("premiere", "Première"), ("terminale", "Terminale"))
 CLASS_LEVELS = {
-    "prescolaire": (("ps", "Petite section"), ("ms", "Moyenne section"), ("gs", "Grande section")),
+    "prescolaire": (("creche", "Crèche"), ("ps", "Petite section (3 ans)"),
+                    ("ms", "Moyenne section (4 ans)"), ("gs", "Grande section (5 ans)")),
     "primaire": (("1re-annee", "1re année"), ("2e-annee", "2e année"),
                  ("3e-annee", "3e année"), ("4e-annee", "4e année"), ("5e-annee", "5e année")),
     "college": (("6e", "6e"), ("5e", "5e"), ("4e", "4e"), ("3e", "3e")),
