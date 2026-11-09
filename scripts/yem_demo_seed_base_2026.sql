@@ -4,7 +4,7 @@ DO $demo$
 DECLARE
   s record; x record; idx integer; sch uuid; yr uuid; cy uuid; lvl uuid; cls uuid;
   sid uuid; ident uuid; gid uuid; ev uuid; count_classes integer;
-  start_on date; end_on date;
+  start_on date; end_on date; cls_code text;
   school_data jsonb := '[
     {"id":"96f99506-a8d6-4dab-b292-4076800c9bd7","tag":"CES8","kind":"complexe","n":1},
     {"id":"b8ccefc7-c993-49f3-b2f3-70e59ca7db20","tag":"LP1","kind":"lycee","n":2},
@@ -133,6 +133,10 @@ BEGIN
         AND (code LIKE 'demo26-%' OR code LIKE 'demo-%');
     IF count_classes<7 THEN RAISE EXCEPTION 'Missing demonstration classes in %',s.tag; END IF;
     FOR idx IN 1..15 LOOP
+      SELECT id,code INTO cls,cls_code FROM public.institutions_academicclass
+       WHERE school_id=sch AND year_id=yr AND active
+         AND (code LIKE 'demo26-%' OR code LIKE 'demo-%')
+       ORDER BY code, id LIMIT 1 OFFSET ((idx-1)%count_classes);
       ident:=md5('YEM-DEMO-2026:identity:'||s.tag||':'||idx)::uuid;
       sid:=md5('YEM-DEMO-2026:student:'||s.tag||':'||idx)::uuid;
       INSERT INTO public.institutions_studentidentity (id) VALUES(ident)
@@ -142,19 +146,19 @@ BEGIN
         date_of_birth,admission_date,gender,place_of_birth,nationality,
         address,previous_school,extra_fields,documents,active,revision,created_at)
       VALUES(sid,sch,ident,'DEMO26-'||s.tag||'-'||lpad(idx::text,3,'0'),
-        firstname[idx],lastname[idx],DATE '2010-01-01' +
-          (CASE WHEN s.kind='complexe' THEN 4500 ELSE 0 END) +
-          (idx*40),
+        firstname[idx],lastname[idx],
+        CASE WHEN cls_code ~ 'petite_section|moyenne_section|grande_section'
+          THEN DATE '2021-01-01' + ((idx%3)*180)
+        WHEN s.kind='complexe' THEN DATE '2014-01-01' + ((idx%4)*180)
+        WHEN cls_code ~ 'sixieme|cinquieme|quatrieme|troisieme|demo-[3456]'
+          THEN DATE '2011-01-01' + ((idx%4)*180)
+        ELSE DATE '2008-01-01' + ((idx%4)*180) END,
         DATE '2026-09-15',CASE WHEN idx%2=0 THEN 'M' ELSE 'F' END,
         'Libreville','Gabonaise','Quartier témoin '||idx||', Libreville',
         'Établissement fictif (démo)',
         jsonb_build_object('demo',true,'jeu','YEM-2026-11-09','identite','FICTIVE'),
         '{"acte_naissance":true,"photo":false}'::jsonb,true,1,NOW())
       ON CONFLICT DO NOTHING;
-      SELECT id INTO cls FROM public.institutions_academicclass
-       WHERE school_id=sch AND year_id=yr AND active
-         AND (code LIKE 'demo26-%' OR code LIKE 'demo-%')
-       ORDER BY code, id LIMIT 1 OFFSET ((idx-1)%count_classes);
       ev:=md5('YEM-DEMO-2026:enrollment:'||s.tag||':'||idx)::uuid;
       INSERT INTO public.institutions_enrollment
         (id,school_id,student_id,year_id,classroom_id,enrolled_on,status,active,revision,created_at)
