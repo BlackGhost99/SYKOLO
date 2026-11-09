@@ -8,7 +8,7 @@ from uuid import UUID
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
@@ -67,6 +67,8 @@ def class_public_data(row, occupied, policy, fee, online_available):
         "id": str(row.pk), "name": row.name,
         "year": row.year.name, "level": row.level.name,
         "cycle": row.level.cycle.name,
+        "series": row.track.code.upper() if row.track_id else None,
+        "series_label": row.track.name if row.track_id else None,
         "fee_amount_xaf": fee.amount_xaf if fee else None,
         "online_payment_available": bool(online_available and fee),
         "capacity": capacity,
@@ -91,9 +93,10 @@ def directory(request):
     result = []
     for listing in rows.order_by("school__name")[:100]:
         classes = list(AcademicClass.objects.select_related(
-            "school", "year", "level__cycle",
+            "school", "year", "level__cycle", "track",
         ).filter(school=listing.school, active=True, year__active=True,
-                 level__active=True, level__cycle__active=True).order_by(
+                 level__active=True, level__cycle__active=True
+                 ).filter(Q(track__isnull=True) | Q(track__active=True)).order_by(
                      "year__start_date", "level__order", "name",
                  )[:150])
         class_ids = [row.pk for row in classes]
@@ -276,11 +279,14 @@ def family_applications(request):
         if child is None:
             return error("Enfant introuvable.", 404)
         with transaction.atomic():
-            classroom = AcademicClass.objects.select_for_update().select_related(
+            # PostgreSQL interdit FOR UPDATE sur la partie nullable (filière facultative).
+            # Verrouiller uniquement la classe, pas les jointures de lecture.
+            classroom = AcademicClass.objects.select_for_update(of=("self",)).select_related(
                 "school", "year", "level",
             ).filter(pk=class_id, active=True, school__is_active=True,
-                     year__active=True, level__active=True,
-                     school__public_listing__published=True).first()
+                     year__active=True, level__active=True, level__cycle__active=True,
+                     school__public_listing__published=True).filter(
+                         Q(track__isnull=True) | Q(track__active=True)).first()
             if classroom is None:
                 return error("Classe non publiée ou indisponible.", 404)
             listing = SchoolPublicListing.objects.get(school=classroom.school)

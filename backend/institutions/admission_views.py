@@ -5,7 +5,7 @@ from uuid import UUID
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -173,7 +173,9 @@ def applications(request, school_id):
             raise ValueError("L'autorité d'orientation concerne uniquement les affectations.")
         if not AcademicYear.objects.filter(school=school, pk=year_id, active=True).exists():
             raise ValueError("Année scolaire inactive ou étrangère.")
-        if not AcademicClass.objects.filter(school=school, year_id=year_id, pk=class_id, active=True).exists():
+        if not AcademicClass.objects.filter(school=school, year_id=year_id, pk=class_id,
+                  active=True, level__active=True, level__cycle__active=True).filter(
+                      Q(track__isnull=True) | Q(track__active=True)).exists():
             raise ValueError("Classe inactive ou étrangère.")
         if existing_id and not Student.objects.filter(school=school, pk=existing_id, active=True).exists():
             raise ValueError("Élève existant introuvable.")

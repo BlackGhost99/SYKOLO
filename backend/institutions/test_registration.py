@@ -206,7 +206,7 @@ class RegistrationTests(TestCase):
         path = "academic/standard-classes"
         first = self.post(path, {"year": str(self.year.pk)})
         self.assertEqual(first.status_code, 200, first.content)
-        self.assertEqual(first.json()["created"], 5 + 4 + 3)
+        self.assertEqual(first.json()["created"], 5 + 4)
         self.assertEqual(first.json()["cycles"], ["primaire", "college", "lycee_general"])
         self.assertEqual(
             set(AcademicLevel.objects.filter(school=self.school, cycle__code="primaire")
@@ -226,8 +226,8 @@ class RegistrationTests(TestCase):
         new_rooms = AcademicClass.objects.filter(
             school=self.school, year=self.year, code__startswith="std-",
         )
-        self.assertEqual(new_rooms.count(), 12)
-        self.assertEqual(len({room.name.casefold() for room in new_rooms}), 12)
+        self.assertEqual(new_rooms.count(), 9)
+        self.assertEqual(len({room.name.casefold() for room in new_rooms}), 9)
         self.assertEqual(self.post(path, {"year": str(self.year.pk)}).json()["created"], 0)
         to_rename = new_rooms.get(level__cycle__code="primaire", level__code="1re-annee")
         renamed = self.client.patch(
@@ -277,15 +277,116 @@ class RegistrationTests(TestCase):
         self.client.force_login(self.director)
         result = self.post("academic/standard-classes", {"year": str(self.year.pk)})
         self.assertEqual(result.status_code, 200, result.content)
-        self.assertEqual(result.json()["created"], 19)
+        self.assertEqual(result.json()["created"], 13)
         names = [classroom["name"] for classroom in result.json()["classes"]]
-        self.assertIn("Seconde A", names)
-        self.assertIn("Seconde technique A", names)
+        self.assertNotIn("Seconde A", names)
+        self.assertNotIn("Seconde technique A", names)
         self.assertIn("Crèche A", names)
         self.assertIn("5e année A", names)
-        self.assertEqual(len({name.casefold() for name in names}), 19)
+        self.assertEqual(len({name.casefold() for name in names}), 13)
         self.assertEqual(self.post("academic/standard-classes", {"year": str(self.year.pk)}).json()["created"], 0)
         self.assertEqual(self.post("academic/preschool-standard-classes", {"year": str(self.year.pk)}).json()["created"], 0)
+
+
+    def test_lycee_never_auto_opens_ghost_a_and_series_are_explicit(self):
+        from .academic_models import AcademicTrack
+        from .standard_classes import ensure_standard_levels
+        self.school.school_type = "lycee_general"
+        self.school.education_cycles = ["lycee_general"]
+        self.school.save(update_fields=["school_type", "education_cycles"])
+        levels = ensure_standard_levels(self.school)
+        seconde = levels["lycee_general"][0][0]
+        self.client.force_login(self.director)
+        start = self.year.end_date + timedelta(days=1)
+        future = self.post("academic/years", {
+            "code": "y-lycee", "name": "Nouvelle année lycée",
+            "start_date": start.isoformat(),
+            "end_date": (start + timedelta(days=280)).isoformat(),
+        })
+        self.assertEqual(future.status_code, 201, future.content)
+        year_id = future.json()["id"]
+        self.assertFalse(AcademicClass.objects.filter(school=self.school, year_id=year_id).exists())
+        offer = self.post("academic/series-classes", {
+            "year": year_id, "level": str(seconde.pk), "series": "S",
+            "names": ["Seconde S1", "Seconde S2", "Seconde SU"], "capacity": 35,
+        })
+        self.assertEqual(offer.status_code, 201, offer.content)
+        self.assertEqual([c["name"] for c in offer.json()["classes"]],
+                         ["Seconde S1", "Seconde S2", "Seconde SU"])
+        track = AcademicTrack.objects.get(school=self.school, level=seconde, code="s")
+        self.assertEqual(track.name, "Scientifique (S)")
+        self.assertEqual(AcademicClass.objects.filter(school=self.school, year_id=year_id, track=track).count(), 3)
+        duplicate = self.post("academic/series-classes", {
+            "year": year_id, "level": str(seconde.pk), "series": "S",
+            "names": ["Seconde S1"], "capacity": None,
+        })
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(AcademicClass.objects.filter(school=self.school, year_id=year_id).count(), 3)
+        track.active = False
+        track.save(update_fields=["active"])
+        denied = self.post("academic/series-classes", {
+            "year": year_id, "level": str(seconde.pk), "series": "S",
+            "names": ["Seconde S3"], "capacity": None,
+        })
+        self.assertEqual(denied.status_code, 409)
+        self.client.force_login(self.secretary)
+        self.assertEqual(self.post("academic/series-classes", {
+            "year": year_id, "level": str(seconde.pk), "series": "A1",
+            "names": ["Seconde A1"], "capacity": None,
+        }).status_code, 403)
+
+    def test_technical_series_acc_acg_and_recovery_of_archived_class(self):
+        from .standard_classes import ensure_standard_levels
+        from .academic_models import AcademicTrack
+        self.school.school_type = "lycee_technique"
+        self.school.education_cycles = ["lycee_technique"]
+        self.school.save(update_fields=["school_type", "education_cycles"])
+        levels = ensure_standard_levels(self.school)["lycee_technique"]
+        first = levels[1][0]
+        self.client.force_login(self.director)
+        create = lambda serie, name: self.post("academic/series-classes", {
+            "year": str(self.year.pk), "level": str(first.pk),
+            "series": serie, "names": [name], "capacity": 28,
+        })
+        acc = create("ACC", "Première ACC1")
+        self.assertEqual(acc.status_code, 201, acc.content)
+        acg = create("ACG", "Première ACG")
+        self.assertEqual(acg.status_code, 201, acg.content)
+        self.assertEqual(
+            set(AcademicTrack.objects.filter(level=first).values_list("code", flat=True)),
+            {"acc", "acg"},
+        )
+        old = AcademicClass.objects.get(pk=acc.json()["classes"][0]["id"])
+        patch_path = self.base + f"academic/classes/{old.pk}"
+        archived = self.client.patch(
+            patch_path, json.dumps({"revision": old.revision, "active": False}),
+            content_type="application/json",
+        )
+        self.assertEqual(archived.status_code, 200, archived.content)
+        old.refresh_from_db()
+        self.assertFalse(old.active)
+        next_year = AcademicYear.objects.create(
+            school=self.school, code="later-year", name="Année suivante",
+            start_date=self.year.end_date + timedelta(days=1),
+            end_date=self.year.end_date + timedelta(days=300),
+        )
+        route = f"academic/classes/{old.pk}/carry-forward"
+        restored = self.post(route, {"year": str(next_year.pk)})
+        self.assertEqual(restored.status_code, 201, restored.content)
+        new = AcademicClass.objects.get(pk=restored.json()["id"])
+        self.assertTrue(new.active)
+        self.assertEqual(new.name, old.name)
+        self.assertEqual(new.track_id, old.track_id)
+        self.assertEqual(new.level_id, old.level_id)
+        self.assertEqual(new.capacity, old.capacity)
+        self.assertNotEqual(new.pk, old.pk)
+        old.refresh_from_db()
+        self.assertFalse(old.active)
+        self.assertEqual(Enrollment.objects.filter(classroom=new).count(), 0)
+        self.assertEqual(self.post(route, {"year": str(next_year.pk)}).status_code, 409)
+        self.assertEqual(self.post(route, {"year": str(self.year.pk)}).status_code, 409)
+        self.client.force_login(self.secretary)
+        self.assertEqual(self.post(route, {"year": str(next_year.pk)}).status_code, 403)
 
     def test_clone_class_duplicates_structure_only_without_data(self):
         self.client.force_login(self.director)

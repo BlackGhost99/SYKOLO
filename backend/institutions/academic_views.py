@@ -264,7 +264,7 @@ def detail(request, school_id, resource, object_id):
                     return JsonResponse({
                         "error": "Le code d'un niveau déjà utilisé est stable. Modifiez son intitulé ou son ordre."
                     }, status=409)
-            if resource in ("classes", "periods") and not obj.year.active:
+            if resource in ("classes", "periods") and (not obj.year.active or obj.year.status == AcademicYear.STATUS_CLOSED):
                 return JsonResponse({"error": "L'année scolaire est archivée."}, status=409)
             if obj.revision != revision:
                 return JsonResponse({"error": "Conflit de version.", "revision": obj.revision}, status=409)
@@ -280,6 +280,10 @@ def detail(request, school_id, resource, object_id):
                     return JsonResponse({"error": "Ces dates chevauchent une année existante."}, status=409)
                 if obj.enrollments.exists():
                     return JsonResponse({"error": "Dates verrouillées : l'année contient des inscriptions."}, status=409)
+            if resource == "classes" and clean.get("active") is True and not obj.active:
+                if (not obj.level.active or not obj.level.cycle.active
+                        or (obj.track_id and not obj.track.active)):
+                    return JsonResponse({"error": "Réactivez d’abord le niveau, cycle ou série."}, status=409)
             if resource == "classes" and "name" in clean and clean["name"] != obj.name:
                 AcademicYear.objects.select_for_update(no_key=True).get(school=school, pk=obj.year_id)
                 if class_name_taken(school, obj.year_id, clean["name"], exclude=obj.pk):

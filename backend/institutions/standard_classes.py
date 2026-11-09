@@ -54,7 +54,7 @@ def ensure_standard_levels(school, cycles=None):
 
 
 def ensure_standard_classes(school, year, cycles=None):
-    """Créer au plus une classe par niveau manquant dans l'année choisie.
+    """Créer au plus une classe par niveau ouvert hors lycée dans l'année choisie.
 
     L'appelant verrouille l'école via select_for_update pour garantir
     l'idempotence en cas d'appels concurrents. Une division renommée ou
@@ -71,6 +71,10 @@ def ensure_standard_classes(school, year, cycles=None):
     created = []
 
     for cycle_code, defaults in levels.items():
+        # Au lycée, une Seconde/Première/Terminale A générique serait une classe fantôme.
+        # Les séries proposées sont ouvertes explicitement par la direction.
+        if cycle_code in ("lycee_general", "lycee_technique"):
+            continue
         for level, base in defaults:
             if level.pk in represented or not level.active or not level.cycle.active:
                 continue

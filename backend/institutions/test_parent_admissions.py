@@ -85,6 +85,45 @@ class FamilyDiscoveryTests(TestCase):
         self.assertFalse(school["online_payment_available"])
         self.assertEqual(len(response.json()["schools"]), 1)
 
+    def test_archived_class_or_track_cannot_be_selected_by_parent(self):
+        from .academic_models import AcademicTrack
+        self.setup_listing()
+        self.login(self.parent)
+        child_id = self.create_child()
+        anon = Client()
+        catalog = anon.get("/api/v1/parents/catalog").json()
+        self.assertEqual(len(catalog["schools"][0]["classes"]), 1)
+
+        self.login(self.director)
+        response = self.client.patch(
+            f"/api/v1/schools/{self.school.pk}/academic/classes/{self.classroom.pk}",
+            data=json.dumps({"revision": self.classroom.revision, "active": False}),
+            content_type="application/json", HTTP_X_CSRFTOKEN=self.csrf,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(anon.get("/api/v1/parents/catalog").json()["schools"][0]["classes"], [])
+        self.login(self.parent)
+        self.assertEqual(self.application(child_id).status_code, 404)
+
+        self.login(self.director)
+        response = self.client.patch(
+            f"/api/v1/schools/{self.school.pk}/academic/classes/{self.classroom.pk}",
+            data=json.dumps({"revision": response.json()["revision"], "active": True}),
+            content_type="application/json", HTTP_X_CSRFTOKEN=self.csrf,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(anon.get("/api/v1/parents/catalog").json()["schools"][0]["classes"]), 1)
+
+        track = AcademicTrack.objects.create(
+            school=self.school, level=self.classroom.level,
+            code="option-a", name="Option expérimentale", active=False,
+        )
+        self.classroom.track = track
+        self.classroom.save(update_fields=["track"])
+        self.assertEqual(anon.get("/api/v1/parents/catalog").json()["schools"][0]["classes"], [])
+        self.login(self.parent)
+        self.assertEqual(self.application(child_id).status_code, 404)
+
     def test_family_submission_uses_existing_private_admissions(self):
         self.setup_listing()
         self.login(self.parent)

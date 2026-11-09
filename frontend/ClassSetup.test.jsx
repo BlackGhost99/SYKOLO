@@ -135,3 +135,83 @@ test("un cycle sans délégation ne propose pas la génération des classes stan
   expect(await screen.findByText("Aucune classe pour cette année.")).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Compléter les classes standards"})).toBeNull();
 });
+
+test("le lycée choisit la série S et renomme sa division SU avant ouverture", async () => {
+  const year = {id:"year", name:"2026-2027", active:true};
+  const data = {
+    year, years:[year], levels:[], classes:[], can_manage_classes:true,
+    can_manage_academic:true, standard_cycles_available:[],
+    secondary_series_options:[{
+      level:"sec", level_name:"Seconde", level_code:"seconde", cycle:"lycee_general",
+      series:[{code:"LE",name:"Littéraire"}, {code:"S",name:"Scientifique (S)"}],
+    }],
+    archived_reusable:[], class_management_cycles:null, class_level_options:{},
+  };
+  const fetchMock = vi.fn(async url => ({
+    ok:true, headers:{get:()=>"application/json"},
+    json:async () => url.endsWith("series-classes")
+      ? {series:{code:"s"}, classes:[{name:"Seconde S1"},{name:"Seconde SU"}]} : data,
+  }));
+  vi.stubGlobal("fetch",fetchMock);
+  render(<ClassSetup schoolId="school"/>);
+  const user = userEvent.setup();
+  await screen.findByText("Ouvrir les séries du lycée");
+  await user.selectOptions(screen.getByLabelText(/Niveau du lycée/),"sec");
+  await user.type(screen.getByLabelText(/Série ou spécialité/),"S");
+  const count = screen.getByLabelText("Nombre de divisions");
+  await user.clear(count);
+  await user.type(count,"2");
+  await user.click(screen.getByRole("button",{name:"Préparer les divisions"}));
+  expect(screen.getByLabelText(/Nom de division 1/).value).toBe("Seconde S1");
+  const second = screen.getByLabelText(/Nom de division 2/);
+  await user.clear(second);
+  await user.type(second,"Seconde SU");
+  await user.click(screen.getByRole("button",{name:"Ouvrir 2 classe(s)"}));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("academic/series-classes"),
+    expect.objectContaining({
+      body:JSON.stringify({
+        year:"year",level:"sec",series:"S",
+        names:["Seconde S1","Seconde SU"],capacity:null,
+      }),
+    }),
+  ));
+});
+
+test("l'archive retire la classe active et une ancienne archive peut être reprise", async () => {
+  const year = {id:"next", name:"2027-2028", active:true};
+  const data = {
+    year,years:[year],levels:[],classes:[{
+      id:"old",name:"Seconde A",active:true,revision:1,capacity:null,enrolled:0,
+      level:{id:"seconde",name:"Seconde",cycle_code:"lycee_general"},
+    }],
+    can_manage_classes:true, can_manage_academic:true,
+    standard_cycles_available:[], secondary_series_options:[],
+    archived_reusable:[{id:"prior",name:"Première ACC1",year:"2026-2027",cycle:"lycee_technique"}],
+    class_management_cycles:null,class_level_options:{},
+  };
+  const fetchMock = vi.fn(async (url,opts) => ({
+    ok:true,headers:{get:()=>"application/json"},
+    json:async () => url.endsWith("carry-forward") ? {name:"Première ACC1"} :
+      opts?.method==="PATCH" ? {name:"Seconde A",active:false,revision:2} : data,
+  }));
+  vi.stubGlobal("fetch",fetchMock);
+  vi.spyOn(window,"confirm").mockReturnValue(true);
+  render(<ClassSetup schoolId="school"/>);
+  const user = userEvent.setup();
+  await screen.findByText("Seconde A");
+  await user.click(screen.getByRole("button",{name:"Archiver Seconde A"}));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("academic/classes/old"),
+    expect.objectContaining({
+      method:"PATCH",body:JSON.stringify({revision:1,active:false}),
+    }),
+  ));
+  await user.selectOptions(screen.getByLabelText(/Classe archivée à reprendre/),"prior");
+  await user.click(screen.getByRole("button",{name:"Réouvrir dans cette année"}));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("academic/classes/prior/carry-forward"),
+    expect.objectContaining({body:JSON.stringify({year:"next"})}),
+  ));
+  vi.restoreAllMocks();
+});
