@@ -399,7 +399,7 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
 /* ---------- Paramètres : classes ---------- */
 export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearChange }) {
   const [year, setYear] = useState(workingYearId);
-  useEffect(() => {setYear(workingYearId);setPreview([]);setEditing(null);setCloning(null);}, [schoolId, workingYearId]);
+  useEffect(() => {setYear(workingYearId);setPreview([]);setEditing(null);setCloning(null);setSeriesPreview([]);setArchivedSource("");}, [schoolId, workingYearId]);
   const o = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
   const y0 = new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1;
   const [newYear, setNewYear] = useState({ name: `${y0}-${y0 + 1}`, start_date: `${y0}-09-01`, end_date: `${y0 + 1}-07-31` });
@@ -412,6 +412,12 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
   const [preview, setPreview] = useState([]);
   const [editing, setEditing] = useState(null);
   const [cloning, setCloning] = useState(null);
+  const [seriesLevel, setSeriesLevel] = useState("");
+  const [seriesCode, setSeriesCode] = useState("");
+  const [seriesQuantity, setSeriesQuantity] = useState("1");
+  const [seriesPreview, setSeriesPreview] = useState([]);
+  const [seriesCapacity, setSeriesCapacity] = useState("");
+  const [archivedSource, setArchivedSource] = useState("");
   const [manual, setManual] = useState(false);
   const [capacity, setCapacity] = useState("");
   const [busy, setBusy] = useState(false);
@@ -435,6 +441,9 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
   const canManageClasses = d?.can_manage_classes ?? d?.can_manage_academic;
   const standardCycles = d?.standard_cycles_available || [];
   const standardsCount = standardCycles.reduce((total, cycle) => total + cycle.level_count, 0);
+  const secondary = d?.secondary_series_options || [];
+  const seriesLevelInfo = secondary.find(option => option.level === seriesLevel);
+  const archivedReusable = d?.archived_reusable || [];
   const count = preview.length || names.split(/[,;\n]/).map(x => x.trim()).filter(Boolean).length;
   function proposeNames() {
     const used = new Set(d.classes.map(c => c.name.toLowerCase()));
@@ -456,6 +465,29 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
       if (!used.has(name.toLocaleLowerCase("fr"))) return name;
     }
     return `${source.name.slice(0, 117)} 2`;
+  }
+  function proposeSeriesNames() {
+    if (!seriesLevelInfo || !seriesCode.trim()) return;
+    const existing = new Set(d.classes.map(c => c.name.toLocaleLowerCase("fr")));
+    const result = [];
+    const stem = `${seriesLevelInfo.level_name} ${seriesCode.trim().toUpperCase()}`;
+    for (let i = 1; i < 501 && result.length < Number(seriesQuantity); i++) {
+      const name = `${stem.slice(0, 116)}${i}`;
+      if (!existing.has(name.toLocaleLowerCase("fr"))) result.push(name);
+    }
+    setSeriesPreview(result);
+  }
+  async function toggleArchive(room) {
+    if (!window.confirm(room.active
+      ? `Archiver « ${room.name} » ? Les parents ne pourront plus y demander une inscription.`
+      : `Réactiver « ${room.name} » pour cette année scolaire ?`)) return;
+    run(async () => {
+      const saved = await req(`schools/${schoolId}/academic/classes/${room.id}`, {
+        revision: room.revision, active: !room.active,
+      }, "PATCH");
+      setEditing(null); setCloning(null);
+      return saved.active ? `« ${saved.name} » est à nouveau ouverte.` : `« ${saved.name} » est archivée et masquée aux parents.`;
+    });
   }
   return <>
     <PageHeader title="Classes de l’établissement" subtitle="Créez les classes de l’année en quelques secondes, réglez leur capacité d’accueil" banner={false}
