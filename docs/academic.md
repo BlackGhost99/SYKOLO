@@ -25,3 +25,17 @@ Hors périmètre : inscriptions élèves (module 05), personnel et affectations 
 La clôture réelle est **désactivée par défaut** : `YEM_YEAR_CLOSURE_ENABLED=false`. L'API de clôture refuse les demandes (503) sur SQLite ou tant que l'option n'est pas explicitement activée. **N'activer cette option qu'après sauvegarde et restauration testées de la base de production**, revue des flux asynchrones de paiement, validation PostgreSQL des migrations/triggers et essais de lecture seule multi-modules. Ne pas considérer un exercice de restauration sur données synthétiques comme une sauvegarde de production.
 
 L'interface de revue peut être exposée indépendamment de la clôture. Une correction officielle après clôture requiert un futur circuit exceptionnel traçable : ne jamais modifier le procès-verbal ni réouvrir une année automatiquement.
+
+
+## Automatisation des classes maternelles et préscolaires
+
+Pour un établissement ouvrant le cycle `prescolaire` (maternelle seule ou complexe scolaire), YEM propose **Crèche**, **Petite section (3 ans)**, **Moyenne section (4 ans)** et **Grande section (5 ans)**. Les âges sont des intitulés indicatifs, pas un critère de rejet d'inscription.
+
+- À la création de l'établissement par la plateforme, les quatre **niveaux** sont préparés. Une classe doit obligatoirement appartenir à une année scolaire ; YEM n'invente donc pas les dates d'année.
+- Lors de la création d'une année scolaire, YEM prépare automatiquement une classe par niveau : Crèche A, Petite section A, Moyenne section A et Grande section A. La préparation d'une année avec copie explicite des classes précédentes conserve plutôt la structure choisie par la direction.
+- Pour les établissements déjà créés, le bouton **Compléter les classes standards** (`POST /schools/{id}/academic/preschool-standard-classes`, avec `{"year":"uuid"}`) ajoute uniquement les niveaux/classes manquants. Il est sans doublon et ne remplace jamais une classe renommée ou archivée.
+- Chaque classe reste renommable et archivable dans **Paramètres → Classes**. La fonction **Dupliquer** (`POST /schools/{id}/academic/classes/{id}/clone`, avec `{"name":"Petite section B"}`, nom facultatif) reprend uniquement le niveau, la filière, l'année et la capacité. Aucun élève, professeur, cours, emploi du temps, tarif, évaluation ou bulletin n'est cloné.
+- Les deux opérations vérifient l'établissement, l'année non clôturée, le périmètre de délégation de cycle et les noms uniques ; elles sont transactionnelles et auditées.
+- L'option existante **Générer les classes** permet toujours de créer plusieurs divisions A/B/C ou 1/2/3, avec renommage avant enregistrement.
+
+Aucune migration ni modification rétroactive des données n'est requise par cette automatisation.
