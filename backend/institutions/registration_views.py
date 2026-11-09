@@ -27,6 +27,7 @@ from .services import can_manage_classes, class_management_scope, has_permission
 from .school_profiles import CLASS_LEVELS, CYCLE_LABELS, class_level_options
 from .preschool_classes import preschool_enabled
 from .standard_classes import enabled_standard_cycles, ensure_standard_classes
+from .secondary_series import series_for_level, SECONDARY_CYCLES
 from .models import School
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import (
@@ -300,8 +301,28 @@ def classes_overview(request, school_id):
         "standard_cycles_available": [
             {"code": code, "name": CYCLE_LABELS[code], "level_count": len(CLASS_LEVELS[code])}
             for code in enabled_standard_cycles(school)
-            if can_manage_classes(request.user, school, code)
+            if code not in SECONDARY_CYCLES and can_manage_classes(request.user, school, code)
         ],
+        "secondary_series_options": [
+            {"level": str(lv.pk), "level_name": lv.name,
+             "level_code": lv.code, "cycle": lv.cycle.code,
+             "series": series_for_level(lv.cycle.code, lv.code)}
+            for lv in levels
+            if lv.active and lv.cycle.active and lv.cycle.code in SECONDARY_CYCLES
+            and lv.cycle.code in (school.education_cycles or [])
+            and can_manage_classes(request.user, school, lv.cycle.code)
+        ],
+        "archived_reusable": [
+            {"id": str(room.pk), "name": room.name, "year": room.year.name,
+             "year_id": str(room.year_id), "cycle": room.level.cycle.code,
+             "capacity": room.capacity}
+            for room in AcademicClass.objects.select_related("year", "level__cycle", "track")
+                .filter(school=school, active=False, year__start_date__lt=year.start_date)
+                .order_by("-year__start_date", "name")[:300]
+            if year and can_manage_classes(request.user, school, room.level.cycle.code)
+            and room.level.active and room.level.cycle.active
+            and (room.track_id is None or room.track.active)
+        ] if year and year.active else [],
         "can_manage_classes": scope is None or bool(scope),
         "class_management_cycles": sorted(scope) if scope is not None else None,
         "can_manage_academic": has_permission(request.user, school, "school.academic.manage"),
@@ -310,6 +331,7 @@ def classes_overview(request, school_id):
         "classes": [{
             "id": str(c.pk), "name": c.name, "code": c.code, "active": c.active, "revision": c.revision,
             "level": {"id": str(c.level_id), "name": c.level.name, "cycle_code": c.level.cycle.code},
+            "track": {"id": str(c.track_id), "name": c.track.name, "code": c.track.code} if c.track_id else None,
             "capacity": c.capacity, "enrolled": counts[c.pk],
             "remaining": (c.capacity - counts[c.pk]) if c.capacity is not None else None,
             "fee_schedules": (schedules[c.pk] + schedules[None]) if finance_visible else None,
