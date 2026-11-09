@@ -123,9 +123,13 @@ it("conserve les trois parcours de connexion dans la nouvelle interface YEM", as
 });
 
 
-it("affiche la signature officielle BWETEK Informatyk sur la page de connexion", async () => {
+it("utilise directement l'image originale et conserve les vrais champs de connexion", async () => {
   setup();
   render(<AuthPanel />);
-  expect(await screen.findByText("BWETEK Informatyk")).toBeTruthy();
-  expect(screen.queryByText(/BWETEK informatye/i)).toBeNull();
+  const picture = document.querySelector(".yem-original-login__image");
+  expect(picture?.getAttribute("src")).toBe("/yem-login-original.jpg");
+  expect(document.querySelector(".yem-original-login--exact")).toBeTruthy();
+  expect(screen.getByLabelText("Code de l'établissement")).toBeTruthy();
+  expect(screen.getByRole("button", {name:"Se connecter",exact:true})).toBeTruthy();
+  expect(document.querySelector(".yem-login-story")).toBeNull();
 });
