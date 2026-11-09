@@ -1,18 +1,45 @@
 import React, {useState} from "react";
-import {Shell,Icon,Card,Metric,PageHeader,Status,Button,YemLogo} from "./yem-ui.jsx";
+import {Shell,Icon,Card,Metric,PageHeader,Status,Button,YemLogo,NAV} from "./yem-ui.jsx";
+import {SchoolSettings} from "./SchoolSettings.jsx";
 import {createDemoState,ROUTE_LABELS,DEMO_YEARS,DEMO_CURRENT_YEAR,SCHOOL_ROLES,fcfa,remaining,schoolOf,availableRoutes,fakeId} from "./demo-data.js";
 import "./yem-desktop.css";
 import "./yem-demo.css";
 
-const SCHOOL_NAV = [
-  ["dashboard","home","Tableau de bord"],["students","users","Élèves"],
-  ["classes","layers","Classes"],["admissions","adduser","Admissions"],
-  ["payments","card","Paiements & finances"],["arrears","alert","Impayés & relances"],
-  ["bulletins","file","Bulletins"],["absences","calendar","Absences"],
-  ["staff","idcard","Personnel"],["organization","users","Organigramme & rôles"],
-  ["curriculum","file","Matières & programmes"],["timetable","calendar","Emplois du temps"],
-  ["years","calendar","Années scolaires"],["settings","settings","Paramètres"],
+// Identique au menu latéral du véritable SchoolDashboard (mêmes identifiants et libellés).
+const SCHOOL_NAV = [...NAV.slice(0,2),["classes","layers","Classes"],...NAV.slice(2)]
+  .map(([id,icon,label])=>[id,icon,id==="bulletins"?"Évaluations et notes":label]);
+const DEMO_TABS={
+  students:[["live","Liste des élèves"],["byclass","Inscriptions par classe"]],
+  classes:[["live","Classes et effectifs"]],
+  payments:[["finance","Frais et encaissements"],["live","Caisse du jour"],["tracking","Suivi des paiements"]],
+  arrears:[["live","Impayés"]],
+  bulletins:[["assessments","Évaluations et notes"],["reports","Bulletins"],["council","Conseils et décisions"]],
+  absences:[["attendance","Appels et absences"]],
+  parents:[["directory","Parents par classe"]],
+  staff:[["directory","Équipe de l'établissement"],["onboarding","Ajouter un collaborateur"]],
+};
+const DEMO_SETTING_SECTIONS=[
+  {id:"access",title:"Droits généraux",icon:"shield",items:[
+    {id:"users",label:"Comptes et accès"},{id:"roles",label:"Rôles et droits d’accès"},
+    {id:"cycle-access",label:"Accès par cycle"}]},
+  {id:"school",title:"Classes de l’établissement",icon:"school",items:[
+    {id:"classes",label:"Classes"},{id:"form",label:"Fiche d’inscription"},
+    {id:"numbering",label:"Matricules"},{id:"curriculum",label:"Matières et programmes"},
+    {id:"report-policy",label:"Barèmes et bulletins"},{id:"council-policy",label:"Décisions du conseil"},
+    {id:"amendments",label:"Rectifier un bulletin"},{id:"timetable",label:"Emplois du temps"},
+    {id:"academic",label:"Années et cycles"}]},
+  {id:"admissions",title:"Admissions",icon:"adduser",items:[{id:"admission-policy",label:"Voies d’admission et fiche publique"}]},
+  {id:"payments",title:"Paiements",icon:"card",items:[
+    {id:"fees",label:"Tarifs et échéances"},{id:"gateway",label:"Paiement des dossiers et Mobile Money"}]},
+  {id:"attendance",title:"Absences et retards",icon:"calendar",items:[{id:"attendance-policy",label:"Statuts de présence"}]},
+  {id:"parents",title:"Parents",icon:"users",items:[{id:"parent-access",label:"Vérification et accès des responsables légaux"}]},
+  {id:"staff",title:"Personnel",icon:"idcard",items:[
+    {id:"organization",label:"Organigramme et fonctions"},
+    {id:"staff-setup",label:"Comptes du personnel et affectations"}]},
 ];
+const DEMO_ADVANCED={students:"form",classes:"classes",admissions:"admission-policy",
+  payments:"fees",bulletins:"report-policy",absences:"attendance-policy",
+  parents:"parent-access",staff:"staff-setup"};
 const PARENT_NAV = [
   ["parent","home","Mes enfants"],["parent-payments","card","Frais & paiements"],
   ["parent-results","file","Notes & bulletins"],["parent-absences","calendar","Absences"],
@@ -150,6 +177,9 @@ export default function DemoExperience(){
   const [role,setRole]=useState("school");
   const [schoolId,setSchoolId]=useState("lycee");
   const [page,setPage]=useState("dashboard");
+  const [sub,setSub]=useState("");
+  const [settingsSelection,setSettingsSelection]=useState(null);
+  const [settingsReturn,setSettingsReturn]=useState(null);
   const [selectedStudent,setSelectedStudent]=useState("s1");
   const [selectedAdmission,setSelectedAdmission]=useState("a1");
   const [selectedChild,setSelectedChild]=useState("s1");
@@ -185,14 +215,34 @@ export default function DemoExperience(){
     setForm({state,year,...initial});setModal(kind);setNotice("");
   }
   function enter(nextRole){
-    setRole(nextRole);setPage(defaultPage[nextRole]);setNotice("");setSearch("");
+    setRole(nextRole);setPage(defaultPage[nextRole]);setSub("");setSettingsSelection(null);setNotice("");setSearch("");
     setStatusFilter("all");setModal(null);
   }
   function pickSchool(id){
-    setSchoolId(id);setPage("dashboard");setSearch("");
+    setSchoolId(id);setPage("dashboard");setSub("");setSearch("");
     setSelectedStudent(state.students.find(s=>s.school===id)?.id||"");
     setSelectedAdmission(state.applications.find(a=>a.school===id)?.id||"");
   }
+  function navigate(id,nextSub="",extra=null){
+    setPage(id);setSub(nextSub);setSearch("");setNotice("");
+    if(id==="settings"){
+      const group=DEMO_SETTING_SECTIONS.find(section=>section.items.some(item=>item.id===nextSub));
+      setSettingsSelection(group?{section:group.id,item:nextSub}:null);
+    }else{
+      setSettingsReturn(null);
+    }
+  }
+  function goAdvanced(target){
+    setSettingsReturn({page,sub});
+    navigate("settings",target);
+  }
+  const demoTabs=(id)=>DEMO_TABS[id]?.length>1&&id!=="staff"?
+    <div className="yd-real-tabs" role="tablist">{DEMO_TABS[id].map(([key,label])=>
+      <button type="button" role="tab" aria-selected={(sub||DEMO_TABS[id][0][0])===key}
+        className={(sub||DEMO_TABS[id][0][0])===key?"active":""} key={key}
+        onClick={()=>setSub(key)}>{label}</button>)}</div>:null;
+  const advanced=(id)=>DEMO_ADVANCED[id]?
+    <Button icon="settings" className="small" onClick={()=>goAdvanced(DEMO_ADVANCED[id])}>Paramètres avancés</Button>:null;
   function updateStudent(id,fields){
     setState(old=>({...old,students:old.students.map(s=>s.id===id?{...s,...fields}:s)}));
   }
