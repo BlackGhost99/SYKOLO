@@ -1,18 +1,45 @@
 import React, {useState} from "react";
-import {Shell,Icon,Card,Metric,PageHeader,Status,Button,YemLogo} from "./yem-ui.jsx";
+import {Shell,Icon,Card,Metric,PageHeader,Status,Button,YemLogo,NAV,LineChart,Donut,Table,InfoRow,SearchBox} from "./yem-ui.jsx";
+import {SchoolSettings} from "./SchoolSettings.jsx";
 import {createDemoState,ROUTE_LABELS,DEMO_YEARS,DEMO_CURRENT_YEAR,SCHOOL_ROLES,fcfa,remaining,schoolOf,availableRoutes,fakeId} from "./demo-data.js";
 import "./yem-desktop.css";
 import "./yem-demo.css";
 
-const SCHOOL_NAV = [
-  ["dashboard","home","Tableau de bord"],["students","users","Élèves"],
-  ["classes","layers","Classes"],["admissions","adduser","Admissions"],
-  ["payments","card","Paiements & finances"],["arrears","alert","Impayés & relances"],
-  ["bulletins","file","Bulletins"],["absences","calendar","Absences"],
-  ["staff","idcard","Personnel"],["organization","users","Organigramme & rôles"],
-  ["curriculum","file","Matières & programmes"],["timetable","calendar","Emplois du temps"],
-  ["years","calendar","Années scolaires"],["settings","settings","Paramètres"],
+// Identique au menu latéral du véritable SchoolDashboard (mêmes identifiants et libellés).
+const SCHOOL_NAV = [...NAV.slice(0,2),["classes","layers","Classes"],...NAV.slice(2)]
+  .map(([id,icon,label])=>[id,icon,id==="bulletins"?"Évaluations et notes":label]);
+const DEMO_TABS={
+  students:[["live","Liste des élèves"],["byclass","Inscriptions par classe"]],
+  classes:[["live","Classes et effectifs"]],
+  payments:[["finance","Frais et encaissements"],["live","Caisse du jour"],["tracking","Suivi des paiements"]],
+  arrears:[["live","Impayés"]],
+  bulletins:[["assessments","Évaluations et notes"],["reports","Bulletins"],["council","Conseils et décisions"]],
+  absences:[["attendance","Appels et absences"]],
+  parents:[["directory","Parents par classe"]],
+  staff:[["directory","Équipe de l'établissement"],["onboarding","Ajouter un collaborateur"]],
+};
+const DEMO_SETTING_SECTIONS=[
+  {id:"access",title:"Droits généraux",icon:"shield",items:[
+    {id:"users",label:"Comptes et accès"},{id:"roles",label:"Rôles et droits d’accès"},
+    {id:"cycle-access",label:"Accès par cycle"}]},
+  {id:"school",title:"Classes de l’établissement",icon:"school",items:[
+    {id:"classes",label:"Classes"},{id:"form",label:"Fiche d’inscription"},
+    {id:"numbering",label:"Matricules"},{id:"curriculum",label:"Matières et programmes"},
+    {id:"report-policy",label:"Barèmes et bulletins"},{id:"council-policy",label:"Décisions du conseil"},
+    {id:"amendments",label:"Rectifier un bulletin"},{id:"timetable",label:"Emplois du temps"},
+    {id:"academic",label:"Années et cycles"}]},
+  {id:"admissions",title:"Admissions",icon:"adduser",items:[{id:"admission-policy",label:"Voies d’admission et fiche publique"}]},
+  {id:"payments",title:"Paiements",icon:"card",items:[
+    {id:"fees",label:"Tarifs et échéances"},{id:"gateway",label:"Paiement des dossiers et Mobile Money"}]},
+  {id:"attendance",title:"Absences et retards",icon:"calendar",items:[{id:"attendance-policy",label:"Statuts de présence"}]},
+  {id:"parents",title:"Parents",icon:"users",items:[{id:"parent-access",label:"Vérification et accès des responsables légaux"}]},
+  {id:"staff",title:"Personnel",icon:"idcard",items:[
+    {id:"organization",label:"Organigramme et fonctions"},
+    {id:"staff-setup",label:"Comptes du personnel et affectations"}]},
 ];
+const DEMO_ADVANCED={students:"form",classes:"classes",admissions:"admission-policy",
+  payments:"fees",bulletins:"report-policy",absences:"attendance-policy",
+  parents:"parent-access",staff:"staff-setup"};
 const PARENT_NAV = [
   ["parent","home","Mes enfants"],["parent-payments","card","Frais & paiements"],
   ["parent-results","file","Notes & bulletins"],["parent-absences","calendar","Absences"],
@@ -150,6 +177,9 @@ export default function DemoExperience(){
   const [role,setRole]=useState("school");
   const [schoolId,setSchoolId]=useState("lycee");
   const [page,setPage]=useState("dashboard");
+  const [sub,setSub]=useState("");
+  const [settingsSelection,setSettingsSelection]=useState(null);
+  const [settingsReturn,setSettingsReturn]=useState(null);
   const [selectedStudent,setSelectedStudent]=useState("s1");
   const [selectedAdmission,setSelectedAdmission]=useState("a1");
   const [selectedChild,setSelectedChild]=useState("s1");
@@ -176,7 +206,7 @@ export default function DemoExperience(){
   const parentsDue=state.invoices.filter(f=>f.student===child?.id&&f.year===year);
   const nav=role==="school"?SCHOOL_NAV:role==="parent"?PARENT_NAV:PLATFORM_NAV;
   const title=role==="school"?"Direction — "+school.name:role==="parent"?"Espace parent":"Console plateforme";
-  const visibleStudents=currentStudents.filter(x=>(x.name+" "+x.level+" "+x.guardian).toLowerCase().includes(search.toLowerCase())&&(statusFilter==="all"||x.status===statusFilter));
+  const visibleStudents=currentStudents.filter(x=>(x.name+" "+x.level+" "+x.guardian).toLowerCase().includes(search.toLowerCase())&&(statusFilter==="all"||(statusFilter.startsWith("class:")?x.level===statusFilter.slice(6):x.status===statusFilter)));
   const visibleAdmissions=currentApplications.filter(x=>(x.name+" "+x.level+" "+ROUTE_LABELS[x.route]).toLowerCase().includes(search.toLowerCase()));
 
   function message(txt){setNotice(txt);}
@@ -185,14 +215,34 @@ export default function DemoExperience(){
     setForm({state,year,...initial});setModal(kind);setNotice("");
   }
   function enter(nextRole){
-    setRole(nextRole);setPage(defaultPage[nextRole]);setNotice("");setSearch("");
+    setRole(nextRole);setPage(defaultPage[nextRole]);setSub("");setSettingsSelection(null);setNotice("");setSearch("");
     setStatusFilter("all");setModal(null);
   }
   function pickSchool(id){
-    setSchoolId(id);setPage("dashboard");setSearch("");
+    setSchoolId(id);setPage("dashboard");setSub("");setSearch("");
     setSelectedStudent(state.students.find(s=>s.school===id)?.id||"");
     setSelectedAdmission(state.applications.find(a=>a.school===id)?.id||"");
   }
+  function navigate(id,nextSub="",extra=null){
+    setPage(id);setSub(nextSub);setSearch("");setNotice("");
+    if(id==="settings"){
+      const group=DEMO_SETTING_SECTIONS.find(section=>section.items.some(item=>item.id===nextSub));
+      setSettingsSelection(group?{section:group.id,item:nextSub}:null);
+    }else{
+      setSettingsReturn(null);
+    }
+  }
+  function goAdvanced(target){
+    setSettingsReturn({page,sub});
+    navigate("settings",target);
+  }
+  const demoTabs=(id)=>DEMO_TABS[id]?.length>1&&id!=="staff"?
+    <div className="yd-real-tabs" role="tablist">{DEMO_TABS[id].map(([key,label])=>
+      <button type="button" role="tab" aria-selected={(sub||DEMO_TABS[id][0][0])===key}
+        className={(sub||DEMO_TABS[id][0][0])===key?"active":""} key={key}
+        onClick={()=>setSub(key)}>{label}</button>)}</div>:null;
+  const advanced=(id)=>DEMO_ADVANCED[id]?
+    <Button icon="settings" className="small" onClick={()=>goAdvanced(DEMO_ADVANCED[id])}>Paramètres avancés</Button>:null;
   function updateStudent(id,fields){
     setState(old=>({...old,students:old.students.map(s=>s.id===id?{...s,...fields}:s)}));
   }
@@ -351,66 +401,142 @@ export default function DemoExperience(){
       amount:String(remaining(inv)),method:channels[0]});
   }
   function dashboard(){
-    return <><PageHeader title="Tableau de bord" subtitle={school.name+" — situation illustrative"} badge="Exemple fictif" badgeIcon="info"/>
-      <div className="demo-metrics">
-        <Metric icon="users" label="Élèves" value={String(currentStudents.length)}/>
-        <Metric icon="layers" label="Classes" value={String(currentClasses.length)}/>
-        <Metric icon="adduser" label="Admissions" value={String(currentApplications.length)}/>
-        <Metric icon="coins" label="Restant dû (démo)" value={fcfa(pendingTotal)}/>
+    const totalPaid=currentInvoices.reduce((sum,f)=>sum+f.paid,0);
+    const arrears=currentInvoices.filter(f=>remaining(f)>0);
+    const lateFamilies=new Set(arrears.map(f=>f.student)).size;
+    const months=["Juin","Juil.","Août","Sept.","Oct.","Nov."];
+    const monthSeries=[.38,.53,.31,.7,.86,1].map(x=>Math.round(totalPaid*x));
+    const max=Math.max(100000,Math.ceil(totalPaid/25000)*25000);
+    const byMethod=[Math.floor(totalPaid*.45),Math.floor(totalPaid*.3),Math.floor(totalPaid*.2),
+      Math.max(0,totalPaid-Math.floor(totalPaid*.45)-Math.floor(totalPaid*.3)-Math.floor(totalPaid*.2))];
+    return <>
+      <div className="yd-view-filters">
+        <label>Année scolaire <select aria-label="Année de consultation" value={year}
+          onChange={e=>setYear(e.target.value)}>{DEMO_YEARS.map(y=><option key={y}>{y}</option>)}</select></label>
+        <label>Devise de consultation <select aria-label="Devise de consultation" defaultValue="XAF">
+          <option value="XAF">XAF</option></select></label>
       </div>
-      <p className="demo-hint">Année scolaire : <b>{year}</b>{isClosed?" · Archives clôturées (lecture seule)":""}</p>
-      <div className="demo-grid-two">
-        <Card title="Actions rapides" icon="bolt"><div className="demo-quick">
-          <DemoButton icon="adduser" primary onClick={()=>open("student",{level:school.levels[0]+" A"})}>Ajouter un élève</DemoButton>
-          <DemoButton icon="users" onClick={()=>{setPage("admissions");open("admission",{school:school.id,route:"direct",level:school.levels[0]});}}>Nouvelle demande</DemoButton>
-          <DemoButton icon="layers" onClick={()=>open("classroom")}>Créer une classe</DemoButton>
-          <DemoButton icon="card" onClick={()=>setPage("payments")}>Voir les paiements</DemoButton>
-        </div></Card>
-        <Card title="Activité illustrative" icon="clock"><ul className="demo-activity">
-          {state.events.length?state.events.slice(0,5).map((v,i)=><li key={i}>{v.kind} — {v.who}</li>):
-            <><li>Préinscription reçue — exemple</li><li>Absences consultées — exemple</li>
-              <li>Rapprochement financier — exemple</li></>}</ul></Card>
+      <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${school.name} — novembre 2026`}
+        badge="Direction" badgeIcon="crown"/>
+      <div className="yd-metrics five">
+        <Metric icon="coins" label="Encaissé ce mois" value={fcfa(totalPaid)} trend="none" trendLabel="données de présentation"/>
+        <Metric icon="file" label="Restant dû" value={fcfa(pendingTotal)} trend="none" trendLabel="toutes échéances"/>
+        <Metric icon="users" label="Élèves actifs" value={String(currentStudents.length)} trend="none" trendLabel={year}/>
+        <Metric icon="alert" label="Familles en retard" value={String(lateFamilies)} trend="none" trendLabel={fcfa(pendingTotal)+" échus"}/>
+        <Metric icon="receipt" label="Paiements aujourd’hui" value={String(state.events.filter(x=>x.kind==="Paiement simulé").length)}
+          trend="none" trendLabel="simulations uniquement"/>
       </div>
-      <div className="demo-grid-two"><Card title="Admissions en cours" icon="adduser">
-        {currentApplications.slice(0,4).map(a=><button className="demo-line demo-line-button" type="button" key={a.id}
-          onClick={()=>{setSelectedAdmission(a.id);setPage("admissions");}}><b>{a.name}</b><span>{ROUTE_LABELS[a.route]}</span><Status>{a.status}</Status></button>)}
-      </Card><Card title="Dossier de l'établissement" icon="school">
-        <p><b>Type :</b> {school.type}</p><p><b>Ville :</b> {school.city}</p>
-        <p><b>Direction :</b> {school.head}</p>
-        <DemoButton onClick={()=>setPage("settings")} icon="settings">Configurer la démonstration</DemoButton>
-      </Card></div></>;
-  }
-  function students(){
-    return <><PageHeader title="Gestion des élèves" subtitle="Liste, fiches et responsables légaux — données fictives"/>
-      <div className="demo-toolbar"><input type="search" aria-label="Rechercher un élève" placeholder="Rechercher élève, classe ou responsable…"
-        value={search} onChange={e=>setSearch(e.target.value)}/>
-        <select aria-label="Filtrer par statut" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
-          <option value="all">Tous les statuts</option><option value="Inscrit">Inscrit</option>
-        </select>
-        <DemoButton primary icon="adduser" onClick={()=>open("student",{level:school.levels[0]+" A"})}>Nouvel élève</DemoButton>
-        <DemoButton icon="excel" onClick={()=>open("export")}>Aperçu d'export</DemoButton></div>
-      <div className="demo-grid-split">
-        <Card title={"Élèves ("+visibleStudents.length+")"} icon="users">
-          <div className="demo-table-wrap"><table><thead><tr><th>Élève</th><th>Classe</th><th>Statut</th></tr></thead>
-            <tbody>{visibleStudents.map(s=><tr key={s.id} className={chosen?.id===s.id?"demo-selected":""}>
-              <td><button type="button" className="demo-name" onClick={()=>setSelectedStudent(s.id)}>{s.name}</button></td>
-              <td>{s.level}</td><td><Status>{s.status}</Status></td>
-            </tr>)}</tbody></table>{!visibleStudents.length&&<Empty>Aucun élève ne correspond au filtre.</Empty>}</div>
-        </Card><Card title="Fiche élève" icon="idcard">
-          {chosen?<><div className="demo-profile"><PersonAvatar name={chosen.name}/>
-            <div><h3>{chosen.name}</h3><span>{chosen.level} · {chosen.status}</span></div></div>
-            <dl className="demo-dl"><div><dt>Responsable</dt><dd>{chosen.guardian}</dd></div>
-              <div><dt>Contact</dt><dd>{chosen.phone||"À compléter"}</dd></div>
-              <div><dt>Absences</dt><dd>{chosen.absences} jour(s)</dd></div>
-              <div><dt>Évaluation</dt><dd>{chosen.average===null?"Compétences / non renseigné":chosen.average+"/20"}</dd></div></dl>
-            <div className="demo-actions"><DemoButton primary icon="edit" onClick={()=>open("edit",chosen)}>Modifier la fiche</DemoButton>
-              <DemoButton icon="coins" onClick={()=>{setSelectedInvoice(state.invoices.find(f=>f.student===chosen.id&&f.year===year)?.id||"");setPage("payments");}}>Frais de l'élève</DemoButton></div>
-          </>:<Empty>Sélectionne un élève pour ouvrir sa fiche.</Empty>}
+      <div className="yd-grid dash-main">
+        <Card title="Évolution des encaissements" icon="barchart" subtitle="Montants encaissés (FCFA) sur les 6 derniers mois — exemple fictif">
+          <LineChart points={monthSeries} labels={months} min={0} max={max} step={max/4}/>
         </Card>
-      </div></>;
+        <Card title="Répartition des moyens de paiement" icon="wallet">
+          <Donut size={160} values={byMethod} centerTop={totalPaid.toLocaleString("fr-FR")} centerBottom={"FCFA\nencaissés"}
+            legend={["Airtel Money","Moov Money","Espèces","Virement"].map((label,i)=>
+              [label+" : "+(totalPaid?Math.round(byMethod[i]/totalPaid*100):0)+" %","("+fcfa(byMethod[i])+")"])}/>
+        </Card>
+        <Card title="Actions rapides" icon="bolt" className="quick">
+          <DemoButton icon="card" primary onClick={()=>navigate("payments","live")}>Nouvel encaissement</DemoButton>
+          <DemoButton icon="mail" onClick={()=>navigate("arrears")}>Préparer les relances</DemoButton>
+          <DemoButton icon="adduser" onClick={()=>{navigate("students","live");open("student",{level:school.levels[0]+" A"});}}>Inscrire un élève</DemoButton>
+          <DemoButton icon="users" onClick={()=>navigate("students","byclass")}>Inscriptions par classe</DemoButton>
+          <DemoButton icon="file" onClick={()=>navigate("bulletins")}>Générer les bulletins</DemoButton>
+        </Card>
+      </div>
+      <div className="yd-grid dash-bottom">
+        <Card title="Retardataires prioritaires" icon="users">
+          <Table headers={["#","Élève","Classe","Montant dû","Statut"]}
+            rows={arrears.slice(0,5).map((f,i)=>{
+              const pupil=currentStudents.find(s=>s.id===f.student);
+              return [i+1,pupil?.name||"—",pupil?.level||"—",fcfa(remaining(f)),<Status tone="red">En retard</Status>];
+            })}/>
+        </Card>
+        <Card title="Derniers paiements du jour" icon="receipt">
+          <Table headers={["Élève","Classe","Montant","Mode","Heure"]}
+            rows={state.events.filter(x=>x.kind==="Paiement simulé").slice(0,5)
+              .map((x)=>[x.who,"—","Simulé","Démo","—"])}/>
+          {!state.events.some(x=>x.kind==="Paiement simulé")&&<Empty>Aucun paiement simulé aujourd’hui.</Empty>}
+        </Card>
+      </div>
+      <div className="yd-real-body"><Card title="Modules de l'établissement" icon="school">
+        <div className="pc-module-grid">{SCHOOL_NAV.filter(([id])=>id!=="dashboard").map(([id,icon,label])=>
+          <button type="button" key={id} onClick={()=>navigate(id)}>
+            <Icon name={icon} size={26}/><b>{label}</b><small>Consulter les données de démonstration</small>
+          </button>)}</div>
+      </Card></div>
+    </>;
   }
-  function admissions(){
-    return <><PageHeader title="Admissions & préinscriptions" subtitle="Inscription directe, concours ou affectation, avec vérification avant inscription"/>
+  function students(advancedAction=null,tabs=null){
+    const charged=stu=>state.invoices.filter(f=>f.student===stu.id&&f.year===year);
+    const paymentBalance=stu=>charged(stu).reduce((n,f)=>n+remaining(f),0);
+    return <>
+      <PageHeader title="Gestion des élèves" subtitle="Inscriptions, classes, responsables et suivi administratif" actions={advancedAction}/>
+      {tabs}
+      <div className="yd-toolbar students">
+        <SearchBox placeholder="Rechercher un élève (nom, prénom, matricule...)" value={search} onChange={e=>setSearch(e.target.value)}/>
+        <label className="yd-select plain"><select aria-label="Classe" value={statusFilter.startsWith("class:")?statusFilter.slice(6):""}
+          onChange={e=>setStatusFilter(e.target.value?"class:"+e.target.value:"all")}>
+          <option value="">Toutes les classes</option>
+          {currentClasses.map(cl=><option key={cl.id} value={cl.name}>{cl.name}</option>)}
+        </select><Icon name="chevron" size={18} className="chev"/></label>
+        <label className="yd-select plain"><select aria-label="Statut" value={statusFilter==="Inscrit"?"Inscrit":""}
+          onChange={e=>setStatusFilter(e.target.value||"all")}>
+          <option value="">Tous les statuts</option><option value="Inscrit">Inscrit</option>
+        </select><Icon name="chevron" size={18} className="chev"/></label>
+        <DemoButton primary icon="adduser" onClick={()=>open("student",{level:school.levels[0]+" A"})}>Nouvel élève</DemoButton>
+        <DemoButton icon="excel" onClick={()=>open("export")}>Importer Excel</DemoButton>
+      </div>
+      <div className="yd-metrics four">
+        <Metric icon="users" label="Élèves actifs" value={String(currentStudents.length)} trend="none" trendLabel={year}/>
+        <Metric icon="cap" label="Nouveaux inscrits" value={String(currentStudents.length)} trend="none" trendLabel="exemple fictif"/>
+        <Metric icon="alert" label="Dossiers incomplets" value={String(currentStudents.filter(s=>!s.phone).length)} trend="none" trendLabel="responsables sans contact"/>
+        <Metric icon="whatsapp" label="Parents sans numéro WhatsApp"
+          value={String(currentStudents.filter(s=>!s.phone).length)} trend="none" trendLabel="contact à compléter"/>
+      </div>
+      <div className="yd-grid students-grid">
+        <Card title="Liste des élèves" count={`(${visibleStudents.length})`} icon="users">
+          <div className="yd-table-wrap demo-table-wrap" role="region" aria-label="Liste des élèves">
+            <table className="clickable nowrap dense"><thead><tr>
+              {["#","Élève","Classe","Parent / Tuteur","Téléphone","Situation financière","Statut","Actions"].map(h=>
+                <th key={h}>{h}</th>)}
+            </tr></thead><tbody>
+              {visibleStudents.map((s,i)=><tr key={s.id} className={chosen?.id===s.id?"selected":""}
+                onClick={()=>setSelectedStudent(s.id)}>
+                <td>{i+1}</td><td><b>{s.name}</b></td><td>{s.level}</td><td>{s.guardian}</td>
+                <td>{s.phone||"—"}</td><td>{paymentBalance(s)?"Impayé":"À jour"}</td>
+                <td><Status tone={paymentBalance(s)?"red":"green"}>{s.status}</Status></td>
+                <td><button type="button" className="yd-dots" aria-label={"Ouvrir la fiche de "+s.name}
+                  onClick={e=>{e.stopPropagation();setSelectedStudent(s.id);open("edit",s);}}>
+                  <Icon name="dots" size={22}/></button></td>
+              </tr>)}
+            </tbody></table>{!visibleStudents.length&&<Empty>Aucun élève trouvé.</Empty>}
+          </div>
+        </Card>
+        <Card title="Aperçu de l’élève" icon="user" className="student-preview">
+          {chosen?<><div className="yd-person">
+            <div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div>
+            <div><h3>{chosen.name}</h3><span>Classe : {chosen.level}</span>
+              <span>Matricule : {((state.numbering[school.id]?.prefix)||"YEM")+"-"+chosen.id.toUpperCase().padStart(5,"0")}</span></div>
+            </div>
+            <div className="yd-info-list">
+              <InfoRow icon="user" k="Parent / Tuteur" v={chosen.guardian}/>
+              <InfoRow icon="whatsapp" k="Téléphone" v={chosen.phone||"—"}/>
+              <InfoRow icon="coins" k="Total annuel" v={fcfa(charged(chosen).reduce((n,f)=>n+f.total,0))}/>
+              <InfoRow icon="wallet" k="Montant payé" v={fcfa(charged(chosen).reduce((n,f)=>n+f.paid,0))}/>
+              <InfoRow icon="scale" k="Reste à payer" v={fcfa(paymentBalance(chosen))} highlight/>
+            </div>
+            <div className="yd-btn-stack">
+              <DemoButton icon="file" primary onClick={()=>open("edit",chosen)}>Voir la fiche</DemoButton>
+              <DemoButton icon="coins" onClick={()=>navigate("payments")}>Encaisser</DemoButton>
+              <DemoButton icon="whatsapp" disabled>Contacter le parent</DemoButton>
+            </div>
+          </>:<Empty>Sélectionnez un élève dans la liste.</Empty>}
+        </Card>
+      </div>
+    </>;
+  }
+  function admissions(advancedAction=null){
+    return <><PageHeader title="Admissions et préinscriptions" subtitle="Consultez les demandes et suivez leur inscription" actions={advancedAction}/>
       <div className="demo-toolbar"><input aria-label="Rechercher une candidature" placeholder="Rechercher candidature ou voie…" value={search}
         onChange={e=>setSearch(e.target.value)}/>
         <DemoButton icon="adduser" primary onClick={()=>open("admission",{school:school.id,route:"direct",level:school.levels[0]})}>Nouvelle candidature</DemoButton>
@@ -439,9 +565,9 @@ export default function DemoExperience(){
         </Card>
       </div></>;
   }
-  function classes(){
-    return <><PageHeader title="Classes et niveaux" subtitle={school.type+" — "+year+" — divisions configurables"}
-      actions={<div className="demo-actions">
+  function classes(advancedAction=null){
+    return <><PageHeader title="Classes et effectifs" subtitle={school.type+" — "+year+" — divisions configurables"}
+      actions={<div className="demo-actions">{advancedAction}
         <DemoButton icon="layers" primary onClick={()=>open("generation",{level:school.levels[0],count:2,capacity:35})}>Générer les classes</DemoButton>
         <DemoButton icon="plus" onClick={()=>open("classroom",{capacity:35})}>Créer une classe</DemoButton>
       </div>}/>
@@ -457,10 +583,10 @@ export default function DemoExperience(){
         </div></div>)}{!currentClasses.length&&<Empty>Aucune classe pour {year}. Utilisez « Générer les classes ».</Empty>}</div>
     </>;
   }
-  function arrears(){
+  function arrears(advancedAction=null){
     const outstanding=currentInvoices.filter(f=>remaining(f)>0);
     const owed=outstanding.reduce((total,f)=>total+remaining(f),0);
-    return <><PageHeader title="Impayés & relances" subtitle={year+" — suivi fictif des échéances et des familles"}/>
+    return <><PageHeader title="Impayés & relances" subtitle="Suivi des échéances, retards et soldes des familles" actions={advancedAction}/>
       <div className="demo-metrics"><Metric icon="users" label="Familles concernées" value={String(new Set(outstanding.map(f=>f.student)).size)}/>
         <Metric icon="coins" label="Total à recouvrer" value={fcfa(owed)}/></div>
       <Card title="Suivi des impayés" icon="alert"><div className="demo-table-wrap"><table>
@@ -473,10 +599,10 @@ export default function DemoExperience(){
       <p className="demo-hint">La démo illustre les relances. Aucune communication n'est envoyée à une famille.</p>
     </>;
   }
-  function payments(onlyChild=false){
+  function payments(onlyChild=false,advancedAction=null,tabs=null){
     const invoices=onlyChild?state.invoices.filter(f=>f.student===child?.id&&f.year===year):currentInvoices;
-    return <><PageHeader title={onlyChild?"Frais & paiements":"Frais et encaissements"}
-      subtitle={onlyChild?"Choisissez une facture pour simuler un règlement":"Encaissements, soldes et reçus — aucun mouvement bancaire réel"}/>
+    return <><PageHeader title={onlyChild?"Frais & paiements":"Encaissements et caisse journalière"}
+      subtitle={onlyChild?"Choisissez une facture pour simuler un règlement":"Suivi des paiements, reçus et méthodes d’encaissement"} actions={advancedAction}/>{tabs}
       <div className="demo-metrics"><Metric icon="file" label="Factures" value={String(invoices.length)}/>
         <Metric icon="coins" label="Restant dû" value={fcfa(invoices.reduce((s,f)=>s+remaining(f),0))}/>
         <Metric icon="checkcircle" label="Entièrement réglées" value={String(invoices.filter(f=>remaining(f)===0).length)}/></div>
@@ -490,7 +616,7 @@ export default function DemoExperience(){
         })}</tbody></table>{!invoices.length&&<Empty>Aucune facture disponible.</Empty>}</div></Card>
       <p className="demo-hint">L'intégration SingPay de l'application réelle n'est pas déclenchée. Tout paiement dans cette démonstration est une simulation locale.</p></>;
   }
-  function reports(onlyChild=false){
+  function reports(onlyChild=false,advancedAction=null,tabs=null,selectedTab=""){
     const students=onlyChild?(child?[child]:[]):currentStudents;
     const pupil=students.find(s=>s.id===selectedStudent)||students[0];
     const grade=state.grading[pupil?.school]||"20";
@@ -502,8 +628,8 @@ export default function DemoExperience(){
       return pupil.average.toFixed(1)+" / 20";
     };
     const opts=students.filter(Boolean);
-    return <><PageHeader title={onlyChild?"Notes et bulletins":"Bulletins et évaluations"}
-      subtitle="Évaluations, résultats et compétences selon les cycles — valeurs fictives"/>
+    return <><PageHeader title={onlyChild?"Notes et bulletins":"Évaluations et notes"}
+      subtitle="Retrouvez les notes, bulletins et décisions à partir de la classe" actions={advancedAction}/>{tabs}
       <div className="demo-toolbar"><select aria-label="Élève pour les bulletins" value={pupil?.id||""}
         onChange={e=>setSelectedStudent(e.target.value)}>{opts.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
         <select aria-label="Période" value={resultTab} onChange={e=>setResultTab(e.target.value)}>
@@ -523,9 +649,9 @@ export default function DemoExperience(){
         </>:<Empty>Aucun élève dans cette sélection.</Empty>}
       </Card></>;
   }
-  function absences(onlyChild=false){
+  function absences(onlyChild=false,advancedAction=null){
     const pupils=onlyChild?[child]:currentStudents;
-    return <><PageHeader title="Absences et présences" subtitle="Suivi de présence — simulation de l'appel"/>
+    return <><PageHeader title="Absences et retards" subtitle="Consultez les appels et les retards par classe" actions={advancedAction}/>
       <Card title="Présence par élève" icon="calendar">
         {pupils.filter(Boolean).map(s=>{const mark=state.marks[s.id]||"Présent";return <div key={s.id} className="demo-line demo-presence">
           <div><b>{s.name}</b><small>{s.level} · {s.absences} absence(s) enregistrée(s) dans le scénario</small></div>
@@ -537,9 +663,9 @@ export default function DemoExperience(){
         {!onlyChild&&<div className="demo-actions"><DemoButton primary icon="check" disabled={isClosed} onClick={()=>message("Appel enregistré dans la démonstration (aucune absence réelle créée).")}>Enregistrer l'appel</DemoButton></div>}
       </Card></>;
   }
-  function staff(){
-    return <><PageHeader title="Personnel et fonctions" subtitle={school.type+" — organigramme adapté aux besoins de l'établissement"}
-      actions={<DemoButton primary icon="adduser" onClick={()=>open("staff")}>Ajouter un membre</DemoButton>}/>
+  function staff(advancedAction=null){
+    return <><PageHeader title="Personnel" subtitle="Retrouvez les collaborateurs et gérez leurs affectations"
+      actions={<div className="demo-actions"><DemoButton primary icon="adduser" onClick={()=>open("staff")}>Ajouter un membre</DemoButton>{advancedAction}</div>}/>
       <Card title="Personnel de l'établissement" icon="users">{currentStaff.map(p=><div key={p.id} className="demo-line">
         <div className="demo-person-inline"><PersonAvatar name={p.name}/><div><b>{p.name}</b>
           <small>{(p.cycles||["Tous les cycles"]).join(", ")} · {p.hasAccount?"Compte simulé":"Sans compte"}</small>
@@ -714,15 +840,72 @@ export default function DemoExperience(){
         <b>{a.name}</b><span>{schoolOf(state,a.school)?.name}</span><Status>{a.status}</Status></div>):
         <Empty>Aucune demande. Choisis une école pour simuler une préinscription.</Empty>}</Card></>;
   }
+  function parentsDirectory(){
+    const links=currentStudents.map(s=>({student:s,guardian:s.guardian})).filter(x=>x.guardian);
+    return <><PageHeader title="Parents" subtitle="Les responsables légaux de chaque élève, par classe" actions={advanced("parents")}/>
+      <div className="yd-real-body">
+        <Card title="Parents par classe" icon="users"><div className="demo-table-wrap"><table className="clickable nowrap dense">
+          <thead><tr><th>Responsable légal</th><th>Élève</th><th>Classe</th><th>Contact</th></tr></thead>
+          <tbody>{links.map(({student:s,guardian})=><tr key={s.id}><td>{guardian}</td><td>{s.name}</td>
+            <td>{s.level}</td><td>{s.phone||"À compléter"}</td></tr>)}</tbody>
+        </table>{!links.length&&<Empty>Aucun responsable pour l'année sélectionnée.</Empty>}</div></Card>
+      </div></>;
+  }
+  function settingPanel(id){
+    const title=DEMO_SETTING_SECTIONS.flatMap(x=>x.items).find(x=>x.id===id)?.label||"Configuration";
+    const screen={
+      classes:classes,numbering:settings,curriculum:curriculum,"report-policy":settings,
+      "council-policy":()=>reports(),"amendments":()=>reports(),
+      timetable:timetable,academic:years,"admission-policy":settings,
+      fees:settings,gateway:settings,"attendance-policy":()=>absences(),
+      "parent-access":parentsDirectory,organization:organization,
+      "staff-setup":staff,roles:organization,users:accounts,
+      "cycle-access":organization,form:students,
+    }[id];
+    if(screen)return <div className="demo-settings-panel">{screen()}</div>;
+    return <Card title={title} icon="settings"><p className="demo-hint">Aperçu de cette rubrique — données fictives.</p>
+      <DemoButton onClick={()=>message("Aucune configuration réelle enregistrée.")} icon="check">Enregistrer la simulation</DemoButton>
+    </Card>;
+  }
+  function schoolPageContent(){
+    if(page==="settings")return <SchoolSettings sections={DEMO_SETTING_SECTIONS}
+      selection={settingsSelection} onSelect={setSettingsSelection}
+      render={settingPanel} isOwner={true}
+      onReturn={settingsReturn?()=>{setPage(settingsReturn.page);setSub(settingsReturn.sub);setSettingsReturn(null);}:undefined}/>;
+    if(page==="dashboard")return dashboard();
+    const selectedTab=sub||DEMO_TABS[page]?.[0]?.[0]||"";
+    const tabs=demoTabs(page);
+    const advancedAction=advanced(page);
+    if(page==="students")return <div className="demo-live-screen">
+      <div className="yd-view-filters"><label>Année scolaire <select value={year} aria-label="Année de travail de l'établissement"
+        onChange={e=>setYear(e.target.value)}>{DEMO_YEARS.map(y=><option key={y}>{y}</option>)}</select></label>
+        <label>Devise de consultation <select aria-label="Devise de consultation" defaultValue="XAF"><option value="XAF">XAF</option></select></label></div>
+      {selectedTab==="byclass"?<><PageHeader title="Inscriptions par classe" subtitle="Inscriptions, classes, responsables et suivi administratif" actions={advancedAction}/>{tabs}
+        <div className="yd-real-body">{classes()}</div></>:
+        <>{students(advancedAction,tabs)}</>}
+    </div>;
+    if(page==="classes")return <>{classes(advancedAction)}</>;
+    if(page==="admissions")return <>{admissions(advancedAction)}</>;
+    if(page==="payments")return <>{payments(false,advancedAction,tabs)}</>;
+    if(page==="arrears")return <>{arrears(advancedAction)}</>;
+    if(page==="bulletins")return <>{reports(false,advancedAction,tabs,selectedTab)}</>;
+    if(page==="absences")return <>{absences(false,advancedAction)}</>;
+    if(page==="parents")return parentsDirectory();
+    if(page==="staff")return selectedTab==="onboarding"?
+      <><PageHeader title="Personnel" subtitle="Retrouvez les collaborateurs et gérez leurs affectations" actions={advancedAction}/>
+        <div className="yd-real-body"><Card title="Ajouter un collaborateur" icon="adduser"><div className="demo-actions">
+          <DemoButton primary icon="adduser" onClick={()=>open("staff")}>Ajouter un membre du personnel</DemoButton>
+          <DemoButton icon="users" onClick={()=>setSub("directory")}>Retour à l'équipe</DemoButton></div></Card></div></>:
+      staff(advancedAction);
+    return dashboard();
+  }
   const pageContent=()=>{
     if(role==="platform")return page==="accounts"?accounts():page==="schools"?schools():platform();
     if(role==="parent")return page==="parent-payments"?payments(true):
       page==="parent-results"?reports(true):
       page==="parent-absences"?absences(true):
       page==="parent-admissions"?parentAdmissions():parents();
-    return ({
-      dashboard,students,classes,admissions,payments,arrears,bulletins:()=>reports(),absences,staff,organization,curriculum,timetable,years,settings,
-    }[page]||dashboard)();
+    return schoolPageContent();
   };
   return <div className="demo-app" data-demo="true">
     <div className="demo-ribbon" role="status">
@@ -730,33 +913,49 @@ export default function DemoExperience(){
       <span>Tout est fictif. Aucune donnée réelle, aucun paiement, aucun e-mail.</span>
       <button type="button" onClick={()=>{setState(createDemoState());setNotice("Scénario réinitialisé.");setModal(null);
         setSchoolId("lycee");setSelectedStudent("s1");setSelectedAdmission("a1");
-        setSelectedChild("s1");setSearch("");setYear(DEMO_CURRENT_YEAR);setPage(defaultPage[role]);}}>
+        setSelectedChild("s1");setSearch("");setSub("");setSettingsSelection(null);setYear(DEMO_CURRENT_YEAR);setPage(defaultPage[role]);}}>
         <Icon name="back" size={17}/> Réinitialiser
       </button>
       <a href="#/" aria-label="Revenir à l'application réelle">Retour à YEM réel <Icon name="chevronright" size={16}/></a>
     </div>
-    <div className="demo-rolebar"><span>Découvrir YEM comme :</span>
-      <label className="demo-year-control">Année scolaire
-        <select aria-label="Année scolaire de démonstration" value={year}
-          onChange={e=>{setYear(e.target.value);setSearch("");setNotice(e.target.value==="2025-2026"?
-            "Consultation de l'année clôturée en lecture seule.":"Année scolaire "+e.target.value+" — données fictives.");}}>
-          {DEMO_YEARS.map(y=><option key={y} value={y}>{y}{y==="2025-2026"?" (archive)":""}</option>)}
-        </select>
-      </label>
-      {[["platform","Super-administrateur"],["school","Direction / établissement"],["parent","Parent d'élève"]].map(([r,label])=>
-        <button type="button" key={r} aria-pressed={role===r} className={role===r?"active":""}
-          onClick={()=>enter(r)}>{label}</button>)}
-      {role==="school"&&<select aria-label="Établissement de démonstration" value={schoolId} onChange={e=>pickSchool(e.target.value)}>
-        {state.schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>}
-    </div>
+
     <div className="demo-main">
-      <Shell className="demo-shell" userName={title} nav={nav} active={page} onNavigate={p=>{setPage(p);setSearch("");setNotice("");}}
-        schoolSelector={<span className="demo-header-school"><Icon name="school"/>{role==="school"?school.name:"Visite guidée"}</span>}
+      <Shell className="demo-shell" userName={title} nav={nav} active={page} onNavigate={p=>navigate(p)}
+        schoolSelector={<div className="yd-school-select-wrap demo-real-selector">
+          <label className="yd-school-select"><Icon name="school" size={24}/>
+            {role==="school"?<select aria-label="Établissement de démonstration" value={schoolId}
+              onChange={e=>pickSchool(e.target.value)}>
+              {state.schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:
+              <b>{role==="platform"?"Console plateforme":"Espace parent"}</b>}
+            <Icon name="chevron" size={18} className="chev"/>
+          </label>
+          <label className="yd-school-select" title="Année scolaire de consultation">
+            <Icon name="calendar" size={18}/>
+            <select aria-label="Année scolaire de démonstration" value={year}
+              onChange={e=>{setYear(e.target.value);setSearch("");
+                setNotice(e.target.value==="2025-2026"?"Année clôturée — lecture seule.":"Année "+e.target.value+" chargée.");}}>
+              {DEMO_YEARS.map(y=><option key={y} value={y}>{y} · {y==="2025-2026"?"clôturée":y===DEMO_CURRENT_YEAR?"en cours":"en préparation"}</option>)}
+            </select>
+          </label>
+        </div>}
+        userMenu={<div className="demo-user-controls">
+          <label className="demo-role-select"><span className="sr-only">Profil de démonstration</span>
+            <select aria-label="Profil de démonstration" value={role} onChange={e=>enter(e.target.value)}>
+              <option value="school">Direction / établissement</option>
+              <option value="platform">Super-administrateur</option>
+              <option value="parent">Parent d'élève</option>
+            </select>
+          </label>
+          <div className="yd-user"><span className="yd-avatar"><Icon name="user" size={22}/></span>
+            <span><b>{role==="school"?school.head:"Visiteur YEM"}</b>
+              <small>{role==="school"?"Direction (simulation)":role==="platform"?"Administration plateforme":"Compte parent (simulation)"}</small>
+            </span><Icon name="chevron" size={18}/></div>
+        </div>}
         notifications={0}>
         {notice&&<div className="demo-notice" role="status"><Icon name="info" size={19}/>{notice}
           <button aria-label="Fermer le message" type="button" onClick={()=>setNotice("")}><Icon name="close" size={17}/></button></div>}
         {pageContent()}
-        <footer className="demo-footer">YEM · Démonstration interactive fictive · Développé par BWETEK Informatyk</footer>
+        <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire · Données fictives</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
       </Shell>
     </div>
     {modal&&<DemoModal mode={modal} form={form} setForm={setForm} school={school}
