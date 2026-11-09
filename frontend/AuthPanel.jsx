@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from "react";
 import brand from "./assets/yem-brand.webp";
-import loginArtwork from "./assets/yem-login-original.png";
-import "./yem-login-original.css";
 import PlatformConsole from "./PlatformConsole.jsx";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 import {FamilyWorkspace} from "./ParentPortal.jsx";
@@ -31,7 +29,6 @@ async function authApi(path, body) {
 
 export default function AuthPanel() {
   const [account, setAccount] = useState(null);
-  const [artworkStatus, setArtworkStatus] = useState("loading");
   const [tab, setTab] = useState("login");
   const [loginScope, setLoginScope] = useState(() => (
     {"#/admin":"platform", "#/parents":"parent"}[window.location.hash] || "school"
@@ -318,26 +315,5 @@ export default function AuthPanel() {
   if (account?.authenticated) {
     return <SchoolDashboard user={account.user} initialSchoolId={account.school_id} accountView={accountCard} onLogout={() => run(logout)} />;
   }
-  // L'illustration approuvée est affichée comme un seul fichier, sans recréation
-  // des logos, motifs ou zones graphiques. Seuls les champs HTML restent actifs.
-  const originalSchoolView = artworkStatus === "loaded" && loginScope === "school" && tab === "login" && !isResetLink && !isVerifyLink;
-  return (
-    <div className={originalSchoolView ? "yem-original-login yem-original-login--exact" : "yem-original-login"}>
-      <div className="yem-original-login__frame">
-        {artworkStatus !== "failed" && <img
-          className="yem-original-login__image"
-          src={loginArtwork}
-          width="1710"
-          height="920"
-          alt=""
-          draggable="false"
-          onLoad={() => setArtworkStatus("loaded")}
-          onError={() => setArtworkStatus("failed")}
-        />}
-        <div className="yem-original-login__form">
-          {accountCard}
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="yem-login-screen"><header className="yem-login-brand"><img src={brand} alt="Logo officiel YEM"/><div><strong>YEM</strong><span>Gestion scolaire &amp; universitaire</span></div></header>{accountCard}</div>;
 }
