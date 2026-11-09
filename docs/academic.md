@@ -27,7 +27,7 @@ La clôture réelle est **désactivée par défaut** : `YEM_YEAR_CLOSURE_ENABLED
 L'interface de revue peut être exposée indépendamment de la clôture. Une correction officielle après clôture requiert un futur circuit exceptionnel traçable : ne jamais modifier le procès-verbal ni réouvrir une année automatiquement.
 
 
-## Automatisation des classes maternelles et préscolaires
+## Automatisation des niveaux et classes de tous les cycles
 
 Pour un établissement ouvrant le cycle `prescolaire` (maternelle seule ou complexe scolaire), YEM propose **Crèche**, **Petite section (3 ans)**, **Moyenne section (4 ans)** et **Grande section (5 ans)**. Les âges sont des intitulés indicatifs, pas un critère de rejet d'inscription.
 
@@ -39,3 +39,24 @@ Pour un établissement ouvrant le cycle `prescolaire` (maternelle seule ou compl
 - L'option existante **Générer les classes** permet toujours de créer plusieurs divisions A/B/C ou 1/2/3, avec renommage avant enregistrement.
 
 Aucune migration ni modification rétroactive des données n'est requise par cette automatisation.
+
+### Catalogue multi-cycles et usage quotidien
+
+YEM généralise le catalogue aux types d'établissements effectivement ouverts :
+
+| Cycle ouvert | Niveaux préenregistrés | Divisions initiales |
+|---|---|---|
+| Préscolaire | Crèche, Petite section, Moyenne section, Grande section | Crèche A, Petite section A, Moyenne section A, Grande section A |
+| Primaire | 1re, 2e, 3e, 4e, 5e année | 1re année A…5e année A |
+| Collège | 6e, 5e, 4e, 3e | 6e A…3e A |
+| Lycée général | Seconde, Première, Terminale | Seconde A, Première A, Terminale A |
+| Lycée technique | Seconde, Première, Terminale | Seconde technique A, Première technique A, Terminale technique A |
+
+Les établissements mixtes cumulent **uniquement les cycles activés**. Les subdivisions A/B/C sont des **divisions de classe**, à ne pas confondre avec les séries ou spécialités ; pour les lycées général et technique, la filière n'est pas présumée.
+
+- À la création de l'établissement par la plateforme, le catalogue des **niveaux** est préenregistré sans année fictive. Une fois l'année créée, YEM génère une division A pour chaque niveau, avec les noms conservés si le niveau a été personnalisé.
+- Dans **Paramètres → Classes**, le bouton unique **Compléter les classes standards** appelle `POST /schools/{id}/academic/standard-classes` avec le JSON `{"year":"uuid"}`. Il complète seulement les niveaux des cycles que l'utilisateur a le droit de gérer. L'ancien endpoint maternel reste fonctionnel.
+- Les niveaux et classes déjà présents, y compris renommés ou archivés, ne sont ni remplacés ni réactivés. Les classes sont uniques par nom et par année ; les opérations sont atomiques et auditées.
+- **Dupliquer** reprend uniquement la division (niveau, année, filière, capacité), et jamais les élèves, emplois du temps, évaluations, personnel ni finance. Les classes A/B/C et les noms libres restent modifiables.
+- Lorsqu'une nouvelle année **copie** explicitement les classes de l'année précédente, YEM respecte la structure copiée et n'ajoute pas automatiquement d'autres divisions ; les niveaux manquants sont toujours ajoutables volontairement avec le bouton de complément.
+- Aucun schéma ou migration supplémentaire n'est nécessaire et **aucune classe ancienne n'est modifiée rétroactivement**.
