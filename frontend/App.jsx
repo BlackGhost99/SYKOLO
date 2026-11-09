@@ -1,5 +1,5 @@
 import React, {useEffect,useState} from "react";
-import DemoExperience from "./DemoExperience.jsx";
+import RealDemoExperience from "./RealDemoExperience.jsx";
 import AuthPanel from "./AuthPanel.jsx";
 import "./platform-console.css";
 
@@ -47,5 +47,5 @@ export default function App(){
     window.addEventListener("hashchange",onHashChange);
     return()=>window.removeEventListener("hashchange",onHashChange);
   },[]);
-  return demo?<DemoExperience/>:<RealApp/>;
+  return demo?<RealDemoExperience/>:<RealApp/>;
 }
