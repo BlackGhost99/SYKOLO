@@ -324,7 +324,7 @@ export default function AuthPanel() {
       <div className="yem-original-login__frame">
         <img
           className="yem-original-login__image"
-          src="/yem-login-original.jpg"
+          src="/yem-login-original.png"
           alt=""
           draggable="false"
         />
