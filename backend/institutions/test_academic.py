@@ -58,6 +58,30 @@ class AcademicStructureTests(TestCase):
         self.assertEqual(self.client.get(self.base + "classes/" + classroom["id"]).json()["track"], track["id"])
         self.assertEqual(AcademicYear.objects.filter(school=self.school).count(), 1)
 
+    def test_used_primary_level_can_be_renamed_without_changing_its_code(self):
+        year = self.year()
+        cycle = self.make("cycles", {"code": "primaire", "name": "Primaire"})
+        level = self.make("levels", {
+            "code": "3e-annee", "name": "Troisième année",
+            "cycle": cycle["id"], "order": 3,
+        })
+        self.make("classes", {
+            "code": "3e-a", "name": "3e année A",
+            "year": year["id"], "level": level["id"],
+        })
+        denied = self.write("levels", {
+            "revision": level["revision"], "code": "ce1",
+        }, method="patch", obj_id=level["id"])
+        self.assertEqual(denied.status_code, 409)
+        renamed = self.write("levels", {
+            "revision": level["revision"],
+            "name": "3e année fondamentale", "order": 3,
+        }, method="patch", obj_id=level["id"])
+        self.assertEqual(renamed.status_code, 200, renamed.content)
+        self.assertEqual(renamed.json()["code"], "3e-annee")
+        self.assertEqual(renamed.json()["name"], "3e année fondamentale")
+        self.assertEqual(renamed.json()["revision"], level["revision"] + 1)
+
     def test_no_cross_school_read_or_parent_assignment(self):
         year = self.year()
         self.login(self.reader)

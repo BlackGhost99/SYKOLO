@@ -35,6 +35,7 @@ export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearCh
   const [all,setAll] = useState({});
   const [form,setForm] = useState(init);
   const [busy,setBusy] = useState(false);
+  const [editingLevel,setEditingLevel] = useState(null);
   const [allowed,setAllowed] = useState(true);
   const [message,setMessage] = useState("");
   const prefix = "schools/" + schoolId + "/academic/";
@@ -49,7 +50,7 @@ export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearCh
   }
   useEffect(() => {
     let active = true;
-    setAll({}); setYearId(""); setForm(init()); setAllowed(true); setMessage("");
+    setAll({}); setYearId(""); setForm(init()); setEditingLevel(null); setAllowed(true); setMessage("");
     Promise.all(TYPES.map(async item => {
       const result = await request("schools/" + schoolId + "/academic/" + item.key);
       return [item.key, result[item.key] || []];
@@ -78,10 +79,25 @@ export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearCh
         else if (field === "track") data.track = form.track || null;
         else data[field] = form[field];
       }
-      await request(prefix + resource, data);
+      if(resource==="levels"&&editingLevel){
+        const existing=(all.levels||[]).find(level=>level.id===editingLevel);
+        if(!existing)throw Error("Ce niveau n'existe plus. Actualise la page.");
+        // Keep stable scope identifiers for grades and historical reports.
+        await request(prefix+"levels/"+editingLevel,{
+          revision:existing.revision,name:data.name,order:data.order,
+        },"PATCH");
+        setEditingLevel(null);
+      }else{
+        await request(prefix + resource, data);
+      }
       setForm({...init(),year:yearId}); await refresh();
       setMessage("Enregistrement réussi.");
     } catch (e) {setMessage(e.message);} finally {setBusy(false);}
+  }
+  function editLevel(level){
+    setEditingLevel(level.id);
+    setForm({...init(),code:level.code,name:level.name,cycle:level.cycle,order:level.order});
+    setMessage("");
   }
   async function setActive(item) {
     setBusy(true); setMessage("");
@@ -99,7 +115,9 @@ export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearCh
     }
     if (PARENT[field]) {
       const options = all[PARENT[field]] || [];
-      return <select value={form[field]} required={field !== "track"} onChange={e => update(field,e.target.value)}>
+      return <select value={form[field]} required={field !== "track"}
+        disabled={resource==="levels"&&!!editingLevel&&field==="cycle"}
+        onChange={e => update(field,e.target.value)}>
         <option value="">Sélectionner…</option>
         {options.filter(p => p.active).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>;
@@ -112,10 +130,10 @@ export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearCh
   return (
     <section className="card" aria-label="Structure académique" style={{marginTop:"1rem"}}>
       <h2>Structure académique</h2>
-      <p className="hint">Années, cycles, niveaux, filières, classes et périodes. Aucun calendrier scolaire n’est imposé.</p>
+      <p className="hint">Années, cycles, niveaux, filières, classes et périodes. Les niveaux du primaire peuvent s’appeler 1re à 5e année, ou porter les noms choisis par l’établissement.</p>
       {!allowed ? <p role="status">{message}</p> : <>
         <label className="field">Élément à gérer
-          <select value={resource} onChange={e=>{setResource(e.target.value);setForm({...init(),year:yearId});setMessage("");}}>
+          <select value={resource} onChange={e=>{setResource(e.target.value);setForm({...init(),year:yearId});setEditingLevel(null);setMessage("");}}>
             {TYPES.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
           </select>
         </label>
@@ -126,20 +144,29 @@ export default function AcademicPanel({schoolId,workingYearId="",onWorkingYearCh
             <form onSubmit={submit}>
           <div className="two">
             <label className="field">Code
-              <input required maxLength={40} pattern="[a-z0-9][a-z0-9_-]*" value={form.code} onChange={e=>update("code",e.target.value)} placeholder="ex : 2026-2027" />
+              <input required maxLength={40} pattern="[a-z0-9][a-z0-9_-]*"
+                disabled={resource==="levels"&&!!editingLevel}
+                value={form.code} onChange={e=>update("code",e.target.value)} placeholder="ex : 1re-annee" />
             </label>
             <label className="field">Intitulé
               <input required maxLength={120} value={form.name} onChange={e=>update("name",e.target.value)} placeholder="Nom libre" />
             </label>
             {type.fields.map(field=><label className="field" key={field}>{LABELS[field]}{fieldControl(field)}</label>)}
           </div>
-          <button type="submit" disabled={busy}>Ajouter : {type.label.toLowerCase()}</button>
+          {resource==="levels"&&editingLevel&&<p className="hint">Le nom et l'ordre sont modifiables par établissement. Le code technique reste stable pour préserver les barèmes et bulletins historiques.</p>}
+          <button type="submit" disabled={busy}>
+            {resource==="levels"&&editingLevel?"Enregistrer le niveau":"Ajouter : "+type.label.toLowerCase()}
+          </button>
+          {resource==="levels"&&editingLevel&&<button type="button" disabled={busy}
+            onClick={()=>{setEditingLevel(null);setForm(init());}}>Annuler la modification</button>}
             </form>
           </>}
         {resource!=="years"&&<><h3>{type.label} déjà créés ({visibleRows.length})</h3>
         {visibleRows.length===0 ? <p className="hint">Aucun élément enregistré pour cette sélection.</p>
           : <ul>{visibleRows.map(row=><li key={row.id} style={{marginBottom:"0.8rem"}}>
             <strong>{row.name}</strong> <small>({row.code}) {row.active ? "" : "· Archivé"}</small>
+            {resource==="levels"&&<button type="button" disabled={busy}
+              onClick={()=>editLevel(row)}>Modifier ce niveau</button>}
             <button type="button" style={{marginLeft:"0.8rem"}} disabled={busy}
               onClick={()=>setActive(row)}>{row.active?"Archiver":"Réactiver"}</button>
           </li>)}</ul>}

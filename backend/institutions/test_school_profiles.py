@@ -36,6 +36,25 @@ class SchoolProfilesTests(TestCase):
             path, json.dumps(payload), content_type="application/json"
         )
 
+    def test_primary_level_catalog_has_five_configurable_years(self):
+        from .school_profiles import CLASS_LEVELS, class_level_options
+        expected = ["1re-annee", "2e-annee", "3e-annee", "4e-annee", "5e-annee"]
+        self.assertEqual([code for code, _ in CLASS_LEVELS["primaire"]], expected)
+        org = Organization.objects.create(name="École de démonstration")
+        school = School.objects.create(
+            organization=org, name="Complexe scolaire",
+            school_type="groupe_scolaire", education_cycles=["prescolaire", "primaire"],
+        )
+        options = class_level_options(school)
+        self.assertEqual(
+            [options[f"primaire:{code}"]["name"] for code in expected],
+            ["1re année", "2e année", "3e année", "4e année", "5e année"],
+        )
+        self.assertFalse(any(code in options for code in
+            ["primaire:cp1", "primaire:cp2", "primaire:ce1",
+             "primaire:ce2", "primaire:cm1", "primaire:cm2"]))
+        self.assertIn("prescolaire:ps", options)
+
     def test_profile_catalog_lists_mixed_secondary_cycles(self):
         response = self.client.get("/api/v1/platform/schools")
         self.assertEqual(response.status_code, 200)

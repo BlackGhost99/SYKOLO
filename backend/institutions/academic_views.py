@@ -250,6 +250,13 @@ def detail(request, school_id, resource, object_id):
                 return JsonResponse({"error": "L'année scolaire clôturée est conservée en lecture seule."}, status=409)
             if resource == "classes" and not can_manage_classes(request.user, school, obj.level.cycle.code):
                 return refuse()
+            if resource == "levels" and "code" in clean and clean["code"] != obj.code:
+                # A code is referenced by scope-specific grading/attendance settings
+                # and historical report contexts. Renaming its display label remains safe.
+                if obj.classes.exists() or obj.tracks.exists():
+                    return JsonResponse({
+                        "error": "Le code d'un niveau déjà utilisé est stable. Modifiez son intitulé ou son ordre."
+                    }, status=409)
             if resource in ("classes", "periods") and not obj.year.active:
                 return JsonResponse({"error": "L'année scolaire est archivée."}, status=409)
             if obj.revision != revision:
