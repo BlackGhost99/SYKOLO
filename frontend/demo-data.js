@@ -76,7 +76,9 @@ export function createDemoState(){
     classes:[...SEED_CLASSES.map(asCurrentYear),{
       id:"c8",school:"lycee",year:ARCHIVE_YEAR,name:"6e A",capacity:40
     }],
-    staff:SEED_STAFF.map(s=>({...asCurrentYear(s),roles:[s.role],hasAccount:true,cycles:["Tous les cycles"]})),
+    staff:[...SEED_STAFF.map(s=>({...asCurrentYear(s),roles:[s.role],hasAccount:true,cycles:["Tous les cycles"]})),
+      {id:"p8",school:"lycee",year:ARCHIVE_YEAR,name:"M. J. Obiang",role:"Enseignant",
+       roles:["Enseignant"],hasAccount:false,cycles:["6e"]}],
     subjects:[
       {id:"m1",school:"lycee",year:DEMO_CURRENT_YEAR,name:"Mathématiques",level:"6e",coefficient:3},
       {id:"m2",school:"lycee",year:DEMO_CURRENT_YEAR,name:"Français",level:"6e",coefficient:3},
