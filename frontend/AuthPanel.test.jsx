@@ -121,3 +121,11 @@ it("conserve les trois parcours de connexion dans la nouvelle interface YEM", as
   await ui.click(screen.getByRole("button", { name: "Établissement", exact: true }));
   expect(screen.getByLabelText("Code de l'établissement")).toBeTruthy();
 });
+
+
+it("affiche la signature officielle BWETEK Informatyk sur la page de connexion", async () => {
+  setup();
+  render(<AuthPanel />);
+  expect(await screen.findByText("BWETEK Informatyk")).toBeTruthy();
+  expect(screen.queryByText(/BWETEK informatye/i)).toBeNull();
+});

@@ -335,7 +335,7 @@ export default function AuthPanel() {
           <p className="yem-login-assurance">Accès personnel · Espace protégé · Assistance locale</p>
         </div>
       </main>
-      <div className="yem-login-credit">Développé par <strong>BWETEK informatyk</strong></div>
+      <div className="yem-login-credit">Développé par <strong>BWETEK Informatyk</strong></div>
     </div>
   );
 }
