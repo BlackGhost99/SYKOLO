@@ -764,15 +764,72 @@ export default function DemoExperience(){
         <b>{a.name}</b><span>{schoolOf(state,a.school)?.name}</span><Status>{a.status}</Status></div>):
         <Empty>Aucune demande. Choisis une école pour simuler une préinscription.</Empty>}</Card></>;
   }
+  function parentsDirectory(){
+    const links=currentStudents.map(s=>({student:s,guardian:s.guardian})).filter(x=>x.guardian);
+    return <><PageHeader title="Parents" subtitle="Les responsables légaux de chaque élève, par classe" actions={advanced("parents")}/>
+      <div className="yd-real-body">
+        <Card title="Parents par classe" icon="users"><div className="demo-table-wrap"><table className="clickable nowrap dense">
+          <thead><tr><th>Responsable légal</th><th>Élève</th><th>Classe</th><th>Contact</th></tr></thead>
+          <tbody>{links.map(({student:s,guardian})=><tr key={s.id}><td>{guardian}</td><td>{s.name}</td>
+            <td>{s.level}</td><td>{s.phone||"À compléter"}</td></tr>)}</tbody>
+        </table>{!links.length&&<Empty>Aucun responsable pour l'année sélectionnée.</Empty>}</div></Card>
+      </div></>;
+  }
+  function settingPanel(id){
+    const title=DEMO_SETTING_SECTIONS.flatMap(x=>x.items).find(x=>x.id===id)?.label||"Configuration";
+    const screen={
+      classes:classes,numbering:settings,curriculum:curriculum,"report-policy":settings,
+      "council-policy":()=>reports(),"amendments":()=>reports(),
+      timetable:timetable,academic:years,"admission-policy":settings,
+      fees:settings,gateway:settings,"attendance-policy":()=>absences(),
+      "parent-access":parentsDirectory,organization:organization,
+      "staff-setup":staff,roles:organization,users:accounts,
+      "cycle-access":organization,form:students,
+    }[id];
+    if(screen)return <div className="demo-settings-panel">{screen()}</div>;
+    return <Card title={title} icon="settings"><p className="demo-hint">Aperçu de cette rubrique — données fictives.</p>
+      <DemoButton onClick={()=>message("Aucune configuration réelle enregistrée.")} icon="check">Enregistrer la simulation</DemoButton>
+    </Card>;
+  }
+  function schoolPageContent(){
+    if(page==="settings")return <SchoolSettings sections={DEMO_SETTING_SECTIONS}
+      selection={settingsSelection} onSelect={setSettingsSelection}
+      render={settingPanel} isOwner={true}
+      onReturn={settingsReturn?()=>{setPage(settingsReturn.page);setSub(settingsReturn.sub);setSettingsReturn(null);}:undefined}/>;
+    if(page==="dashboard")return dashboard();
+    const selectedTab=sub||DEMO_TABS[page]?.[0]?.[0]||"";
+    const tabs=demoTabs(page);
+    const advancedAction=advanced(page);
+    if(page==="students")return <div className="demo-live-screen">
+      <div className="yd-view-filters"><label>Année scolaire <select value={year} aria-label="Année de travail de l'établissement"
+        onChange={e=>setYear(e.target.value)}>{DEMO_YEARS.map(y=><option key={y}>{y}</option>)}</select></label>
+        <label>Devise de consultation <select aria-label="Devise de consultation" defaultValue="XAF"><option value="XAF">XAF</option></select></label></div>
+      {selectedTab==="byclass"?<><PageHeader title="Inscriptions par classe" subtitle="Inscriptions, classes, responsables et suivi administratif" actions={advancedAction}/>{tabs}
+        <div className="yd-real-body">{classes()}</div></>:
+        <>{students(advancedAction,tabs)}</>}
+    </div>;
+    if(page==="classes")return <>{classes(advancedAction)}</>;
+    if(page==="admissions")return <>{admissions(advancedAction)}</>;
+    if(page==="payments")return <>{payments(false,advancedAction,tabs)}</>;
+    if(page==="arrears")return <>{arrears(advancedAction)}</>;
+    if(page==="bulletins")return <>{reports(false,advancedAction,tabs,selectedTab)}</>;
+    if(page==="absences")return <>{absences(false,advancedAction)}</>;
+    if(page==="parents")return parentsDirectory();
+    if(page==="staff")return selectedTab==="onboarding"?
+      <><PageHeader title="Personnel" subtitle="Retrouvez les collaborateurs et gérez leurs affectations" actions={advancedAction}/>
+        <div className="yd-real-body"><Card title="Ajouter un collaborateur" icon="adduser"><div className="demo-actions">
+          <DemoButton primary icon="adduser" onClick={()=>open("staff")}>Ajouter un membre du personnel</DemoButton>
+          <DemoButton icon="users" onClick={()=>setSub("directory")}>Retour à l'équipe</DemoButton></div></Card></div></>:
+      staff(advancedAction);
+    return dashboard();
+  }
   const pageContent=()=>{
     if(role==="platform")return page==="accounts"?accounts():page==="schools"?schools():platform();
     if(role==="parent")return page==="parent-payments"?payments(true):
       page==="parent-results"?reports(true):
       page==="parent-absences"?absences(true):
       page==="parent-admissions"?parentAdmissions():parents();
-    return ({
-      dashboard,students,classes,admissions,payments,arrears,bulletins:()=>reports(),absences,staff,organization,curriculum,timetable,years,settings,
-    }[page]||dashboard)();
+    return schoolPageContent();
   };
   return <div className="demo-app" data-demo="true">
     <div className="demo-ribbon" role="status">
