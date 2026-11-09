@@ -130,12 +130,12 @@ BEGIN
     -- A real-looking but non-contactable guardian for each fictitious child.
     SELECT COUNT(*) INTO count_classes FROM public.institutions_academicclass
       WHERE school_id=sch AND year_id=yr AND active
-        AND (code LIKE 'demo26-%' OR code LIKE 'demo-%');
+        AND code LIKE 'demo26-%';
     IF count_classes<7 THEN RAISE EXCEPTION 'Missing demonstration classes in %',s.tag; END IF;
     FOR idx IN 1..15 LOOP
       SELECT id,code INTO cls,cls_code FROM public.institutions_academicclass
        WHERE school_id=sch AND year_id=yr AND active
-         AND (code LIKE 'demo26-%' OR code LIKE 'demo-%')
+         AND code LIKE 'demo26-%'
        ORDER BY code, id LIMIT 1 OFFSET ((idx-1)%count_classes);
       ident:=md5('YEM-DEMO-2026:identity:'||s.tag||':'||idx)::uuid;
       sid:=md5('YEM-DEMO-2026:student:'||s.tag||':'||idx)::uuid;
