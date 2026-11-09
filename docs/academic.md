@@ -60,3 +60,25 @@ Les établissements mixtes cumulent **uniquement les cycles activés**. Les subd
 - **Dupliquer** reprend uniquement la division (niveau, année, filière, capacité), et jamais les élèves, emplois du temps, évaluations, personnel ni finance. Les classes A/B/C et les noms libres restent modifiables.
 - Lorsqu'une nouvelle année **copie** explicitement les classes de l'année précédente, YEM respecte la structure copiée et n'ajoute pas automatiquement d'autres divisions ; les niveaux manquants sont toujours ajoutables volontairement avec le bouton de complément.
 - Aucun schéma ou migration supplémentaire n'est nécessaire et **aucune classe ancienne n'est modifiée rétroactivement**.
+
+## Ouverture explicite des séries et archivage réversible (novembre 2026)
+
+Le cycle **lycée général** n'ouvre plus automatiquement « Seconde A », « Première A » ou « Terminale A » lorsque YEM crée une année scolaire ou complète les classes standards. Le même principe s'applique au **lycée technique** : éviter les classes fantômes. Les niveaux Seconde, Première et Terminale restent proposés, sans série obligatoire.
+
+### Catalogue et choix de l'établissement
+
+- **Général (source : annuaire statistique 2020/2021 du Gabon)** : Seconde **LE, S** ; Première **A1, A2, B, S** ; Terminale **A1, A2, B, C, D**. Les intitulés locaux non listés (A1 en Seconde, S1/S2/SU, etc.) sont acceptés si l'établissement les utilise.
+- **Technique** : suggestions **ACA, ACC, ACG, CG, CFE, F1, F1C, F1D, F2, F3, F4, MI, MSI, SI, GSI, RHC, M, ERE, BIOT, SPCL**. Les séries documentées par BacTech ne constituent pas une liste réglementaire prouvant leur existence à chaque niveau. **ACG** est une appellation locale rapportée ; l'établissement vérifie son libellé.
+- Les suggestions ne créent **ni série active ni classe**. La direction choisit un niveau, saisit ou sélectionne une série, prépare de 1 à 30 **noms éditables** (Seconde S1, S2, SU, Première ACC1…), puis confirme. Une `AcademicTrack` propre à ce niveau et cette école est créée au besoin et rattachée aux seules nouvelles `AcademicClass` de l'année choisie, sans élèves, matières ou paiements.
+- Endpoint : `POST /schools/{school_id}/academic/series-classes` avec `{"year":"uuid","level":"uuid","series":"S","names":["Seconde S1","Seconde SU"],"capacity":35}`. Noms libres et uniques par année, codes stables, périmètre de cycle, transaction et audit.
+- Aucun ancien nom de classe n'est modifié automatiquement, même les anciennes « Seconde A ». L'établissement peut les archiver depuis **Paramètres → Classes**.
+
+### Archivage, retour et protection du catalogue parent
+
+- Chaque classe possède un booléen `active`. Boutons **Archiver** / **Réactiver** en gestion des classes, avec confirmation. L'archive ne supprime pas les dossiers ni les inscriptions ou bulletins existants et ne peut pas être modifiée dans une année clôturée.
+- Le catalogue parent masque les classes inactives, ainsi que celles liées à un cycle, un niveau ou une série inactive. La création directe de candidature et les inscriptions côté serveur refusent ces mêmes cas.
+- **Réouvrir dans cette année** permet de **reprendre une classe archivée d'une année antérieure** via `POST /schools/{school_id}/academic/classes/{class_id}/carry-forward` avec `{"year":"uuid"}`. Il crée une **nouvelle** division active (même niveau, série, nom et capacité) dans une année postérieure modifiable, tandis que l'archive et ses inscriptions restent intactes. Un doublon de nom est refusé. Il ne copie ni élèves, ni notes, ni paiements, ni emplois du temps.
+- Une classe inactive n'est pas reportée automatiquement lors de la préparation d'une nouvelle année ; sa réouverture est **un choix explicite** de la direction. Les classes actives sont copiées par le mode de reprise annuelle existant.
+- Les droits de gestion sont limités au cycle effectivement délégué. Aucune migration du schéma n'est requise.
+
+Sources : annuaire statistique du secteur Éducation/Formation du Gabon (publié en 2023, description scolaire 2020–2021), `https://instatgabon.org/uploads/folder_1/RGOE/Annuaire_2020-2021_31_10_2023_.pdf` ; catalogue BacTech `https://bactechgabon.com/affiche_listinscritserie.php` ; Lycée technique de Ntoum (appellations locales ACA/ACC, ACG).
