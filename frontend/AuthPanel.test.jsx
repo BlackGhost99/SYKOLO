@@ -127,9 +127,18 @@ it("utilise directement l'image originale et conserve les vrais champs de connex
   setup();
   render(<AuthPanel />);
   const picture = document.querySelector(".yem-original-login__image");
-  expect(picture?.getAttribute("src")).toBe("/yem-login-original.jpg");
+  expect(picture?.getAttribute("src")).toBe("/yem-login-original.png");
   expect(document.querySelector(".yem-original-login--exact")).toBeTruthy();
   expect(screen.getByLabelText("Code de l'établissement")).toBeTruthy();
   expect(screen.getByRole("button", {name:"Se connecter",exact:true})).toBeTruthy();
   expect(document.querySelector(".yem-login-story")).toBeNull();
+});
+
+it("conserve la récupération de mot de passe sans confondre l'image et le formulaire",async()=>{
+  setup();
+  render(<AuthPanel/>);
+  const ui=userEvent.setup();
+  await ui.click(screen.getByRole("button",{name:"Mot de passe oublié",exact:true}));
+  expect(screen.getByLabelText("Adresse email du compte")).toBeTruthy();
+  expect(document.querySelector(".yem-original-login__image")?.getAttribute("src")).toBe("/yem-login-original.png");
 });
