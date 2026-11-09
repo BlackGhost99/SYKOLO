@@ -58,7 +58,8 @@ test("la maternelle complète les classes standards et duplique une division ren
         code: "ps", cycle_code: "prescolaire", active: true},
     ],
     can_manage_classes: true, can_manage_academic: true,
-    preschool_standards_available: true, class_management_cycles: ["prescolaire"],
+    standard_cycles_available: [{code: "prescolaire", name: "Maternelle / préscolaire", level_count: 4}],
+    class_management_cycles: ["prescolaire"],
     class_level_options: {},
     classes: [{id: "class-a", name: "Petite section A", code: "ps-a",
       revision: 1, active: true, enrolled: 2, capacity: 25,
@@ -66,7 +67,7 @@ test("la maternelle complète les classes standards et duplique une division ren
   };
   const fetchMock = vi.fn(async url => ({
     ok: true, headers: {get: () => "application/json"},
-    json: async () => url.endsWith("preschool-standard-classes")
+    json: async () => url.endsWith("/standard-classes")
       ? {created: 3, classes: [{name: "Crèche A"}, {name: "Moyenne section A"}, {name: "Grande section A"}]}
       : url.endsWith("/clone") ? {id: "class-b", name: "Petite section Papillons"} : data,
   }));
@@ -76,7 +77,7 @@ test("la maternelle complète les classes standards et duplique une division ren
   await screen.findByText("Petite section A");
   await user.click(screen.getByRole("button", {name: "Compléter les classes standards"}));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-    expect.stringContaining("preschool-standard-classes"),
+    expect.stringContaining("/standard-classes"),
     expect.objectContaining({body: JSON.stringify({year: "y-presco"})}),
   ));
   await user.click(await screen.findByRole("button", {name: "Dupliquer Petite section A"}));
@@ -89,4 +90,48 @@ test("la maternelle complète les classes standards et duplique une division ren
     expect.stringContaining("classes/class-a/clone"),
     expect.objectContaining({body: JSON.stringify({name: "Petite section Papillons"})}),
   ));
+});
+
+test("un complexe scolaire présente tous ses cycles avant de compléter les classes", async () => {
+  const year = {id: "annee", name: "2026-2027", active: true};
+  const data = {
+    year, years: [year], levels: [], classes: [], can_manage_classes: true,
+    standard_cycles_available: [
+      {code: "primaire", name: "Primaire", level_count: 5},
+      {code: "college", name: "Collège", level_count: 4},
+      {code: "lycee_general", name: "Lycée général", level_count: 3},
+    ],
+    class_management_cycles: null, class_level_options: {},
+  };
+  const fetchMock = vi.fn(async url => ({
+    ok: true, headers: {get: () => "application/json"},
+    json: async () => url.endsWith("/standard-classes")
+      ? {created: 12, classes: []} : data,
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<ClassSetup schoolId="school"/>);
+  const user = userEvent.setup();
+  expect(await screen.findByText(/12 niveaux disponibles/)).toBeTruthy();
+  expect(screen.getByText(/Primaire · Collège · Lycée général/)).toBeTruthy();
+  await user.click(screen.getByRole("button", {name: "Compléter les classes standards"}));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("schools/school/academic/standard-classes"),
+    expect.objectContaining({body: JSON.stringify({year: "annee"})}),
+  ));
+});
+
+test("un cycle sans délégation ne propose pas la génération des classes standards", async () => {
+  const year = {id: "annee", name: "2026-2027", active: true};
+  const data = {
+    year, years: [year], levels: [], classes: [], can_manage_classes: false,
+    standard_cycles_available: [], class_management_cycles: [],
+    class_level_options: {}, can_manage_academic: false,
+  };
+  vi.stubGlobal("fetch", vi.fn(async () => ({
+    ok: true, headers: {get: () => "application/json"},
+    json: async () => data,
+  })));
+  render(<ClassSetup schoolId="school"/>);
+  expect(await screen.findByText("Aucune classe pour cette année.")).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Compléter les classes standards"})).toBeNull();
 });
