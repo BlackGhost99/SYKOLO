@@ -24,8 +24,9 @@ from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, Academi
 from .finance_models import FeeSchedule, FeeCharge, FeePayment
 from .overview_views import gate, current_year, enrollment_balances, finance_status, money, ZERO
 from .services import can_manage_classes, class_management_scope, has_permission, quota_reached
-from .school_profiles import class_level_options
-from .preschool_classes import ensure_preschool_classes, preschool_enabled
+from .school_profiles import CLASS_LEVELS, CYCLE_LABELS, class_level_options
+from .preschool_classes import preschool_enabled
+from .standard_classes import enabled_standard_cycles, ensure_standard_classes
 from .models import School
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import (
@@ -296,6 +297,11 @@ def classes_overview(request, school_id):
         "unassigned_students": unassigned,
         "class_level_options": class_level_options(school),
         "preschool_standards_available": preschool_enabled(school) and can_manage_classes(request.user, school, "prescolaire"),
+        "standard_cycles_available": [
+            {"code": code, "name": CYCLE_LABELS[code], "level_count": len(CLASS_LEVELS[code])}
+            for code in enabled_standard_cycles(school)
+            if can_manage_classes(request.user, school, code)
+        ],
         "can_manage_classes": scope is None or bool(scope),
         "class_management_cycles": sorted(scope) if scope is not None else None,
         "can_manage_academic": has_permission(request.user, school, "school.academic.manage"),
@@ -336,16 +342,18 @@ def class_students(request, school_id, class_id):
     ]}, headers={"Cache-Control": "no-store"})
 
 
-@require_POST
-@authorized
-def standard_preschool_classes(request, school_id):
-    """Complète les quatre classes maternelles sans détruire les personnalisations."""
+def _standard_classes_response(request, school_id, only_preschool=False):
+    """Complète les divisions manquantes, par cycle autorisé, sans écraser les choix de l'école."""
     school, error = access(request, school_id)
     if error is not None:
         return error
-    if not preschool_enabled(school):
-        return JsonResponse({"error": "Le cycle préscolaire n'est pas ouvert dans cet établissement."}, status=422)
-    if not can_manage_classes(request.user, school, "prescolaire"):
+    available = enabled_standard_cycles(school)
+    if only_preschool:
+        if "prescolaire" not in available:
+            return JsonResponse({"error": "Le préscolaire n'est pas ouvert dans cette école."}, status=422)
+        available = ["prescolaire"]
+    permitted = [code for code in available if can_manage_classes(request.user, school, code)]
+    if not permitted:
         return refuse()
     data, error = parse_body(request)
     if error is not None:
@@ -363,19 +371,37 @@ def standard_preschool_classes(request, school_id):
                 raise Refused("Année scolaire introuvable.", 404)
             if not year.active or year.status == AcademicYear.STATUS_CLOSED:
                 raise Refused("L'année scolaire clôturée n'est pas modifiable.", 409)
-            created = ensure_preschool_classes(locked_school, year)
+            created = ensure_standard_classes(locked_school, year, cycles=permitted)
             if created:
-                log_event(school, request, "preschool_classes_generated", str(year.pk), {
+                log_event(school, request, "standard_classes_generated", str(year.pk), {
                     "class_ids": [str(room.pk) for room in created],
+                    "cycles": permitted,
                 })
         return JsonResponse({
             "classes": [{"id": str(room.pk), "name": room.name, "code": room.code}
                         for room in created],
-            "created": len(created), "preserved": 4 - len(created),
-            "message": ("Classes maternelles complétées." if created else
-                        "Les quatre niveaux disposent déjà d'une classe."),
+            "created": len(created),
+            "preserved": sum(len(CLASS_LEVELS[code]) for code in permitted) - len(created),
+            "cycles": permitted,
+            "message": ("Classes standards manquantes ajoutées." if created else
+                        "Toutes les classes standards sont déjà présentes."),
         })
     return respond(run)
+
+
+@require_POST
+@authorized
+def standard_preschool_classes(request, school_id):
+    """Compatibilité de l'ancien bouton exclusivement maternel."""
+    return _standard_classes_response(request, school_id, only_preschool=True)
+
+
+@require_POST
+@authorized
+def standard_school_classes(request, school_id):
+    """Compléter les classes standards de tous les cycles gérés par cet utilisateur."""
+    return _standard_classes_response(request, school_id)
+
 
 
 def suggested_copy_name(classroom, school, year):

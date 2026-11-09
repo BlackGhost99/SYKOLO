@@ -197,6 +197,96 @@ class RegistrationTests(TestCase):
                          {"creche", "ps", "ms", "gs"})
         self.assertEqual(Enrollment.objects.filter(school=self.school, year=year).count(), 0)
 
+    def test_standard_classes_complete_primary_college_and_lycee_idempotently(self):
+        from .school_profiles import CLASS_LEVELS
+        self.school.school_type = "groupe_scolaire"
+        self.school.education_cycles = ["primaire", "college", "lycee_general"]
+        self.school.save(update_fields=["school_type", "education_cycles"])
+        self.client.force_login(self.director)
+        path = "academic/standard-classes"
+        first = self.post(path, {"year": str(self.year.pk)})
+        self.assertEqual(first.status_code, 200, first.content)
+        self.assertEqual(first.json()["created"], 5 + 4 + 3)
+        self.assertEqual(first.json()["cycles"], ["primaire", "college", "lycee_general"])
+        self.assertEqual(
+            set(AcademicLevel.objects.filter(school=self.school, cycle__code="primaire")
+                .values_list("code", flat=True)),
+            {code for code, _ in CLASS_LEVELS["primaire"]},
+        )
+        self.assertEqual(
+            set(AcademicLevel.objects.filter(school=self.school, cycle__code="college")
+                .values_list("code", flat=True)),
+            {"6e", "5e", "4e", "3e"},
+        )
+        self.assertEqual(
+            set(AcademicLevel.objects.filter(school=self.school, cycle__code="lycee_general")
+                .values_list("code", flat=True)),
+            {"seconde", "premiere", "terminale"},
+        )
+        new_rooms = AcademicClass.objects.filter(
+            school=self.school, year=self.year, code__startswith="std-",
+        )
+        self.assertEqual(new_rooms.count(), 12)
+        self.assertEqual(len({room.name.casefold() for room in new_rooms}), 12)
+        self.assertEqual(self.post(path, {"year": str(self.year.pk)}).json()["created"], 0)
+        to_rename = new_rooms.get(level__cycle__code="primaire", level__code="1re-annee")
+        renamed = self.client.patch(
+            self.base + f"academic/classes/{to_rename.pk}",
+            json.dumps({"revision": to_rename.revision, "name": "Première année Les Étoiles"}),
+            content_type="application/json",
+        )
+        self.assertEqual(renamed.status_code, 200, renamed.content)
+        self.assertEqual(self.post(path, {"year": str(self.year.pk)}).json()["created"], 0)
+        to_rename.refresh_from_db()
+        self.assertEqual(to_rename.name, "Première année Les Étoiles")
+
+    def test_standard_classes_respect_delegate_cycle_and_read_only_year(self):
+        self.school.school_type = "groupe_scolaire"
+        self.school.education_cycles = ["primaire", "college", "lycee_general"]
+        self.school.save(update_fields=["school_type", "education_cycles"])
+        self.client.force_login(self.director)
+        grant = self.post("delegations", {
+            "user_id": str(self.secretary.pk), "permissions": ["school.classes.manage"],
+            "class_cycle": "college", "reason": "Gestion temporaire des classes du collège",
+        })
+        self.assertEqual(grant.status_code, 201, grant.content)
+        self.client.force_login(self.secretary)
+        overview = self.client.get(self.base + "overview/classes")
+        self.assertEqual(overview.status_code, 200, overview.content)
+        options = overview.json()["standard_cycles_available"]
+        self.assertEqual([cycle["code"] for cycle in options], ["college"])
+        response = self.post("academic/standard-classes", {"year": str(self.year.pk)})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["created"], 4)
+        self.assertEqual(response.json()["cycles"], ["college"])
+        self.assertFalse(AcademicLevel.objects.filter(school=self.school, cycle__code="primaire").exists())
+        self.assertFalse(AcademicLevel.objects.filter(school=self.school, cycle__code="lycee_general").exists())
+        self.client.force_login(self.teacher)
+        self.assertEqual(self.post("academic/standard-classes", {"year": str(self.year.pk)}).status_code, 403)
+        self.client.force_login(self.director)
+        self.year.active = False
+        self.year.status = "closed"
+        self.year.save(update_fields=["active", "status"])
+        self.assertEqual(self.post("academic/standard-classes", {"year": str(self.year.pk)}).status_code, 409)
+
+    def test_mixed_preschool_and_technical_school_avoids_class_name_collision(self):
+        from .standard_classes import ensure_standard_levels
+        self.school.school_type = "groupe_scolaire"
+        self.school.education_cycles = ["prescolaire", "primaire", "college", "lycee_general", "lycee_technique"]
+        self.school.save(update_fields=["school_type", "education_cycles"])
+        self.client.force_login(self.director)
+        result = self.post("academic/standard-classes", {"year": str(self.year.pk)})
+        self.assertEqual(result.status_code, 200, result.content)
+        self.assertEqual(result.json()["created"], 19)
+        names = [classroom["name"] for classroom in result.json()["classes"]]
+        self.assertIn("Seconde A", names)
+        self.assertIn("Seconde technique A", names)
+        self.assertIn("Crèche A", names)
+        self.assertIn("5e année A", names)
+        self.assertEqual(len({name.casefold() for name in names}), 19)
+        self.assertEqual(self.post("academic/standard-classes", {"year": str(self.year.pk)}).json()["created"], 0)
+        self.assertEqual(self.post("academic/preschool-standard-classes", {"year": str(self.year.pk)}).json()["created"], 0)
+
     def test_clone_class_duplicates_structure_only_without_data(self):
         self.client.force_login(self.director)
         source = self.c6a

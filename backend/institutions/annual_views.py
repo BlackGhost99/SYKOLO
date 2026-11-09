@@ -17,7 +17,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
 from .academic_models import AcademicYear, AcademicYearClosure, AcademicClass, AcademicPeriod
-from .preschool_classes import ensure_preschool_classes
+from .standard_classes import ensure_standard_classes
 from .assessment_models import Assessment
 from .models import School
 from .report_models import SchoolReport
@@ -367,9 +367,9 @@ def prepare_year(request, school_id):
                     copied += 1
             generated = []
             if not body["copy_classes"]:
-                generated = ensure_preschool_classes(school, year)
+                generated = ensure_standard_classes(school, year)
                 if generated:
-                    log_event(school, request, "preschool_classes_generated", str(year.pk), {
+                    log_event(school, request, "standard_classes_generated", str(year.pk), {
                         "class_ids": [str(room.pk) for room in generated],
                     })
             log_event(school, request, "academic_year_prepared", str(year.pk), {

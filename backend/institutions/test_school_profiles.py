@@ -55,6 +55,57 @@ class SchoolProfilesTests(TestCase):
              "primaire:ce2", "primaire:cm1", "primaire:cm2"]))
         self.assertIn("prescolaire:ps", options)
 
+    def test_platform_provisions_primary_levels_without_inventing_school_year(self):
+        from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
+
+        created = self.post("/api/v1/platform/schools", {
+            **self.payload,
+            "school_type": "primaire", "education_cycles": ["primaire"],
+            "role": "direction",
+        })
+        self.assertEqual(created.status_code, 201, created.content)
+        school = School.objects.get(pk=created.json()["id"])
+        self.assertEqual(AcademicCycle.objects.filter(school=school, code="primaire").count(), 1)
+        self.assertEqual(list(AcademicLevel.objects.filter(
+            school=school, cycle__code="primaire").order_by("order").values_list("code", flat=True)),
+            ["1re-annee", "2e-annee", "3e-annee", "4e-annee", "5e-annee"])
+        self.assertFalse(AcademicYear.objects.filter(school=school).exists())
+        self.assertFalse(AcademicClass.objects.filter(school=school).exists())
+        director = get_user_model().objects.get(username=self.payload["username"])
+        self.client.force_login(director)
+        response = self.post(f"/api/v1/schools/{school.pk}/academic/years", {
+            "name": "2026-2027", "code": "2026-2027",
+            "start_date": "2026-09-01", "end_date": "2027-07-31",
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        year = AcademicYear.objects.get(pk=response.json()["id"])
+        self.assertEqual(AcademicClass.objects.filter(school=school, year=year).count(), 5)
+        self.assertEqual(list(AcademicClass.objects.filter(
+            school=school, year=year).order_by("level__order").values_list("name", flat=True)),
+            ["1re année A", "2e année A", "3e année A", "4e année A", "5e année A"])
+
+    def test_secondary_new_schools_get_appropriate_preset_levels(self):
+        from .academic_models import AcademicLevel, AcademicClass
+
+        for kind, cycles, codes in (
+            ("college", ["college"], {"6e", "5e", "4e", "3e"}),
+            ("lycee_general", ["college", "lycee_general"],
+             {"6e", "5e", "4e", "3e", "seconde", "premiere", "terminale"}),
+            ("lycee_technique", ["lycee_technique"],
+             {"seconde", "premiere", "terminale"}),
+        ):
+            with self.subTest(kind=kind):
+                response = self.post("/api/v1/platform/schools", {
+                    **self.payload, "school_type": kind, "education_cycles": cycles,
+                    "role": "principal" if kind == "college" else "proviseur",
+                    "username": "provision-" + kind,
+                })
+                self.assertEqual(response.status_code, 201, response.content)
+                school = School.objects.get(pk=response.json()["id"])
+                self.assertEqual(set(AcademicLevel.objects.filter(
+                    school=school).values_list("code", flat=True)), codes)
+                self.assertEqual(AcademicClass.objects.filter(school=school).count(), 0)
+
     def test_profile_catalog_lists_mixed_secondary_cycles(self):
         response = self.client.get("/api/v1/platform/schools")
         self.assertEqual(response.status_code, 200)

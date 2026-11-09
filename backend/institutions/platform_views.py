@@ -14,7 +14,7 @@ from .services import (
 )
 from .school_functions import account_functions, suggested_account_function, validate_account_functions
 from .school_profiles import CYCLE_LABELS, profile_options, validate_school_profile
-from .preschool_classes import ensure_preschool_levels
+from .standard_classes import ensure_standard_levels
 from .views import parse_body, log_event, string
 
 
@@ -100,7 +100,7 @@ def platform_schools(request):
                 organization=org, name=school_name.strip(),
                 school_type=school_type, education_cycles=education_cycles,
             )
-            ensure_preschool_levels(school)
+            ensure_standard_levels(school)
             roles = {role.code: role for role in SchoolRole.objects.bulk_create([
                 SchoolRole(school=school, code=code, label=label, permissions=perms)
                 for code, label, perms in templates
