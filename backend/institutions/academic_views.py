@@ -149,6 +149,8 @@ def collection(request, school_id, resource):
         return error
     if resource not in RESOURCES:
         return JsonResponse({"error": "Ressource introuvable."}, status=404)
+    if resource == "years" and request.method != "GET" and scoped_cycle_ids(request.user, school) is not None:
+        return refuse()
     permission = "school.academic.read" if request.method == "GET" else "school.academic.manage"
     if not (can_manage_classes(request.user, school) if resource == "classes" and request.method != "GET"
             else has_permission(request.user, school, permission)):
@@ -213,6 +215,8 @@ def detail(request, school_id, resource, object_id):
         return error
     if resource not in RESOURCES:
         return JsonResponse({"error": "Ressource introuvable."}, status=404)
+    if resource == "years" and request.method != "GET" and scoped_cycle_ids(request.user, school) is not None:
+        return refuse()
     if request.method == "DELETE" and resource != "classes":
         return JsonResponse({"error": "Archivage uniquement pour cette ressource."}, status=405)
     permission = "school.academic.read" if request.method == "GET" else "school.academic.manage"
@@ -253,8 +257,13 @@ def detail(request, school_id, resource, object_id):
             obj = model.objects.select_for_update().filter(school=school, pk=object_id).first()
             if not obj:
                 return JsonResponse({"error": "Objet introuvable."}, status=404)
-            if resource == "years" and obj.status == AcademicYear.STATUS_CLOSED:
+            if resource == "years" and (obj.status == AcademicYear.STATUS_CLOSED or not obj.active):
                 return JsonResponse({"error": "L'année scolaire clôturée est conservée en lecture seule."}, status=409)
+            if resource == "years" and "code" in clean and clean["code"] != obj.code:
+                return JsonResponse({"error": "Le code technique de l'année est stable. Modifiez son nom affiché."}, status=409)
+            if resource == "years" and "name" in clean and clean["name"] != obj.name:
+                if AcademicYear.objects.filter(school=school, name__iexact=clean["name"]).exclude(pk=obj.pk).exists():
+                    return JsonResponse({"error": "Une année porte déjà ce nom dans l'établissement."}, status=409)
             if resource == "classes" and not can_manage_classes(request.user, school, obj.level.cycle.code):
                 return refuse()
             if resource == "levels" and "code" in clean and clean["code"] != obj.code:
