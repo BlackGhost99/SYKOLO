@@ -1,0 +1,24 @@
+/* La démo ne redéfinit AUCUN style de l'espace YEM réel.
+ * Le seul ajout est un pilotage flottant escamotable, sans déplacer les écrans. */
+.yem-demo-real{min-height:100vh}
+.yem-demo-pilot{position:fixed;right:16px;bottom:14px;z-index:3000;width:min(330px,calc(100vw - 32px));
+  background:#fff;border:1px solid #b6d0bd;border-radius:12px;
+  box-shadow:0 8px 38px #10332236;font:13px/1.45 system-ui,Arial,sans-serif;color:#23362a;
+  overflow:hidden}
+.yem-demo-pilot.collapsed{width:auto;max-width:calc(100vw - 32px)}
+.yem-demo-pilot-toggle{display:flex;align-items:center;justify-content:space-between;gap:9px;
+  width:100%;min-height:40px;border:0;color:#fff;background:#174c2c;
+  padding:10px 12px;font:700 11px/1.4 system-ui,sans-serif;letter-spacing:.055em;cursor:pointer}
+.yem-demo-pilot-dot{width:8px;height:8px;background:#c9f082;border-radius:50%;flex:none}
+.yem-demo-pilot-body{padding:10px 12px}
+.yem-demo-pilot-body p{margin:0 0 10px;color:#4b5f52;font-size:11px}
+.yem-demo-pilot-roles{display:grid;gap:5px}
+.yem-demo-pilot-roles button{min-height:32px;text-align:left;background:#f4f8f5;
+  border:1px solid #d9e4db;color:#294433;border-radius:7px;padding:6px 9px;cursor:pointer;font-size:12px}
+.yem-demo-pilot-roles button.selected{background:#e0f1e5;border-color:#379456;font-weight:700}
+.yem-demo-pilot-actions{display:flex;gap:6px;margin-top:9px}
+.yem-demo-pilot-actions button{flex:1;min-height:30px;border:1px solid #d0dfd4;border-radius:7px;
+  padding:6px;background:white;color:#245235;cursor:pointer;font-size:11px}
+.yem-demo-pilot-actions button:last-child{background:#245d36;color:white}
+.yem-demo-pilot-body .yem-demo-pilot-notice{margin:8px 0 0;color:#a35117}
+@media(max-width:650px){.yem-demo-pilot{bottom:9px;right:9px;width:min(300px,calc(100vw - 18px))}}
