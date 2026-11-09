@@ -437,6 +437,22 @@ export default function DemoExperience(){
       </button>)}{!currentClasses.length&&<Empty>Aucune classe. Utilise « Créer une classe ».</Empty>}</div>
     </>;
   }
+  function arrears(){
+    const outstanding=currentInvoices.filter(f=>remaining(f)>0);
+    const owed=outstanding.reduce((total,f)=>total+remaining(f),0);
+    return <><PageHeader title="Impayés & relances" subtitle={year+" — suivi fictif des échéances et des familles"}/>
+      <div className="demo-metrics"><Metric icon="users" label="Familles concernées" value={String(new Set(outstanding.map(f=>f.student)).size)}/>
+        <Metric icon="coins" label="Total à recouvrer" value={fcfa(owed)}/></div>
+      <Card title="Suivi des impayés" icon="alert"><div className="demo-table-wrap"><table>
+        <thead><tr><th>Élève</th><th>Nature des frais</th><th>Solde</th><th>Action</th></tr></thead>
+        <tbody>{outstanding.map(f=><tr key={f.id}>
+          <td>{state.students.find(s=>s.id===f.student)?.name}</td><td>{f.label}</td><td>{fcfa(remaining(f))}</td>
+          <td><button type="button" className="demo-table-action" onClick={()=>message("Relance préparée uniquement à l'écran : aucun WhatsApp, SMS ou e-mail envoyé.")}>
+            Préparer une relance</button></td></tr>)}</tbody>
+      </table>{!outstanding.length&&<Empty>Aucun impayé dans cette année scolaire.</Empty>}</div></Card>
+      <p className="demo-hint">La démo illustre les relances. Aucune communication n'est envoyée à une famille.</p>
+    </>;
+  }
   function payments(onlyChild=false){
     const invoices=onlyChild?state.invoices.filter(f=>f.student===child?.id&&f.year===year):currentInvoices;
     return <><PageHeader title={onlyChild?"Frais & paiements":"Frais et encaissements"}
@@ -501,23 +517,113 @@ export default function DemoExperience(){
         {!currentStaff.length&&<Empty>Aucun personnel fictif.</Empty>}
       </Card><p className="demo-hint">Dans YEM réel, les droits dépendent de l'établissement et des fonctions attribuées.</p></>;
   }
+  function organization(){
+    const roles=SCHOOL_ROLES[school.type]||SCHOOL_ROLES["Collège / Lycée"];
+    return <><PageHeader title="Organigramme & rôles" subtitle="Fonctions adaptées au type d'établissement et permissions par cycle"/>
+      <div className="demo-grid-two">
+        <Card title="Fonctions disponibles" icon="users">
+          {roles.map(name=><div key={name} className="demo-line"><b>{name}</b><small>{currentStaff.filter(p=>(p.roles||[p.role]).includes(name)).length} affectation(s)</small></div>)}
+        </Card>
+        <Card title="Affectations du personnel" icon="idcard">
+          {currentStaff.map(p=><div className="demo-line" key={p.id}><b>{p.name}</b>
+            <span>{(p.roles||[p.role]).join(" · ")}</span><small>{(p.cycles||["Tous les cycles"]).join(", ")}</small></div>)}
+          <div className="demo-actions"><DemoButton icon="adduser" primary onClick={()=>{setPage("staff");open("staff");}}>Affecter un membre</DemoButton></div>
+          <p className="demo-hint">Un compte est facultatif. Les fonctions et les droits sont distincts.</p>
+        </Card>
+      </div></>;
+  }
+  function generateSubjects(){
+    if(isClosed){message("L'année clôturée ne peut pas être modifiée.");return;}
+    const names=school.type==="Maternelle"?["Langage","Motricité","Éveil"]:
+      school.type==="Primaire"?["Français","Mathématiques","Éveil","EPS"]:
+      ["Français","Mathématiques","Anglais","Histoire-Géographie","SVT","Physique-Chimie"];
+    setState(old=>{
+      const subjects=[...old.subjects];
+      for(const level of school.levels)for(const name of names){
+        if(subjects.some(s=>s.school===school.id&&s.year===year&&s.level===level&&s.name===name))continue;
+        subjects.push({id:fakeId("m",subjects),school:school.id,year,name,level,coefficient:1});
+      }
+      return {...old,subjects};
+    });
+    message("Matières générées pour les niveaux de "+school.name+" (sans doublons).");
+  }
+  function curriculum(){
+    const items=state.subjects.filter(x=>x.school===school.id&&x.year===year);
+    return <><PageHeader title="Matières et programmes" subtitle="Référentiel configurable par établissement, cycle et niveau"/>
+      <div className="demo-actions"><DemoButton icon="layers" primary onClick={generateSubjects}>Générer les matières par niveau</DemoButton>
+        <DemoButton icon="plus" onClick={()=>open("subject",{coefficient:"2"})}>Ajouter une matière</DemoButton></div>
+      <Card title="Matières de l'année" icon="file"><div className="demo-table-wrap"><table>
+        <thead><tr><th>Niveau</th><th>Matière</th><th>Coefficient</th><th>Action</th></tr></thead>
+        <tbody>{items.map(item=><tr key={item.id}><td>{item.level}</td><td><b>{item.name}</b></td><td>{item.coefficient}</td>
+          <td><button type="button" className="demo-table-action" disabled={isClosed}
+            onClick={()=>setState(old=>({...old,subjects:old.subjects.filter(s=>s.id!==item.id)}))}>Retirer</button></td></tr>)}</tbody>
+      </table>{!items.length&&<Empty>Aucune matière. Cliquez sur « Générer les matières par niveau ».</Empty>}</div></Card>
+    </>;
+  }
+  function timetable(){
+    const items=state.timetable.filter(t=>t.school===school.id&&t.year===year);
+    return <><PageHeader title="Emplois du temps" subtitle="Planification des classes, enseignants et salles avec détection des conflits"/>
+      <div className="demo-actions"><DemoButton icon="plus" primary onClick={()=>open("timetable")}>Planifier un cours</DemoButton></div>
+      <Card title="Planning de la semaine" icon="calendar"><div className="demo-table-wrap"><table>
+        <thead><tr><th>Jour</th><th>Horaire</th><th>Classe</th><th>Matière</th><th>Enseignant</th><th>Salle</th></tr></thead>
+        <tbody>{items.map(t=><tr key={t.id}><td>{t.day}</td><td>{t.slot}</td><td>{t.className}</td>
+          <td>{t.subject}</td><td>{t.teacher}</td><td>{t.room}</td></tr>)}</tbody>
+      </table>{!items.length&&<Empty>Planning vide. Générer d'abord des classes, puis planifier un cours.</Empty>}</div></Card>
+      <p className="demo-hint">Les conflits de classe, de salle et d'enseignant sur un même créneau sont bloqués dans cette simulation.</p>
+    </>;
+  }
+  function years(){
+    return <><PageHeader title="Années scolaires" subtitle="Consultation des bilans passés et préparation de la nouvelle rentrée"/>
+      <div className="demo-tiles">{DEMO_YEARS.map(y=><button type="button" key={y}
+        onClick={()=>{setYear(y);setSearch("");setNotice(y==="2025-2026"?"Année clôturée : lecture seule.":"Année "+y+" chargée en démonstration.");}}
+        className={"demo-tile "+(y===year?"demo-tile-selected":"")}>
+        <Icon name="calendar" size={28}/><b>{y}</b>
+        <span>{y==="2025-2026"?"Clôturée — archive":y===DEMO_CURRENT_YEAR?"Année en cours":"Prochaine année — configurable"}</span>
+        <small>{state.students.filter(s=>s.school===school.id&&s.year===y).length} élève(s) · {state.classes.filter(s=>s.school===school.id&&s.year===y).length} classe(s)</small>
+        <span>Consulter l'année →</span></button>)}</div>
+      <p className="demo-hint">Chaque année conserve des données distinctes. Dans la démonstration, les modifications restent uniquement en mémoire pendant la visite.</p>
+    </>;
+  }
   function settings(){
     const routes=availableRoutes(state,school.id);
-    return <><PageHeader title="Paramètres de l'établissement" subtitle="Cycles, accès et politiques d'admission adaptables"/>
+    const grade=state.grading[school.id]||"20";
+    const numbering=state.numbering[school.id]||{prefix:"YEM",padding:5,next:1};
+    return <><PageHeader title="Paramètres de l'établissement" subtitle="Cycles, barèmes, matricules et admissions personnalisables"/>
       <div className="demo-grid-two"><Card title="Identité de l'établissement" icon="school"><dl className="demo-dl">
         <div><dt>Nom</dt><dd>{school.name}</dd></div><div><dt>Type</dt><dd>{school.type}</dd></div>
-        <div><dt>Ville</dt><dd>{school.city}</dd></div><div><dt>Année scolaire</dt><dd>2026 – 2027 (exemple)</dd></div></dl>
+        <div><dt>Ville</dt><dd>{school.city}</dd></div><div><dt>Année scolaire</dt><dd>{year} (exemple)</dd></div></dl>
         <DemoButton icon="school" onClick={()=>enter("platform")}>Voir la console plateforme</DemoButton>
       </Card><Card title="Voies d'admission autorisées" icon="settings">
         {Object.entries(ROUTE_LABELS).map(([code,label])=><label key={code} className="demo-check">
-          <input type="checkbox" checked={routes.includes(code)} onChange={e=>{
+          <input type="checkbox" disabled={isClosed} checked={routes.includes(code)} onChange={e=>{
             const value=e.target.checked;
             if(!value&&routes.length===1){message("Au moins une voie doit rester autorisée.");return;}
             setState(old=>({...old,routes:{...old.routes,
               [school.id]:value?[...routes,code]:routes.filter(x=>x!==code)}}));
           }}/> {label}</label>)}
         <div className="demo-actions"><DemoButton primary icon="check" onClick={()=>message("Paramètres enregistrés uniquement dans la démonstration.")}>Enregistrer la configuration</DemoButton></div>
-      </Card></div></>;
+      </Card></div>
+      <div className="demo-grid-two">
+        <Card title="Évaluations et bulletins" icon="file">
+          <F label="Barème de référence"><select aria-label="Barème de notation" value={grade} disabled={isClosed}
+            onChange={e=>setState(old=>({...old,grading:{...old.grading,[school.id]:e.target.value}}))}>
+            {[["20","Notes sur 20"],["10","Notes sur 10"],["15","Notes sur 15"],["100","Notes sur 100"],
+              ["percent","Pourcentage"],["letters","Lettres (A+ à E)"],["skills","Compétences"]].map(([v,l])=>
+              <option key={v} value={v}>{l}</option>)}</select></F>
+          <p className="demo-hint">Pondérations, moyennes et appréciations sont paramétrables dans YEM réel par établissement et par cycle.</p>
+          <DemoButton icon="file" onClick={()=>setPage("bulletins")}>Consulter un bulletin</DemoButton>
+        </Card>
+        <Card title="Matricules des élèves" icon="idcard">
+          <F label="Préfixe"><input aria-label="Préfixe du matricule" maxLength={12} disabled={isClosed}
+            value={numbering.prefix} onChange={e=>setState(old=>({...old,numbering:{...old.numbering,
+              [school.id]:{...numbering,prefix:e.target.value}}}))}/></F>
+          <F label="Longueur du numéro"><input aria-label="Longueur du matricule" type="number" min={3} max={10} disabled={isClosed}
+            value={numbering.padding} onChange={e=>setState(old=>({...old,numbering:{...old.numbering,
+              [school.id]:{...numbering,padding:Number(e.target.value)}}}))}/></F>
+          <p><b>Aperçu fictif :</b> {numbering.prefix}-{String(numbering.next).padStart(Math.min(10,Math.max(3,numbering.padding)), "0")}</p>
+          <p className="demo-hint">Un matricule est attribué par le système, et non saisi librement.</p>
+        </Card>
+      </div></>;
   }
   function platform(){
     return <><PageHeader title="Console de la plateforme YEM" subtitle="Vue multi-établissements et administration — scénario fictif"/>
@@ -531,6 +637,15 @@ export default function DemoExperience(){
           <DemoButton onClick={()=>{pickSchool(s.id);enter("school");}} icon="chevronright">Explorer l'établissement</DemoButton></div>)}
         <div className="demo-actions"><DemoButton primary icon="plus" onClick={()=>open("school",{type:"Primaire"})}>Ajouter un établissement fictif</DemoButton></div>
       </Card></>;
+  }
+  function schools(){
+    return <><PageHeader title="Établissements" subtitle="Gestion multi-établissements — informations fictives"/>
+      <div className="demo-actions"><DemoButton primary icon="plus" onClick={()=>open("school",{type:"Primaire"})}>Créer un établissement fictif</DemoButton></div>
+      <Card title="Répertoire des écoles" icon="school">
+        {state.schools.map(s=><div key={s.id} className="demo-line"><div><b>{s.name}</b>
+          <small>{s.city} · {s.type} · Propriétaire : {s.owner||"À désigner"}</small></div>
+          <DemoButton icon="chevronright" onClick={()=>{pickSchool(s.id);enter("school");}}>Ouvrir la démo direction</DemoButton>
+        </div>)}</Card></>;
   }
   function accounts(){
     return <><PageHeader title="Utilisateurs & rôles" subtitle="Comptes et fonctions par établissement — illustration seulement"/>
@@ -569,13 +684,13 @@ export default function DemoExperience(){
         <Empty>Aucune demande. Choisis une école pour simuler une préinscription.</Empty>}</Card></>;
   }
   const pageContent=()=>{
-    if(role==="platform")return page==="accounts"?accounts():platform();
+    if(role==="platform")return page==="accounts"?accounts():page==="schools"?schools():platform();
     if(role==="parent")return page==="parent-payments"?payments(true):
       page==="parent-results"?reports(true):
       page==="parent-absences"?absences(true):
       page==="parent-admissions"?parentAdmissions():parents();
     return ({
-      dashboard,students,admissions,classes,payments,bulletins:()=>reports(),absences,staff,settings,
+      dashboard,students,classes,admissions,payments,arrears,bulletins:()=>reports(),absences,staff,organization,curriculum,timetable,years,settings,
     }[page]||dashboard)();
   };
   return <div className="demo-app" data-demo="true">
