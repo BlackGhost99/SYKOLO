@@ -49,3 +49,44 @@ test("a batch proposes available numbers and submits the edited names", async ()
     }),
   ));
 });
+
+test("la maternelle complète les classes standards et duplique une division renommable", async () => {
+  const year = {id: "y-presco", name: "2026-2027", active: true};
+  const data = {
+    year, years: [year], levels: [
+      {id: "ps", name: "Petite section (3 ans)", cycle: "Maternelle",
+        code: "ps", cycle_code: "prescolaire", active: true},
+    ],
+    can_manage_classes: true, can_manage_academic: true,
+    preschool_standards_available: true, class_management_cycles: ["prescolaire"],
+    class_level_options: {},
+    classes: [{id: "class-a", name: "Petite section A", code: "ps-a",
+      revision: 1, active: true, enrolled: 2, capacity: 25,
+      level: {id: "ps", name: "Petite section (3 ans)", cycle_code: "prescolaire"}}],
+  };
+  const fetchMock = vi.fn(async url => ({
+    ok: true, headers: {get: () => "application/json"},
+    json: async () => url.endsWith("preschool-standard-classes")
+      ? {created: 3, classes: [{name: "Crèche A"}, {name: "Moyenne section A"}, {name: "Grande section A"}]}
+      : url.endsWith("/clone") ? {id: "class-b", name: "Petite section Papillons"} : data,
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<ClassSetup schoolId="school"/>);
+  const user = userEvent.setup();
+  await screen.findByText("Petite section A");
+  await user.click(screen.getByRole("button", {name: "Compléter les classes standards"}));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("preschool-standard-classes"),
+    expect.objectContaining({body: JSON.stringify({year: "y-presco"})}),
+  ));
+  await user.click(await screen.findByRole("button", {name: "Dupliquer Petite section A"}));
+  const newName = await screen.findByLabelText(/Nom de la nouvelle classe/);
+  expect(newName.value).toBe("Petite section B");
+  await user.clear(newName);
+  await user.type(newName, "Petite section Papillons");
+  await user.click(screen.getByRole("button", {name: "Créer la copie"}));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("classes/class-a/clone"),
+    expect.objectContaining({body: JSON.stringify({name: "Petite section Papillons"})}),
+  ));
+});

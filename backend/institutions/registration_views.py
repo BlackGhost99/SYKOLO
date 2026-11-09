@@ -25,6 +25,7 @@ from .finance_models import FeeSchedule, FeeCharge, FeePayment
 from .overview_views import gate, current_year, enrollment_balances, finance_status, money, ZERO
 from .services import can_manage_classes, class_management_scope, has_permission, quota_reached
 from .school_profiles import class_level_options
+from .preschool_classes import ensure_preschool_classes, preschool_enabled
 from .models import School
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import (
@@ -294,6 +295,7 @@ def classes_overview(request, school_id):
         "finance_visible": finance_visible,
         "unassigned_students": unassigned,
         "class_level_options": class_level_options(school),
+        "preschool_standards_available": preschool_enabled(school) and can_manage_classes(request.user, school, "prescolaire"),
         "can_manage_classes": scope is None or bool(scope),
         "class_management_cycles": sorted(scope) if scope is not None else None,
         "can_manage_academic": has_permission(request.user, school, "school.academic.manage"),
@@ -332,6 +334,120 @@ def class_students(request, school_id, class_id):
         {"id": str(student_id), "first_name": first, "last_name": last, "student_code": code}
         for student_id, first, last, code in students
     ]}, headers={"Cache-Control": "no-store"})
+
+
+@require_POST
+@authorized
+def standard_preschool_classes(request, school_id):
+    """Complète les quatre classes maternelles sans détruire les personnalisations."""
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if not preschool_enabled(school):
+        return JsonResponse({"error": "Le cycle préscolaire n'est pas ouvert dans cet établissement."}, status=422)
+    if not can_manage_classes(request.user, school, "prescolaire"):
+        return refuse()
+    data, error = parse_body(request)
+    if error is not None:
+        return error
+    if not isinstance(data, dict) or set(data) != {"year"}:
+        return JsonResponse({"error": "Identifiant de l'année scolaire requis."}, status=422)
+
+    def run():
+        with transaction.atomic():
+            locked_school = School.objects.select_for_update().get(pk=school.pk)
+            year = AcademicYear.objects.select_for_update().filter(
+                school=locked_school, pk=as_uuid(data["year"]),
+            ).first()
+            if year is None:
+                raise Refused("Année scolaire introuvable.", 404)
+            if not year.active or year.status == AcademicYear.STATUS_CLOSED:
+                raise Refused("L'année scolaire clôturée n'est pas modifiable.", 409)
+            created = ensure_preschool_classes(locked_school, year)
+            if created:
+                log_event(school, request, "preschool_classes_generated", str(year.pk), {
+                    "class_ids": [str(room.pk) for room in created],
+                })
+        return JsonResponse({
+            "classes": [{"id": str(room.pk), "name": room.name, "code": room.code}
+                        for room in created],
+            "created": len(created), "preserved": 4 - len(created),
+            "message": ("Classes maternelles complétées." if created else
+                        "Les quatre niveaux disposent déjà d'une classe."),
+        })
+    return respond(run)
+
+
+def suggested_copy_name(classroom, school, year):
+    """Proposer B, C... sans cloner les élèves ni les cours de la source."""
+    current = set(AcademicClass.objects.filter(school=school, year=year)
+                  .values_list("name", flat=True))
+    taken = {name.casefold() for name in current}
+    base = re.sub(r"\s+(?:[A-Z]|[1-9][0-9]*)$", "", classroom.name).strip()
+    for i in range(1, 501):
+        suffix = (chr(64 + i) if i <= 26 else str(i))
+        proposed = f"{base[:118 - len(suffix)].rstrip()} {suffix}"
+        if proposed.casefold() not in taken:
+            return proposed
+    raise Refused("Trop de divisions portant un nom similaire.", 409)
+
+
+@require_POST
+@authorized
+def clone_class(request, school_id, class_id):
+    """Dupliquer uniquement la structure de la classe (jamais les données métier)."""
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if not can_manage_classes(request.user, school):
+        return refuse()
+    data, error = parse_body(request)
+    if error is not None:
+        return error
+    if not isinstance(data, dict) or set(data) - {"name"}:
+        return JsonResponse({"error": "Indiquez uniquement le nouveau nom."}, status=422)
+
+    def run():
+        with transaction.atomic():
+            School.objects.select_for_update().get(pk=school.pk)
+            source = AcademicClass.objects.select_related("year", "level__cycle", "track").filter(
+                school=school, pk=class_id,
+            ).first()
+            if source is None:
+                raise Refused("Classe source introuvable.", 404)
+            if not can_manage_classes(request.user, school, source.level.cycle.code):
+                raise Refused("Ce cycle est hors de votre délégation.", 403)
+            year = AcademicYear.objects.select_for_update().get(school=school, pk=source.year_id)
+            if not year.active or year.status == AcademicYear.STATUS_CLOSED:
+                raise Refused("L'année scolaire clôturée n'est pas modifiable.", 409)
+            if not source.active or not source.level.active or not source.level.cycle.active:
+                raise Refused("Impossible de dupliquer une classe ou un niveau archivé.", 409)
+            name = data.get("name")
+            if name is None:
+                name = suggested_copy_name(source, school, year)
+            if not isinstance(name, str) or not 1 <= len(name.strip()) <= 120:
+                raise Refused("Nom de classe invalide (1 à 120 caractères).")
+            name = name.strip()
+            if any(existing.casefold() == name.casefold() for existing in
+                   AcademicClass.objects.filter(school=school, year=year).values_list("name", flat=True)):
+                raise Refused("Ce nom de classe est déjà utilisé pour cette année.", 409)
+            code = unique_code(name, set(AcademicClass.objects.filter(
+                school=school, year=year).values_list("code", flat=True)))
+            copy = AcademicClass(school=school, year=year, level=source.level,
+                                 track=source.track, code=code, name=name,
+                                 capacity=source.capacity)
+            copy.full_clean()
+            copy.save()
+            log_event(school, request, "academic_class_cloned", str(copy.pk), {
+                "source_id": str(source.pk), "year": str(year.pk),
+            })
+        return JsonResponse({
+            "id": str(copy.pk), "name": copy.name, "code": copy.code,
+            "year": str(year.pk), "level": str(copy.level_id),
+            "capacity": copy.capacity, "source_id": str(source.pk),
+            "message": "Classe dupliquée sans élèves, cours, notes ni paiements.",
+        }, status=201)
+    return respond(run)
 
 
 @require_POST

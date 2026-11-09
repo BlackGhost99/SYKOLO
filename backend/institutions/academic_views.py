@@ -16,6 +16,7 @@ from .cycle_scope import scoped_cycle_ids
 from .models import School
 from .services import can_manage_classes, has_permission
 from .student_models import Enrollment
+from .preschool_classes import ensure_preschool_classes
 from .views import access, delete_unused, log_event, parse_body, refuse
 
 RESOURCES = {
@@ -190,6 +191,12 @@ def collection(request, school_id, resource):
             obj = model(school=school, **clean)
             obj.full_clean()
             obj.save()
+            if resource == "years":
+                default_rooms = ensure_preschool_classes(school, obj)
+                if default_rooms:
+                    log_event(school, request, "preschool_classes_generated", str(obj.pk), {
+                        "class_ids": [str(room.pk) for room in default_rooms],
+                    })
             log_event(school, request, "academic_created", f"{resource}:{obj.pk}")
     except ValidationError as exc:
         return model_error(exc)

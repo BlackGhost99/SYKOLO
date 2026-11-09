@@ -17,6 +17,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
 from .academic_models import AcademicYear, AcademicYearClosure, AcademicClass, AcademicPeriod
+from .preschool_classes import ensure_preschool_classes
 from .assessment_models import Assessment
 from .models import School
 from .report_models import SchoolReport
@@ -364,6 +365,13 @@ def prepare_year(request, school_id):
                     room.full_clean()
                     room.save()
                     copied += 1
+            generated = []
+            if not body["copy_classes"]:
+                generated = ensure_preschool_classes(school, year)
+                if generated:
+                    log_event(school, request, "preschool_classes_generated", str(year.pk), {
+                        "class_ids": [str(room.pk) for room in generated],
+                    })
             log_event(school, request, "academic_year_prepared", str(year.pk), {
                 "source_year": str(source.pk) if source else None,
                 "classes_copied": copied, "copy_classes": body["copy_classes"],
@@ -373,6 +381,6 @@ def prepare_year(request, school_id):
     except IntegrityError:
         return JsonResponse({"error": "Année ou classe déjà existante."}, status=409)
     return JsonResponse({
-        "year": _year_dict(year), "classes_copied": copied,
+        "year": _year_dict(year), "classes_copied": copied, "classes_generated": len(generated),
         "message": "Année préparée. Les élèves, affectations, évaluations, bulletins, paiements et périodes n'ont pas été copiés.",
     }, status=201)

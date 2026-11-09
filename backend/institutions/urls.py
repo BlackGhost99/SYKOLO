@@ -146,6 +146,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/classes/<uuid:class_id>/enroll", registration_views.class_enroll),
     path("schools/<uuid:school_id>/classes/<uuid:class_id>/apply-fees", registration_views.class_apply_fees),
     path("schools/<uuid:school_id>/academic/quick-classes", registration_views.quick_classes),
+    path("schools/<uuid:school_id>/academic/preschool-standard-classes", registration_views.standard_preschool_classes),
+    path("schools/<uuid:school_id>/academic/classes/<uuid:class_id>/clone", registration_views.clone_class),
     path("schools/<uuid:school_id>/overview/finance", overview_views.finance_overview),
     path("schools/<uuid:school_id>/students", student_views.students),
     path("schools/<uuid:school_id>/students/<uuid:student_id>", student_views.student_detail),
