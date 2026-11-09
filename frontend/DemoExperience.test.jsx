@@ -22,12 +22,12 @@ test("la route de démonstration ne monte aucune requête API ni authentificatio
 test("l'utilisateur parcourt les trois interfaces sans toucher aux comptes réels",async()=>{
   const user=userEvent.setup();
   render(<DemoExperience/>);
-  await user.click(screen.getByRole("button",{name:"Parent d'élève"}));
+  await user.selectOptions(screen.getByRole("combobox",{name:"Profil de démonstration"}),"parent");
   expect(screen.getByRole("heading",{name:"Mes enfants"})).toBeTruthy();
   expect(screen.getByText("Essono Grâce")).toBeTruthy();
-  await user.click(screen.getByRole("button",{name:"Super-administrateur"}));
+  await user.selectOptions(screen.getByRole("combobox",{name:"Profil de démonstration"}),"platform");
   expect(screen.getByRole("heading",{name:"Console de la plateforme YEM"})).toBeTruthy();
-  await user.click(screen.getByRole("button",{name:"Direction / établissement"}));
+  await user.selectOptions(screen.getByRole("combobox",{name:"Profil de démonstration"}),"school");
   expect(screen.getByRole("heading",{name:"Tableau de bord"})).toBeTruthy();
 });
 
@@ -51,7 +51,7 @@ test("l'affectation passe par vérification, admission puis inscription distinct
   const user=userEvent.setup();
   render(<DemoExperience/>);
   await user.click(screen.getByRole("button",{name:"Admissions",exact:true}));
-  expect(screen.getByRole("heading",{name:"Admissions & préinscriptions"})).toBeTruthy();
+  expect(screen.getByRole("heading",{name:"Admissions et préinscriptions"})).toBeTruthy();
   const approve=screen.getByRole("button",{name:"Accepter"});
   await user.click(approve);
   expect(await screen.findByText(/Vérifiez d'abord l'éligibilité/)).toBeTruthy();
@@ -68,7 +68,7 @@ test("les paiements sont simulés et produisent un reçu explicitement fictif",a
   const fetch=vi.fn(()=>{throw Error("Interdiction de contacter SingPay depuis la démo");});
   vi.stubGlobal("fetch",fetch);
   render(<DemoExperience/>);
-  await user.click(screen.getByRole("button",{name:"Parent d'élève"}));
+  await user.selectOptions(screen.getByRole("combobox",{name:"Profil de démonstration"}),"parent");
   await user.click(screen.getByRole("button",{name:"Frais & paiements"}));
   await user.click(screen.getAllByRole("button",{name:"Simuler paiement"})[0]);
   const dialog=screen.getByRole("dialog");
@@ -83,7 +83,7 @@ test("le profil maternelle affiche des compétences plutôt qu'une moyenne oblig
   const user=userEvent.setup();
   render(<DemoExperience/>);
   await user.selectOptions(screen.getByRole("combobox",{name:"Établissement de démonstration"}),"maternelle");
-  await user.click(screen.getByRole("button",{name:"Bulletins",exact:true}));
+  await user.click(screen.getByRole("button",{name:"Évaluations et notes",exact:true}));
   expect(screen.getByText("Suivi par compétences")).toBeTruthy();
   expect(screen.getByText(/Motricité : Acquis/)).toBeTruthy();
 });
@@ -91,7 +91,7 @@ test("le profil maternelle affiche des compétences plutôt qu'une moyenne oblig
 test("un parent peut simuler une préinscription auprès d'un autre établissement",async()=>{
   const user=userEvent.setup();
   render(<DemoExperience/>);
-  await user.click(screen.getByRole("button",{name:"Parent d'élève"}));
+  await user.selectOptions(screen.getByRole("combobox",{name:"Profil de démonstration"}),"parent");
   await user.click(screen.getByRole("button",{name:"Préinscriptions"}));
   await user.click(screen.getByRole("button",{name:/École Primaire Démonstration/}));
   const modal=screen.getByRole("dialog");
@@ -122,7 +122,9 @@ test("le directeur peut générer des divisions et configurer matières et emplo
   await user.selectOptions(within(dialog).getByRole("combobox",{name:"Niveau"}),"6e");
   await user.click(within(dialog).getByRole("button",{name:"Enregistrer la simulation"}));
   expect(screen.getByText("6e B")).toBeTruthy();
-  await user.click(screen.getByRole("button",{name:"Matières & programmes"}));
+  await user.click(screen.getByRole("button",{name:"Paramètres",exact:true}));
+  await user.click(screen.getByRole("button",{name:"Classes de l’établissement"}));
+  await user.click(screen.getByRole("button",{name:"Matières et programmes"}));
   await user.click(screen.getByRole("button",{name:"Générer les matières par niveau"}));
   expect(screen.getAllByText("Mathématiques").length).toBeGreaterThan(0);
   await user.click(screen.getByRole("button",{name:"Emplois du temps"}));
@@ -142,4 +144,38 @@ test("la fonction propriétaire et le compte facultatif figurent dans la démo d
   expect(screen.getByText("Mme Exemple")).toBeTruthy();
   expect(screen.getByText(/Sans compte/)).toBeTruthy();
   expect(screen.getByText(/Propriétaire \/ Fondateur · Proviseur/)).toBeTruthy();
+});
+
+test("la direction de démonstration reprend exactement les rubriques latérales du vrai YEM",()=>{
+  render(<DemoExperience/>);
+  const nav=screen.getByRole("navigation",{name:"Navigation principale"});
+  expect([...nav.querySelectorAll("button")].map(button=>button.textContent)).toEqual([
+    "Tableau de bord","Élèves","Classes","Admissions","Paiements","Impayés & relances",
+    "Évaluations et notes","Absences","Parents","Personnel","Paramètres"
+  ]);
+  expect(screen.queryByRole("button",{name:"Matières & programmes"})).toBeNull();
+});
+
+test("les paramètres de la démonstration utilisent la même navigation que les paramètres réels",async()=>{
+  const user=userEvent.setup();
+  render(<DemoExperience/>);
+  await user.click(screen.getByRole("button",{name:"Paramètres",exact:true}));
+  expect(screen.getByRole("heading",{name:"Paramètres",exact:true})).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"Classes de l’établissement"}));
+  expect(screen.getByRole("button",{name:"Matricules"})).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"Barèmes et bulletins"}));
+  expect(screen.getByRole("heading",{name:"Paramètres de l'établissement"})).toBeTruthy();
+  expect(screen.getByRole("combobox",{name:"Barème de notation"})).toBeTruthy();
+});
+
+test("les écrans Élèves et Tableau de bord partagent les mêmes KPI et sections que la gestion réelle",async()=>{
+  const user=userEvent.setup();
+  render(<DemoExperience/>);
+  expect(screen.getByText("Évolution des encaissements")).toBeTruthy();
+  expect(screen.getByText("Répartition des moyens de paiement")).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"Élèves",exact:true}));
+  expect(screen.getByText("Liste des élèves")).toBeTruthy();
+  expect(screen.getByText("Aperçu de l’élève")).toBeTruthy();
+  expect(screen.getByText("Dossiers incomplets")).toBeTruthy();
+  expect(screen.getByRole("tab",{name:"Inscriptions par classe"})).toBeTruthy();
 });
