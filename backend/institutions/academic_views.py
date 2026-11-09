@@ -264,7 +264,7 @@ def detail(request, school_id, resource, object_id):
                     return JsonResponse({
                         "error": "Le code d'un niveau déjà utilisé est stable. Modifiez son intitulé ou son ordre."
                     }, status=409)
-            if resource in ("classes", "periods") and not obj.year.active:
+            if resource in ("classes", "periods") and (not obj.year.active or obj.year.status == AcademicYear.STATUS_CLOSED):
                 return JsonResponse({"error": "L'année scolaire est archivée."}, status=409)
             if obj.revision != revision:
                 return JsonResponse({"error": "Conflit de version.", "revision": obj.revision}, status=409)
