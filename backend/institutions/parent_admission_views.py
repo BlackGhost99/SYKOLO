@@ -67,6 +67,8 @@ def class_public_data(row, occupied, policy, fee, online_available):
         "id": str(row.pk), "name": row.name,
         "year": row.year.name, "level": row.level.name,
         "cycle": row.level.cycle.name,
+        "series": row.track.code.upper() if row.track_id else None,
+        "series_label": row.track.name if row.track_id else None,
         "fee_amount_xaf": fee.amount_xaf if fee else None,
         "online_payment_available": bool(online_available and fee),
         "capacity": capacity,
@@ -91,7 +93,7 @@ def directory(request):
     result = []
     for listing in rows.order_by("school__name")[:100]:
         classes = list(AcademicClass.objects.select_related(
-            "school", "year", "level__cycle",
+            "school", "year", "level__cycle", "track",
         ).filter(school=listing.school, active=True, year__active=True,
                  level__active=True, level__cycle__active=True
                  ).filter(Q(track__isnull=True) | Q(track__active=True)).order_by(
