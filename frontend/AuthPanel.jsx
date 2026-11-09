@@ -163,7 +163,7 @@ export default function AuthPanel() {
               }
             }); }}>
               {!pending ? <label className="field">Mot de passe actuel
-                <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                <input type="password" autoComplete="current-password" placeholder="Mot de passe" required value={password} onChange={(e) => setPassword(e.target.value)} />
               </label> : <>
                 <h3>Scannez ce QR code avec votre téléphone</h3>
                 <p className="hint">Ouvrez Google Authenticator, Microsoft Authenticator ou Authy, puis choisissez « Ajouter un compte » → « Scanner un QR code ».</p>
@@ -290,13 +290,13 @@ export default function AuthPanel() {
                 <input required value={schoolCode} onChange={e=>setSchoolCode(e.target.value)} placeholder="Code fourni par votre établissement" autoComplete="organization"/>
               </label>}
               <label className="field">Identifiant
-                <input disabled={loginScope === "school" && !schoolCode.trim()} autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} />
+                <input disabled={loginScope === "school" && !schoolCode.trim()} autoComplete="username" placeholder="Identifiant" required value={username} onChange={(e) => setUsername(e.target.value)} />
               </label>
               <label className="field">Mot de passe
                 <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
               </label>
               <label className="field">Code TOTP ou secours (si MFA activé)
-                <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="one-time-code" />
+                <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Code (si activé)" autoComplete="one-time-code" />
               </label>
               <button disabled={busy} type="submit">Se connecter</button>
             </form>
