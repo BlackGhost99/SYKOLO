@@ -464,11 +464,12 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
     {!editing && <Msg {...message}/>}
     <Loading state={o}>{d && (year && year !== d.year?.id ? <p role="status">Chargement de l’année…</p> : <>
       {!d.year ? <Card title="Commencez par l’année scolaire" icon="calendar">{d.can_manage_academic ? yearForm : <Empty>La direction doit créer l’année scolaire.</Empty>}</Card> : <div className="yd-grid yf-two">
-        {d.preschool_standards_available && d.year.active !== false && <Card title="Maternelle : classes prêtes à l’emploi" icon="school" subtitle="Une classe Crèche, 3 ans, 4 ans et 5 ans. Les noms restent personnalisables.">
-          <p>Complétez automatiquement les niveaux manquants sans modifier vos classes existantes.</p>
+        {standardCycles.length > 0 && d.year.active !== false && <Card title="Classes standards en un clic" icon="school" subtitle={`${standardsCount} niveaux disponibles · Une division par niveau · Noms modifiables`}>
+          <p>YEM propose les classes de votre établissement : {standardCycles.map(cycle => cycle.name).join(" · ")}.</p>
+          <p>Ajoutez uniquement les divisions manquantes. Les classes existantes, même renommées, restent intactes.</p>
           <Button type="button" primary disabled={busy} onClick={() => run(async () => {
-            const result = await req(`schools/${schoolId}/academic/preschool-standard-classes`, {year: d.year.id});
-            return result.created ? `${result.created} classe(s) maternelle(s) ajoutée(s).` : "Toutes les classes standards sont déjà présentes.";
+            const result = await req(`schools/${schoolId}/academic/standard-classes`, {year: d.year.id});
+            return result.created ? `${result.created} classe(s) ajoutée(s), sans modifier les autres.` : "Toutes les classes standards sont déjà présentes.";
           })}>Compléter les classes standards</Button>
         </Card>}
         {canManageClasses && d.year.active !== false && <Card title={`Ajouter des classes en ${d.year.name}`} icon="plus" subtitle="Choisissez le niveau et le nombre de classes.">
