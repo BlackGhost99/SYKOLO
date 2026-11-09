@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import brand from "./assets/yem-brand.webp";
-import "./yem-login.css";
+import "./yem-login-original.css";
 import PlatformConsole from "./PlatformConsole.jsx";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 import {FamilyWorkspace} from "./ParentPortal.jsx";
@@ -316,26 +316,22 @@ export default function AuthPanel() {
   if (account?.authenticated) {
     return <SchoolDashboard user={account.user} initialSchoolId={account.school_id} accountView={accountCard} onLogout={() => run(logout)} />;
   }
+  // L'illustration approuvée est affichée comme un seul fichier, sans recréation
+  // des logos, motifs ou zones graphiques. Seuls les champs HTML restent actifs.
+  const originalSchoolView = loginScope === "school" && tab === "login" && !isResetLink && !isVerifyLink;
   return (
-    <div className="yem-login-screen">
-      <div className="yem-login-shade" aria-hidden="true" />
-      <main className="yem-login-layout">
-        <div className="yem-login-story">
-          <span className="yem-login-kicker">YEM · Le savoir nous rassemble</span>
-          <h1>Nos racines.<br />Leur avenir.</h1>
-          <p>Une nouvelle façon de faire grandir nos établissements, en préservant ce qui nous unit.</p>
-        </div>
-        <div className="yem-login-panel">
-          <header className="yem-login-brand">
-            <img src={brand} alt="Emblème de YEM" />
-            <div><strong>YEM</strong><span>Gestion scolaire &amp; universitaire</span></div>
-          </header>
-          <p className="yem-login-intro">Votre établissement, votre communauté, votre avenir.</p>
+    <div className={originalSchoolView ? "yem-original-login yem-original-login--exact" : "yem-original-login"}>
+      <div className="yem-original-login__frame">
+        <img
+          className="yem-original-login__image"
+          src="/yem-login-original.jpg"
+          alt=""
+          draggable="false"
+        />
+        <div className="yem-original-login__form">
           {accountCard}
-          <p className="yem-login-assurance">Accès personnel · Espace protégé · Assistance locale</p>
         </div>
-      </main>
-      <div className="yem-login-credit">Développé par <strong>BWETEK Informatyk</strong></div>
+      </div>
     </div>
   );
 }
