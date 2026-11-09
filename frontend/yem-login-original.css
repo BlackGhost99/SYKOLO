@@ -1,7 +1,7 @@
 /* YEM – la composition est l'image originale fournie, affichée sans retouche.
    Les contrôles HTML natifs sont superposés aux zones déjà présentes dans l'image. */
-.yem-entry-workspace .yem-mode-switch-login {opacity:0; position:fixed; top:0; z-index:100; transition:opacity .15s ease}
-.yem-entry-workspace .yem-mode-switch-login:is(:hover,:focus-within) {opacity:1}
+.yem-mode-switch-login {opacity:0!important; position:fixed; top:0; z-index:100; transition:opacity .15s ease}
+.yem-mode-switch-login:is(:hover,:focus-within) {opacity:1!important}
 .yem-original-login {
   display:grid;
   place-items:center;
