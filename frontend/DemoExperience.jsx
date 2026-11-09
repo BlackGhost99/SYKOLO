@@ -48,6 +48,9 @@ function DemoModal({mode,form,setForm,school,schools,student,invoice,onClose,onS
     <input type={type} required={required} placeholder={placeholder} value={form[key]||""}
       onChange={e=>change(key,e.target.value)}/></F>;
   const selectedSchool=schools.find(s=>s.id===(form.school||school?.id))||school||schools[0];
+  const defaultStaffRole=school?.type==="Maternelle"?"Éducatrice / Maîtresse":
+    school?.type==="Lycée technique"?"Enseignant technique":"Enseignant";
+  const allowedRoles=SCHOOL_ROLES[school?.type]||SCHOOL_ROLES["Collège / Lycée"];
   const selects=(key,label,options)=><F label={label}><select value={form[key]||options[0]} onChange={e=>change(key,e.target.value)}>
     {options.map(o=><option key={o} value={o}>{o}</option>)}</select></F>;
   return <div className="demo-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -93,7 +96,7 @@ function DemoModal({mode,form,setForm,school,schools,student,invoice,onClose,onS
         {mode==="classroom"&&<div className="demo-fields">{input("name","Nom de la classe","Ex. 6e C")}
           {input("capacity","Capacité maximale","35","number")}</div>}
         {mode==="staff"&&<div className="demo-fields">{input("name","Nom du personnel","Ex. Mme Mba")}
-          {selects("role","Fonction principale",SCHOOL_ROLES[school?.type]||SCHOOL_ROLES["Collège / Lycée"])}
+          {selects("role","Fonction principale",[defaultStaffRole,...allowedRoles.filter(r=>r!==defaultStaffRole)])}
           {selects("secondaryRole","Seconde fonction (facultative)",["Aucune",...(SCHOOL_ROLES[school?.type]||SCHOOL_ROLES["Collège / Lycée"])])}
           {selects("cycle","Affectation / cycle",["Tous les cycles",...school.levels])}
           <label className="demo-check"><input type="checkbox" checked={Boolean(form.hasAccount)}
@@ -163,8 +166,8 @@ export default function DemoExperience(){
   const currentInvoices=state.invoices.filter(x=>x.school===school.id&&x.year===year);
   const currentClasses=state.classes.filter(x=>x.school===school.id&&x.year===year);
   const currentStaff=state.staff.filter(x=>x.school===school.id&&x.year===year);
-  const chosen=state.students.find(x=>x.id===selectedStudent&&x.school===school.id)||currentStudents[0];
-  const application=state.applications.find(x=>x.id===selectedAdmission&&x.school===school.id)||currentApplications[0];
+  const chosen=currentStudents.find(x=>x.id===selectedStudent)||currentStudents[0];
+  const application=currentApplications.find(x=>x.id===selectedAdmission)||currentApplications[0];
   const parentChildren=state.students.filter(x=>["s1","s4","s7"].includes(x.id)&&x.year===year);
   const child=parentChildren.find(x=>x.id===selectedChild)||parentChildren[0];
   const childSchool=schoolOf(state,child?.school);
@@ -308,7 +311,7 @@ export default function DemoExperience(){
     }
     if(kind==="staff"){
       if(!values.name?.trim()){message("Nom requis.");return;}
-      const role=values.role||(SCHOOL_ROLES[school.type]||[])[0]||"Enseignant";
+      const role=values.role||(school.type==="Maternelle"?"Éducatrice / Maîtresse":school.type==="Lycée technique"?"Enseignant technique":"Enseignant");
       const roles=[role,...(values.secondaryRole&&values.secondaryRole!=="Aucune"&&values.secondaryRole!==role?[values.secondaryRole]:[])];
       setState(old=>({...old,staff:[...old.staff,{id:fakeId("p",old.staff),school:school.id,year,
         name:values.name.trim(),role,roles,hasAccount:Boolean(values.hasAccount),
