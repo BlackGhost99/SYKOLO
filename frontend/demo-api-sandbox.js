@@ -1,7 +1,7 @@
 /* Bac à sable mémoire pour présenter les VRAIS composants YEM.
  * Toutes les requêtes sont traitées en local : aucun accès HTTP/production.
  * Le jeu est recréé à chaque ouverture, sans persistance navigateur. */
-import {createDemoState,DEMO_CURRENT_YEAR,DEMO_YEARS,schoolOf,remaining} from "./demo-data.js";
+import {createDemoState,DEMO_CURRENT_YEAR,DEMO_YEARS,SCHOOL_ROLES,schoolOf,remaining} from "./demo-data.js";
 
 const SCHOOL_IDS=["lycee","primaire","maternelle"];
 const PERMISSIONS=[
@@ -133,7 +133,10 @@ export function createOfflineDemoBackend(){
         data.classes.push(classroom);made.push({...classroom,active:true,enrolled:0});}
       return {classes:made.length?made:[base.classes[0]].filter(Boolean)};
     }
-    if(path.endsWith("/staff"))return {staff:data.staff.filter(s=>s.school===id)};
+    if(path.endsWith("/staff"))return {staff:data.staff.filter(s=>s.school===id).map(p=>({
+      ...splitName(p.name),id:p.id,staff_code:"DEMO-"+p.id,position:p.role,active:true,
+      account_id:p.hasAccount?"compte-"+p.id:null
+    }))};
     if(path.endsWith("/academic/years"))return {years:years()};
     if(path.endsWith("/academic/classes"))return {classes:classOverview(id,yr).classes};
     if(path.endsWith("/academic/levels"))return {levels:classOverview(id,yr).levels};
@@ -148,7 +151,12 @@ export function createOfflineDemoBackend(){
     if(path.endsWith("/enrollment-form"))return {config:{},years:years(),fields:[],categories:[],classes:classOverview(id,yr).classes};
     if(path.includes("/classes/")&&path.endsWith("/students"))return {students:studentsOverview(id,yr).students};
     if(path.endsWith("/students"))return {students:studentsOverview(id,yr).students};
-    if(path.endsWith("/guardians-by-class"))return {guardians:[]};
+    if(path.endsWith("/guardians-by-class")){
+      const room=search.get("classroom");
+      return {families:studentsFor(id,yr).filter(s=>s.level===classesFor(id,yr).find(c=>c.id===room)?.name)
+        .map(s=>({student_id:s.id,student_name:s.name,
+          guardians:[{id:"g-"+s.id,name:s.guardian,phone:"",email:"",relationship:"Parent"}]}))};
+    }
     if(path.endsWith("/parent-links"))return {links:[]};
     if(path.endsWith("/finance/charges"))return {charges:[]};
     if(path==="parents/children")return {children:data.students.filter(s=>["s1","s4","s7"].includes(s.id)).map(s=>({
@@ -165,6 +173,23 @@ export function createOfflineDemoBackend(){
       return {};
     }
     if(path.startsWith("parents/"))return {schools:[],applications:[]};
+    if(path.endsWith("/staff/onboard")){
+      const labels=SCHOOL_ROLES[school.type]||SCHOOL_ROLES["Collège / Lycée"];
+      const codeFor=label=>label.toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
+      const positions=labels.map(label=>({code:codeFor(label),label,scope:"school",allowed_cycles:[]}));
+      const roles=labels.map(label=>({code:codeFor(label),label,permissions:[],available_for_accounts:true}));
+      if(method!=="GET"){
+        const p=body.staff||{};
+        const newPerson={id:"p-demo-"+(data.staff.length+1),school:id,year:yr,name:p.last_name+" "+p.first_name,
+          role:p.position||"Enseignant",hasAccount:Boolean(body.account)};
+        data.staff.push(newPerson);
+        return {staff:newPerson,account_created:Boolean(body.account),appointments:body.appointments||[]};
+      }
+      return {school_name:school.name,can_create_account:true,can_manage_cycle_access:true,
+        education_cycles:[school.type],academic_cycles:[{id:"cycle-demo",code:"college",name:school.type}],
+        actor_access_cycle_ids:null,existing_accounts:[],roles,positions,years:years(),
+        classes:classOverview(id,yr).classes};
+    }
     if(path.includes("/onboarding")||path.includes("/staff/setup"))return {staff:[],roles:[],functions:[],appointments:[],years:years(),classes:[]};
     // Les modules non préparés ne peuvent EN AUCUN CAS contacter une API réelle.
     return {items:[],results:[],students:[],classes:[],members:[],roles:[],functions:[],
