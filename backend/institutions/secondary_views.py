@@ -109,3 +109,67 @@ def series_classes(request, school_id):
         "classes": [{"id": str(item.pk), "name": item.name, "code": item.code}
                     for item in created],
     }, status=201)
+
+
+@require_POST
+@authorized
+def carry_forward_class(request, school_id, class_id):
+    """Recréer dans l'année suivante une classe archivée sans toucher à son historique."""
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if not can_manage_classes(request.user, school):
+        return refuse()
+    body, error = parse_body(request)
+    if error is not None:
+        return error
+    if (not isinstance(body, dict) or "year" not in body
+            or set(body) - {"year", "name"}):
+        return JsonResponse({"error": "Année de destination requise."}, status=422)
+    try:
+        with transaction.atomic():
+            School.objects.select_for_update().get(pk=school.pk)
+            source = AcademicClass.objects.select_related(
+                "year", "level__cycle", "track").filter(school=school, pk=class_id).first()
+            if source is None:
+                return JsonResponse({"error": "Classe introuvable."}, status=404)
+            if not can_manage_classes(request.user, school, source.level.cycle.code):
+                return refuse()
+            if source.active:
+                return JsonResponse({"error": "La classe d'origine doit être archivée."}, status=409)
+            year = AcademicYear.objects.select_for_update().filter(
+                school=school, pk=as_uuid(body["year"])).first()
+            if year is None:
+                return JsonResponse({"error": "Année de destination introuvable."}, status=404)
+            if (not year.active or year.status == AcademicYear.STATUS_CLOSED
+                    or year.start_date <= source.year.start_date):
+                return JsonResponse({"error": "Choisissez une année suivante non clôturée."}, status=409)
+            if (not source.level.active or not source.level.cycle.active
+                    or (source.track_id and not source.track.active)):
+                return JsonResponse({"error": "Niveau ou série archivé ; réactivez-le d'abord."}, status=409)
+            name = body.get("name", source.name)
+            if not isinstance(name, str) or not 1 <= len(name.strip()) <= 120:
+                return JsonResponse({"error": "Nom de classe invalide."}, status=422)
+            name = name.strip()
+            existing = list(AcademicClass.objects.filter(school=school, year=year)
+                            .values_list("name", "code"))
+            if name.casefold() in {n.casefold() for n, _ in existing}:
+                return JsonResponse({"error": "Cette classe existe déjà dans l'année choisie."}, status=409)
+            used_codes = {code for _, code in existing}
+            code = source.code if source.code not in used_codes else unique_code(name, used_codes)
+            target = AcademicClass(
+                school=school, year=year, level=source.level, track=source.track,
+                code=code, name=name, capacity=source.capacity, active=True,
+            )
+            target.full_clean()
+            target.save()
+            log_event(school, request, "archived_class_reopened_next_year", str(target.pk), {
+                "archive": str(source.pk), "source_year": str(source.year_id),
+                "target_year": str(year.pk),
+            })
+    except (ValidationError, IntegrityError, ValueError) as exc:
+        return JsonResponse({"error": str(exc)[:500]}, status=409 if isinstance(exc, IntegrityError) else 422)
+    return JsonResponse({
+        "id": str(target.pk), "name": target.name, "source_id": str(source.pk),
+        "year": str(year.pk), "message": "Classe ouverte dans la nouvelle année ; l'archive est intacte.",
+    }, status=201)
