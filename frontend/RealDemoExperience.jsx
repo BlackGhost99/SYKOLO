@@ -44,7 +44,8 @@ export default function RealDemoExperience(){
     }
   };
   const account=<p>Profil de visite fictif : aucun mot de passe ou accès réel n'est utilisé.</p>;
-  return <div className="yem-demo-real" data-demo="true" onClickCapture={interceptLinks}>
+  return <div className="yem-demo-real" data-demo="true" onClickCapture={interceptLinks}
+    onSubmitCapture={event=>event.preventDefault()}>
     {ready&&<div className="yem-demo-real-app" key={role+"-"+iteration}>
       {role==="school"?<SchoolDashboard user={DEMO_USER} accountView={account} onLogout={returnToReal} initialSchoolId="lycee"/>:
        role==="platform"?<PlatformConsole user={DEMO_USER} mfaEnabled accountView={account} onLogout={returnToReal}/>:
