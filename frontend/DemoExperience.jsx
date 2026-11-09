@@ -142,6 +142,8 @@ function DemoModal({mode,form,setForm,school,schools,student,invoice,onClose,onS
 
 export default function DemoExperience(){
   const [state,setState]=useState(createDemoState);
+  const [year,setYear]=useState(DEMO_CURRENT_YEAR);
+  const isClosed=year==="2025-2026";
   const [role,setRole]=useState("school");
   const [schoolId,setSchoolId]=useState("lycee");
   const [page,setPage]=useState("dashboard");
@@ -156,19 +158,19 @@ export default function DemoExperience(){
   const [notice,setNotice]=useState("");
   const [resultTab,setResultTab]=useState("notes");
   const school=schoolOf(state,schoolId)||state.schools[0];
-  const currentStudents=state.students.filter(x=>x.school===school.id);
-  const currentApplications=state.applications.filter(x=>x.school===school.id);
-  const currentInvoices=state.invoices.filter(x=>x.school===school.id);
-  const currentClasses=state.classes.filter(x=>x.school===school.id);
-  const currentStaff=state.staff.filter(x=>x.school===school.id);
+  const currentStudents=state.students.filter(x=>x.school===school.id&&x.year===year);
+  const currentApplications=state.applications.filter(x=>x.school===school.id&&x.year===year);
+  const currentInvoices=state.invoices.filter(x=>x.school===school.id&&x.year===year);
+  const currentClasses=state.classes.filter(x=>x.school===school.id&&x.year===year);
+  const currentStaff=state.staff.filter(x=>x.school===school.id&&x.year===year);
   const chosen=state.students.find(x=>x.id===selectedStudent&&x.school===school.id)||currentStudents[0];
   const application=state.applications.find(x=>x.id===selectedAdmission&&x.school===school.id)||currentApplications[0];
-  const parentChildren=state.students.filter(x=>["s1","s4","s7"].includes(x.id));
+  const parentChildren=state.students.filter(x=>["s1","s4","s7"].includes(x.id)&&x.year===year);
   const child=parentChildren.find(x=>x.id===selectedChild)||parentChildren[0];
   const childSchool=schoolOf(state,child?.school);
   const activeInvoice=state.invoices.find(x=>x.id===selectedInvoice);
   const pendingTotal=currentInvoices.reduce((sum,f)=>sum+remaining(f),0);
-  const parentsDue=state.invoices.filter(f=>f.student===child?.id);
+  const parentsDue=state.invoices.filter(f=>f.student===child?.id&&f.year===year);
   const nav=role==="school"?SCHOOL_NAV:role==="parent"?PARENT_NAV:PLATFORM_NAV;
   const title=role==="school"?"Direction — "+school.name:role==="parent"?"Espace parent":"Console plateforme";
   const visibleStudents=currentStudents.filter(x=>(x.name+" "+x.level+" "+x.guardian).toLowerCase().includes(search.toLowerCase())&&(statusFilter==="all"||x.status===statusFilter));
@@ -176,7 +178,8 @@ export default function DemoExperience(){
 
   function message(txt){setNotice(txt);}
   function open(kind,initial={}){
-    setForm({state,...initial});setModal(kind);setNotice("");
+    if(isClosed&&kind!=="export"){message("Année clôturée : consultation seule. Sélectionnez une année ouverte pour modifier.");return;}
+    setForm({state,year,...initial});setModal(kind);setNotice("");
   }
   function enter(nextRole){
     setRole(nextRole);setPage(defaultPage[nextRole]);setNotice("");setSearch("");
@@ -191,6 +194,7 @@ export default function DemoExperience(){
     setState(old=>({...old,students:old.students.map(s=>s.id===id?{...s,...fields}:s)}));
   }
   function admissionAction(action){
+    if(isClosed){message("Année clôturée : décision non modifiable.");return;}
     if(!application)return;
     if(action==="approve"&&(!application.eligible||!application.documents)){
       message("Vérifiez d'abord l'éligibilité et les pièces. Un concours réussi ne vaut pas inscription.");return;
@@ -202,7 +206,7 @@ export default function DemoExperience(){
       setState(old=>{
         const id=fakeId("s",old.students);
         const data={id,school:application.school,name:application.name,level:application.level+" A",
-          guardian:"Responsable à compléter",phone:"",status:"Inscrit",average:null,absences:0};
+          guardian:"Responsable à compléter",phone:"",status:"Inscrit",average:null,absences:0,year};
         return {...old,students:[...old.students,data],
           applications:old.applications.map(a=>a.id===application.id?{...a,status:"Inscrit"}:a),
           events:[{kind:"Admission convertie",who:application.name},...old.events]};
@@ -218,12 +222,13 @@ export default function DemoExperience(){
         "Décision enregistrée uniquement dans la démonstration.");
   }
   function submit(kind,values){
+    if(isClosed){message("Année clôturée : modification interdite.");setModal(null);return;}
     if(kind==="student"||kind==="edit"){
       const name=values.name?.trim(),guardian=values.guardian?.trim();
       if(!name||!guardian){message("Renseignez le nom et le responsable.");return;}
       if(kind==="student"){
         const record={id:fakeId("s",state.students),school:school.id,name,guardian,
-          level:values.level||school.levels[0]+" A",phone:values.phone||"",status:"Inscrit",average:null,absences:0};
+          level:values.level||school.levels[0]+" A",phone:values.phone||"",status:"Inscrit",average:null,absences:0,year};
         setState(old=>({...old,students:[...old.students,record],events:[{kind:"Élève ajouté",who:name},...old.events]}));
         setSelectedStudent(record.id);
       }else{
@@ -237,7 +242,7 @@ export default function DemoExperience(){
       const chosenSchool=schoolOf(state,values.school||school.id)||school;
       const item={id,school:chosenSchool.id,name,level:values.level||chosenSchool.levels[0],
         route:values.route||"direct",status:"En attente",eligible:values.route==="direct",
-        documents:values.route==="direct",origin:values.origin||"",parentDemo:Boolean(values.parentDemo)};
+        documents:values.route==="direct",origin:values.origin||"",parentDemo:Boolean(values.parentDemo),year};
       setState(old=>({...old,applications:[...old.applications,item],
         events:[{kind:"Candidature créée",who:name},...old.events]}));
       setSelectedAdmission(id);message("Candidature créée en mode démonstration.");setModal(null);return;
@@ -248,14 +253,61 @@ export default function DemoExperience(){
         message("Nom et capacité entre 1 et 200 requis.");return;
       }
       setState(old=>({...old,classes:[...old.classes,{id:fakeId("c",old.classes),
-        school:school.id,name:values.name.trim(),capacity}]}));
+        school:school.id,name:values.name.trim(),capacity,year}]}));
       message("Classe créée dans la démonstration.");setModal(null);return;
+    }
+    if(kind==="generation"){
+      const count=Number(values.count),capacity=Number(values.capacity),level=values.level||school.levels[0];
+      if(!Number.isInteger(count)||count<1||count>13||!Number.isInteger(capacity)||capacity<1||capacity>200){
+        message("Choisir 1 à 13 divisions et une capacité de 1 à 200.");return;
+      }
+      let added=0;
+      setState(old=>{
+        const classes=[...old.classes];
+        for(let n=0;n<count;n++){
+          const name=level+" "+String.fromCharCode(65+n);
+          if(classes.some(x=>x.school===school.id&&x.year===year&&x.name===name))continue;
+          classes.push({id:fakeId("c",classes),school:school.id,year,name,capacity});added++;
+        }
+        return {...old,classes};
+      });
+      message("Divisions générées dans la démonstration (les doublons sont ignorés).");
+      setModal(null);return;
+    }
+    if(kind==="subject"){
+      const coefficient=Number(values.coefficient);
+      if(!values.name?.trim()||!Number.isFinite(coefficient)||coefficient<=0){
+        message("Matière et coefficient positif requis.");return;
+      }
+      setState(old=>({...old,subjects:[...old.subjects,{
+        id:fakeId("m",old.subjects),school:school.id,year,name:values.name.trim(),
+        level:values.level||school.levels[0],coefficient
+      }]}));
+      message("Matière ajoutée aux données de présentation.");setModal(null);return;
+    }
+    if(kind==="timetable"){
+      const {className,day,slot,subject,teacher,room}=values;
+      if(!className||!day||!slot||!subject?.trim()||!teacher?.trim()||!room?.trim()){
+        message("Renseignez la classe, le cours, l'enseignant, la salle et le créneau.");return;
+      }
+      const collision=state.timetable.find(t=>t.school===school.id&&t.year===year&&t.day===day&&t.slot===slot&&
+        (t.className===className||t.teacher.toLowerCase()===teacher.trim().toLowerCase()||t.room.toLowerCase()===room.trim().toLowerCase()));
+      if(collision){message("Conflit détecté : classe, enseignant ou salle déjà occupé sur ce créneau.");return;}
+      setState(old=>({...old,timetable:[...old.timetable,{
+        id:fakeId("t",old.timetable),school:school.id,year,className,day,slot,
+        subject:subject.trim(),teacher:teacher.trim(),room:room.trim()
+      }]}));
+      message("Cours planifié dans la démonstration.");setModal(null);return;
     }
     if(kind==="staff"){
       if(!values.name?.trim()){message("Nom requis.");return;}
-      setState(old=>({...old,staff:[...old.staff,{id:fakeId("p",old.staff),school:school.id,
-        name:values.name.trim(),role:values.role||"Enseignant"}]}));
-      message("Compte de personnel simulé. Aucun identifiant réel n'est créé.");setModal(null);return;
+      const role=values.role||(SCHOOL_ROLES[school.type]||[])[0]||"Enseignant";
+      const roles=[role,...(values.secondaryRole&&values.secondaryRole!=="Aucune"&&values.secondaryRole!==role?[values.secondaryRole]:[])];
+      setState(old=>({...old,staff:[...old.staff,{id:fakeId("p",old.staff),school:school.id,year,
+        name:values.name.trim(),role,roles,hasAccount:Boolean(values.hasAccount),
+        cycles:[values.cycle||"Tous les cycles"]}]}));
+      message(values.hasAccount?"Compte et fonctions fictifs créés. Aucun accès réel n'est ouvert.":
+        "Personnel fictif créé sans compte de connexion.");setModal(null);return;
     }
     if(kind==="school"){
       if(!values.name?.trim()||!values.city?.trim()){message("Nom et ville requis.");return;}
@@ -264,7 +316,7 @@ export default function DemoExperience(){
         values.type==="Primaire"?["1ère année","2e année","3e année","4e année","5e année"]:
           ["6e","5e","4e","3e","2nde","1ère","Tle"];
       setState(old=>({...old,schools:[...old.schools,{id,name:values.name.trim(),
-        type:values.type,city:values.city.trim(),levels,head:"À désigner",fee:45000}]}));
+        type:values.type,city:values.city.trim(),levels,head:"À désigner",fee:45000,owner:values.owner||"À désigner"}]}));
       message("Établissement fictif créé.");setModal(null);return;
     }
     if(kind==="payment"){
@@ -283,6 +335,7 @@ export default function DemoExperience(){
     }
   }
   function showPayment(inv){
+    if(isClosed){message("Année clôturée : aucun encaissement possible.");return;}
     if(remaining(inv)<=0){message("Ce frais est déjà réglé dans la démonstration.");return;}
     setSelectedInvoice(inv.id);open("payment",{invoiceId:inv.id,
       amount:String(remaining(inv)),method:channels[0]});
@@ -385,7 +438,7 @@ export default function DemoExperience(){
     </>;
   }
   function payments(onlyChild=false){
-    const invoices=onlyChild?state.invoices.filter(f=>f.student===child.id):currentInvoices;
+    const invoices=onlyChild?state.invoices.filter(f=>f.student===child?.id&&f.year===year):currentInvoices;
     return <><PageHeader title={onlyChild?"Frais & paiements":"Frais et encaissements"}
       subtitle={onlyChild?"Choisissez une facture pour simuler un règlement":"Encaissements, soldes et reçus — aucun mouvement bancaire réel"}/>
       <div className="demo-metrics"><Metric icon="file" label="Factures" value={String(invoices.length)}/>
@@ -402,7 +455,7 @@ export default function DemoExperience(){
       <p className="demo-hint">L'intégration SingPay de l'application réelle n'est pas déclenchée. Tout paiement dans cette démonstration est une simulation locale.</p></>;
   }
   function reports(onlyChild=false){
-    const students=onlyChild?[child]:currentStudents;
+    const students=onlyChild?(child?[child]:[]):currentStudents;
     const pupil=students.find(s=>s.id===selectedStudent)||students[0];
     const opts=students.filter(Boolean);
     return <><PageHeader title={onlyChild?"Notes et bulletins":"Bulletins et évaluations"}
@@ -505,7 +558,7 @@ export default function DemoExperience(){
       </div></>;
   }
   function parentAdmissions(){
-    const mine=state.applications.filter(a=>a.parentDemo);
+    const mine=state.applications.filter(a=>a.parentDemo&&a.year===year);
     return <><PageHeader title="Préinscriptions" subtitle="Choisir une école, un niveau et une voie d'admission"/>
       <div className="demo-tiles">{state.schools.map(s=><button key={s.id} className="demo-tile" type="button"
         onClick={()=>open("admission",{school:s.id,route:"direct",level:s.levels[0],parentDemo:true})}>
