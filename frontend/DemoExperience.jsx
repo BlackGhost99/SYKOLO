@@ -538,7 +538,9 @@ export default function DemoExperience(){
     return <><PageHeader title="Personnel et fonctions" subtitle={school.type+" — organigramme adapté aux besoins de l'établissement"}
       actions={<DemoButton primary icon="adduser" onClick={()=>open("staff")}>Ajouter un membre</DemoButton>}/>
       <Card title="Personnel de l'établissement" icon="users">{currentStaff.map(p=><div key={p.id} className="demo-line">
-        <div className="demo-person-inline"><PersonAvatar name={p.name}/><b>{p.name}</b></div><Status>{p.role}</Status></div>)}
+        <div className="demo-person-inline"><PersonAvatar name={p.name}/><div><b>{p.name}</b>
+          <small>{(p.cycles||["Tous les cycles"]).join(", ")} · {p.hasAccount?"Compte simulé":"Sans compte"}</small>
+        </div></div><Status>{(p.roles||[p.role]).join(" · ")}</Status></div>)}
         {!currentStaff.length&&<Empty>Aucun personnel fictif.</Empty>}
       </Card><p className="demo-hint">Dans YEM réel, les droits dépendent de l'établissement et des fonctions attribuées.</p></>;
   }
@@ -653,9 +655,9 @@ export default function DemoExperience(){
   function platform(){
     return <><PageHeader title="Console de la plateforme YEM" subtitle="Vue multi-établissements et administration — scénario fictif"/>
       <div className="demo-metrics"><Metric icon="school" label="Établissements" value={String(state.schools.length)}/>
-        <Metric icon="users" label="Élèves" value={String(state.students.length)}/>
-        <Metric icon="layers" label="Classes" value={String(state.classes.length)}/>
-        <Metric icon="adduser" label="Demandes d'admission" value={String(state.applications.length)}/></div>
+        <Metric icon="users" label="Élèves" value={String(state.students.filter(x=>x.year===year).length)}/>
+        <Metric icon="layers" label="Classes" value={String(state.classes.filter(x=>x.year===year).length)}/>
+        <Metric icon="adduser" label="Demandes d'admission" value={String(state.applications.filter(x=>x.year===year).length)}/></div>
       <Card title="Répertoire des établissements" icon="school">
         {state.schools.map(s=><div key={s.id} className="demo-line"><div>
           <b>{s.name}</b><small>{s.city} · {s.type}</small></div>
@@ -683,6 +685,7 @@ export default function DemoExperience(){
   }
   function parents(){
     return <><PageHeader title="Mes enfants" subtitle="Un seul espace parent pour plusieurs établissements — données fictives"/>
+      {!parentChildren.length&&<p className="demo-hint">Aucun enfant rattaché à cet exemple pour l'année {year}.</p>}
       <div className="demo-tiles">{parentChildren.map(s=><button type="button" key={s.id} onClick={()=>setSelectedChild(s.id)}
         className={"demo-tile "+(s.id===child?.id?"demo-tile-selected":"")}>
         <PersonAvatar name={s.name}/><b>{s.name}</b><span>{schoolOf(state,s.school)?.name}</span><small>{s.level}</small></button>)}</div>
@@ -691,9 +694,9 @@ export default function DemoExperience(){
         <Metric icon="calendar" label="Absences" value={String(child?.absences||0)}/>
         <Metric icon="coins" label="À régler" value={fcfa(parentsDue.reduce((n,f)=>n+remaining(f),0))}/></div>
       <div className="demo-quick demo-parent-quick">
-        <DemoButton icon="card" primary onClick={()=>setPage("parent-payments")}>Payer les frais (simulation)</DemoButton>
-        <DemoButton icon="file" onClick={()=>setPage("parent-results")}>Voir les bulletins</DemoButton>
-        <DemoButton icon="calendar" onClick={()=>setPage("parent-absences")}>Voir les absences</DemoButton>
+        <DemoButton icon="card" primary disabled={!child||isClosed} onClick={()=>setPage("parent-payments")}>Payer les frais (simulation)</DemoButton>
+        <DemoButton icon="file" disabled={!child} onClick={()=>setPage("parent-results")}>Voir les bulletins</DemoButton>
+        <DemoButton icon="calendar" disabled={!child} onClick={()=>setPage("parent-absences")}>Voir les absences</DemoButton>
         <DemoButton icon="school" onClick={()=>setPage("parent-admissions")}>Préinscrire un enfant</DemoButton>
       </div></>;
   }
