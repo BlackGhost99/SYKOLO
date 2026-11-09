@@ -206,7 +206,7 @@ class RegistrationTests(TestCase):
         path = "academic/standard-classes"
         first = self.post(path, {"year": str(self.year.pk)})
         self.assertEqual(first.status_code, 200, first.content)
-        self.assertEqual(first.json()["created"], 5 + 4 + 3)
+        self.assertEqual(first.json()["created"], 5 + 4)
         self.assertEqual(first.json()["cycles"], ["primaire", "college", "lycee_general"])
         self.assertEqual(
             set(AcademicLevel.objects.filter(school=self.school, cycle__code="primaire")
@@ -226,8 +226,8 @@ class RegistrationTests(TestCase):
         new_rooms = AcademicClass.objects.filter(
             school=self.school, year=self.year, code__startswith="std-",
         )
-        self.assertEqual(new_rooms.count(), 12)
-        self.assertEqual(len({room.name.casefold() for room in new_rooms}), 12)
+        self.assertEqual(new_rooms.count(), 9)
+        self.assertEqual(len({room.name.casefold() for room in new_rooms}), 9)
         self.assertEqual(self.post(path, {"year": str(self.year.pk)}).json()["created"], 0)
         to_rename = new_rooms.get(level__cycle__code="primaire", level__code="1re-annee")
         renamed = self.client.patch(
@@ -277,13 +277,13 @@ class RegistrationTests(TestCase):
         self.client.force_login(self.director)
         result = self.post("academic/standard-classes", {"year": str(self.year.pk)})
         self.assertEqual(result.status_code, 200, result.content)
-        self.assertEqual(result.json()["created"], 19)
+        self.assertEqual(result.json()["created"], 13)
         names = [classroom["name"] for classroom in result.json()["classes"]]
-        self.assertIn("Seconde A", names)
-        self.assertIn("Seconde technique A", names)
+        self.assertNotIn("Seconde A", names)
+        self.assertNotIn("Seconde technique A", names)
         self.assertIn("Crèche A", names)
         self.assertIn("5e année A", names)
-        self.assertEqual(len({name.casefold() for name in names}), 19)
+        self.assertEqual(len({name.casefold() for name in names}), 13)
         self.assertEqual(self.post("academic/standard-classes", {"year": str(self.year.pk)}).json()["created"], 0)
         self.assertEqual(self.post("academic/preschool-standard-classes", {"year": str(self.year.pk)}).json()["created"], 0)
 
