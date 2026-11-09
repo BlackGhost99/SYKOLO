@@ -447,7 +447,7 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
   }
   function proposeCloneName(source) {
     const used = new Set(d.classes.map(room => room.name.toLocaleLowerCase("fr")));
-    const base = source.name.replace(/\\s+(?:[A-Z]|[1-9][0-9]*)$/, "").trim();
+    const base = source.name.replace(/\s+(?:[A-Z]|[1-9][0-9]*)$/, "").trim();
     for (let i = 1; i <= 500; i++) {
       const suffix = i <= 26 ? String.fromCharCode(64 + i) : String(i);
       const name = `${base.slice(0, 119 - suffix.length).trimEnd()} ${suffix}`;
@@ -565,7 +565,7 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
                     <button type="button" className="yf-link" aria-label={`Dupliquer ${c.name}`} disabled={busy} onClick={() => {
                       setEditing(null); setMessage({text: ""});
                       setCloning({id: c.id, name: proposeCloneName(c), originalName: c.name});
-                    }}>Dupliquer</button>}}</td>
+                    }}>Dupliquer</button>}</td>
               </tr>)}</tbody></table></TableScroll>}
           {d.can_manage_academic && <details className="yf-details"><summary>Créer une autre année scolaire</summary>{yearForm}</details>}
         </Card>
