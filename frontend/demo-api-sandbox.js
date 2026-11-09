@@ -27,6 +27,10 @@ const splitName=name=>{const parts=(name||"Élève").trim().split(/\s+/);return 
 const today="2026-11-09";
 export function createOfflineDemoBackend(){
   let data=createDemoState();
+  let assessments={};
+  let grades={};
+  let reports={};
+  let closings=[];
   const schoolList=()=>data.schools.map(s=>({id:s.id,name:s.name,school_type:s.type,active:true,login_code:"DEMO-"+s.id.toUpperCase()}));
   const years=()=>order.map(y=>({...y}));
   const findYear=raw=>order.find(y=>y.id===raw)||order[1];
@@ -51,6 +55,36 @@ export function createOfflineDemoBackend(){
       metrics:{active:ss.length,enrolled:rows.filter(s=>s.enrollment).length,
         new_30d:1,new_prev_30d:1,incomplete:0,missing_documents:0,missing_phone:0}};
   };
+  // Les mêmes écrans que la production exigent ces structures, même en démonstration.
+  const subjectsFor=(id,yr)=>data.subjects.filter(s=>s.school===id&&s.year===yr)
+    .map(s=>({...s,active:true,code:s.id}));
+  const coursesFor=(id,yr)=>classesFor(id,yr).flatMap(room=>subjectsFor(id,yr)
+    .filter(subject=>room.name.startsWith(subject.level+" "))
+    .map(subject=>({id:"course-"+room.id+"-"+subject.id,school:id,year:yr,
+      classroom:room.id,subject:subject.id,coefficient:subject.coefficient,active:true})));
+  const periodsFor=(yr)=>["1er trimestre","2e trimestre","3e trimestre"]
+    .map((name,i)=>({id:"period-"+yr+"-"+(i+1),year:yr,name,code:"T"+(i+1),active:true}));
+  const assessmentFor=(id,courseId,yr)=>{
+    if(!assessments[courseId]){
+      assessments[courseId]=[{id:"assessment-"+courseId,school:id,course:courseId,year:yr,
+        name:"Contrôle continu n°1",assessment_date:"2026-10-15",kind:"devoir",weight:1,
+        active:true,published:false,revision:1,
+        policy:{name:"Notation sur 20",scale:{kind:"numeric",max:20},bands:[]}}];
+    }
+    return assessments[courseId];
+  };
+  const invoicesFor=(id,yr)=>data.invoices.filter(f=>f.school===id&&f.year===yr);
+  const chargesFor=(id,yr)=>invoicesFor(id,yr).map(f=>({id:f.id,enrollment:"en-"+f.student,
+    label:f.label,amount:f.total,balance:remaining(f),paid:f.paid,currency:"XAF",
+    due_date:"2026-11-15",year:yr,active:true}));
+  const schedulesFor=(id,yr)=>invoicesFor(id,yr).map(f=>({
+    id:"schedule-"+f.id,year:yr,classroom:null,code:"demo-"+f.id,label:f.label,
+    amount:f.total,currency:"XAF",due_date:"2026-11-15",active:true}));
+  const enrollmentRows=(id,yr)=>studentsFor(id,yr).map(s=>{
+    const cl=classesFor(id,yr).find(c=>c.name===s.level);
+    return {id:"en-"+s.id,student:s.id,year:yr,classroom:cl?.id||"",
+      active:true,status:"Inscrit"};
+  });
   const classOverview=(id,yr)=>{
     const school=schoolData(id),cc=classesFor(id,yr),ss=studentsFor(id,yr);
     const cycle=school.type==="Maternelle"?"maternelle":school.type==="Primaire"?"primaire":"college";
@@ -72,13 +106,19 @@ export function createOfflineDemoBackend(){
     });
     const byClass=Object.values(arrears.reduce((o,a)=>{
       const k=a.classroom;if(!o[k])o[k]={classroom:k,families:0};o[k].families++;return o;},{}));
+    const yesterdayTotal=Math.floor(paid*.04);
+    const todayTotal=Math.floor(paid*.1);
+    const todayMethods={especes:Math.floor(todayTotal*.35),
+      airtel_money:Math.floor(todayTotal*.4),moov_money:Math.ceil(todayTotal*.25)};
     return {year:findYear(yr),years:years(),currency:"XAF",currencies:["XAF"],
       month:{total:paid,previous:Math.floor(paid*.75),by_method:{especes:Math.floor(paid*.35),airtel_money:Math.floor(paid*.4),moov_money:Math.floor(paid*.25)}},
       monthly:["2026-05","2026-06","2026-07","2026-08","2026-09","2026-10"].map((month,i)=>({month,total:Math.round((i+1)*paid/9)})),
       outstanding,active_students:ss.length,families_late:new Set(arrears.map(a=>a.enrollment)).size,
       overdue_total:outstanding,arrears,arrears_by_class:byClass,
-      today:{date:today,total:Math.floor(paid*.1),count:paid?2:0,
-        payments:paid?[{id:"demo-1",student:ss[0]?.name||"Élève",classroom:ss[0]?.level||"6e A",amount:Math.floor(paid*.1),method:"especes",recorded_at:"2026-11-09T09:15:00+01:00"}]:[]}};
+      yesterday:{date:"2026-11-08",total:yesterdayTotal,count:paid?1:0},
+      today:{date:today,total:todayTotal,count:paid?2:0,by_method:todayMethods,
+        payments:paid?[{id:"demo-1",student:ss[0]?.name||"Élève",classroom:ss[0]?.level||"6e A",
+          amount:todayTotal,method:"especes",recorded_at:"2026-11-09T09:15:00+01:00"}]:[]}};
   };
   const platformSchool=s=>({id:s.id,name:s.name,organization:"Groupe scolaire (exemple)",active:true,
     school_type_label:s.type,education_cycles:[s.type==="Maternelle"?"maternelle":s.type==="Primaire"?"primaire":"college"],
