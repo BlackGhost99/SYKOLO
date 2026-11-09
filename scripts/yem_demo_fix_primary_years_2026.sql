@@ -132,7 +132,7 @@ BEGIN
           to_jsonb(item.new_name||' '||upper(item.division)||' (démo)')),
         '{layers}',jsonb_build_array(jsonb_build_object(
           'scope',scope_new,'revision',2))
-      ),revision=revision+1
+      ),revision=r.revision+1
     FROM institutions_enrollment e
     JOIN institutions_student st ON st.id=e.student_id
     WHERE r.enrollment_id=e.id
