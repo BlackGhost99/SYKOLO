@@ -4,7 +4,7 @@ DO $demo$
 DECLARE
   s record; x record; idx integer; sch uuid; yr uuid; cy uuid; lvl uuid; cls uuid;
   sid uuid; ident uuid; gid uuid; ev uuid; count_classes integer;
-  start_on date; end_on date; cls_code text;
+  start_on date; end_on date; cls_code text; source_code text;
   school_data jsonb := '[
     {"id":"96f99506-a8d6-4dab-b292-4076800c9bd7","tag":"CES8","kind":"complexe","n":1},
     {"id":"b8ccefc7-c993-49f3-b2f3-70e59ca7db20","tag":"LP1","kind":"lycee","n":2},
@@ -14,12 +14,11 @@ DECLARE
     {"cycle":"prescolaire","cycle_name":"Maternelle","code":"petite_section","name":"Petite Section","sort":1},
     {"cycle":"prescolaire","cycle_name":"Maternelle","code":"moyenne_section","name":"Moyenne Section","sort":2},
     {"cycle":"prescolaire","cycle_name":"Maternelle","code":"grande_section","name":"Grande Section","sort":3},
-    {"cycle":"primaire","cycle_name":"Primaire","code":"cp1","name":"CP1","sort":1},
-    {"cycle":"primaire","cycle_name":"Primaire","code":"cp2","name":"CP2","sort":2},
-    {"cycle":"primaire","cycle_name":"Primaire","code":"ce1","name":"CE1","sort":3},
-    {"cycle":"primaire","cycle_name":"Primaire","code":"ce2","name":"CE2","sort":4},
-    {"cycle":"primaire","cycle_name":"Primaire","code":"cm1","name":"CM1","sort":5},
-    {"cycle":"primaire","cycle_name":"Primaire","code":"cm2","name":"CM2","sort":6}
+    {"cycle":"primaire","cycle_name":"Primaire","code":"1re-annee","name":"1re année","sort":1},
+    {"cycle":"primaire","cycle_name":"Primaire","code":"2e-annee","name":"2e année","sort":2},
+    {"cycle":"primaire","cycle_name":"Primaire","code":"3e-annee","name":"3e année","sort":3},
+    {"cycle":"primaire","cycle_name":"Primaire","code":"4e-annee","name":"4e année","sort":4},
+    {"cycle":"primaire","cycle_name":"Primaire","code":"5e-annee","name":"5e année","sort":5}
   ]'::jsonb;
   lycee_levels jsonb := '[
     {"cycle":"college","cycle_name":"Collège","code":"sixieme","name":"Sixième","sort":1},
@@ -77,7 +76,18 @@ BEGIN
       -- Look up the school-scoped cycle in case it already existed before seeding.
       SELECT id INTO cy FROM public.institutions_academiccycle
        WHERE school_id=sch AND code=x.cycle LIMIT 1;
-      lvl:=md5('YEM-DEMO-2026:level:'||s.tag||':'||x.code)::uuid;
+      -- Retain the exact UUIDs of previously seeded primary classes/levels.
+      -- The CE1/CE2 pair becomes two divisions of the third year.
+      source_code := CASE WHEN s.tag='CES8' THEN
+        CASE x.code
+          WHEN '1re-annee' THEN 'cp1'
+          WHEN '2e-annee' THEN 'cp2'
+          WHEN '3e-annee' THEN 'ce1'
+          WHEN '4e-annee' THEN 'cm1'
+          WHEN '5e-annee' THEN 'cm2'
+          ELSE x.code END
+        ELSE x.code END;
+      lvl:=md5('YEM-DEMO-2026:level:'||s.tag||':'||source_code)::uuid;
       INSERT INTO public.institutions_academiclevel
         (id,school_id,cycle_id,code,name,"order",active,revision)
       VALUES(lvl,sch,cy,x.code,x.name,x.sort,true,1)
@@ -86,9 +96,16 @@ BEGIN
         WHERE school_id=sch AND cycle_id=cy AND code=x.code LIMIT 1;
       INSERT INTO public.institutions_academicclass
         (id,school_id,year_id,level_id,track_id,code,name,capacity,active,revision)
-      VALUES(md5('YEM-DEMO-2026:class:'||s.tag||':'||x.code)::uuid,
+      VALUES(md5('YEM-DEMO-2026:class:'||s.tag||':'||source_code)::uuid,
         sch,yr,lvl,NULL,'demo26-'||x.code||'-a',x.name||' A (démo)',30,true,1)
       ON CONFLICT DO NOTHING;
+      IF s.tag='CES8' AND x.code='3e-annee' THEN
+        INSERT INTO public.institutions_academicclass
+          (id,school_id,year_id,level_id,track_id,code,name,capacity,active,revision)
+        VALUES(md5('YEM-DEMO-2026:class:CES8:ce2')::uuid,
+          sch,yr,lvl,NULL,'demo26-3e-annee-b','3e année B (démo)',30,true,1)
+        ON CONFLICT DO NOTHING;
+      END IF;
     END LOOP;
     -- All fictitious personnel have no access to the login system.
     FOR idx IN 1..6 LOOP
