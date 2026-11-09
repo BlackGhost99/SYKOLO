@@ -383,7 +383,7 @@ def suggested_copy_name(classroom, school, year):
     current = set(AcademicClass.objects.filter(school=school, year=year)
                   .values_list("name", flat=True))
     taken = {name.casefold() for name in current}
-    base = re.sub(r"\\s+(?:[A-Z]|[1-9][0-9]*)$", "", classroom.name).strip()
+    base = re.sub(r"\s+(?:[A-Z]|[1-9][0-9]*)$", "", classroom.name).strip()
     for i in range(1, 501):
         suffix = (chr(64 + i) if i <= 26 else str(i))
         proposed = f"{base[:118 - len(suffix)].rstrip()} {suffix}"
