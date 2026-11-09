@@ -67,6 +67,9 @@ def annual_snapshot(request, school_id):
     result = {
         "years": [_year_dict(item) for item in years[:100]],
         "year": _year_dict(year) if year else None,
+        "can_edit_year": bool(year and year.active and year.status != AcademicYear.STATUS_CLOSED
+            and has_permission(request.user, school, "school.academic.manage")
+            and scoped_cycle_ids(request.user, school) is None),
         "can_prepare_year": has_permission(request.user, school, "school.academic.manage")
                             and scoped_cycle_ids(request.user, school) is None,
         "can_activate_year": bool(
@@ -132,7 +135,7 @@ def annual_snapshot(request, school_id):
     } for room in rooms]
 
     result["periods"] = [{
-        "id": str(p.pk), "code": p.code, "name": p.name,
+        "id": str(p.pk), "revision": p.revision, "code": p.code, "name": p.name,
         "start_date": p.start_date.isoformat(), "end_date": p.end_date.isoformat(),
         "active": p.active,
     } for p in AcademicPeriod.objects.filter(school=school, year=year).order_by("order", "start_date")]
