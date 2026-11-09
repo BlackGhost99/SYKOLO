@@ -93,7 +93,8 @@ def directory(request):
         classes = list(AcademicClass.objects.select_related(
             "school", "year", "level__cycle",
         ).filter(school=listing.school, active=True, year__active=True,
-                 level__active=True, level__cycle__active=True).order_by(
+                 level__active=True, level__cycle__active=True
+                 ).filter(Q(track__isnull=True) | Q(track__active=True)).order_by(
                      "year__start_date", "level__order", "name",
                  )[:150])
         class_ids = [row.pk for row in classes]
