@@ -225,7 +225,7 @@ export default function ParentDiscovery() {
         <strong>{STATES[a.status]||a.status}</strong>
         {a.scholarship&&<p role="status"><strong>Boursier de l'État</strong> ·
           {a.scholarship.coverage==="all"?"tous les frais pris en charge":"frais d'inscription pris en charge"}.
-          Aucun règlement à verser pour les frais couverts.</p>
+          Aucun règlement à verser pour les frais couverts.</p>}
         {a.payment_choice==="cash"&&!a.scholarship&&<div className="yp-muted">
           <p><strong>Espèces au guichet</strong> · {a.fee_amount_xaf?
             Number(a.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA":"Tarif à définir par l'établissement"}
