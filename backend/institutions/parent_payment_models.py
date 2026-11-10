@@ -84,3 +84,49 @@ class ParentPaymentAttempt(models.Model):
             raise ValidationError("Paiement incompatible avec l'établissement.")
         if self.request_id and self.payer_id and self.request.owner_id != self.payer_id:
             raise ValidationError("Paiement incompatible avec le compte parent.")
+
+
+
+class SchoolDemoPaymentConfig(models.Model):
+    """Explicit no-money rehearsal, restricted to named fictitious parent accounts.
+
+    It never represents a merchant payment, fee receipt, tuition settlement, or
+    actual money transfer. Amounts are isolated from admission fee tariffs.
+    """
+    school = models.OneToOneField(
+        School, primary_key=True, on_delete=models.PROTECT,
+        related_name="demo_admission_config",
+    )
+    enabled = models.BooleanField(default=False)
+    # Key: "<year UUID>:<level UUID>" ; value: example amount in XAF.
+    level_amounts_xaf = models.JSONField(default=dict, blank=True)
+    allowed_parent_ids = models.JSONField(default=list, blank=True)
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        if not isinstance(self.level_amounts_xaf, dict) or len(self.level_amounts_xaf) > 150:
+            raise ValidationError("Configuration des montants simulés invalide.")
+        for key, amount in self.level_amounts_xaf.items():
+            parts = key.split(":") if isinstance(key, str) else []
+            if len(parts) != 2:
+                raise ValidationError("Année ou niveau de simulation invalide.")
+            try:
+                year_id, level_id = uuid.UUID(parts[0]), uuid.UUID(parts[1])
+            except ValueError:
+                raise ValidationError("Identifiant de montant simulé invalide.")
+            if not isinstance(amount, int) or isinstance(amount, bool) or not 100 <= amount <= 10000000:
+                raise ValidationError("Montant simulé hors des limites.")
+            if not AcademicYear.objects.filter(school_id=self.school_id, pk=year_id).exists():
+                raise ValidationError("Année de simulation étrangère à l'école.")
+            if not AcademicLevel.objects.filter(school_id=self.school_id, pk=level_id).exists():
+                raise ValidationError("Niveau de simulation étranger à l'école.")
+        if not isinstance(self.allowed_parent_ids, list) or len(self.allowed_parent_ids) > 50:
+            raise ValidationError("Liste de comptes parents tests invalide.")
+        if len(self.allowed_parent_ids) != len(set(self.allowed_parent_ids)):
+            raise ValidationError("Compte de test en double.")
+        for user_id in self.allowed_parent_ids:
+            try:
+                uuid.UUID(user_id)
+            except (ValueError, TypeError, AttributeError):
+                raise ValidationError("Compte parent de test invalide.")
