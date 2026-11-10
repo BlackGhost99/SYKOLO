@@ -344,7 +344,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "students:new":<StudentForm key={k} {...props}/>,
       "students:fiche":<StudentFile key={k} {...props}/>,
       "students:import":<ImportStudents key={chosen} {...props}/>,
-      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.read")} advancedSettings={advancedSettings} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
+      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.read")} canReadRoster={can("school.students.read")||can("school.attendance.read")||can("school.curriculum.manage")} advancedSettings={advancedSettings} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
       "calendar:live":<PedagogicalCalendar key={chosen} schoolId={chosen} workingYearId={workingYearId}
         onWorkingYearChange={setWorkingYearId} onYearsUpdated={()=>setYearCatalogVersion(v=>v+1)}/>,
       "payments:live":<LivePayments key={k} {...props}/>,

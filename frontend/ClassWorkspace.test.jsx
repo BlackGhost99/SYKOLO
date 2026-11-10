@@ -102,3 +102,32 @@ test.each([true,false])("le raccourci des évaluations respecte les droits et le
   await user.click(screen.getByRole("button", {name:"Retour au module"}));
   expect(screen.getByRole("tab", {...council,selected:true})).toBeTruthy();
 });
+
+test("la direction des études consulte Seconde S sans accès aux fiches personnelles", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  const root = "/api/v1/schools/lycee2/";
+  const school = {id:"lycee2", name:"Lycée Privé 2"};
+  const year = {id:"2026", name:"2026-2027", active:true};
+  const level = {id:"seconde", name:"Seconde", cycle:"Lycée", cycle_code:"lycee_general", code:"seconde", active:true};
+  const classe = {id:"s", name:"Seconde S", enrolled:1, capacity:30, active:true, level};
+  const fetchMock = vi.fn(async url => Response.json({
+    "/api/v1/schools":{schools:[school]},
+    [root+"my-access"]:{school,role:"etudes",permissions:["school.academic.read","school.curriculum.manage"]},
+    [root+"overview/classes"]:{year,years:[year],classes:[classe],levels:[level],can_manage_classes:false},
+    [root+"classes/s/students"]:{students:[{id:"student-test",first_name:"Jeanne",last_name:"ESSAI",student_code:"YEM-TEST"}]},
+    [root+"organization/my-appointments"]:{appointments:[]},
+  }[url] || {}));
+  vi.stubGlobal("fetch", fetchMock);
+  const user = userEvent.setup();
+  render(<SchoolDashboard user={{username:"etudes"}}/>);
+  const nav = await screen.findByRole("navigation", {name:"Navigation principale"});
+  await user.click(await within(nav).findByRole("button", {name:"Classes", exact:true}));
+  const tile = await screen.findByRole("button", {name:/Seconde S, 1 élève \/ 30 places/});
+  await user.click(tile);
+  const roster = screen.getByRole("dialog", {name:"Élèves de Seconde S"});
+  expect(await within(roster).findByText("ESSAI Jeanne")).toBeTruthy();
+  expect(within(roster).queryByRole("button", {name:"ESSAI Jeanne"})).toBeNull();
+  expect(fetchMock.mock.calls.some(([url])=>url.endsWith("/students/student-test"))).toBe(false);
+});

@@ -76,14 +76,14 @@ function CreateClassDialog({schoolId, year, levels, onClose, onCreated}) {
   </ClassDialog>;
 }
 
-function ClassRoster({schoolId, year, classroom, onClose, onStudent}) {
+function ClassRoster({schoolId, year, classroom, onClose, onStudent, canOpenStudentFile}) {
   const roster = useLoad(`schools/${schoolId}/classes/${classroom.id}/students`);
   const students = roster.data?.students;
   return <ClassDialog title={`Élèves de ${classroom.name}`} subtitle={year.name} onClose={onClose}>
     <Loading state={roster}>{students?.length ? <TableScroll label={`Élèves de ${classroom.name}`}>
       <table className="xs"><thead><tr><th>Élève</th><th>Matricule</th></tr></thead>
         <tbody>{students.map(student => <tr key={student.id}>
-          <td><button type="button" className="yf-link" onClick={() => onStudent(student.id)}>{student.last_name} {student.first_name}</button></td>
+          <td>{canOpenStudentFile ? <button type="button" className="yf-link" onClick={() => onStudent(student.id)}>{student.last_name} {student.first_name}</button> : <span>{student.last_name} {student.first_name}</span>}</td>
           <td>{student.student_code}</td>
         </tr>)}</tbody>
       </table>
@@ -91,7 +91,7 @@ function ClassRoster({schoolId, year, classroom, onClose, onStudent}) {
   </ClassDialog>;
 }
 
-export default function ClassWorkspace({schoolId, canReadStudents, onNavigate, advancedSettings, workingYearId="", onWorkingYearChange}) {
+export default function ClassWorkspace({schoolId, canReadStudents, canReadRoster = canReadStudents, onNavigate, advancedSettings, workingYearId="", onWorkingYearChange}) {
   const [year, setYear] = useState(workingYearId);
   useEffect(()=>{setYear(workingYearId);setSelected(null);setCreating(false);},[workingYearId,schoolId]);
   const [creating, setCreating] = useState(false);
@@ -127,10 +127,10 @@ export default function ClassWorkspace({schoolId, canReadStudents, onNavigate, a
       </Card>}
       {!needsSetup && !data.classes.length && <Card title="Aucune classe pour cette année" icon="layers"/>}
       <div className="ycl-grid">{data.classes.map(classroom => {
-        const Tile = canReadStudents ? "button" : "div";
+        const Tile = canReadRoster ? "button" : "div";
         const count = `${classroom.enrolled} élève${classroom.enrolled > 1 ? "s" : ""}`;
         const enrollmentSummary = classroom.capacity == null ? `${count} dans la classe` : `${count} / ${classroom.capacity} places`;
-        return <Tile key={classroom.id} className="ycl-tile" {...(canReadStudents ? {
+        return <Tile key={classroom.id} className="ycl-tile" {...(canReadRoster ? {
           type: "button", "aria-haspopup": "dialog",
           "aria-label": `${classroom.name}, ${enrollmentSummary}${classroom.active ? "" : ", classe archivée"}. Consulter les élèves`,
           onClick: () => setSelected(classroom),
@@ -138,7 +138,7 @@ export default function ClassWorkspace({schoolId, canReadStudents, onNavigate, a
           <span className="ycl-tile-head"><Icon name="layers" size={26}/>{!classroom.active && <Status tone="gray">Archivée</Status>}</span>
           <b>{classroom.name}</b>
           <small>{enrollmentSummary}</small>
-          {canReadStudents && <span className="ycl-tile-link">Consulter les élèves <Icon name="chevronright" size={16}/></span>}
+          {canReadRoster && <span className="ycl-tile-link">Consulter les élèves <Icon name="chevronright" size={16}/></span>}
         </Tile>;
       })}</div>
     </>}</Loading>
@@ -149,6 +149,6 @@ export default function ClassWorkspace({schoolId, canReadStudents, onNavigate, a
         overview.reload();
       }}/>}
     {selected && <ClassRoster schoolId={schoolId} year={currentYear} classroom={selected}
-      onClose={() => setSelected(null)} onStudent={student => onNavigate("students", "fiche", {student})}/>}
+      onClose={() => setSelected(null)} canOpenStudentFile={canReadStudents} onStudent={student => onNavigate("students", "fiche", {student})}/>}
   </>;
 }
