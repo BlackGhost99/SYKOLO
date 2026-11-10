@@ -177,6 +177,15 @@ def scholarship(request, school_id, application_id):
             if data["action"] == "approve":
                 link = ParentAdmissionRequest.objects.filter(application=application).first()
                 if link:
+                    from .singpay_models import SingPayIntent
+                    active_singpay = SingPayIntent.objects.filter(
+                        admission=link, school=school,
+                    ).exclude(state__in=("failed", "cancelled", "test_failed")).exists()
+                    active_paycentral = ParentPaymentAttempt.objects.filter(
+                        request=link, school=school,
+                    ).exclude(state__in=("failed", "cancelled", "refunded")).exists()
+                    if active_singpay or active_paycentral:
+                        return reject("Un paiement en ligne est ouvert : rapprochez-le avant d'accorder une bourse.", 409)
                     paid_cash = AdmissionCashReceipt.objects.filter(
                         request=link, school=school, is_demo=False, void__isnull=True,
                     ).exists()
