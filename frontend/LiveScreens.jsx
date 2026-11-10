@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import CashClosingPanel from "./CashClosingPanel.jsx";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
-import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
 import SingPayControl from "./SingPayControl.jsx";
 import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Toggle, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
 
@@ -257,9 +256,6 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
           </Card>
         </div>
       </div>
-      <Card title="Frais d’admission au guichet" icon="receipt">
-        <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive}/>
-      </Card>
       <Card title="Clôture de caisse" icon="cash">
         <CashClosingPanel schoolId={schoolId} defaultDay={d.today.date}/>
         <SingPayControl schoolId={schoolId}/>
