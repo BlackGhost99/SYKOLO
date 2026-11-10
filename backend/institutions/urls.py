@@ -45,7 +45,6 @@ urlpatterns = [
     path("parents/applications/<uuid:application_id>/pay", parent_payment_views.parent_pay),
     path("parents/applications/<uuid:application_id>/payment-refresh", parent_payment_views.parent_payment_refresh),
     path("schools/<uuid:school_id>/demo-admission-payments", demo_payment_views.school_demo_configuration),
-    path("parents/applications/<uuid:application_id>/demo-pay", demo_payment_views.simulate_parent_payment),
     path("schools/<uuid:school_id>/admission-gateway", parent_payment_views.school_gateway),
     path("schools/<uuid:school_id>/admission-fees", parent_payment_views.school_admission_fees),
     path("schools/<uuid:school_id>/admission-payments", parent_payment_views.staff_admission_payments),
