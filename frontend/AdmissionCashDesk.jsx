@@ -40,7 +40,7 @@ export default function AdmissionCashDesk({schoolId,canReceive=false}){
       if(ref.length<3)throw Error("Indiquez une référence de caisse (au moins 3 caractères).");
       await cashApi(base+"/"+row.request+"/confirm",{
         reference:ref,
-        received_on:new Date().toLocaleDateString("en-CA",{timeZone:"Africa/Libreville"}),
+        received_on:new Intl.DateTimeFormat("sv-SE",{timeZone:"Africa/Libreville",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()),
         received_cash:!row.is_demo,
         acknowledge_demo:row.is_demo,
       });
