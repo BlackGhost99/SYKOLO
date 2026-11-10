@@ -219,7 +219,7 @@ export default function ParentDiscovery() {
         onClick={()=>run(async()=>{setMessage("Suivi des candidatures actualisé.");})}>
         Actualiser les paiements et décisions
       </button>
-      {applications.length===0&&<p>Aucune candidature enregistrée.</p>
+      {applications.length===0&&<p>Aucune candidature enregistrée.</p>}
       {applications.map(a=><article key={a.id} className="yp-request">
         <b>{a.school_name}</b><p>{a.classroom_name} · {a.year} · {ROUTES[a.route]||a.route}</p>
         <strong>{STATES[a.status]||a.status}</strong>
