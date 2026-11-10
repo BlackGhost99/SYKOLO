@@ -14,6 +14,7 @@ from django.test import Client, TestCase, override_settings
 from .academic_models import AcademicTrack
 from .admission_models import AdmissionApplication
 from .models import SchoolMember, SchoolRole
+from .parent_admission_models import ParentAdmissionRequest
 from .parent_models import GuardianAccountLink
 from .parent_payment_models import ParentPaymentAttempt
 from .services import SECONDARY_ROLE_TEMPLATES
@@ -118,7 +119,7 @@ class Lycee2ParentJourneyTests(TestCase):
             "payment_choice": "online", "guardian_relationship": "Mère",
             "guardian_phone": PHONE, "origin_school": "", "route_reference": "",
         }), 201)
-        app_id = AdmissionApplication.objects.get(pk=application["id"]).pk
+        app_id = ParentAdmissionRequest.objects.get(pk=application["id"]).application_id
         self.assertEqual(application["status"], "submitted")
         self.assertFalse(Enrollment.objects.exists())
         self.assertFalse(Student.objects.exists())
