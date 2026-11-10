@@ -22,6 +22,7 @@ from .parent_admission_models import FamilyChild, ParentAdmissionRequest, School
 from .parent_payment_views import public_payment_availability
 from .parent_payment_models import SchoolAdmissionFee, SchoolPaymentGateway
 from .parent_payment_service import gateway_configured
+from .demo_payment_views import demo_amount
 from .services import has_permission
 from .school_profiles import SCHOOL_PROFILES
 from .student_models import Enrollment
@@ -61,7 +62,7 @@ def parse_uuid(value):
         return None
 
 
-def class_public_data(row, occupied, policy, fee, online_available):
+def class_public_data(row, occupied, policy, fee, online_available, demo_amount_xaf=None):
     capacity = row.capacity
     return {
         "id": str(row.pk), "name": row.name,
@@ -71,6 +72,8 @@ def class_public_data(row, occupied, policy, fee, online_available):
         "series_label": row.track.name if row.track_id else None,
         "fee_amount_xaf": fee.amount_xaf if fee else None,
         "online_payment_available": bool(online_available and fee),
+        "demo_payment_available": demo_amount_xaf is not None,
+        "demo_fee_amount_xaf": demo_amount_xaf,
         "capacity": capacity,
         "remaining": max(0, capacity - occupied) if capacity is not None else None,
         "routes": list(policy.enabled_routes) if policy else list(ROUTES),
@@ -127,6 +130,7 @@ def directory(request):
                 room, occupied.get(room.pk, 0),
                 policies.get((room.year_id, room.level_id)) or policies.get((room.year_id, None)),
                 fees.get((room.year_id, room.level_id)), online,
+                demo_amount(listing.school, room.year_id, room.level_id, request.user),
             ) for room in classes
         ]
         result.append({
@@ -228,7 +232,7 @@ def family_children(request):
 
 def parent_application_output(link):
     app = link.application
-    latest = link.payment_attempts.order_by("-created_at").first() if link.payment_choice == "online" else None
+    latest = link.payment_attempts.order_by("-created_at").first() if link.payment_choice in ("online", "demo") else None
     return {
         "id": str(link.pk), "child": str(link.child_id),
         "school": str(app.school_id), "school_name": app.school.name,
@@ -237,7 +241,7 @@ def parent_application_output(link):
         "status": app.status, "payment_choice": link.payment_choice,
         "fee_amount_xaf": link.fee_amount_xaf,
         "submitted_at": app.submitted_at.isoformat(),
-        "payment_status": latest.state if latest else ("non_initie" if link.payment_choice == "online" else "a_regler_sur_place"),
+        "payment_status": latest.state if latest else ("non_initie" if link.payment_choice in ("online", "demo") else "a_regler_sur_place"),
         "payment_mode": latest.provider_mode if latest else None,
         "paid_confirmed": bool(latest and latest.state == "success" and latest.provider_mode == "live"),
         "notice": "Une demande ne réserve aucune place ; le paiement n’implique pas l’admission.",
@@ -269,7 +273,7 @@ def family_applications(request):
         if route not in ROUTES:
             raise ValueError("Voie d'admission inconnue.")
         payment_choice = data["payment_choice"]
-        if payment_choice not in ("cash", "online"):
+        if payment_choice not in ("cash", "online", "demo"):
             raise ValueError("Mode de règlement invalide.")
         relation = clean_text(data["guardian_relationship"], 80, required=True)
         phone = clean_text(data["guardian_phone"], 45, required=True)
@@ -295,6 +299,9 @@ def family_applications(request):
                 return error("L'établissement n'accepte pas le règlement sur place.", 409)
             if payment_choice == "online" and not online_available:
                 return error("Paiement en ligne indisponible pour cette classe.", 409)
+            demo_price = demo_amount(classroom.school, classroom.year_id, classroom.level_id, request.user)
+            if payment_choice == "demo" and demo_price is None:
+                return error("Simulation non autorisée pour ce parent et cette classe.", 403)
             policy = effective_policy(classroom.school, classroom.year, classroom.level)
             if route not in (policy.enabled_routes if policy else ROUTES):
                 return error("Cette voie d'admission est fermée.", 409)
@@ -324,7 +331,7 @@ def family_applications(request):
             app.save()
             link = ParentAdmissionRequest(owner=request.user, child=child,
                                           application=app, payment_choice=payment_choice,
-                                          fee_amount_xaf=fee.amount_xaf if fee else None)
+                                          fee_amount_xaf=demo_price if payment_choice == "demo" else fee.amount_xaf if fee else None)
             link.full_clean()
             link.save()
             AdmissionEvent.objects.create(school=classroom.school, application=app,
