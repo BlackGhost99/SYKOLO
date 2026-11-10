@@ -398,6 +398,9 @@ class DualPilotAdmissionTests(TestCase):
             self.login(actors["enseignant"])
             teacher_roster=self.good(self.client.get("/api/v1/"+root+f"classes/{room.pk}/students"),200)
             self.assertEqual(teacher_roster["students"][0]["id"],str(pupil.pk))
+            mine=self.good(self.client.get("/api/v1/"+root+"curriculum/my-courses"),200)
+            self.assertEqual({x["classroom"] for x in mine["courses"]},
+                {str(croom.pk) for croom,_ in self.pairs})
             teacher_schedule=self.good(self.client.get("/api/v1/"+root+f"timetable/entries?classroom={room.pk}"),200)
             self.assertEqual(len(teacher_schedule["entries"]),1)
             self.assertEqual(teacher_schedule["entries"][0]["subject"],"Mathématiques")
@@ -469,6 +472,7 @@ class DualPilotAdmissionTests(TestCase):
 
         # Financial controller must see the cashier queue but cannot accept cash.
         self.login(actors["comptabilite"])
+        self.assertEqual(self.client.get("/api/v1/"+root+"curriculum/my-courses").status_code,403)
         self.assertEqual(self.client.get("/api/v1/"+root+"admission-cash").status_code,200)
         link=ParentAdmissionRequest.objects.first()
         self.assertEqual(self.post(root+f"admission-cash/{link.pk}/confirm",{
