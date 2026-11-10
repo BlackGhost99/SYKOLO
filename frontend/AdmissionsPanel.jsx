@@ -21,7 +21,7 @@ async function admissionApi(path, body){
 }
 
 const STATES={submitted:"Déposée",review:"En étude",accepted:"Admise",rejected:"Refusée",enrolled:"Inscrite"};
-export function AdmissionSettings({schoolId, canDecide, canConfigureCatalog}) {
+export function AdmissionSettings({schoolId, canDecide, canConfigureCatalog, canConfigureFinance=false}) {
   const root = "schools/" + schoolId + "/";
   const {data, error} = useSchoolData(root, "academic/years academic/levels");
   const [year, setYear] = useState("");
@@ -44,7 +44,7 @@ export function AdmissionSettings({schoolId, canDecide, canConfigureCatalog}) {
       </label>
     </div>}
     {year && <AdmissionPolicyEditor api={admissionApi} base={root + "admissions"} year={year} level={level || null} canDecide={canDecide}/>}
-    {year && <FinancePolicyEditor schoolId={schoolId} year={year} level={level||null} canManage={canDecide}/>}
+    {year && <FinancePolicyEditor schoolId={schoolId} year={year} level={level||null} canManage={canConfigureFinance}/>} 
     {canConfigureCatalog && <SchoolCatalogSettings schoolId={schoolId}/>}
   </section>;
 }
@@ -58,7 +58,7 @@ export function AdmissionPaymentSettings({schoolId}) {
   return <SchoolPaymentSetup schoolId={schoolId} years={data.years} classes={classes}/>;
 }
 
-export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canEnroll=true,canReceive=false}){
+export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canEnroll=true,canReceive=false,canApproveScholarship=false}){
   const root="schools/"+schoolId+"/";
   const base=root+"admissions";
   const [years,setYears]=useState([]),[classes,setClasses]=useState([]),
@@ -216,7 +216,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
       <AdmissionProofPanel key={current.id} api={admissionApi} base={base}
         application={current} canDecide={canDecide} onUpdated={refresh}/>
       <GovernmentScholarshipPanel schoolId={schoolId} application={current}
-        canApprove={canDecide} onUpdated={refresh}/>
+        canApprove={canApproveScholarship} onUpdated={refresh}/>
       {(current.status==="submitted"||current.status==="review")&&canDecide&&<form onSubmit={e=>e.preventDefault()}>
         <label className="field">Motif de la décision
           <textarea maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/>
