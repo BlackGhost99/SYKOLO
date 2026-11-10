@@ -1,5 +1,6 @@
 import React,{useEffect,useMemo,useState} from "react";
 import {TableScroll} from "./yem-ui.jsx";
+import DemoPaymentSetup from "./DemoPaymentSetup.jsx";
 
 async function api(path,body) {
   if(body!==undefined)await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
@@ -108,6 +109,7 @@ export default function SchoolPaymentSetup({schoolId,years=[],classes=[]}) {
       {gateway.mode==="live"&&!gateway.live_enabled_by_platform&&<p className="yp-error">Paiement réel désactivé par sécurité au niveau plateforme.</p>}
       <button className="yp-button yp-primary" type="submit" disabled={busy}>Enregistrer la passerelle</button>
     </form>
+    <DemoPaymentSetup schoolId={schoolId} years={years} classes={classes}/>
     <h3 style={{marginTop:22}}>Transactions de candidature</h3>
     <p>Vérifiez toujours le statut de paiement auprès du prestataire. Les transactions en simulation ne représentent pas des encaissements réels.</p>
     <button type="button" className="yp-button" disabled={busy} onClick={()=>run(async()=>{
