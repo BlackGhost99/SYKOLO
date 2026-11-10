@@ -160,3 +160,17 @@ def payment_blocker(application):
     ).exists():
         return None
     return "Le paiement en ligne doit être confirmé par le prestataire avant l'inscription."
+
+
+def direct_enrollment_blocker(school, classroom):
+    """Direct student creation/enrollment must not bypass a school's payment rule.
+
+    When payment is mandatory, use an admission application first, even for an
+    applicant physically present at the school. Only the admissions conversion
+    endpoint verifies the cash receipt or independently approved scholarship.
+    """
+    rule = finance_policy(school, classroom.year_id, classroom.level_id)
+    if rule["require_payment"]:
+        return ("Inscription directe désactivée : passez par Admissions et vérifiez "
+                "le paiement des frais ou la bourse avant de créer le matricule.")
+    return None
