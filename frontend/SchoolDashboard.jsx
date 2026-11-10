@@ -286,6 +286,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     : access?.role_label;
   const panelProps={
     schoolId:chosen,canDecide:can("school.admissions.decide"),canReceive:can("school.finance.receive"),
+    canApproveScholarship:can("school.admissions.decide")&&can("school.finance.approve"),
+    canConfigureFinance:can("school.settings.write"),
     canCreate:can("school.admissions.manage"),canEnroll:can("school.admissions.enroll"),
     canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),
     canPublish:can("school.reports.publish"),onNavigate:navigate,
