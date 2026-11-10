@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import CashClosingPanel from "./CashClosingPanel.jsx";
+import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
 import SingPayControl from "./SingPayControl.jsx";
 import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Toggle, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
 
@@ -153,7 +154,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   const [enrollment, setEnrollment] = useState(params?.enrollment || "");
   const [charges, setCharges] = useState([]);
   const [picked, setPicked] = useState({});
-  const [method, setMethod] = useState("airtel_money");
+  const [method, setMethod] = useState("especes");
   const [partial, setPartial] = useState(false);
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
@@ -215,6 +216,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
     <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
     <PageHeader title="Encaissements et caisse journalière" subtitle="Suivi des paiements, reçus et méthodes d’encaissement" badge="Économe" badgeIcon="coins" actions={advancedSettings}/>
     {tabs}
+    <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive}/>
     <Loading state={fin}>{d && <>
       <div className="yd-metrics four">
         <Metric icon="coins" label="Encaissé aujourd’hui" value={fmtMoney(d.today.total, d.currency)} trend={total >= Number(d.yesterday.total) ? "up" : "down"} trendValue={pct(d.today.total, d.yesterday.total) || ""} trendLabel={`vs. hier (${fmtMoney(d.yesterday.total, d.currency)})`}/>
