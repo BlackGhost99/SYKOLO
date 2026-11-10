@@ -188,6 +188,8 @@ def void_cash(request, school_id, application_id):
             ).first()
             if cash is None:
                 return fail("Reçu introuvable.", 404)
+            if cash.request.application.status == "enrolled":
+                return fail("Inscription déjà définitive : une correction comptable indépendante est requise.", 409)
             if cash.recorded_by_id == request.user.pk:
                 return fail("Un autre responsable doit annuler le reçu.", 403)
             if AdmissionCashReceiptVoid.objects.filter(receipt=cash).exists():
