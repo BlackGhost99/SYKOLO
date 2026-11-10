@@ -463,7 +463,7 @@ class DualPilotAdmissionTests(TestCase):
             timetable=self.good(self.client.get(f"/api/v1/parents/children/{pupil.pk}/timetable"),200)
             self.assertEqual(len(timetable["entries"]),1)
             self.assertEqual(timetable["entries"][0]["subject"],"Mathématiques")
-            other=test_students[1-i][0]
+            other=test_students[2-i][0]
             self.assertEqual(self.client.get(f"/api/v1/parents/children/{other.pk}/reports").status_code,404)
             self.assertEqual(self.client.get(f"/api/v1/parents/children/{other.pk}/timetable").status_code,404)
 
