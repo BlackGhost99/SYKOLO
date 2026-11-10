@@ -12,7 +12,11 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase, override_settings
 
 from .academic_models import AcademicTrack
-from .admission_models import AdmissionApplication
+from .admission_models import AdmissionApplication, AdmissionPolicy
+from .admission_policy import policy_key
+from .attendance_models import AttendanceSession
+from .staff_models import StaffRecord, StaffAssignment
+from .finance_models import FeePayment
 from .models import SchoolMember, SchoolRole
 from .parent_admission_models import ParentAdmissionRequest
 from .parent_models import GuardianAccountLink
@@ -50,6 +54,12 @@ class Lycee2ParentJourneyTests(TestCase):
         )
         self.classroom.code, self.classroom.name, self.classroom.track = "seconde-s", "Seconde S", series
         self.classroom.save(update_fields=["code", "name", "track"])
+        AdmissionPolicy.objects.create(
+            school=self.school, year=self.year, level=self.level,
+            scope_key=policy_key(self.year.pk, self.level.pk),
+            enabled_routes=["direct"],
+            required_documents={"direct": ["birth_certificate", "previous_reports"]},
+        )
         self.proviseur = self.director
         proviseur_role = SchoolRole.objects.create(
             school=self.school, code="proviseur", label="Proviseur",
@@ -151,10 +161,12 @@ class Lycee2ParentJourneyTests(TestCase):
             "/api/v1/parents/applications/"+application["id"]+"/payments"
         ).json()["payments"][0]["paid_confirmed"])
         self.assertFalse(Enrollment.objects.exists())
+        self.assertFalse(FeePayment.objects.exists())  # Aucune recette réelle depuis sandbox.
 
         self.login(self.secretary)
         admissions_base = f"schools/{self.school.pk}/admissions"
         self.assertEqual(self.client.get("/api/v1/"+admissions_base).status_code, 200)
+        self.assertEqual(len(AdmissionApplication.objects.get(pk=app_id).required_documents), 2)
         for doc_code in AdmissionApplication.objects.get(pk=app_id).required_documents:
             row = AdmissionApplication.objects.get(pk=app_id)
             self.assert_success(self.post(
@@ -164,6 +176,10 @@ class Lycee2ParentJourneyTests(TestCase):
             ), 201)
         self.login(self.proviseur)
         row = AdmissionApplication.objects.get(pk=app_id)
+        blocked = self.post(admissions_base+f"/{app_id}/decide", {
+            "revision": row.revision, "status": "accepted", "reason": "Sans vérifier les pièces",
+        })
+        self.assertEqual(blocked.status_code, 409)
         for doc in row.documents.all():
             self.assert_success(self.post(
                 admissions_base+f"/{app_id}/documents/{doc.pk}/review",
@@ -189,6 +205,55 @@ class Lycee2ParentJourneyTests(TestCase):
         self.assertEqual(self.client.get(
             f"/api/v1/schools/{self.school.pk}/students"
         ).status_code, 200)
+
+        # Proviseur voit l'inscription ; vie scolaire voit l'élève dans un appel,
+        # enseignant uniquement dans une classe à laquelle il est affecté.
+        self.login(self.proviseur)
+        self.assertEqual(self.client.get(
+            f"/api/v1/schools/{self.school.pk}/students"
+        ).status_code, 200)
+        session = AttendanceSession.objects.create(
+            school=self.school, classroom=self.classroom, attendance_date="2026-11-11",
+            slot="matin", label="Appel Seconde S", created_by=self.proviseur,
+        )
+        teacher = get_user_model().objects.create_user("lycee2-teacher", password="Test prof 2026!")
+        SchoolMember.objects.create(
+            school=self.school, user=teacher,
+            role=SchoolRole.objects.get(school=self.school, code="enseignant"),
+        )
+        record = StaffRecord.objects.create(
+            school=self.school, account=teacher, staff_code="PROF-SECONDE-S",
+            first_name="Prof", last_name="Test", position="enseignant",
+        )
+        StaffAssignment.objects.create(
+            school=self.school, staff=record, year=self.year, classroom=self.classroom,
+            duty="enseignant",
+        )
+        for role_user in (self.role_users["vie_scolaire"], teacher):
+            self.login(role_user)
+            roster = self.client.get(
+                f"/api/v1/schools/{self.school.pk}/attendance/sessions/{session.pk}"
+            )
+            self.assertEqual(roster.status_code, 200, roster.content)
+            self.assertEqual(len(roster.json()["roster"]), 1)
+            self.assertEqual(roster.json()["roster"][0]["student_code"],
+                             enrollment.student.student_code)
+            self.assertEqual(self.client.get(
+                f"/api/v1/schools/{self.school.pk}/students"
+            ).status_code, 403)
+
+        self.login(self.role_users["etudes"])
+        classes_response = self.client.get(
+            f"/api/v1/schools/{self.school.pk}/academic/classes"
+        )
+        self.assertEqual(classes_response.status_code, 200, classes_response.content)
+        self.assertTrue(any(
+            c["id"] == str(self.classroom.pk) for c in classes_response.json()["classes"]
+        ))
+        # Le censeur des études voit la classe et les cours, pas le dossier personnel.
+        self.assertEqual(self.client.get(
+            f"/api/v1/schools/{self.school.pk}/students"
+        ).status_code, 403)
 
         # Parent gains access ONLY after the school's explicit guardian verification.
         self.login(created)
