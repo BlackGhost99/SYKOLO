@@ -433,6 +433,8 @@ def family_notifications(request):
             "cash_received": "Paiement en espèces reçu à la caisse. Reçu disponible dans Mes demandes.",
             "cash_simulated": "Paiement de test validé au guichet. Aucune somme reçue ; document de simulation disponible.",
             "cash_cancelled": "Un reçu de paiement en espèces a été annulé par l’administration.",
+            "award_approved": "Bourse de l’État validée par l’établissement. Prise en charge enregistrée sans paiement du parent.",
+            "award_revoked": "La décision de bourse a été annulée par la direction avant inscription.",
         }.get(e.new_status, "Mise à jour d'admission"),
     } for e in events]
     payments = ParentPaymentAttempt.objects.select_related("school").filter(
