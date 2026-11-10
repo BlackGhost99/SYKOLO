@@ -16,7 +16,7 @@ async function request(path,body,method){
   return data;
 }
 
-export default function AssessmentPanel({schoolId, canEdit = true, canPublish = false, workingYearId=""}){
+export default function AssessmentPanel({schoolId, canEdit = true, canPublish = false, limitedToMyCourses = false, workingYearId=""}){
   const base="schools/"+schoolId+"/";
   const [courses,setCourses]=useState([]);
   const [periods,setPeriods]=useState([]);
@@ -47,14 +47,14 @@ export default function AssessmentPanel({schoolId, canEdit = true, canPublish = 
 
   useEffect(()=>{
     let active=true;
-    Promise.all([request(base+"courses"),request(base+"academic/periods"),
+    Promise.all([request(base+(limitedToMyCourses?"curriculum/my-courses":"courses")),request(base+"academic/periods"),
       request(base+"subjects"),request(base+"academic/classes"),request(base+"academic/years")])
     .then(([a,b,c,d,y])=>{
       if(!active)return;
       setCourses(a.courses);setPeriods(b.periods);setSubjects(c.subjects);setClasses(d.classes);setYears(y.years);
     }).catch(error=>{if(active)setLoadError(error.message);});
     return()=>{active=false;};
-  },[schoolId]);
+  },[schoolId,limitedToMyCourses]);
 
   useEffect(()=>{
     setAssessment("");setAssessments([]);setRoster([]);setGrades([]);
