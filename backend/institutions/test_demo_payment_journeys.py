@@ -12,7 +12,7 @@ from .admission_policy import policy_key
 from .finance_models import FeePayment
 from .models import Organization, School, SchoolMember, SchoolRole
 from .parent_admission_models import ParentAdmissionRequest, SchoolPublicListing
-from .parent_payment_models import ParentPaymentAttempt
+from .parent_payment_models import ParentPaymentAttempt, AdmissionCashReceipt, SchoolAdmissionFee
 from .services import ROLE_TEMPLATES, SECONDARY_ROLE_TEMPLATES
 from .student_models import Student, StudentGuardian, Enrollment
 
@@ -37,6 +37,9 @@ class DualPilotAdmissionTests(TestCase):
         self.secretary=User.objects.create_user(username="secretary-test-pay",password="Mot-de-passe-fictif-long-2026!")
         SchoolMember.objects.create(school=self.school,user=self.secretary,
             role=SchoolRole.objects.get(school=self.school,code="secretariat"))
+        self.cashier=User.objects.create_user(username="cashier-test-pay",password="Mot-de-passe-fictif-long-2026!")
+        SchoolMember.objects.create(school=self.school,user=self.cashier,
+            role=SchoolRole.objects.get(school=self.school,code="econome"))
         self.proviseur=User.objects.create_user(username="head-test-pay",password="Mot-de-passe-fictif-long-2026!")
         SchoolMember.objects.create(school=self.school,user=self.proviseur,
             role=SchoolRole.objects.get(school=self.school,code="proviseur"))
@@ -107,7 +110,7 @@ class DualPilotAdmissionTests(TestCase):
             }),201)
             submission=self.good(self.post("parents/applications",{
                 "child":child["id"],"classroom":str(room.pk),"route":"direct",
-                "payment_choice":"demo","guardian_relationship":"Parent",
+                "payment_choice":"cash","guardian_relationship":"Parent",
                 "guardian_phone":"+24107123456","origin_school":"","route_reference":"",
             }),201)
             link=ParentAdmissionRequest.objects.get(pk=submission["id"])
@@ -115,14 +118,48 @@ class DualPilotAdmissionTests(TestCase):
             self.assertEqual(app.status,"submitted")
             self.assertFalse(Enrollment.objects.filter(student__first_name=f"TEST-{idx}").exists())
             self.assertEqual(link.fee_amount_xaf,amount)
-            payment=self.good(self.post(f"parents/applications/{link.pk}/demo-pay",{}),201)
-            self.assertEqual(payment["provider_mode"],"sandbox")
-            self.assertEqual(payment["state"],"success")
-            self.assertFalse(payment["paid_confirmed"])
-            self.assertIn("aucune somme reçue",payment["notice"])
-            self.good(self.post(f"parents/applications/{link.pk}/demo-pay",{}),200)
-            self.assertEqual(ParentPaymentAttempt.objects.filter(request=link).count(),1)
+            self.assertTrue(link.is_demo_cash)
+            self.assertEqual(self.post(f"schools/{self.school.pk}/admission-cash/{link.pk}/confirm",{
+                "reference":"TEST-CAISSE","received_on":"2026-11-10",
+                "received_cash":False,"acknowledge_demo":True,
+            }).status_code,404)
+            self.login(self.secretary)
+            cash_base=f"schools/{self.school.pk}/admission-cash/{link.pk}"
+            self.assertEqual(self.post(cash_base+"/confirm",{
+                "reference":"TEST-CAISSE","received_on":"2026-11-10",
+                "received_cash":False,"acknowledge_demo":True,
+            }).status_code,403)
+            self.login(self.cashier)
+            bad=self.post(cash_base+"/confirm",{
+                "reference":f"TEST-CAISSE-{idx}","received_on":"2026-11-10",
+                "received_cash":True,"acknowledge_demo":False,
+            })
+            self.assertEqual(bad.status_code,409,bad.content)
+            payload={
+                "reference":f"TEST-CAISSE-{idx}","received_on":"2026-11-10",
+                "received_cash":False,"acknowledge_demo":True,
+            }
+            payment=self.good(self.post(cash_base+"/confirm",payload),201)
+            self.assertEqual(payment["status"],"simule")
+            self.assertFalse(payment["received_confirmed"])
+            self.assertIn("0 FCFA reçu",payment["notice"])
+            self.good(self.post(cash_base+"/confirm",payload),200)
+            self.assertEqual(AdmissionCashReceipt.objects.filter(request=link).count(),1)
+            self.assertEqual(ParentPaymentAttempt.objects.filter(request=link).count(),0)
             self.assertEqual(FeePayment.objects.count(),0)
+            from .finance_cash_policy import recorded_cash_total
+            self.assertEqual(int(recorded_cash_total(
+                school=self.school,day=__import__("datetime").date(2026,11,10),
+                currency="XAF",user=self.cashier)),0)
+            self.login(parent)
+            receipt=self.client.get(f"/api/v1/parents/applications/{link.pk}/cash-receipt")
+            self.assertEqual(receipt.status_code,200,receipt.content)
+            self.assertEqual(receipt["Content-Type"],"application/pdf")
+            self.assertTrue(receipt.content.startswith(b"%PDF"))
+            state=self.client.get("/api/v1/parents/applications").json()["applications"]
+            self.assertEqual(next(x for x in state if x["id"]==str(link.pk))["payment_status"],"simule")
+            notices=self.client.get("/api/v1/parents/notifications").json()["notifications"]
+            self.assertTrue(any(note["status"]=="cash_simulated" for note in notices))
 
             self.login(self.secretary)
             base=f"schools/{self.school.pk}/admissions/{app.pk}"
@@ -177,7 +214,8 @@ class DualPilotAdmissionTests(TestCase):
         self.assertEqual(Enrollment.objects.filter(school=self.school).count(),2)
         self.assertEqual({e.classroom.name for e in Enrollment.objects.filter(school=self.school).select_related("classroom")},
                          {"Seconde S","Terminale C"})
-        self.assertEqual(ParentPaymentAttempt.objects.filter(school=self.school).count(),2)
+        self.assertEqual(AdmissionCashReceipt.objects.filter(school=self.school).count(),2)
+        self.assertEqual(ParentPaymentAttempt.objects.filter(school=self.school).count(),0)
         self.assertEqual(FeePayment.objects.filter(school=self.school).count(),0)
 
     def test_non_authorized_parent_cannot_fake_pay(self):
