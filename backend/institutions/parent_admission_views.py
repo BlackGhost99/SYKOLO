@@ -231,8 +231,13 @@ def family_children(request):
 
 
 def parent_application_output(link):
+    from .parent_payment_models import AdmissionCashReceipt, AdmissionCashReceiptVoid
     app = link.application
-    latest = link.payment_attempts.order_by("-created_at").first() if link.payment_choice in ("online", "demo") else None
+    latest = link.payment_attempts.order_by("-created_at").first() if link.payment_choice == "online" else None
+    cash = AdmissionCashReceipt.objects.filter(request=link).first() if link.payment_choice == "cash" else None
+    voided = bool(cash and AdmissionCashReceiptVoid.objects.filter(receipt=cash).exists())
+    cash_status = ("annule" if voided else "simule" if cash and cash.is_demo else
+                   "recu" if cash else "a_regler_sur_place")
     return {
         "id": str(link.pk), "child": str(link.child_id),
         "school": str(app.school_id), "school_name": app.school.name,
@@ -241,10 +246,17 @@ def parent_application_output(link):
         "status": app.status, "payment_choice": link.payment_choice,
         "fee_amount_xaf": link.fee_amount_xaf,
         "submitted_at": app.submitted_at.isoformat(),
-        "payment_status": latest.state if latest else ("non_initie" if link.payment_choice in ("online", "demo") else "a_regler_sur_place"),
-        "payment_mode": latest.provider_mode if latest else None,
-        "paid_confirmed": bool(latest and latest.state == "success" and latest.provider_mode == "live"),
-        "notice": "Une demande ne réserve aucune place ; le paiement n’implique pas l’admission.",
+        "payment_status": cash_status if link.payment_choice == "cash" else latest.state if latest else "non_initie",
+        "payment_mode": ("cash_demo" if cash and cash.is_demo else "cash" if cash else
+                         "cash_demo" if link.is_demo_cash else latest.provider_mode if latest else None),
+        "paid_confirmed": bool(cash and not cash.is_demo and not voided) if link.payment_choice == "cash"
+            else bool(latest and latest.state == "success" and latest.provider_mode == "live"),
+        "is_demo_cash": link.is_demo_cash,
+        "cash_receipt_url": f"/api/v1/parents/applications/{link.pk}/cash-receipt"
+            if cash else None,
+        "notice": "Simulation de caisse : aucune somme réelle reçue."
+            if link.is_demo_cash else
+            "Une demande ne réserve aucune place ; le paiement n’implique pas l’admission.",
     }
 
 
@@ -273,7 +285,7 @@ def family_applications(request):
         if route not in ROUTES:
             raise ValueError("Voie d'admission inconnue.")
         payment_choice = data["payment_choice"]
-        if payment_choice not in ("cash", "online", "demo"):
+        if payment_choice not in ("cash", "online"):
             raise ValueError("Mode de règlement invalide.")
         relation = clean_text(data["guardian_relationship"], 80, required=True)
         phone = clean_text(data["guardian_phone"], 45, required=True)
@@ -300,8 +312,6 @@ def family_applications(request):
             if payment_choice == "online" and not online_available:
                 return error("Paiement en ligne indisponible pour cette classe.", 409)
             demo_price = demo_amount(classroom.school, classroom.year_id, classroom.level_id, request.user)
-            if payment_choice == "demo" and demo_price is None:
-                return error("Simulation non autorisée pour ce parent et cette classe.", 403)
             policy = effective_policy(classroom.school, classroom.year, classroom.level)
             if route not in (policy.enabled_routes if policy else ROUTES):
                 return error("Cette voie d'admission est fermée.", 409)
@@ -329,9 +339,11 @@ def family_applications(request):
             )
             app.full_clean()
             app.save()
+            is_demo_cash = payment_choice == "cash" and demo_price is not None
             link = ParentAdmissionRequest(owner=request.user, child=child,
                                           application=app, payment_choice=payment_choice,
-                                          fee_amount_xaf=demo_price if payment_choice == "demo" else fee.amount_xaf if fee else None)
+                                          is_demo_cash=is_demo_cash,
+                                          fee_amount_xaf=demo_price if is_demo_cash else fee.amount_xaf if fee else None)
             link.full_clean()
             link.save()
             AdmissionEvent.objects.create(school=classroom.school, application=app,
