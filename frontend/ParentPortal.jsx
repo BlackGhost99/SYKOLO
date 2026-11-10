@@ -130,6 +130,12 @@ export default function ParentPortal() {
               <strong> {a.status}</strong>{a.justified?" (justifié)":""}</p>)}
         </>}
         {tab==="finance"&&detail&&<>
+          {detail.scholarship&&<p role="status"><strong>Boursier de l'État</strong> ·
+            {detail.scholarship.coverage==="all"
+              ?" Frais d'inscription et de scolarité intégralement pris en charge."
+              :" Frais d'inscription pris en charge ; autres frais suivant le barème."}
+            {" "}Décision n° {detail.scholarship.reference}. Aucun paiement du parent
+            n'a été créé pour les frais couverts.</p>}
           <p>Relevé des encaissements de l'établissement. Les paiements SingPay nécessitent une confirmation serveur du prestataire.</p>
           {Object.entries(detail.totals||{}).map(([currency,value])=><p key={currency}>
             {currency} · Facturé : <strong>{value.billed}</strong> · Payé : <strong>{value.paid}</strong>
