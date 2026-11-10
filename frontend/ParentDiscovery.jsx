@@ -223,7 +223,10 @@ export default function ParentDiscovery() {
       {applications.map(a=><article key={a.id} className="yp-request">
         <b>{a.school_name}</b><p>{a.classroom_name} · {a.year} · {ROUTES[a.route]||a.route}</p>
         <strong>{STATES[a.status]||a.status}</strong>
-        {a.payment_choice==="cash"&&<div className="yp-muted">
+        {a.scholarship&&<p role="status"><strong>Boursier de l'État</strong> ·
+          {a.scholarship.coverage==="all"?"tous les frais pris en charge":"frais d'inscription pris en charge"}.
+          Aucun règlement à verser pour les frais couverts.</p>
+        {a.payment_choice==="cash"&&!a.scholarship&&<div className="yp-muted">
           <p><strong>Espèces au guichet</strong> · {a.fee_amount_xaf?
             Number(a.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA":"Tarif à définir par l'établissement"}
             {a.is_demo_cash&&" · DOSSIER DE TEST, aucun argent à verser"}</p>
@@ -237,14 +240,14 @@ export default function ParentDiscovery() {
             {a.is_demo_cash?"Télécharger le document de simulation PDF":"Télécharger mon reçu de paiement PDF"}
           </a>}
         </div>}
-        {a.payment_choice==="online"&&a.fee_amount_xaf&&<SingPayPayment kind="admission" objectId={a.id} api={api}/>}
-        <small>{a.payment_choice==="cash"?"Suivi du paiement en espèces ci-dessus.":
+        {a.payment_choice==="online"&&a.fee_amount_xaf&&!a.scholarship&&<SingPayPayment kind="admission" objectId={a.id} api={api}/>}
+        <small>{a.scholarship?"Bourse gouvernementale vérifiée par l’établissement.":a.payment_choice==="cash"?"Suivi du paiement en espèces ci-dessus.":
           "Mobile Money · "+(a.fee_amount_xaf?Number(a.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA · ":"")+
           ({non_initie:"non initié",initiating:"initiation en cours",pending:"en attente de confirmation",
             unknown:"à rapprocher avec l'école",success:"confirmé par le prestataire",
             failed:"échec",cancelled:"annulé",refunded:"remboursé"}[a.payment_status]||a.payment_status)}
           {a.payment_mode==="sandbox"&&" · SIMULATION sans argent réel"}</small>
-        {a.payment_choice==="online"&&a.fee_amount_xaf&&
+        {a.payment_choice==="online"&&a.fee_amount_xaf&&!a.scholarship&&
           !["success","refunded","pending","initiating","unknown"].includes(a.payment_status)&&
           a.status!=="rejected"&&a.status!=="enrolled"&&<>
           <button type="button" className="yp-button" onClick={()=>setActivePay(activePay===a.id?"":a.id)}>
@@ -265,7 +268,7 @@ export default function ParentDiscovery() {
             </label>
             <button className="yp-button yp-primary" disabled={busy}>Demander le paiement sécurisé</button>
           </form>}</>}
-        {a.payment_choice==="online"&&["pending","unknown","initiating"].includes(a.payment_status)&&
+        {a.payment_choice==="online"&&!a.scholarship&&["pending","unknown","initiating"].includes(a.payment_status)&&
           <button type="button" className="yp-button" disabled={busy} onClick={()=>run(async()=>{
             const result=await api("parents/applications/"+a.id+"/payment-refresh",{});
             setMessage(result.notice);
