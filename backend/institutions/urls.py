@@ -6,7 +6,7 @@ from . import finance_batch_views, finance_cash_views, finance_summary_views
 from . import annual_views
 from . import calendar_views
 from . import secondary_views
-from . import demo_payment_views, admission_cash_views
+from . import demo_payment_views, admission_cash_views, admission_finance_views
 from . import staff_onboarding_views
 from . import cycle_access_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
@@ -67,6 +67,8 @@ urlpatterns = [
     path("parents/children/<uuid:student_id>/timetable", parent_views.child_timetable),
     path("schools/<uuid:school_id>/parent-links", parent_views.links),
     path("schools/<uuid:school_id>/parent-links/<uuid:link_id>", parent_views.link_detail),
+    path("schools/<uuid:school_id>/admissions/finance-policy", admission_finance_views.finance_rule),
+    path("schools/<uuid:school_id>/admissions/<uuid:application_id>/scholarship", admission_finance_views.scholarship),
     path("schools/<uuid:school_id>/admissions/policy", admission_route_views.policy),
     path("schools/<uuid:school_id>/admissions", admission_views.applications),
     path("schools/<uuid:school_id>/admissions/<uuid:application_id>/documents", admission_route_views.evidence),
