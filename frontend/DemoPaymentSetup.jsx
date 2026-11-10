@@ -51,8 +51,8 @@ export default function DemoPaymentSetup({schoolId,years=[],classes=[]}){
     }catch(err){setMessage(err.message)}finally{setBusy(false)}
   }
   return <section className="yp-settings" aria-label="Paiements de démonstration" style={{marginTop:24}}>
-    <h3>Simulation interne YEM — sans argent</h3>
-    <p>Pour les recettes uniquement. Configurez le montant fictif par année et niveau,
+    <h3>Simulation des espèces au guichet — sans argent</h3>
+    <p>Pour les tests de paiement en espèces uniquement. Configurez le montant fictif par année et niveau,
       puis indiquez les identifiants des parents fictifs autorisés. Les paiements simulés
       restent <strong>en dehors de la caisse et des reçus réels</strong>.</p>
     <form onSubmit={save}>
@@ -80,7 +80,7 @@ export default function DemoPaymentSetup({schoolId,years=[],classes=[]}){
         onChange={e=>setPolicy(v=>({...v,enabled:e.target.checked}))}/>
         Autoriser les simulations pour ces seuls comptes</label>
       <button disabled={busy||!year||!level} className="yp-button yp-primary">Enregistrer la simulation</button>
-      <p className="yp-muted">Un succès en simulation n'est jamais une preuve de paiement ni une admission.</p>
+      <p className="yp-muted">Le parent conserve le choix « Espèces à l’école ». Seul le caissier valide la simulation ; aucun encaissement réel n’est produit.</p>
       {message&&<p role="status">{message}</p>}
     </form>
   </section>;
