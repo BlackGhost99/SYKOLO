@@ -159,6 +159,12 @@ def payment_blocker(application):
         state="success", provider_mode="live", currency="XAF",
     ).exists():
         return None
+    from .singpay_models import SingPayIntent
+    if SingPayIntent.objects.filter(
+        admission=link, school=application.school, amount_xaf=link.fee_amount_xaf,
+        state="success", mode="live", confirmed_at__isnull=False,
+    ).exists():
+        return None
     return "Le paiement en ligne doit être confirmé par le prestataire avant l'inscription."
 
 
