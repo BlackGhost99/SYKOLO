@@ -3,6 +3,7 @@ import {AdmissionPolicyEditor,AdmissionProofPanel,ROUTES} from "./AdmissionRoute
 import {SchoolCatalogSettings} from "./ParentDiscovery.jsx";
 import SchoolPaymentSetup from "./SchoolPaymentSetup.jsx";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
+import {FinancePolicyEditor,GovernmentScholarshipPanel} from "./AdmissionFinance.jsx";
 import {useSchoolData} from "./SchoolSettings.jsx";
 
 async function admissionApi(path, body){
@@ -20,7 +21,7 @@ async function admissionApi(path, body){
 }
 
 const STATES={submitted:"Déposée",review:"En étude",accepted:"Admise",rejected:"Refusée",enrolled:"Inscrite"};
-export function AdmissionSettings({schoolId, canDecide, canConfigureCatalog}) {
+export function AdmissionSettings({schoolId, canDecide, canConfigureCatalog, canConfigureFinance=false}) {
   const root = "schools/" + schoolId + "/";
   const {data, error} = useSchoolData(root, "academic/years academic/levels");
   const [year, setYear] = useState("");
@@ -43,6 +44,7 @@ export function AdmissionSettings({schoolId, canDecide, canConfigureCatalog}) {
       </label>
     </div>}
     {year && <AdmissionPolicyEditor api={admissionApi} base={root + "admissions"} year={year} level={level || null} canDecide={canDecide}/>}
+    {year && <FinancePolicyEditor schoolId={schoolId} year={year} level={level||null} canManage={canConfigureFinance}/>} 
     {canConfigureCatalog && <SchoolCatalogSettings schoolId={schoolId}/>}
   </section>;
 }
@@ -56,7 +58,7 @@ export function AdmissionPaymentSettings({schoolId}) {
   return <SchoolPaymentSetup schoolId={schoolId} years={data.years} classes={classes}/>;
 }
 
-export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canEnroll=true,canReceive=false}){
+export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canEnroll=true,canReceive=false,canApproveScholarship=false}){
   const root="schools/"+schoolId+"/";
   const base=root+"admissions";
   const [years,setYears]=useState([]),[classes,setClasses]=useState([]),
@@ -213,6 +215,8 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
       </p>
       <AdmissionProofPanel key={current.id} api={admissionApi} base={base}
         application={current} canDecide={canDecide} onUpdated={refresh}/>
+      <GovernmentScholarshipPanel schoolId={schoolId} application={current}
+        canApprove={canApproveScholarship} onUpdated={refresh}/>
       {(current.status==="submitted"||current.status==="review")&&canDecide&&<form onSubmit={e=>e.preventDefault()}>
         <label className="field">Motif de la décision
           <textarea maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/>
@@ -230,6 +234,8 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
           setReason("");
         })}>Refuser la candidature (direction)</button>
       </form>}
+      {current.status==="accepted"&&canEnroll&&current.finance?.blocker&&
+        <p role="status">Inscription bloquée : {current.finance.blocker}</p>}
       {current.status==="accepted"&&canEnroll&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
         await admissionApi(base+"/"+current.id+"/convert",{
           revision:current.revision,enrolled_on:enrollDate
@@ -242,7 +248,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
             <input type="date" required value={enrollDate} onChange={e=>setEnrollDate(e.target.value)}/>
           </label>
         </div>
-        <button disabled={busy||!enrollDate} type="submit">Transformer en inscription officielle</button>
+        <button disabled={busy||!enrollDate||Boolean(current.finance?.blocker)} type="submit">Transformer en inscription officielle</button>
       </form>}
       {current.status==="enrolled"&&<p>Inscription confirmée</p>}
       <button type="button" disabled={busy} onClick={()=>run(async()=>{

@@ -156,6 +156,13 @@ class FamilyDiscoveryTests(TestCase):
         source.status = "accepted"
         source.save(update_fields=["status"])
         self.login(self.director)
+        # Test historical school-transfer logic with an independently approved
+        # admission-fee waiver. No cash payment or receipt is manufactured.
+        grant = self.post(f"schools/{self.school.pk}/admissions/{source.pk}/scholarship", {
+            "action": "approve", "coverage": "all", "revision": 0,
+            "reference": "ETAT-RECETTE-TRANSFERT-2026",
+        })
+        self.assertEqual(grant.status_code, 201, grant.content)
         payload = {"revision": 1, "enrolled_on": "2026-10-03"}
         response = self.post(f"schools/{self.school.pk}/admissions/{source.pk}/convert", payload)
         self.assertEqual(response.status_code, 201, response.content)

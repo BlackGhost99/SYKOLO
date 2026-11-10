@@ -81,6 +81,11 @@ class FeeCharge(models.Model):
             raise ValidationError("Tarif incompatible avec l'inscription.")
         if self.schedule_id and (self.currency != self.schedule.currency or self.amount != self.schedule.amount):
             raise ValidationError("Le montant doit être celui du barème enregistré.")
+        if self.enrollment_id:
+            from .admission_finance import scholarship_for_enrollment
+            award = scholarship_for_enrollment(self.enrollment)
+            if award and award.coverage == "all":
+                raise ValidationError("Élève boursier de l’État : la totalité des frais est prise en charge.")
 
 
 class FeePaymentBatch(models.Model):

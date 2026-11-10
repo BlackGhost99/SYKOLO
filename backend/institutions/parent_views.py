@@ -359,7 +359,12 @@ def child_finance(request, student_id):
             "balance": str(row.amount - paid),
             "due_date": row.due_date.isoformat() if row.due_date else None,
         })
+    from .admission_finance import scholarship_for_enrollment
+    current_enrollment = Enrollment.objects.filter(school_id=student.school_id, student=student, active=True).order_by("-year__start_date").first()
+    award = scholarship_for_enrollment(current_enrollment) if current_enrollment else None
     return JsonResponse({
+        "scholarship": ({"sponsor": "État", "coverage": award.coverage,
+                         "reference": award.official_reference} if award else None),
         "student": str(student.pk), "charges": items,
         "totals": {currency: {key: str(amount) for key, amount in totals.items()}
                    for currency, totals in totals.items()},

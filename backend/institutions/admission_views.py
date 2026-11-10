@@ -12,6 +12,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from accounts.views import authorized
 
 from .admission_models import AdmissionApplication, AdmissionEvent, AdmissionPolicy, AdmissionDocument
+from .admission_finance import current_scholarship, finance_policy, payment_blocker
 from .academic_models import AcademicYear, AcademicClass, AcademicLevel
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import validate_enrollment_slot
@@ -96,6 +97,11 @@ def render(row):
         "submitted_at": row.submitted_at.isoformat(),
         "decided_at": row.decided_at.isoformat() if row.decided_at else None,
         "converted_at": row.converted_at.isoformat() if row.converted_at else None,
+        "finance": {"require_payment": finance_policy(row.school, row.year_id, row.classroom.level_id)["require_payment"],
+                    "blocker": None if row.status=="enrolled" else payment_blocker(row),
+                    "scholarship": ({"coverage": current_scholarship(row).coverage,
+                                      "reference": current_scholarship(row).official_reference}
+                                     if current_scholarship(row) else None)},
     }
 
 
@@ -322,6 +328,9 @@ def convert(request, school_id, application_id):
                 return JsonResponse({"error": "Conflit de version.", "revision": row.revision}, status=409)
             if row.status != "accepted":
                 return fail("L'admission doit être validée avant inscription.", 409)
+            blocker = payment_blocker(row)
+            if blocker:
+                return fail(blocker, 409)
             from .models import School
             School.objects.select_for_update().get(pk=school.pk)
             identity = verified_family_identity(row)

@@ -12,6 +12,7 @@ from .services import has_permission, quota_reached
 from .cycle_scope import scoped_cycle_ids
 from .academic_models import AcademicYear, AcademicClass
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
+from .admission_finance import direct_enrollment_blocker
 
 
 def check(request, school_id, permission):
@@ -324,6 +325,9 @@ def enrollments(request,school_id):
             student,year,classroom=load_relations(school,fields)
             # Lock class before counting places. Works with PostgreSQL concurrency.
             classroom=AcademicClass.objects.select_for_update().get(pk=classroom.pk,school=school)
+            blocker = direct_enrollment_blocker(school, classroom)
+            if blocker:
+                return JsonResponse({"error": blocker}, status=409)
             validate_enrollment_slot(classroom,student,year,active=fields.get("active",True))
             values={k+"_id" if k in ("student","year","classroom") else k:v for k,v in fields.items()}
             record=Enrollment(school=school,**values)
