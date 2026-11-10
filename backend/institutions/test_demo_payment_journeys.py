@@ -224,3 +224,70 @@ class DualPilotAdmissionTests(TestCase):
         catalog=self.client.get("/api/v1/parents/catalog").json()
         school=next(s for s in catalog["schools"] if s["id"]==str(self.school.pk))
         self.assertFalse(any(c["demo_payment_available"] for c in school["classes"]))
+
+
+    def test_real_cash_is_confirmed_only_after_cashier_receives_money(self):
+        parent=get_user_model().objects.create_user(
+            username="parent-physique-test",password="Password-test-cash-2026!",
+            first_name="Parent",last_name="Guichet",email="parent-guichet@example.test",
+        )
+        room,amount=self.pairs[0]
+        SchoolAdmissionFee.objects.create(school=self.school,year=self.year,level=room.level,
+            amount_xaf=amount,active=True)
+        self.login(parent)
+        child=self.good(self.post("parents/family-children",{
+            "first_name":"TEST-CASH","last_name":"ESSAI","date_of_birth":"2010-04-02",
+        }),201)
+        request=self.good(self.post("parents/applications",{
+            "child":child["id"],"classroom":str(room.pk),
+            "route":"direct","payment_choice":"cash","guardian_relationship":"Parent",
+            "guardian_phone":"+24107123456","origin_school":"","route_reference":"",
+        }),201)
+        link=ParentAdmissionRequest.objects.get(pk=request["id"])
+        self.assertFalse(link.is_demo_cash)
+        self.assertEqual(link.fee_amount_xaf,amount)
+        cash_path=f"schools/{self.school.pk}/admission-cash/{link.pk}"
+        self.assertEqual(self.client.get(
+            f"/api/v1/parents/applications/{link.pk}/cash-receipt"
+        ).status_code,404)
+        self.login(self.proviseur)
+        self.assertEqual(self.post(cash_path+"/confirm",{
+            "reference":"FAUX-PROVISEUR","received_on":"2026-11-10",
+            "received_cash":True,"acknowledge_demo":False,
+        }).status_code,403)
+        self.login(self.cashier)
+        self.assertEqual(self.post(cash_path+"/confirm",{
+            "reference":"CAISSE-NON-RECU","received_on":"2026-11-10",
+            "received_cash":False,"acknowledge_demo":True,
+        }).status_code,409)
+        real=self.good(self.post(cash_path+"/confirm",{
+            "reference":"CASH-TEST-RECU","received_on":"2026-11-10",
+            "received_cash":True,"acknowledge_demo":False,
+        }),201)
+        self.assertEqual(real["status"],"recu")
+        self.assertTrue(real["received_confirmed"])
+        self.assertEqual(FeePayment.objects.count(),0)
+        from datetime import date
+        from .finance_cash_policy import recorded_cash_total
+        self.assertEqual(int(recorded_cash_total(
+            school=self.school,day=date(2026,11,10),
+            currency="XAF",user=self.cashier)),amount)
+        self.login(parent)
+        state=self.client.get("/api/v1/parents/applications").json()["applications"]
+        row=next(x for x in state if x["id"]==str(link.pk))
+        self.assertTrue(row["paid_confirmed"])
+        self.assertEqual(row["payment_status"],"recu")
+        self.assertTrue(row["cash_receipt_url"])
+        pdf=self.client.get(f"/api/v1/parents/applications/{link.pk}/cash-receipt")
+        self.assertEqual(pdf.status_code,200)
+        self.assertEqual(pdf["Content-Type"],"application/pdf")
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+        inbox=self.client.get("/api/v1/parents/notifications").json()["notifications"]
+        self.assertTrue(any(m["status"]=="cash_received" for m in inbox))
+        self.client.force_login(self.proviseur)
+        self.assertEqual(self.client.get(
+            f"/api/v1/parents/applications/{link.pk}/cash-receipt"
+        ).status_code,404)
+        self.assertEqual(self.client.get(
+            f"/api/v1/schools/{self.school.pk}/admission-cash/{link.pk}/receipt"
+        ).status_code,200)
