@@ -291,3 +291,188 @@ class DualPilotAdmissionTests(TestCase):
         self.assertEqual(self.client.get(
             f"/api/v1/schools/{self.school.pk}/admission-cash/{link.pk}/receipt"
         ).status_code,200)
+
+
+    def test_two_enrolled_pupils_reach_teacher_timetable_grades_and_parent_bulletin(self):
+        """All business roles take turns after the real parent/cash/admission sequence.
+
+        The parent journey is replayed entirely in the isolated CI database.
+        The teacher receives pupils through roster and timetable, performs a roll
+        call and a graded assessment. Parents see only their own published results.
+        """
+        from copy import deepcopy
+        from pedagogy.views import PRESETS
+        from .academic_models import AcademicPeriod
+        from .models import SchoolSetting
+        from .services import key_for_scope
+        from .staff_models import StaffRecord, StaffAssignment
+        from .curriculum_models import CourseOffering, CourseInstructor
+
+        self.test_both_parents_are_enrolled_with_test_payment_only()
+        User = get_user_model()
+        from .services import SECONDARY_ROLE_TEMPLATES
+        secondary = {code: (label, perms) for code, label, perms in SECONDARY_ROLE_TEMPLATES["lycee_general"]}
+        actors = {}
+        for code in ("etudes", "vie_scolaire", "enseignant", "comptabilite"):
+            if code in secondary:
+                label, perms = secondary[code]
+                role, _ = SchoolRole.objects.get_or_create(
+                    school=self.school, code=code,
+                    defaults={"label": label, "permissions": list(perms)},
+                )
+            else:
+                role = SchoolRole.objects.get(school=self.school, code=code)
+            user = User.objects.create_user(
+                username="journey-"+code, password="Strong-E2E-Passphrase-2026!",
+            )
+            SchoolMember.objects.create(school=self.school, user=user, role=role)
+            actors[code] = user
+
+        grading = deepcopy(next(p["policy"] for p in PRESETS if p["id"] == "numeric-20"))
+        SchoolSetting.objects.update_or_create(
+            school=self.school, scope_key=key_for_scope({}),
+            defaults={"scope": {}, "values": {
+                "grading": grading,
+                "bulletin": {"title": "Bulletin YEM de recette", "precision": 2,
+                             "show_score": True, "show_label": True,
+                             "show_rank": False, "missing_entry": "exclude"},
+                "attendance": {"statuses": [
+                    {"code": "p", "label": "Présent", "group": "present"},
+                    {"code": "a", "label": "Absent", "group": "absent"},
+                    {"code": "r", "label": "Retard", "group": "late"},
+                ]},
+            }},
+        )
+        period = AcademicPeriod.objects.create(
+            school=self.school, year=self.year, code="t1", name="Premier trimestre",
+            start_date="2026-09-01", end_date="2026-12-31",
+        )
+        self.login(actors["etudes"])
+        root = f"schools/{self.school.pk}/"
+        subject = self.good(self.post(root+"subjects",{
+            "code":"maths-recette", "name":"Mathématiques",
+        }),201)
+        staff = StaffRecord.objects.create(
+            school=self.school, staff_code="PROF-TEST",
+            first_name="Enseignant",last_name="E2E",
+            position="enseignant",account=actors["enseignant"],
+        )
+        test_students = []
+        for i,(room,_) in enumerate(self.pairs,1):
+            pupil = Student.objects.get(school=self.school, first_name=f"TEST-{i}")
+            enroll = Enrollment.objects.get(school=self.school, student=pupil, year=self.year)
+            assignment = StaffAssignment.objects.create(
+                school=self.school,staff=staff,year=self.year,
+                classroom=room,duty="enseignant",
+            )
+            course=self.good(self.post(root+"courses", {
+                "year":str(self.year.pk),"classroom":str(room.pk),
+                "subject":subject["id"],"coefficient":"3",
+            }),201)
+            instructor=self.good(self.post(root+f"courses/{course['id']}/instructors", {
+                "staff_assignment":str(assignment.pk),
+            }),201)
+            slot=self.good(self.post(root+"timetable/slots",{
+                "year":str(self.year.pk),"code":f"test-matin-{i}",
+                "label":f"Créneau recette {i}",
+                "start_time":"08:00" if i==1 else "09:00",
+                "end_time":"09:00" if i==1 else "10:00",
+            }),201)
+            entry=self.good(self.post(root+"timetable/entries",{
+                "course":course["id"],"instructor":instructor["id"],
+                "slot":slot["id"],"weekday":1,
+                "effective_from":"2026-09-01","effective_to":"2026-12-31",
+            }),201)
+            self.assertEqual(entry["classroom"],str(room.pk))
+            test_students.append((pupil,enroll,room,course,entry))
+
+        for i,(pupil,enroll,room,course,entry) in enumerate(test_students,1):
+            # Without school.students.read, pedagogical staff may see a scoped roster.
+            self.login(actors["etudes"])
+            roster = self.good(self.client.get("/api/v1/"+root+f"classes/{room.pk}/students"),200)
+            self.assertEqual(len(roster["students"]),1)
+            self.assertEqual(self.client.get("/api/v1/"+root+"students").status_code,403)
+            self.login(actors["vie_scolaire"])
+            self.assertEqual(self.client.get("/api/v1/"+root+f"classes/{room.pk}/students").status_code,200)
+            self.assertEqual(self.client.get("/api/v1/"+root+"students").status_code,403)
+            self.login(actors["enseignant"])
+            teacher_roster=self.good(self.client.get("/api/v1/"+root+f"classes/{room.pk}/students"),200)
+            self.assertEqual(teacher_roster["students"][0]["id"],str(pupil.pk))
+            teacher_schedule=self.good(self.client.get("/api/v1/"+root+f"timetable/entries?classroom={room.pk}"),200)
+            self.assertEqual(len(teacher_schedule["entries"]),1)
+            self.assertEqual(teacher_schedule["entries"][0]["subject"],"Mathématiques")
+            session=self.good(self.post(root+"attendance/sessions",{
+                "classroom":str(room.pk),"date":"2026-11-10",
+                "slot":"matin","label":"Appel de classe",
+            }),201)
+            marked=self.good(self.post(root+f"attendance/sessions/{session['id']}/marks",{
+                "marks":[{
+                    "enrollment":str(enroll.pk),"status":"p",
+                    "note":"","justification":"","justified":False,
+                    "revision":0,"reason":"",
+                }],
+            }),200)
+            self.assertEqual(marked["marks"][0]["status"],"p")
+            self.login(actors["vie_scolaire"])
+            # A teacher can take attendance, but only school life staff finalize it.
+            closed=self.good(self.post(root+f"attendance/sessions/{session['id']}/close",{
+                "revision":marked["session_revision"],
+            }),200)
+            self.assertIsNotNone(closed["closed_at"])
+
+            self.login(actors["enseignant"])
+            assessment=self.good(self.post(root+f"courses/{course['id']}/assessments",{
+                "name":"Contrôle continu de recette", "kind":"devoir",
+                "assessment_date":"2026-11-10","weight":"1",
+                "period":str(period.pk),
+            }),201)
+            grade=self.good(self.post(root+f"assessments/{assessment['id']}/grades",{
+                "enrollment":str(enroll.pk),"score":16+i,"feedback":"Évaluation de recette",
+            }),201)
+            self.assertEqual(grade["status"],"calculated")
+            # Teacher cannot publish an official bulletin.
+            self.assertEqual(self.post(root+"reports",{
+                "enrollment":str(enroll.pk),"period":str(period.pk),"revision":0,
+            }).status_code,403)
+
+            self.login(self.proviseur)
+            self.good(self.post(root+f"assessments/{assessment['id']}/publish",{
+                "revision":assessment["revision"],
+            }),200)
+            report=self.good(self.post(root+"reports",{
+                "enrollment":str(enroll.pk),"period":str(period.pk),"revision":0,
+            }),201)
+            parent=User.objects.get(username="yemtest-parent-s" if i==1 else "yemtest-parent-c")
+            self.login(parent)
+            reports_before=self.good(self.client.get(
+                f"/api/v1/parents/children/{pupil.pk}/reports"
+            ),200)
+            self.assertEqual(reports_before["reports"],[])
+            self.login(self.proviseur)
+            self.good(self.post(root+f"reports/{report['id']}/publish",{
+                "revision":report["revision"],
+            }),200)
+            self.login(parent)
+            own_reports=self.good(self.client.get(f"/api/v1/parents/children/{pupil.pk}/reports"),200)
+            self.assertEqual(len(own_reports["reports"]),1)
+            pdf=self.client.get(f"/api/v1/parents/children/{pupil.pk}/reports/{report['id']}/pdf")
+            self.assertEqual(pdf.status_code,200)
+            self.assertTrue(pdf.content.startswith(b"%PDF"))
+            attendance=self.good(self.client.get(f"/api/v1/parents/children/{pupil.pk}/attendance"),200)
+            self.assertEqual(len(attendance["attendance"]),1)
+            timetable=self.good(self.client.get(f"/api/v1/parents/children/{pupil.pk}/timetable"),200)
+            self.assertEqual(len(timetable["entries"]),1)
+            self.assertEqual(timetable["entries"][0]["subject"],"Mathématiques")
+            other=test_students[1-i][0]
+            self.assertEqual(self.client.get(f"/api/v1/parents/children/{other.pk}/reports").status_code,404)
+            self.assertEqual(self.client.get(f"/api/v1/parents/children/{other.pk}/timetable").status_code,404)
+
+        # Financial controller must see the cashier queue but cannot accept cash.
+        self.login(actors["comptabilite"])
+        self.assertEqual(self.client.get("/api/v1/"+root+"admission-cash").status_code,200)
+        link=ParentAdmissionRequest.objects.first()
+        self.assertEqual(self.post(root+f"admission-cash/{link.pk}/confirm",{
+            "reference":"TEST-REFUSE","received_on":"2026-11-10",
+            "received_cash":False,"acknowledge_demo":True,
+        }).status_code,403)
+        self.assertEqual(Enrollment.objects.filter(school=self.school).count(),2)
