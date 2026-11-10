@@ -193,6 +193,20 @@ class Lycee2ParentJourneyTests(TestCase):
 
         self.login(self.secretary)
         row.refresh_from_db()
+        # A PayCentral sandbox success is NOT a real payment. The new gate must
+        # refuse conversion until verified aid or a real cashier receipt exists.
+        self.assertEqual(self.post(admissions_base+f"/{app_id}/convert", {
+            "revision": row.revision, "enrolled_on": "2026-11-10",
+        }).status_code, 409)
+        self.assertFalse(Enrollment.objects.exists())
+        self.login(self.proviseur)
+        scholarship = self.post(admissions_base+f"/{app_id}/scholarship", {
+            "action": "approve", "coverage": "all", "revision": 0,
+            "reference": "ETAT-RECETTE-TEST-2026",
+        })
+        self.assertEqual(scholarship.status_code, 201, scholarship.content)
+        self.login(self.secretary)
+        row.refresh_from_db()
         converted = self.assert_success(self.post(admissions_base+f"/{app_id}/convert", {
             "revision": row.revision, "enrolled_on": "2026-11-10",
         }), 201)
