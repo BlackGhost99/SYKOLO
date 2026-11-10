@@ -47,6 +47,7 @@ class ParentAdmissionRequest(models.Model):
     application = models.OneToOneField(AdmissionApplication, on_delete=models.PROTECT, related_name="parent_request")
     payment_choice = models.CharField(max_length=16, choices=[("cash", "Espèces sur place"), ("online", "Mobile Money en ligne")], default="cash")
     fee_amount_xaf = models.PositiveIntegerField(null=True, blank=True)
+    is_demo_cash = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def clean(self):

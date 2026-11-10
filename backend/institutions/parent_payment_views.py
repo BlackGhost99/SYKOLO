@@ -430,6 +430,9 @@ def family_notifications(request):
             "submitted": "Demande d'admission reçue", "review": "Dossier en cours d'étude",
             "accepted": "Admission accordée", "rejected": "Décision d'admission communiquée",
             "enrolled": "Inscription officielle confirmée",
+            "cash_received": "Paiement en espèces reçu à la caisse. Reçu disponible dans Mes demandes.",
+            "cash_simulated": "Paiement de test validé au guichet. Aucune somme reçue ; document de simulation disponible.",
+            "cash_cancelled": "Un reçu de paiement en espèces a été annulé par l’administration.",
         }.get(e.new_status, "Mise à jour d'admission"),
     } for e in events]
     payments = ParentPaymentAttempt.objects.select_related("school").filter(

@@ -280,7 +280,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     ? ["Propriétaire", access?.role_label].filter(Boolean).join(" · ")
     : access?.role_label;
   const panelProps={
-    schoolId:chosen,canDecide:can("school.admissions.decide"),
+    schoolId:chosen,canDecide:can("school.admissions.decide"),canReceive:can("school.finance.receive"),
     canCreate:can("school.admissions.manage"),canEnroll:can("school.admissions.enroll"),
     canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),
     canPublish:can("school.reports.publish"),onNavigate:navigate,

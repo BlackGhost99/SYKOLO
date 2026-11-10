@@ -2,6 +2,7 @@ import React, {useEffect, useState} from "react";
 import {AdmissionPolicyEditor,AdmissionProofPanel,ROUTES} from "./AdmissionRoutesPanel.jsx";
 import {SchoolCatalogSettings} from "./ParentDiscovery.jsx";
 import SchoolPaymentSetup from "./SchoolPaymentSetup.jsx";
+import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
 import {useSchoolData} from "./SchoolSettings.jsx";
 
 async function admissionApi(path, body){
@@ -55,7 +56,7 @@ export function AdmissionPaymentSettings({schoolId}) {
   return <SchoolPaymentSetup schoolId={schoolId} years={data.years} classes={classes}/>;
 }
 
-export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canEnroll=true}){
+export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canEnroll=true,canReceive=false}){
   const root="schools/"+schoolId+"/";
   const base=root+"admissions";
   const [years,setYears]=useState([]),[classes,setClasses]=useState([]),
@@ -194,6 +195,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
       </p>}
       <button disabled={busy||!year||!classroom} type="submit">Déposer la candidature</button>
     </form></details>}
+    <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive}/>
     <h3>Traitement des candidatures</h3>
     <label className="field">Candidature
       <select value={chosen} onChange={e=>{setChosen(e.target.value);setReason("");setHistory(null);}}>

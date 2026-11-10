@@ -22,6 +22,7 @@ from .parent_admission_models import FamilyChild, ParentAdmissionRequest, School
 from .parent_payment_views import public_payment_availability
 from .parent_payment_models import SchoolAdmissionFee, SchoolPaymentGateway
 from .parent_payment_service import gateway_configured
+from .demo_payment_views import demo_amount
 from .services import has_permission
 from .school_profiles import SCHOOL_PROFILES
 from .student_models import Enrollment
@@ -61,7 +62,7 @@ def parse_uuid(value):
         return None
 
 
-def class_public_data(row, occupied, policy, fee, online_available):
+def class_public_data(row, occupied, policy, fee, online_available, demo_amount_xaf=None):
     capacity = row.capacity
     return {
         "id": str(row.pk), "name": row.name,
@@ -71,6 +72,8 @@ def class_public_data(row, occupied, policy, fee, online_available):
         "series_label": row.track.name if row.track_id else None,
         "fee_amount_xaf": fee.amount_xaf if fee else None,
         "online_payment_available": bool(online_available and fee),
+        "demo_payment_available": demo_amount_xaf is not None,
+        "demo_fee_amount_xaf": demo_amount_xaf,
         "capacity": capacity,
         "remaining": max(0, capacity - occupied) if capacity is not None else None,
         "routes": list(policy.enabled_routes) if policy else list(ROUTES),
@@ -127,6 +130,7 @@ def directory(request):
                 room, occupied.get(room.pk, 0),
                 policies.get((room.year_id, room.level_id)) or policies.get((room.year_id, None)),
                 fees.get((room.year_id, room.level_id)), online,
+                demo_amount(listing.school, room.year_id, room.level_id, request.user),
             ) for room in classes
         ]
         result.append({
@@ -227,8 +231,13 @@ def family_children(request):
 
 
 def parent_application_output(link):
+    from .parent_payment_models import AdmissionCashReceipt, AdmissionCashReceiptVoid
     app = link.application
     latest = link.payment_attempts.order_by("-created_at").first() if link.payment_choice == "online" else None
+    cash = AdmissionCashReceipt.objects.filter(request=link).first() if link.payment_choice == "cash" else None
+    voided = bool(cash and AdmissionCashReceiptVoid.objects.filter(receipt=cash).exists())
+    cash_status = ("annule" if voided else "simule" if cash and cash.is_demo else
+                   "recu" if cash else "a_regler_sur_place")
     return {
         "id": str(link.pk), "child": str(link.child_id),
         "school": str(app.school_id), "school_name": app.school.name,
@@ -237,10 +246,17 @@ def parent_application_output(link):
         "status": app.status, "payment_choice": link.payment_choice,
         "fee_amount_xaf": link.fee_amount_xaf,
         "submitted_at": app.submitted_at.isoformat(),
-        "payment_status": latest.state if latest else ("non_initie" if link.payment_choice == "online" else "a_regler_sur_place"),
-        "payment_mode": latest.provider_mode if latest else None,
-        "paid_confirmed": bool(latest and latest.state == "success" and latest.provider_mode == "live"),
-        "notice": "Une demande ne réserve aucune place ; le paiement n’implique pas l’admission.",
+        "payment_status": cash_status if link.payment_choice == "cash" else latest.state if latest else "non_initie",
+        "payment_mode": ("cash_demo" if cash and cash.is_demo else "cash" if cash else
+                         "cash_demo" if link.is_demo_cash else latest.provider_mode if latest else None),
+        "paid_confirmed": bool(cash and not cash.is_demo and not voided) if link.payment_choice == "cash"
+            else bool(latest and latest.state == "success" and latest.provider_mode == "live"),
+        "is_demo_cash": link.is_demo_cash,
+        "cash_receipt_url": f"/api/v1/parents/applications/{link.pk}/cash-receipt"
+            if cash else None,
+        "notice": "Simulation de caisse : aucune somme réelle reçue."
+            if link.is_demo_cash else
+            "Une demande ne réserve aucune place ; le paiement n’implique pas l’admission.",
     }
 
 
@@ -295,6 +311,7 @@ def family_applications(request):
                 return error("L'établissement n'accepte pas le règlement sur place.", 409)
             if payment_choice == "online" and not online_available:
                 return error("Paiement en ligne indisponible pour cette classe.", 409)
+            demo_price = demo_amount(classroom.school, classroom.year_id, classroom.level_id, request.user)
             policy = effective_policy(classroom.school, classroom.year, classroom.level)
             if route not in (policy.enabled_routes if policy else ROUTES):
                 return error("Cette voie d'admission est fermée.", 409)
@@ -322,9 +339,11 @@ def family_applications(request):
             )
             app.full_clean()
             app.save()
+            is_demo_cash = payment_choice == "cash" and demo_price is not None
             link = ParentAdmissionRequest(owner=request.user, child=child,
                                           application=app, payment_choice=payment_choice,
-                                          fee_amount_xaf=fee.amount_xaf if fee else None)
+                                          is_demo_cash=is_demo_cash,
+                                          fee_amount_xaf=demo_price if is_demo_cash else fee.amount_xaf if fee else None)
             link.full_clean()
             link.save()
             AdmissionEvent.objects.create(school=classroom.school, application=app,

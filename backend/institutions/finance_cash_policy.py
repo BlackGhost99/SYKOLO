@@ -6,6 +6,7 @@ Daily closings use the cashier's declared receipt date and currency.
 from decimal import Decimal
 from django.db.models import Sum
 from .finance_models import CashClosing, FeePayment
+from .parent_payment_models import AdmissionCashReceipt
 
 
 def cash_closed_for_recorder(*, school, day, currency, user):
@@ -19,4 +20,8 @@ def recorded_cash_total(*, school, day, currency, user):
         school=school, recorded_by=user, paid_on=day,
         currency=currency, method="especes", void__isnull=True,
     ).aggregate(total=Sum("amount"))["total"]
-    return (total or Decimal("0.00")).quantize(Decimal("0.01"))
+    admission = AdmissionCashReceipt.objects.filter(
+        school=school, recorded_by=user, received_on=day,
+        is_demo=False, void__isnull=True,
+    ).aggregate(total=Sum("amount_xaf"))["total"] or 0
+    return ((total or Decimal("0.00")) + Decimal(admission)).quantize(Decimal("0.01"))
