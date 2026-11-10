@@ -154,7 +154,7 @@ from .admission_models import AdmissionApplication, AdmissionEvent, AdmissionPol
 
 from .parent_models import GuardianAccountLink  # noqa: E402,F401
 from .parent_admission_models import SchoolPublicListing, FamilyChild, ParentAdmissionRequest  # noqa: E402,F401
-from .parent_payment_models import SchoolAdmissionFee, SchoolPaymentGateway, ParentPaymentAttempt, SchoolDemoPaymentConfig  # noqa: E402,F401
+from .parent_payment_models import SchoolAdmissionFee, SchoolPaymentGateway, ParentPaymentAttempt, SchoolDemoPaymentConfig, AdmissionCashReceipt, AdmissionCashReceiptVoid  # noqa: E402,F401
 
 from .organization_models import SchoolAppointment  # noqa: E402,F401
 from .singpay_models import SingPayMerchant, SingPayIntent, SingPayEvent, SingPaySettlement  # noqa: E402,F401
