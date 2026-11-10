@@ -29,6 +29,8 @@ from .preschool_classes import preschool_enabled
 from .standard_classes import enabled_standard_cycles, ensure_standard_classes
 from .secondary_series import series_for_level, SECONDARY_CYCLES
 from .models import School
+from .cycle_scope import scoped_cycle_ids
+from .staff_models import StaffAssignment
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import (
     parse_fields, describe, validate_enrollment_slot, validation_response, visible_enrollments,
@@ -345,14 +347,32 @@ def classes_overview(request, school_id):
 @require_GET
 @authorized
 def class_students(request, school_id, class_id):
-    school, error = gate(request, school_id, "school.students.read")
+    """Minimal class roster, without guardians, contact details or financial data.
+
+    Academic administration, life-school staff and assigned teachers may inspect
+    their respective class lists without receiving the full pupil dossier right.
+    Restricted-cycle accounts keep their existing dedicated, audited views.
+    """
+    school, error = access(request, school_id)
     if error is not None:
         return error
     if not has_permission(request.user, school, "school.academic.read"):
         return refuse()
+    # A school-scoped UUID cannot be reused to inspect another school's roster.
     classroom = AcademicClass.objects.filter(school=school, pk=class_id).first()
     if classroom is None:
         return JsonResponse({"error": "Classe introuvable."}, status=404)
+    if scoped_cycle_ids(request.user, school) is not None:
+        return refuse()
+    global_reader = has_permission(request.user, school, "school.students.read")
+    life_school_reader = has_permission(request.user, school, "school.attendance.read")
+    studies_reader = has_permission(request.user, school, "school.curriculum.manage")
+    assigned_teacher = StaffAssignment.objects.filter(
+        school=school, classroom=classroom, year=classroom.year, active=True,
+        staff__school=school, staff__account=request.user, staff__active=True,
+    ).exists()
+    if not (global_reader or life_school_reader or studies_reader or assigned_teacher):
+        return refuse()
     students = visible_enrollments(request.user, school).filter(
         classroom=classroom, year_id=classroom.year_id, active=True, student__school=school,
     ).order_by("student__last_name", "student__first_name", "student_id").values_list(
