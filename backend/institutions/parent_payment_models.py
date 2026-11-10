@@ -130,3 +130,61 @@ class SchoolDemoPaymentConfig(models.Model):
                 uuid.UUID(user_id)
             except (ValueError, TypeError, AttributeError):
                 raise ValidationError("Compte parent de test invalide.")
+
+
+class AdmissionCashReceipt(models.Model):
+    """Confirmation at school counter, entirely separate from PSP/tuition ledger.
+
+    is_demo=True is NOT a financial receipt and must never enter daily cash totals.
+    It cannot be turned into real cash after recording.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request = models.OneToOneField(
+        ParentAdmissionRequest, on_delete=models.PROTECT, related_name="cash_receipt",
+    )
+    school = models.ForeignKey(
+        School, on_delete=models.PROTECT, related_name="admission_cash_receipts",
+    )
+    amount_xaf = models.PositiveIntegerField()
+    is_demo = models.BooleanField(default=False)
+    reference = models.CharField(max_length=100, blank=True)
+    received_on = models.DateField()
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(amount_xaf__gte=100, amount_xaf__lte=10000000),
+                name="admission_cash_receipt_amount_valid",
+            ),
+        ]
+
+    def clean(self):
+        if self.request_id and self.school_id:
+            if self.request.application.school_id != self.school_id:
+                raise ValidationError("Paiement rattaché à un autre établissement.")
+            if self.request.payment_choice != "cash":
+                raise ValidationError("Le parent n'a pas choisi les espèces.")
+            if self.request.fee_amount_xaf != self.amount_xaf:
+                raise ValidationError("Montant différent du tarif accepté lors de la candidature.")
+            if self.request.is_demo_cash != self.is_demo:
+                raise ValidationError("La simulation ne peut pas être convertie en argent réel.")
+
+
+class AdmissionCashReceiptVoid(models.Model):
+    """Independent corrective evidence; the original cash receipt is immutable."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    receipt = models.OneToOneField(
+        AdmissionCashReceipt, on_delete=models.PROTECT, related_name="void",
+    )
+    school = models.ForeignKey(School, on_delete=models.PROTECT)
+    reason = models.CharField(max_length=1000)
+    voided_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if self.receipt_id and self.school_id and self.receipt.school_id != self.school_id:
+            raise ValidationError("Annulation liée à un autre établissement.")
+        if self.receipt_id and self.voided_by_id == self.receipt.recorded_by_id:
+            raise ValidationError("Un autre responsable doit annuler l'enregistrement.")
