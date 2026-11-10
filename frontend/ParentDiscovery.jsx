@@ -172,20 +172,15 @@ export default function ParentDiscovery() {
                     onChange={()=>setPaymentChoice("online")} disabled={!selectedClass?.online_payment_available}/>
                   Payer en ligne (Airtel Money / Moov Money)
                 </label>
-                {selectedClass?.demo_payment_available&&
-                  <label><input type="radio" name="yp-payment" checked={paymentChoice==="demo"}
-                    onChange={()=>setPaymentChoice("demo")}/>
-                    Simulation YEM — aucun argent ne sera débité (compte pilote autorisé)
-                  </label>}
-                <small>{paymentChoice==="demo"?
-                  "Montant fictif configurable : "+Number(selectedClass?.demo_fee_amount_xaf||0).toLocaleString("fr-FR")+" FCFA · 0 FCFA reçu.":
+                <small>{paymentChoice==="cash"&&selectedClass?.demo_payment_available?
+                  "Recette fictive au guichet : "+Number(selectedClass.demo_fee_amount_xaf||0).toLocaleString("fr-FR")+" FCFA (SIMULATION, aucune somme reçue).":
                   selectedClass?.fee_amount_xaf?
                   "Frais de dossier : "+Number(selectedClass.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA.":
                   "Montant des frais à confirmer auprès de l'établissement."}</small>
-                <small>Aucun paiement n'est confirmé tant que le prestataire n'a pas vérifié la transaction.</small>
+                <small>En espèces : seul le caissier habilité confirme la réception et délivre le reçu. En ligne : confirmation par le prestataire.</small>
               </fieldset>
               <button className="yp-button yp-primary" type="submit"
-                disabled={busy||!family.length||!classroom||(paymentChoice==="cash"&&!s.cash_at_school)||(paymentChoice==="online"&&!selectedClass?.online_payment_available)||(paymentChoice==="demo"&&!selectedClass?.demo_payment_available)}>
+                disabled={busy||!family.length||!classroom||(paymentChoice==="cash"&&!s.cash_at_school)||(paymentChoice==="online"&&!selectedClass?.online_payment_available)}>
                 {busy?"Enregistrement...":"Déposer ma demande"}
               </button>
               {!s.cash_at_school&&<p>Le paiement en espèces n'est pas proposé par cette école.</p>}
@@ -220,24 +215,30 @@ export default function ParentDiscovery() {
     {view==="requests"&&<div className="yp-pane">
       <h3>Mes candidatures</h3>
       <p>L'établissement reste responsable de la décision d'admission et de l'inscription officielle.</p>
-      {applications.length===0&&<p>Aucune candidature enregistrée.</p>}
+      <button className="yp-button" type="button" disabled={busy}
+        onClick={()=>run(async()=>{setMessage("Suivi des candidatures actualisé.");})}>
+        Actualiser les paiements et décisions
+      </button>
+      {applications.length===0&&<p>Aucune candidature enregistrée.</p>
       {applications.map(a=><article key={a.id} className="yp-request">
         <b>{a.school_name}</b><p>{a.classroom_name} · {a.year} · {ROUTES[a.route]||a.route}</p>
         <strong>{STATES[a.status]||a.status}</strong>
-        {a.payment_choice==="demo"&&<>
-          <p className="yp-muted"><strong>SIMULATION UNIQUEMENT</strong> : montant fictif de {Number(a.fee_amount_xaf||0).toLocaleString("fr-FR")} FCFA, aucune somme reçue.</p>
-          {a.payment_status==="success"
-            ? <strong role="status">Simulation enregistrée · aucun encaissement réel.</strong>
-            : a.status!=="enrolled"&&a.status!=="rejected"&&<button type="button" className="yp-button yp-primary" disabled={busy}
-                onClick={()=>run(async()=>{
-                  const result=await api("parents/applications/"+a.id+"/demo-pay",{});
-                  setMessage(result.notice);
-                })}>Simuler mon paiement (sans débit)</button>}
-        </>}
+        {a.payment_choice==="cash"&&<div className="yp-muted">
+          <p><strong>Espèces au guichet</strong> · {a.fee_amount_xaf?
+            Number(a.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA":"Tarif à définir par l'établissement"}
+            {a.is_demo_cash&&" · DOSSIER DE TEST, aucun argent à verser"}</p>
+          <p role="status">{({
+            recu:"Paiement reçu et enregistré par la caisse de l'école.",
+            simule:"Simulation validée par la caisse, 0 FCFA reçu.",
+            annule:"Reçu annulé : adressez-vous à l'établissement.",
+            a_regler_sur_place:"En attente de validation au guichet de l'établissement.",
+          })[a.payment_status]||"Règlement à vérifier auprès de l'école."}</p>
+          {a.cash_receipt_url&&<a href={a.cash_receipt_url} target="_blank" rel="noreferrer">
+            {a.is_demo_cash?"Télécharger le document de simulation PDF":"Télécharger mon reçu de paiement PDF"}
+          </a>}
+        </div>}
         {a.payment_choice==="online"&&a.fee_amount_xaf&&<SingPayPayment kind="admission" objectId={a.id} api={api}/>}
-        <small>{a.payment_choice==="demo"?
-          "Paiement fictif : "+(a.payment_status==="success"?"simulation terminée · 0 FCFA encaissé":"simulation non effectuée"):
-          a.payment_choice==="cash"?"Paiement prévu : espèces à la caisse":
+        <small>{a.payment_choice==="cash"?"Suivi du paiement en espèces ci-dessus.":
           "Mobile Money · "+(a.fee_amount_xaf?Number(a.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA · ":"")+
           ({non_initie:"non initié",initiating:"initiation en cours",pending:"en attente de confirmation",
             unknown:"à rapprocher avec l'école",success:"confirmé par le prestataire",
