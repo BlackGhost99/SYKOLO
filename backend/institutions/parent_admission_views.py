@@ -252,6 +252,12 @@ def parent_application_output(link):
         "paid_confirmed": bool(cash and not cash.is_demo and not voided) if link.payment_choice == "cash"
             else bool(latest and latest.state == "success" and latest.provider_mode == "live"),
         "is_demo_cash": link.is_demo_cash,
+        "scholarship": (
+            {"coverage": link.application.government_scholarship.coverage,
+             "reference": link.application.government_scholarship.official_reference}
+            if hasattr(link.application, "government_scholarship")
+                and link.application.government_scholarship.active else None
+        ),
         "cash_receipt_url": f"/api/v1/parents/applications/{link.pk}/cash-receipt"
             if cash else None,
         "notice": "Simulation de caisse : aucune somme réelle reçue."
