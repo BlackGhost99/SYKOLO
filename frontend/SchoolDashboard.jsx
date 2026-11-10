@@ -233,9 +233,13 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const perms=access?.permissions||[];
   const can = permission => perms.includes(permission);
   const isOwner = Boolean(access?.is_owner);
+  // A teacher can grade assigned courses without a school-wide grade permission.
+  // The API still checks the course instructor assignment for each operation.
+  const ownCourseAssessment = can("school.academic.read") && can("school.curriculum.read") && !can("school.assessments.read");
   const allowed = key => key === "onboarding"
     ? can("school.staff.manage") || isOwner
-    : can(modules[key].read) || (key==="attendance" && can("school.attendance.assigned"));
+    : can(modules[key].read) || (key==="assessments" && ownCourseAssessment)
+      || (key==="attendance" && can("school.attendance.assigned"));
   const canUsers = can("school.members.write");
   const restricted = Boolean(access?.cycle_scope_restricted);
   const availableSettings = restricted ? [] : settingsSections.map(section => ({
@@ -247,6 +251,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     ? Object.fromEntries([
         ...(can("school.students.read")?[["students",{...sections.students,modules:[],lives:[{key:"cycle-list",label:"Élèves autorisés",need:[]}]}]]:[]),
         ...(can("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],lives:[]}]]:[]),
+        ...(ownCourseAssessment?[["bulletins",{...sections.bulletins,modules:["assessments"],lives:[]}]]:[]),
       ])
     : Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{
         ...s,modules:s.modules.filter(allowed),lives:(s.lives||[]).filter(l=>l.need.every(can)),
@@ -365,7 +370,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     {tabBar}
     <div className="yd-real-body">{View&&<View key={chosen+"-"+tab} {...panelProps}
       {...(["finance","onboarding"].includes(tab)?{mode:"daily"}:{})}
-      {...(tab==="assessments"?{canEdit:can("school.assessments.manage")}:{})}
+      {...(tab==="assessments"?{canEdit:can("school.assessments.manage")||ownCourseAssessment,
+        canPublish:can("school.reports.publish"), limitedToMyCourses:ownCourseAssessment}:{})}
       {...(tab==="reports"?{canPrepare:can("school.reports.manage")}:{})}
       {...(tab==="council"?{canManage:can("school.deliberations.manage"),canFinalize:can("school.deliberations.finalize")}:{})}
       {...(tab==="attendance"?{

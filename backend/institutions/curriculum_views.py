@@ -141,6 +141,28 @@ def courses(request,school_id):
         ("year","classroom","subject","coefficient","active"),("year","classroom","subject"))
 
 
+@require_http_methods(["GET"])
+@authorized
+def my_courses(request, school_id):
+    """Teaching courses actually assigned to the current staff account.
+
+    This is NOT school-wide assessment read access. Every assessment and grade
+    endpoint still verifies CourseInstructor assignment independently.
+    """
+    school, error = access_to(request, school_id, "school.curriculum.read")
+    if error is not None:
+        return error
+    rows = CourseOffering.objects.filter(
+        school=school, active=True, year__active=True,
+        classroom__active=True, subject__active=True,
+        instructors__active=True,
+        instructors__staff_assignment__active=True,
+        instructors__staff_assignment__staff__active=True,
+        instructors__staff_assignment__staff__account=request.user,
+    ).distinct().order_by("year_id", "classroom_id", "subject__name")
+    return JsonResponse({"courses": [object_output(row) for row in rows[:300]]})
+
+
 @require_http_methods(["GET","PATCH","DELETE"])
 @authorized
 def course_detail(request,school_id,course_id):
