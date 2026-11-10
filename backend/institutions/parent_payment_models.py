@@ -64,7 +64,7 @@ class ParentPaymentAttempt(models.Model):
     currency = models.CharField(max_length=3, default="XAF")
     provider = models.CharField(max_length=24, default="paycentral")
     provider_mode = models.CharField(max_length=8, default="sandbox")
-    channel = models.CharField(max_length=16, choices=[("airtel", "Airtel Money"), ("moov", "Moov Money"), ("demo", "Simulation YEM")])
+    channel = models.CharField(max_length=16, choices=[("airtel", "Airtel Money"), ("moov", "Moov Money")])
     payer_phone = models.CharField(max_length=24)
     merchant_reference = models.CharField(max_length=48, unique=True)
     transaction_id = models.CharField(max_length=120, null=True, blank=True, unique=True)
