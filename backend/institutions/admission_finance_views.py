@@ -202,7 +202,7 @@ def scholarship(request, school_id, application_id):
                 award.official_reference = reference.strip()
             award.full_clean()
             award.save()
-            code = "government_scholarship_approved" if award.active else "government_scholarship_revoked"
+            code = "award_approved" if award.active else "award_revoked"
             AdmissionEvent.objects.create(
                 school=school, application=application,
                 previous_status=application.status, new_status=code,
