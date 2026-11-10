@@ -179,10 +179,10 @@ def scholarship(request, school_id, application_id):
                 if link:
                     from .singpay_models import SingPayIntent
                     active_singpay = SingPayIntent.objects.filter(
-                        admission=link, school=school,
+                        admission=link, school=school, mode="live",
                     ).exclude(state__in=("failed", "cancelled", "test_failed")).exists()
                     active_paycentral = ParentPaymentAttempt.objects.filter(
-                        request=link, school=school,
+                        request=link, school=school, provider_mode="live",
                     ).exclude(state__in=("failed", "cancelled", "refunded")).exists()
                     if active_singpay or active_paycentral:
                         return reject("Un paiement en ligne est ouvert : rapprochez-le avant d'accorder une bourse.", 409)
