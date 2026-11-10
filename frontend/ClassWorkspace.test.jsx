@@ -118,7 +118,7 @@ test("la direction des études consulte Seconde S sans accès aux fiches personn
     [root+"overview/classes"]:{year,years:[year],classes:[classe],levels:[level],can_manage_classes:false},
     [root+"classes/s/students"]:{students:[{id:"student-test",first_name:"Jeanne",last_name:"ESSAI",student_code:"YEM-TEST"}]},
     [root+"organization/my-appointments"]:{appointments:[]},
-  }[url] || {})));
+  }[url] || {}));
   vi.stubGlobal("fetch", fetchMock);
   const user = userEvent.setup();
   render(<SchoolDashboard user={{username:"etudes"}}/>);
