@@ -6,6 +6,7 @@ from . import finance_batch_views, finance_cash_views, finance_summary_views
 from . import annual_views
 from . import calendar_views
 from . import secondary_views
+from . import demo_payment_views
 from . import staff_onboarding_views
 from . import cycle_access_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
@@ -43,6 +44,8 @@ urlpatterns = [
     path("parents/applications/<uuid:application_id>/payments", parent_payment_views.parent_payment_status),
     path("parents/applications/<uuid:application_id>/pay", parent_payment_views.parent_pay),
     path("parents/applications/<uuid:application_id>/payment-refresh", parent_payment_views.parent_payment_refresh),
+    path("schools/<uuid:school_id>/demo-admission-payments", demo_payment_views.school_demo_configuration),
+    path("parents/applications/<uuid:application_id>/demo-pay", demo_payment_views.simulate_parent_payment),
     path("schools/<uuid:school_id>/admission-gateway", parent_payment_views.school_gateway),
     path("schools/<uuid:school_id>/admission-fees", parent_payment_views.school_admission_fees),
     path("schools/<uuid:school_id>/admission-payments", parent_payment_views.staff_admission_payments),
