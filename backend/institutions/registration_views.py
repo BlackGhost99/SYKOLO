@@ -22,6 +22,7 @@ from accounts.views import authorized
 from .student_transfers import transfer_identity
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment
+from .admission_finance import direct_enrollment_blocker, scholarship_for_enrollment
 from .overview_views import gate, current_year, enrollment_balances, finance_status, money, ZERO
 from .services import can_manage_classes, class_management_scope, has_permission, quota_reached
 from .school_profiles import CLASS_LEVELS, CYCLE_LABELS, class_level_options
@@ -67,6 +68,9 @@ def unique_code(base, taken, limit=40):
 
 def apply_fees(school, enrollment, user):
     """Affecte à une inscription les barèmes actifs de son année (école entière ou sa classe)."""
+    award = scholarship_for_enrollment(enrollment)
+    if award and award.coverage == "all":
+        return 0  # Budget pris en charge : aucune dette parent, aucun encaissement simulé.
     schedules = FeeSchedule.objects.filter(school=school, year_id=enrollment.year_id, active=True).filter(
         Q(classroom__isnull=True) | Q(classroom_id=enrollment.classroom_id))
     existing = set(FeeCharge.objects.filter(school=school, enrollment=enrollment).values_list("schedule_id", flat=True))
@@ -84,6 +88,9 @@ def apply_fees(school, enrollment, user):
 
 def enroll(school, request, student, classroom, enrolled_on=None):
     classroom = AcademicClass.objects.select_for_update().get(pk=classroom.pk, school=school)
+    blocker = direct_enrollment_blocker(school, classroom)
+    if blocker:
+        raise Refused(blocker, 409)
     year = classroom.year
     if enrolled_on is None:
         today = timezone.localdate()
