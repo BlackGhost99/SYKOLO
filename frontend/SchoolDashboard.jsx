@@ -133,12 +133,17 @@ function UsersForm({schoolId,onMessage}) {
   const [roleOptions,setRoleOptions]=useState([]);
   const [functions,setFunctions]=useState([]);
   const [members,setMembers]=useState([]);
+  const [academicCycles,setAcademicCycles]=useState([]);
+  const [limitAccess,setLimitAccess]=useState(true);
+  const [chosenCycles,setChosenCycles]=useState([]);
+  const [ackGlobal,setAckGlobal]=useState(false);
   useEffect(()=>{
     let alive=true;
     get("schools/"+schoolId+"/members").then(result=>{if(alive)setMembers(result.members||[]);}).catch(err=>{if(alive)onMessage(err.message);});
     get("schools/"+schoolId+"/roles").then(result=>{
       if(!alive)return;
       setFunctions(result.functions||[]);
+      setAcademicCycles(result.academic_cycles||[]);
       const options=(result.roles||[]).filter(r=>r.available_for_accounts!==false).map(r=>[r.code,r.label,r.suggested_function]);
       if(options.length){
         setRoleOptions(options);
@@ -150,12 +155,23 @@ function UsersForm({schoolId,onMessage}) {
   const proposedFunction=roleOptions.find(([code])=>code===person.role)?.[2];
   const personFunctions=person.function_codes??(proposedFunction?[proposedFunction]:[]);
   const assignmentRoles=roleOptions.filter(([code])=>code!=="proprietaire");
+  const manyCycles=academicCycles.length>1;
+  const missingCycleChoice=manyCycles&&((limitAccess&&!chosenCycles.length)||(!limitAccess&&!ackGlobal));
   return <Card title="Créer un compte pour l'établissement" icon="adduser" subtitle="Le compte est rattaché uniquement à cette école. Les droits dépendent de son rôle.">
-    <form onSubmit={async e=>{e.preventDefault();setBusy(true);onMessage("");try{const result=await addUser(schoolId,{...person,function_codes:personFunctions});setPerson(defaultPerson);setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
+    <form onSubmit={async e=>{e.preventDefault();if(missingCycleChoice)return;setBusy(true);onMessage("");try{const result=await addUser(schoolId,{...person,function_codes:personFunctions,...(manyCycles?{access_cycle_ids:limitAccess?chosenCycles:null}:{})});setPerson(defaultPerson);setChosenCycles([]);setLimitAccess(true);setAckGlobal(false);setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Compte créé : "+result.username);}catch(err){onMessage(err.message);}finally{setBusy(false);}}}><div className="pc-fields">
       {["first_name","last_name","username","email"].map(key=><label key={key}>{{first_name:"Prénom",last_name:"Nom",username:"Identifiant de connexion",email:"Email"}[key]}<input required value={person[key]} type={key==="email"?"email":"text"} onChange={e=>setPerson(x=>({...x,[key]:e.target.value}))}/></label>)}
       <label>Rôle<select value={person.role} onChange={e=>setPerson(x=>({...x,role:e.target.value,function_codes:null}))}>{roleOptions.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
       <label>Mot de passe initial<input required type="password" minLength={12} autoComplete="new-password" value={person.password} onChange={e=>setPerson(x=>({...x,password:e.target.value}))}/></label>
-    </div><fieldset><legend>Fonctions exercées (facultatives, sans droits automatiques)</legend>{functions.map(f=><label key={f.code}><input type="checkbox" checked={personFunctions.includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...personFunctions,f.code]:personFunctions.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset><button className="pc-primary" type="submit" disabled={busy||!roleOptions.length}>Créer le compte</button></form>
+    </div><fieldset><legend>Fonctions exercées (facultatives, sans droits automatiques)</legend>{functions.map(f=><label key={f.code}><input type="checkbox" checked={personFunctions.includes(f.code)} onChange={e=>setPerson(old=>({...old,function_codes:e.target.checked?[...personFunctions,f.code]:personFunctions.filter(c=>c!==f.code)}))}/>{f.label}</label>)}</fieldset>
+    {manyCycles&&<fieldset><legend>Cycles autorisés pour ce compte</legend>
+      <p className="hint">Un complexe scolaire comprend plusieurs cycles. Choisissez les cycles réellement nécessaires ; un accès global doit rester exceptionnel et justifié.</p>
+      <label><input type="radio" name="new-member-cycle-scope" checked={limitAccess} onChange={()=>setLimitAccess(true)}/> Limiter aux cycles choisis</label>
+      {limitAccess&&academicCycles.map(c=><label key={c.id}><input type="checkbox" checked={chosenCycles.includes(c.id)} onChange={e=>setChosenCycles(old=>e.target.checked?[...old,c.id]:old.filter(x=>x!==c.id))}/>{c.name}</label>)}
+      <label><input type="radio" name="new-member-cycle-scope" checked={!limitAccess} onChange={()=>{setLimitAccess(false);setAckGlobal(false);}}/> Autoriser tous les cycles</label>
+      {!limitAccess&&<label><input type="checkbox" checked={ackGlobal} onChange={e=>setAckGlobal(e.target.checked)}/> Je confirme que les responsabilités de ce compte nécessitent un accès global.</label>}
+      {limitAccess&&<p className="hint">Certains modules nécessitent encore des adaptations pour les comptes limités par cycle ; les routes non vérifiées restent refusées par sécurité.</p>}
+    </fieldset>}
+    <button className="pc-primary" type="submit" disabled={busy||!roleOptions.length||missingCycleChoice}>Créer le compte</button></form>
     <form aria-label="Fonctions d'un compte existant" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await addUser(schoolId,assignment,"members");setMembers((await get("schools/"+schoolId+"/members")).members||[]);onMessage("Fonctions mises à jour.");}catch(err){onMessage(err.message);}finally{setBusy(false);}}}>
       <h3>Fonctions d'un compte existant</h3>
       <label>Compte existant<select required value={assignment.username} onChange={e=>{const m=members.find(x=>x.username===e.target.value);if(m)setAssignment({username:m.username,role:m.role,additional_roles:m.additional_roles||[],function_codes:m.function_codes||[]});}}><option value="">Choisir…</option>{members.filter(m=>!m.is_school_owner).map(m=><option key={m.user_id} value={m.username}>{m.username}</option>)}</select></label>

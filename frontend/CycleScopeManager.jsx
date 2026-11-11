@@ -25,6 +25,8 @@ export default function CycleScopeManager({schoolId,cycles,accounts,onSaved}){
   const [busy,setBusy]=useState(false);
   useEffect(()=>{setMember("");setReason("");setSelected([]);setGlobalAccess(false);},[schoolId]);
   const chosen=accounts.find(a=>a.member_id===member);
+  const multipleCycles=cycles.length>1;
+  const globalAccounts=accounts.filter(a=>a.access_cycle_ids===null);
   const choose=id=>{
     const item=accounts.find(a=>a.member_id===id);
     setMember(id);setGlobalAccess(item?.access_cycle_ids===null);
@@ -47,14 +49,16 @@ export default function CycleScopeManager({schoolId,cycles,accounts,onSaved}){
   return <section className="card" aria-label="Modifier les cycles d'accès du personnel">
     <h3>Cycles d'accès des comptes existants</h3>
     <p className="hint">Réservé au propriétaire de l'organisation. Le changement de périmètre est immédiat et conserve le motif dans l'audit. Un poste dans l'organigramme ne remplace pas ces autorisations.</p>
+    {multipleCycles&&<p className="hint" role="status">{globalAccounts.length} compte(s) non propriétaires sur {accounts.length} disposent actuellement d’un accès global à tous les cycles. Vérifiez chaque situation avant de restreindre : une fonction ou un poste ne prouve pas à lui seul le périmètre autorisé.</p>}
     <form onSubmit={submit}>
       <label className="field">Compte existant
         <select required value={member} onChange={e=>choose(e.target.value)}>
           <option value="">Choisir un compte…</option>
-          {accounts.map(a=><option key={a.member_id} value={a.member_id}>{a.name||a.username} ({a.username})</option>)}
+          {accounts.map(a=><option key={a.member_id} value={a.member_id}>{a.name||a.username} ({a.username}){multipleCycles&&a.access_cycle_ids===null?" — Accès global à vérifier":""}</option>)}
         </select>
       </label>
       {chosen&&<fieldset><legend>Périmètre de {chosen.username}</legend>
+        {multipleCycles&&chosen.access_cycle_ids===null&&<p className="hint">Ce compte possède actuellement un accès global aux cycles de l’établissement. Le limiter peut rendre certaines fonctions indisponibles jusqu’à leur adaptation aux accès par cycle.</p>}
         <label style={{display:"flex",gap:8}}>
           <input type="radio" name="existing-cycle-scope" checked={globalAccess} onChange={()=>setGlobalAccess(true)}/>
           <span>Accès global à l'établissement</span>

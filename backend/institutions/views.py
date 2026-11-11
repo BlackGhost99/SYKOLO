@@ -349,9 +349,20 @@ def school_user_create(request, school_id):
     except DjangoValidationError as exc:
         return JsonResponse({"error": " ".join(exc.messages)}, status=422)
     from .school_functions import validate_account_functions
+    from .cycle_scope import validate_cycle_scope, scoped_cycle_ids
     try:
         with transaction.atomic():
             school = School.objects.select_for_update().get(pk=school.pk)
+            # Scope is explicitly selectable for the legacy account form too.
+            # An omitted scope keeps legacy behavior until all callers are migrated.
+            target_scope = validate_cycle_scope(school, data.get("access_cycle_ids"))
+            actor_scope = scoped_cycle_ids(request.user, school)
+            if actor_scope is not None and (
+                target_scope is None or not set(target_scope) <= actor_scope
+            ):
+                return refuse()
+            if role.code == OWNER_ROLE_CODE and target_scope is not None:
+                return JsonResponse({"error": "Le propriétaire couvre l’établissement entier."}, status=422)
             if not has_permission(request.user, school, "school.members.write"):
                 return refuse()
             role = SchoolRole.objects.get(pk=role.pk, school=school)
@@ -368,7 +379,8 @@ def school_user_create(request, school_id):
                                            first_name=candidate.first_name, last_name=candidate.last_name,
                                            password=password)
             SchoolMember.objects.create(school=school, user=user, role=role, function_codes=functions,
-                                        is_school_owner=role.code == OWNER_ROLE_CODE)
+                                        is_school_owner=role.code == OWNER_ROLE_CODE,
+                                        access_cycle_ids=target_scope)
             SchoolLogin.objects.create(school=school, user=user, username=username.strip())
             log_event(school, request, "member_account_created", str(user.pk))
     except ValueError as exc:
@@ -399,11 +411,16 @@ def school_roles(request, school_id):
         from .school_functions import account_functions, suggested_account_function
         functions = account_functions(school)
         platform = platform_only(request)
+        from .academic_models import AcademicCycle
+        cycles = AcademicCycle.objects.filter(school=school, active=True).order_by("order", "name")
         return JsonResponse({"functions": functions, "roles": [
             {**role_response(r, school), "suggested_function": suggested_account_function(school, r.code, functions),
              "available_for_accounts": role_available(school, r.code) and (r.code != OWNER_ROLE_CODE or platform)}
             for r in school.roles.order_by("code")
         ],
+                             "academic_cycles": [
+                                 {"id": str(cycle.id), "name": cycle.name} for cycle in cycles
+                             ],
                              "available_permissions": sorted(PERMISSIONS)})
     if not has_permission(request.user, school, "school.roles.manage"):
         return refuse()
