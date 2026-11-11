@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from .school_profiles import SCHOOL_TYPE_CHOICES
+from .school_governance import GOVERNANCE_CHOICES, DEFAULT_GOVERNANCE_MODE
 
 
 class Organization(models.Model):
@@ -31,6 +32,7 @@ class School(models.Model):
     short_name = models.CharField(max_length=60, blank=True)
     school_type = models.CharField(max_length=32, choices=SCHOOL_TYPE_CHOICES, default="non_classe")
     education_cycles = models.JSONField(default=list, blank=True)
+    governance_mode = models.CharField(max_length=24, choices=GOVERNANCE_CHOICES, default=DEFAULT_GOVERNANCE_MODE)
     enabled_functions = models.JSONField(null=True, default=None, blank=True)
     primary_color = models.CharField(max_length=7, default="#1B664C")
     is_active = models.BooleanField(default=True)

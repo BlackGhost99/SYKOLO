@@ -84,6 +84,14 @@ export default function OrganisationPanel({schoolId,canManage=false}) {
       {" "}Cycles : {(catalog.education_cycles||[]).map(c=>cycleNames[c]||c).join(" · ")||"Aucun renseigné"}.
     </p>
     <p className="hint">Les postes proposés dépendent des cycles enseignés. Plusieurs fonctions peuvent être attribuées à une même personne, dans différents cycles.</p>
+    {catalog.governance&&<div style={{border:"1px solid var(--border, #dce2e4)",borderRadius:12,padding:"0.9rem",margin:"0.7rem 0"}}>
+      <strong>Gouvernance : {catalog.governance.label}</strong>
+      <p className="hint">{catalog.governance.authority}. {catalog.governance.description}</p>
+      <details><summary>Organes de concertation et de décision (référence)</summary>
+        <ul>{catalog.governance.organs.map(name=><li key={name}>{name}</li>)}</ul>
+        <p className="hint">Les sièges au conseil, les fonctions du personnel et les permissions YEM sont trois éléments distincts. Les délibérations officielles ne sont pas simulées ici.</p>
+      </details>
+    </div>}
     {!catalog.positions.length&&<p role="status">Il faut d'abord classifier l'établissement et ses cycles dans la console super-administrateur.</p>}
 
     {canManage&&catalog.positions.length>0&&<form onSubmit={e=>{

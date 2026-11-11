@@ -14,6 +14,7 @@ from .models import (
 from .platform_views import platform_only
 from .services import OWNER_ROLE_CODE, provision_appointment_roles, public_role_label, role_available
 from .school_profiles import validate_school_profile
+from .school_governance import governance_profile, validate_governance_mode, governance_mode_for
 from .standard_classes import ensure_standard_levels
 from .views import parse_body, log_event, string
 
@@ -42,6 +43,8 @@ def summary(school):
         "school_type": school.school_type,
         "school_type_label": school.get_school_type_display(),
         "education_cycles": school.education_cycles,
+        "governance_mode": school.governance_mode,
+        "governance": governance_profile(school),
         "organization": school.organization.name,
         "organization_id": str(school.organization_id),
         "members_count": school.members_count,
@@ -195,6 +198,8 @@ def detail_dict(s):
             "school_type": s.school_type,
             "school_type_label": s.get_school_type_display(),
             "education_cycles": s.education_cycles,
+            "governance_mode": s.governance_mode,
+            "governance": governance_profile(s),
             "organization": s.organization.name,
             "organization_id": str(s.organization_id),
             "created_at": s.created_at.isoformat(),
@@ -286,15 +291,25 @@ def platform_school_action(request, school_id):
                 school_type, education_cycles = validate_school_profile(
                     body.get("school_type"), body.get("education_cycles")
                 )
+                mode = validate_governance_mode(body.get("governance_mode",school.governance_mode))
             except ValueError as exc:
                 return JsonResponse({"error": str(exc)}, status=422)
-            if school.school_type == school_type and school.education_cycles == education_cycles:
+            if school.school_type == school_type and school.education_cycles == education_cycles and mode == school.governance_mode:
                 return JsonResponse({"error": "La classification est déjà à jour."}, status=409)
+            # Le passage public/privé peut modifier la nature des autorités et des comptes.
+            # Exiger une migration séparée contrôlée : ne jamais transformer un fondateur privé en tutelle publique.
+            if (mode == "public") != (school.governance_mode == "public"):
+                return JsonResponse({"error": "Le changement public ↔ privé nécessite une migration administrative dédiée et validée."}, status=422)
+            if mode != school.governance_mode and SchoolMember.objects.filter(
+                school=school, active=True, role__code="referent_confessionnel"
+            ).exists():
+                return JsonResponse({"error":"Réaffectez d’abord les comptes du réseau confessionnel avant de changer ce régime."}, status=409)
             # Ne jamais modifier ou supprimer les cycles/classes réels :
             # il s’agit ici d’une classification administrative distincte.
             school.school_type = school_type
             school.education_cycles = education_cycles
-            school.save(update_fields=["school_type", "education_cycles"])
+            school.governance_mode = mode
+            school.save(update_fields=["school_type", "education_cycles", "governance_mode"])
             ensure_standard_levels(school)
             provision_appointment_roles(school)
             log_event(school, request, "school_profile_updated", reason)

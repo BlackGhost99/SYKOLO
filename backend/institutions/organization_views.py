@@ -12,6 +12,7 @@ from accounts.views import authorized
 from .models import SchoolAppointment, SchoolMember
 from .school_functions import function_aliases, function_label, positions_for_school, validate_position
 from .school_profiles import CYCLE_LABELS
+from .school_governance import governance_profile
 from .staff_models import StaffRecord
 from .services import has_permission
 from .views import access, log_event, parse_body, refuse
@@ -79,6 +80,7 @@ def positions(request, school_id):
         "education_cycles": school.education_cycles,
         "cycle_labels": CYCLE_LABELS,
         "positions": positions_for_school(school),
+        "governance": governance_profile(school),
         "notice": "Une nomination ne crée ni rôle applicatif ni accès à d'autres cycles.",
     })
 

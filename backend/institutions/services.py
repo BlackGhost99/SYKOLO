@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.http import JsonResponse
 
 from .models import OrganizationMember, School, SchoolMember, SchoolSetting, SchoolAdminPolicy, Student, PermissionDelegation, SchoolRole
+from .school_governance import GOVERNANCE_ROLE_TEMPLATES, governance_mode_for, governance_profile, governance_role_templates
 
 PERMISSIONS = frozenset({
     "school.view", "school.members.read", "school.members.write",
@@ -28,6 +29,11 @@ PERMISSIONS = frozenset({
     "school.timetable.read", "school.timetable.manage",
     "school.attendance.read", "school.attendance.write", "school.attendance.finalize", "school.attendance.assigned",
     "school.finance.read", "school.finance.manage", "school.finance.receive", "school.finance.reverse", "school.finance.approve", "school.finance.deposit",
+})
+
+FINANCE_MUTATION_PERMISSIONS = frozenset({
+    "school.finance.manage", "school.finance.receive", "school.finance.reverse",
+    "school.finance.approve", "school.finance.deposit",
 })
 
 DIRECTION_PERMISSIONS = sorted(PERMISSIONS - {
@@ -125,34 +131,43 @@ SECONDARY_CODES = {code for templates in SECONDARY_ROLE_TEMPLATES.values() for c
 
 
 def appointment_role_templates(school):
-    roles = {OWNER_ROLE_CODE: OWNER_ROLE_TEMPLATE}
+    public = governance_mode_for(school) == "public"
+    roles = {} if public else {OWNER_ROLE_CODE: OWNER_ROLE_TEMPLATE}
     cycles = school.education_cycles or [school.school_type]
     for profile, templates in SECONDARY_ROLE_TEMPLATES.items():
         if profile not in cycles:
             continue
         head = SECONDARY_HEAD_CODES[profile]
-        roles[head] = (head, PROFILE_ROLE_LABELS[profile]["direction"], DIRECTION_PERMISSIONS)
+        head_perms = [p for p in DIRECTION_PERMISSIONS if not (public and p in FINANCE_MUTATION_PERMISSIONS)]
+        roles[head] = (head, PROFILE_ROLE_LABELS[profile]["direction"], head_perms)
         roles.update({row[0]: row for row in (*templates, SECONDARY_SECRETARIAT)})
     return roles
 
 
 def role_templates_for(school):
     labels = PROFILE_ROLE_LABELS.get(school.school_type, {})
+    public = governance_mode_for(school) == "public"
     return [
-        (code, labels.get(code, label), list(permissions))
-        for code, label, permissions in (*ROLE_TEMPLATES, *appointment_role_templates(school).values())
-        if code != "eleve" or school.school_type != "maternelle"
+        (code, labels.get(code, label),
+         [p for p in permissions if not (public and p in FINANCE_MUTATION_PERMISSIONS)])
+        for code, label, permissions in (*ROLE_TEMPLATES, *appointment_role_templates(school).values(), *governance_role_templates(school))
+        if (code != "eleve" or school.school_type != "maternelle")
+        and (not public or code not in {OWNER_ROLE_CODE, "tarification"})
     ]
 
 
 def provision_appointment_roles(school):
     SchoolRole.objects.bulk_create([
         SchoolRole(school=school, code=code, label=label, permissions=list(permissions))
-        for code, label, permissions in appointment_role_templates(school).values()
+        for code, label, permissions in (*appointment_role_templates(school).values(), *governance_role_templates(school))
     ], ignore_conflicts=True)
 
 
 def role_available(school, code):
+    if code == OWNER_ROLE_CODE and governance_mode_for(school) == "public":
+        return False
+    if code in {item[0] for group in GOVERNANCE_ROLE_TEMPLATES.values() for item in group}:
+        return code in {role[0] for role in governance_role_templates(school)}
     return code not in SECONDARY_CODES or code in appointment_role_templates(school)
 
 
@@ -268,6 +283,8 @@ def school_response(school):
         "school_type": school.school_type,
         "school_type_label": school.get_school_type_display(),
         "education_cycles": school.education_cycles,
+        "governance_mode": governance_mode_for(school),
+        "governance": governance_profile(school),
     }
 
 
