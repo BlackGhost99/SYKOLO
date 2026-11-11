@@ -174,6 +174,8 @@ def students(request, school_id):
         return JsonResponse({"error": "Objet JSON attendu."}, status=422)
     try:
         data.pop("student_code", None)  # Compatibility with clients that still send the old field.
+        if not can_read_sensitive(request.user, school) and STUDENT_SENSITIVE_FIELDS.intersection(data):
+            return refuse()
         values = parse_fields(data, ("first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "active"), ("first_name", "last_name"))
         with transaction.atomic():
             from .models import School
@@ -187,7 +189,7 @@ def students(request, school_id):
     except ValueError as exc: return JsonResponse({"error": str(exc)}, status=422)
     except ValidationError as exc: return validation_response(exc)
     except IntegrityError: return JsonResponse({"error": "Code élève déjà utilisé."}, status=409)
-    return JsonResponse(describe(student), status=201)
+    return JsonResponse(describe_student(student, sensitive=can_read_sensitive(request.user, school)), status=201)
 
 
 @require_http_methods(["GET", "PATCH"])
