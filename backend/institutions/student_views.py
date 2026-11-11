@@ -47,6 +47,8 @@ GUARDIAN_INFO = ("profession", "address")
 
 
 def parse_fields(data, allowed, required=(), *, revision=False):
+    if not isinstance(data, dict):
+        raise ValueError("Objet JSON attendu.")
     if set(data) - set(allowed) - ({"revision"} if revision else set()):
         raise ValueError("Champs inconnus ou non modifiables.")
     if not revision and not set(required).issubset(data):
@@ -168,6 +170,8 @@ def students(request, school_id):
         ], "sensitive_visible": sensitive}, headers={"Cache-Control": "no-store"})
     data, error = parse_body(request)
     if error is not None: return error
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Objet JSON attendu."}, status=422)
     try:
         data.pop("student_code", None)  # Compatibility with clients that still send the old field.
         values = parse_fields(data, ("first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "active"), ("first_name", "last_name"))
