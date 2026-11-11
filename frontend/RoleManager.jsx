@@ -31,7 +31,14 @@ async function api(path,payload,method){
   if(!r.ok)throw Error(data.error||"Opération refusée.");
   return data;
 }
+const STUDENT_RIGHTS = {
+  "school.students.profile.read":"Élèves — Consulter identité et parcours scolaire",
+  "school.students.admin.write":"Élèves — Modifier la fiche administrative",
+  "school.students.sensitive.read":"Élèves — Voir données personnelles, responsables et pièces",
+  "school.students.finance.read":"Élèves — Voir la situation financière (avec Finances — Consulter)",
+};
 export function permissionLabel(value){
+  if(STUDENT_RIGHTS[value])return STUDENT_RIGHTS[value];
   const parts=value.split(".");
   const domain=DOMAIN_LABELS[parts[1]]||parts[1];
   const action=ACTION_LABELS[parts[2]]||parts[2]||"";
@@ -100,7 +107,7 @@ export default function RoleManager({schoolId,canManageRoles=false}){
   return <section className="card" aria-label="Gestion des rôles applicatifs" style={{marginTop:"1rem"}}>
     <h2>Rôles et droits d'accès</h2>
     <p className="hint">Le poste dans l'organigramme décrit la fonction d'une personne ; le rôle YEM détermine les opérations qu'elle peut effectuer.</p>
-    <p role="status" className="hint"><strong>Attention :</strong> ces permissions s'appliquent aujourd'hui à l'établissement entier. N'accordez pas de droit aux notes, aux élèves ou aux finances pour limiter un responsable à un seul cycle tant que les contrôles métiers par cycle ne sont pas activés.</p>
+    <p role="status" className="hint"><strong>À retenir :</strong> la consultation scolaire ne révèle pas les données personnelles sans le droit sensible. Le droit financier élève doit être accompagné de « Finances — Consulter ». Les rôles limités à un cycle restent soumis au filtrage côté serveur ; les modules non compatibles sont bloqués.</p>
     <label className="field">Rôle à afficher ou modifier
       <select value={selected} onChange={e=>selectRole(e.target.value)}>
         <option value="new">Créer un nouveau rôle</option>

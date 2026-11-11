@@ -51,7 +51,7 @@ function mockApi({scope="school", role="direction", permissions=[], restricted=f
 }
 
 test("une directrice consulte les parents par classe puis gère les accès dans Paramètres", async ()=>{
-  const fetch = mockApi({permissions:["school.parents.manage","school.students.read","school.members.write","school.academic.read"]});
+  const fetch = mockApi({permissions:["school.parents.manage","school.students.read","school.students.sensitive.read","school.members.write","school.academic.read"]});
   const user = userEvent.setup();
   render(<AuthPanel/>);
   const nav = await screen.findByRole("navigation", {name:"Navigation principale"});
