@@ -23,7 +23,7 @@ export default function ParentDiscovery() {
   const [schools,setSchools]=useState([]);
   const [family,setFamily]=useState([]);
   const [applications,setApplications]=useState([]);
-  const [notifications,setNotifications]=useState([]);
+  const [notifications,setNotifications]=useState(null);
   const lastNotification=useRef(null);
   const [search,setSearch]=useState("");
   const [chosenSchool,setChosenSchool]=useState("");
@@ -66,15 +66,36 @@ export default function ParentDiscovery() {
     return()=>{live=false};
   },[]);
   useEffect(()=>{
-    const latest=notifications[0];
-    if(!latest)return;
-    if(lastNotification.current&&latest.id!==lastNotification.current
-      &&typeof window!=="undefined"&&"Notification" in window
-      &&window.Notification.permission==="granted"){
-      new window.Notification("YEM · "+latest.school,{body:latest.message});
+    let live=true;
+    let pending=false;
+    async function checkReminders(){
+      if(document.hidden || pending)return;
+      pending=true;
+      try{
+        const alerts=await api("parents/notifications");
+        if(live)setNotifications(alerts.notifications||[]);
+      }catch{/* Keep the last successful notifications until the next check. */}
+      finally{pending=false;}
     }
-    lastNotification.current=latest.id;
+    const timer=window.setInterval(checkReminders,60_000);
+    document.addEventListener("visibilitychange",checkReminders);
+    return()=>{
+      live=false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange",checkReminders);
+    };
+  },[]);
+  useEffect(()=>{
+    if(!notifications)return;
+    const previous=lastNotification.current;
+    lastNotification.current=new Set(notifications.map(item=>item.id));
+    if(!previous || !("Notification" in window) || window.Notification.permission!=="granted")return;
+    for(const item of notifications.filter(item=>!previous.has(item.id))){
+      try{new window.Notification("YEM · "+item.school,{body:item.message,tag:item.id});}
+      catch{/* The reminder is available in the application. */}
+    }
   },[notifications]);
+  const reminders=(notifications||[]).filter(item=>item.kind==="tuition_reminder").length;
   const selectedSchool=schools.find(s=>s.id===chosenSchool);
   const selectedClass=selectedSchool?.classes.find(c=>c.id===classroom);
   const visible=useMemo(()=>schools.filter(s=>
@@ -95,7 +116,7 @@ export default function ParentDiscovery() {
     <nav className="yp-tabs" aria-label="Espace familles">
       {[["schools","Établissements"],["children","Mes enfants"],["requests","Mes demandes"],["notifications","Actualités"]].map(([key,label])=>
         <button type="button" key={key} aria-current={view===key?"page":undefined}
-          onClick={()=>{setView(key);setMessage("");setError("");}}>{label}</button>)}
+          onClick={()=>{setView(key);setMessage("");setError("");}}>{label}{key==="notifications"&&reminders>0 ? ` (${reminders})` : ""}</button>)}
     </nav>
     {error&&<p className="yp-error" role="alert">{error}</p>}
     {message&&<p className="yp-success" role="status">{message}</p>}
@@ -277,7 +298,7 @@ export default function ParentDiscovery() {
     </div>}
     {view==="notifications"&&<div className="yp-pane">
       <h3>Notifications de mes établissements</h3>
-      <p>Décisions d'admission et confirmations du prestataire de paiement.</p>
+      <p>Décisions d’admission, confirmations de paiement et rappels des frais de scolarité.</p>
       <div className="yp-two">
         <button className="yp-button" type="button" onClick={()=>run(async()=>{
           const data=await api("parents/notifications");setNotifications(data.notifications||[]);
@@ -290,9 +311,11 @@ export default function ParentDiscovery() {
           }else setMessage("Les notifications système ne sont pas disponibles dans ce navigateur.");
         }}>Autoriser les alertes</button>
       </div>
-      {notifications.length===0&&<p>Aucune actualité pour le moment.</p>}
-      {notifications.map(n=><article className="yp-request" key={n.kind+n.id}>
-        <b>{n.school}</b><p>{n.message}</p>
+      {notifications?.length===0&&<p>Aucune actualité pour le moment.</p>}
+      {notifications?.map(n=><article className="yp-request" key={n.kind+n.id}>
+        <b>{n.school}</b>
+        {n.kind==="tuition_reminder"&&<p><strong>{n.status==="due_today"?"Échéance aujourd’hui":"Échéance dépassée"}</strong></p>}
+        <p>{n.message}</p>
         <small>{new Date(n.at).toLocaleString("fr-GA")}</small>
       </article>)}
       <small>Les alertes en arrière-plan nécessitent encore un service Web Push.</small>

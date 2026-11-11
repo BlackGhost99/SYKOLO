@@ -7,10 +7,12 @@ merchant account; YEM never accepts a shared platform merchant key here.
 import json
 import re
 import uuid
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import F, Q, Sum
+from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -414,6 +416,37 @@ def staff_admission_payments(request, school_id):
     ]})
 
 
+def tuition_reminders(user):
+    from decimal import Decimal
+    from .finance_models import FeeCharge
+    from .parent_views import guardian_links
+
+    today = timezone.localdate()
+    students = guardian_links(user).values("guardian__student_id")
+    charges = FeeCharge.objects.filter(
+        enrollment__student_id__in=students, enrollment__active=True, due_date__lte=today,
+        school_id=F("enrollment__school_id"),
+        enrollment__student__school_id=F("school_id"),
+    ).select_related("school", "enrollment__student").annotate(
+        received=Coalesce(Sum("payments__amount", filter=Q(payments__void__isnull=True)), Decimal("0.00")),
+    ).filter(amount__gt=F("received")).order_by("-due_date", "pk")[:100]
+    for charge in charges:
+        student = charge.enrollment.student
+        due = charge.due_date
+        currency = "FCFA" if charge.currency == "XAF" else charge.currency
+        balance = format(charge.amount - charge.received, ",.2f").replace(",", " ").removesuffix(".00").replace(".", ",")
+        yield {
+            "id": f"{charge.pk}:{due.isoformat()}", "kind": "tuition_reminder",
+            "school": charge.school.name,
+            "status": "due_today" if due == today else "overdue",
+            "at": timezone.make_aware(datetime.combine(due, time.min)).isoformat(),
+            "message": (
+                f"{student.first_name} {student.last_name} · {charge.label} · "
+                f"échéance du {due:%d/%m/%Y}. Reste à payer : {balance} {currency}."
+            ),
+        }
+
+
 @never_cache
 @require_GET
 @authorized
@@ -449,4 +482,7 @@ def family_notifications(request):
             "refunded": "Paiement remboursé",
         }.get(p.state, "Paiement mis à jour"),
     } for p in payments]
-    return JsonResponse({"notifications": sorted(messages, key=lambda x: x["at"], reverse=True)[:100]})
+    messages.extend(tuition_reminders(request.user))
+    return JsonResponse({"notifications": sorted(
+        messages, key=lambda item: datetime.fromisoformat(item["at"]), reverse=True,
+    )[:100]})

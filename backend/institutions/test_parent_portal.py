@@ -1,6 +1,7 @@
 """Parent portal: explicit verification and per-child object authorization."""
 import json
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -135,6 +136,34 @@ class ParentPortalTests(TestCase):
             paid_on="2026-11-02", idempotency_key=uuid.uuid4(),
             recorded_by=self.director,
         )
+
+    def test_tuition_reminders_start_on_due_day_and_only_reach_verified_parent(self):
+        self.link()
+        self.link(index=1, user=self.parent_b)
+        self.add_finance(0)
+        self.add_finance(1)
+        today = timezone.localdate()
+        own = FeeCharge.objects.filter(enrollment=self.enrollments[0])
+        own.update(due_date=today + timedelta(days=1))
+        FeeCharge.objects.filter(enrollment=self.enrollments[1]).update(due_date=today)
+        self.login(self.parent_a)
+        endpoint = "/api/v1/parents/notifications"
+
+        def reminders():
+            return [item for item in self.client.get(endpoint).json()["notifications"]
+                    if item["kind"] == "tuition_reminder"]
+
+        self.assertEqual(reminders(), [])
+        own.update(due_date=today)
+        first = reminders()
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first[0]["status"], "due_today")
+        self.assertIn("100 000 FCFA", first[0]["message"])
+        self.assertEqual(reminders()[0]["id"], first[0]["id"])
+        own.update(due_date=today - timedelta(days=1))
+        self.assertEqual(reminders()[0]["status"], "overdue")
+        FeePayment.objects.filter(charge__in=own).update(amount=Decimal("120000.00"))
+        self.assertEqual(reminders(), [])
 
     def add_attendance(self, index=0, closed=True):
         session = AttendanceSession.objects.create(

@@ -51,7 +51,7 @@ class FeeSchedule(models.Model):
 
 
 class FeeCharge(models.Model):
-    """Snapshot of an assessed fee. Never changes when the price list changes."""
+    """Snapshot of an assessed fee, with an explicitly reschedulable due date."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="fee_charges")
