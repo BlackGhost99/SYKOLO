@@ -31,6 +31,18 @@ class StudentBadPayloadTests(TestCase):
         )
         self.client.force_login(user)
         self.base = f"/api/v1/schools/{self.school.pk}/"
+        self.limited_user = get_user_model().objects.create_user(
+            username="m2-limited-user", password="MotDePasseM2-fiable-2026!",
+        )
+        limited_role = SchoolRole.objects.create(
+            school=self.school, code="limited_secretariat",
+            label="Saisie administrative limitée",
+            permissions=["school.view", "school.students.manage",
+                         "school.students.profile.read"],
+        )
+        SchoolMember.objects.create(
+            school=self.school, user=self.limited_user, role=limited_role,
+        )
 
     def post_invalid(self, path, payload):
         return self.client.post(
@@ -58,3 +70,34 @@ class StudentBadPayloadTests(TestCase):
         )
         self.assertEqual(result.status_code, 422, result.content)
         self.assertIn("Objet JSON attendu", result.json()["error"])
+
+    def test_basic_creator_gets_only_non_sensitive_fields(self):
+        self.client.force_login(self.limited_user)
+        response = self.post_invalid("students", {
+            "first_name": "Élève", "last_name": "Test de confidentialité",
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["last_name"], "Test de confidentialité")
+        for field in ("date_of_birth", "address", "documents", "extra_fields",
+                      "nationality", "previous_school", "place_of_birth"):
+            self.assertNotIn(field, response.json())
+
+    def test_basic_creator_cannot_write_sensitive_fields(self):
+        self.client.force_login(self.limited_user)
+        before = Student.objects.count()
+        response = self.post_invalid("students", {
+            "first_name": "Test", "last_name": "Refus",
+            "address": "Information privée",
+        })
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(Student.objects.count(), before)
+
+    def test_combined_registration_denies_creator_without_sensitive_right(self):
+        self.client.force_login(self.limited_user)
+        before = Student.objects.count()
+        response = self.post_invalid("students/register", {
+            "student": {"first_name": "Élève", "last_name": "Test"},
+            "guardians": [{"full_name": "Responsable fictif"}],
+        })
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(Student.objects.count(), before)
