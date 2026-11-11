@@ -31,6 +31,9 @@ export function createOfflineDemoBackend(){
   let grades={};
   let reports={};
   let closings=[];
+  const initialConduct = () => [{id:"conduct-demo",enrollment:"en-s1",kind:"observation",date:"2026-11-04",
+    label:"Observation de comportement",message:"Bonne participation aux activités de la classe.",withdrawn:false}];
+  let conduct = initialConduct();
   const schoolList=()=>data.schools.map(s=>({id:s.id,name:s.name,school_type:s.type,active:true,login_code:"DEMO-"+s.id.toUpperCase()}));
   const years=()=>order.map(y=>({...y}));
   const findYear=raw=>order.find(y=>y.id===raw)||order[1];
@@ -260,7 +263,7 @@ export function createOfflineDemoBackend(){
           guardians:[{id:"g-"+s.id,name:s.guardian,phone:"",email:"",relationship:"Parent"}]}))};
     }
     if(path.endsWith("/parent-links"))return {links:[]};
-    if(path.endsWith("/reports")){
+    if(path===`schools/${id}/reports`){
       const classroom=search.get("classroom");
       const pupils=studentsFor(id,yr).filter(s=>!classroom||
         classesFor(id,yr).some(cl=>cl.id===classroom&&cl.name===s.level)).map(s=>({
@@ -293,7 +296,7 @@ export function createOfflineDemoBackend(){
       }
       return {...rec,snapshot:reportSnapshot(id,yr,rec)};
     }
-    if(path.endsWith("/enrollments"))return {enrollments:enrollmentRows(id,yr)};
+    if(path===`schools/${id}/enrollments`)return {enrollments:enrollmentRows(id,yr)};
     if(path.endsWith("/finance/schedules")){
       if(method!=="GET")return {id:"tarif-demo",label:body.label||"Tarif",amount:body.amount,currency:"XAF"};
       return {schedules:schedulesFor(id,yr),years:years(),classes:classesFor(id,yr)};
@@ -344,15 +347,46 @@ export function createOfflineDemoBackend(){
       const billed=list.reduce((sum,f)=>sum+f.amount,0),paid=list.reduce((sum,f)=>sum+f.paid,0);
       return {totals:{XAF:{billed,paid,balance:billed-paid}}};
     }
-    if(path==="parents/children")return {children:data.students.filter(s=>["s1","s4","s7"].includes(s.id)).map(s=>({
+    const conductMatch = path.match(/^schools\/[^/]+\/attendance\/classes\/([^/]+)\/conduct(?:\/([^/]+)\/withdraw)?$/);
+    if(conductMatch){
+      const room = data.classes.find(row=>row.id===conductMatch[1]&&row.school===id);
+      const roster = room ? studentsFor(id,room.year).filter(row=>row.level===room.name)
+        .map(row=>({id:"en-"+row.id,name:row.name,matricule:"DEMO-"+row.id})) : [];
+      const canEdit = Boolean(room&&findYear(room.year).active);
+      const names = new Map(roster.map(row=>[row.id,row.name]));
+      const records = conduct.filter(row=>names.has(row.enrollment));
+      const withStudent = row=>({...row,student:names.get(row.enrollment)});
+      if(method==="GET")return {roster,notices:records.map(withStudent),can_publish:canEdit,can_withdraw:canEdit};
+      if(!canEdit)throw Error("Année scolaire clôturée.");
+      if(conductMatch[2]){
+        const row = records.find(item=>item.id===conductMatch[2]);
+        if(!row)throw Error("Communication introuvable.");
+        row.withdrawn = true;
+        return withStudent(row);
+      }
+      if(!names.has(body.enrollment))throw Error("Élève introuvable dans cette classe.");
+      const row = {id:"conduct-demo-"+conduct.length,enrollment:body.enrollment,date:body.date,
+        kind:body.kind,label:body.kind==="sanction"?"Sanction":"Observation de comportement",
+        message:body.message,withdrawn:false};
+      conduct.push(row);
+      return withStudent(row);
+    }
+    if(path==="parents/children")return {parent_username:"parent-demo",children:data.students.filter(s=>["s1","s4","s7"].includes(s.id)).map(s=>({
       student:s.id,...splitName(s.name),school_name:schoolData(s.school).name,
       matricule_yem:"YEM-"+s.id,student_code:"DEMO-"+s.id}))};
     const parentMatch=path.match(/^parents\/children\/([^/]+)\/([^/]+)/);
     if(parentMatch){
       const child=data.students.find(s=>s.id===parentMatch[1]),kind=parentMatch[2];
       if(kind==="reports")return {reports:[{id:"report-demo",year:DEMO_CURRENT_YEAR,period:"1er trimestre",score:(child?.average||14)+"/20"}]};
-      if(kind==="enrollments")return {enrollments:[{id:"en-demo",year:DEMO_CURRENT_YEAR,classroom:child?.level||"6e A",status:"Inscrit"}]};
-      if(kind==="attendance")return {attendance:[{date:"2026-11-04",slot:"Matin",status:"Présent",justified:false}]};
+      if(kind==="enrollments")return {enrollments:child?[{id:"en-"+child.id,year:child.year,year_id:child.year,
+        year_status:findYear(child.year).status,classroom:child.level,active:true,status:"inscrit",
+        class_size:studentsFor(child.school,child.year).filter(row=>row.level===child.level).length}]:[]};
+      if(kind==="grades")return {grades:child?[{id:"grade-"+child.id,
+        subject:subjectsFor(child.school,child.year).find(subject=>child.level.startsWith(subject.level+" "))?.name||"Travail de classe",
+        assessment:"Contrôle continu",
+        date:"2026-11-04",period:"1er trimestre",score:child.average,scale_kind:"numeric",scale_max:20,weight:1}]:[]};
+      if(kind==="attendance")return {attendance:[{id:"att-demo",date:"2026-11-04",slot:"Matin",status:"Retard",group:"late",justified:false}],
+        totals:{absent:0,late:1,present:0},conduct:conduct.filter(row=>row.enrollment==="en-"+child?.id&&!row.withdrawn)};
       if(kind==="finance")return {totals:{XAF:{billed:75000,paid:50000,balance:25000}},charges:[]};
       if(kind==="timetable")return {entries:[{id:"t-demo",weekday:0,start:"08:00",end:"09:00",subject:"Mathématiques",teacher:"Mme Mba",room:"Salle 1"}]};
       return {};
@@ -391,6 +425,6 @@ export function createOfflineDemoBackend(){
     try{return response(fixtureFor(path,parsed.searchParams,method,body))}
     catch(error){return response({error:"Données de présentation indisponibles : "+error.message},400)}
   }
-  function reset(){data=createDemoState();assessments={};grades={};reports={};closings=[];}
+  function reset(){data=createDemoState();assessments={};grades={};reports={};closings=[];conduct=initialConduct();}
   return {fetch,reset};
 }

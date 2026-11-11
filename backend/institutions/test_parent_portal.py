@@ -4,11 +4,16 @@ import uuid
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, connection, transaction
 from django.test import Client, TestCase
 from django.utils import timezone
 
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
+from .assessment_models import Assessment, AssessmentGrade
+from conduct.models import ConductNotice
+
 from .attendance_models import AttendanceSession, AttendanceMark
+from .curriculum_models import CourseOffering, Subject
 from .council_models import ReportAmendment
 from .finance_models import FeeCharge, FeeSchedule, FeePayment
 from .models import Organization, School, SchoolLogin, SchoolMember, SchoolRole
@@ -149,6 +154,7 @@ class ParentPortalTests(TestCase):
         empty = self.client.get(self.portal)
         self.assertEqual(empty.status_code, 200)
         self.assertEqual(empty.json()["children"], [])
+        self.assertEqual(empty.json()["parent_username"], self.parent_a.username)
         self.assertIn("no-store", empty["Cache-Control"])
         self.login(self.secretary)
         self.assertEqual(self.write(self.root, {
@@ -227,7 +233,7 @@ class ParentPortalTests(TestCase):
         self.add_attendance(0)
         self.add_attendance(1)
         self.login(self.parent_a)
-        for endpoint in ("/enrollments", "/reports", "/finance", "/attendance", "/timetable"):
+        for endpoint in ("/enrollments", "/grades", "/reports", "/finance", "/attendance", "/timetable"):
             self.assertEqual(self.client.get(self.path(0, endpoint)).status_code, 200, endpoint)
             self.assertEqual(self.client.get(self.path(1, endpoint)).status_code, 404, endpoint)
         self.assertEqual(self.client.get(self.path(0, "/reports/" + str(other_report.pk))).status_code, 404)
@@ -245,6 +251,97 @@ class ParentPortalTests(TestCase):
         self.login(self.parent_b)
         self.assertEqual([x["student"] for x in self.client.get(self.portal).json()["children"]],
                          [str(self.students[1].pk)])
+
+    def test_class_size_and_published_grades_are_scoped_to_the_selected_year(self):
+        self.link()
+        past_year = AcademicYear.objects.create(
+            school=self.school, code="2025", name="2025–2026",
+            start_date="2025-09-01", end_date="2026-07-31",
+        )
+        past_class = AcademicClass.objects.create(
+            school=self.school, year=past_year, level=self.classroom.level, code="b", name="CM1 B",
+        )
+        past_enrollment = Enrollment.objects.create(
+            school=self.school, student=self.students[0], year=past_year, classroom=past_class,
+            enrolled_on="2025-09-14",
+        )
+        subject = Subject.objects.create(school=self.school, code="maths", name="Mathématiques")
+        course = CourseOffering.objects.create(school=self.school, year=self.year, classroom=self.classroom, subject=subject)
+        past_course = CourseOffering.objects.create(school=self.school, year=past_year, classroom=past_class, subject=subject)
+        for offering, enrollment, name, date, score, published in (
+            (course, self.enrollments[0], "Contrôle publié", "2026-10-03", 0, True),
+            (course, self.enrollments[0], "Contrôle brouillon", "2026-10-04", 15, False),
+            (course, self.enrollments[1], "Note d’un autre élève", "2026-10-05", 17, True),
+            (past_course, past_enrollment, "Contrôle de l’an dernier", "2025-10-03", 12, True),
+        ):
+            assessment = Assessment.objects.create(
+                school=self.school, course=offering, name=name, assessment_date=date,
+                policy_snapshot={"scale": {"kind": "numeric", "max": 15}}, published=published,
+            )
+            AssessmentGrade.objects.create(
+                school=self.school, assessment=assessment, enrollment=enrollment, score=score,
+                feedback="Appréciation interne",
+            )
+        AcademicYear.objects.filter(pk=past_year.pk).update(status=AcademicYear.STATUS_CLOSED, active=False)
+        self.login(self.parent_a)
+        enrollments = self.client.get(self.path(suffix="/enrollments")).json()["enrollments"]
+        self.assertEqual([(row["classroom"], row["class_size"]) for row in enrollments], [("CM1 A", 2), ("CM1 B", 1)])
+        self.assertNotIn(str(self.students[1].pk), str(enrollments))
+        grades = self.client.get(self.path(suffix=f"/grades?year={self.year.pk}")).json()["grades"]
+        self.assertEqual([(row["assessment"], row["score"], row["scale_max"]) for row in grades], [("Contrôle publié", 0, 15)])
+        self.assertNotIn("Appréciation interne", str(grades))
+        previous = self.client.get(self.path(suffix=f"/grades?year={past_year.pk}")).json()["grades"]
+        self.assertEqual([row["score"] for row in previous], [12])
+        self.assertEqual(self.client.get(self.path(suffix="/grades?year=invalide")).status_code, 422)
+
+    def test_conduct_publication_reaches_only_the_verified_family_and_can_be_withdrawn(self):
+        self.link()
+        self.add_attendance()
+        closed = AttendanceSession.objects.create(
+            school=self.school, classroom=self.classroom, attendance_date="2026-10-14",
+            slot="matin", label="Appel du matin", closed_at=timezone.now(),
+        )
+        AttendanceMark.objects.create(
+            school=self.school, session=closed, enrollment=self.enrollments[0],
+            status_code="r", status_label="Retard", status_group="late",
+            justified=True, justification="Justificatif interne",
+        )
+        path = f"/api/v1/schools/{self.school.pk}/attendance/classes/{self.classroom.pk}/conduct"
+        payload = {"enrollment": str(self.enrollments[0].pk), "date": "2026-10-14",
+                   "kind": "sanction", "message": "Travail de rattrapage mercredi."}
+        first = self.write(path, payload)
+        self.assertEqual(first.status_code, 201, first.content)
+        retry = self.write(path, payload)
+        self.assertEqual(retry.status_code, 200, retry.content)
+        self.assertEqual(retry.json()["id"], first.json()["id"])
+        self.assertEqual(self.write(path, {**payload, "enrollment": str(self.enrollments[1].pk),
+                                           "message": "Autre famille"}).status_code, 201)
+        self.assertEqual(self.write(path, {**payload, "date": "2026-08-31"}).status_code, 422)
+        self.login(self.parent_a)
+        self.assertEqual(self.client.get(path).status_code, 403)
+        self.assertEqual(self.write(path, payload).status_code, 403)
+        attendance_url = self.path(suffix=f"/attendance?year={self.year.pk}")
+        life = self.client.get(attendance_url).json()
+        self.assertEqual(life["totals"], {"absent": 1, "late": 1, "present": 0})
+        self.assertTrue(life["attendance"][0]["justified"])
+        self.assertEqual([row["message"] for row in life["conduct"]], [payload["message"]])
+        self.assertNotIn("Justificatif interne", str(life))
+        self.assertNotIn("published_by", life["conduct"][0])
+        self.login(self.director)
+        self.assertEqual(self.write(path + f"/{first.json()['id']}/withdraw", {}).status_code, 200)
+        self.login(self.parent_a)
+        self.assertEqual(self.client.get(attendance_url).json()["conduct"], [])
+
+    def test_closed_year_blocks_conduct_changes(self):
+        notice = ConductNotice.objects.create(
+            enrollment=self.enrollments[0], date="2026-10-13", kind="observation", message="Observation de l’année.",
+        )
+        AcademicYear.objects.filter(pk=self.year.pk).update(status=AcademicYear.STATUS_CLOSED, active=False)
+        path = f"/api/v1/schools/{self.school.pk}/attendance/classes/{self.classroom.pk}/conduct"
+        self.assertEqual(self.write(path + f"/{notice.pk}/withdraw", {}).status_code, 409)
+        if connection.vendor == "postgresql":
+            with self.assertRaisesMessage(IntegrityError, "Année scolaire clôturée"), transaction.atomic():
+                ConductNotice.objects.filter(pk=notice.pk).update(message="Modification interdite")
 
     def test_only_published_and_latest_corrected_report_with_pdf(self):
         self.login(self.director)
