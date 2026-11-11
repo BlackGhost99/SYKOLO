@@ -171,7 +171,7 @@ def foundation_audit():
         },
         "critical": critical,
         "warnings": warnings,
-        "production_backup_verified": False,
+        "production_backup_verified": None,
     }
 
 
