@@ -13,9 +13,8 @@
 .yem-demo-pilot-body{padding:10px 12px}
 .yem-demo-pilot-body p{margin:0 0 10px;color:#4b5f52;font-size:11px}
 .yem-demo-pilot-roles{display:grid;gap:5px}
-.yem-demo-pilot-roles button{min-height:32px;text-align:left;background:#f4f8f5;
+.yem-demo-pilot-roles select{min-height:32px;text-align:left;background:#f4f8f5;
   border:1px solid #d9e4db;color:#294433;border-radius:7px;padding:6px 9px;cursor:pointer;font-size:12px}
-.yem-demo-pilot-roles button.selected{background:#e0f1e5;border-color:#379456;font-weight:700}
 .yem-demo-pilot-actions{display:flex;gap:6px;margin-top:9px}
 .yem-demo-pilot-actions button{flex:1;min-height:30px;border:1px solid #d0dfd4;border-radius:7px;
   padding:6px;background:white;color:#245235;cursor:pointer;font-size:11px}

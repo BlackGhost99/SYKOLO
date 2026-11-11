@@ -3,20 +3,13 @@ import SchoolDashboard from "./SchoolDashboard.jsx";
 import PlatformConsole from "./PlatformConsole.jsx";
 import {FamilyWorkspace} from "./ParentPortal.jsx";
 import {createOfflineDemoBackend} from "./demo-api-sandbox.js";
+import {downloadDemoPdf} from "./demo-pdf.js";
+import {DEMO_ROLES} from "./demo-roles.js";
 import "./yem-demo-real.css";
 
 /* La présentation utilise exactement les composants de production :
  * menus, tableaux, boutons, barres de navigation, formulaires et styles.
  * Seule la couche API est remplacée par le bac à sable fictif en mémoire. */
-const DEMO_USER={
-  username:"visiteur.demo",first_name:"Visiteur",last_name:"YEM",
-  is_platform_admin:true
-};
-const OPTIONS=[
-  ["school","Direction / établissement"],
-  ["platform","Super-administrateur"],
-  ["parent","Parent d'élève"],
-];
 // Empêche qu'une erreur d'une rubrique simulée efface toute la page.
 class DemoRuntimeBoundary extends React.Component {
   constructor(props){super(props);this.state={failed:false};}
@@ -35,7 +28,7 @@ class DemoRuntimeBoundary extends React.Component {
 export default function RealDemoExperience(){
   const backend=useMemo(()=>createOfflineDemoBackend(),[]);
   const [ready,setReady]=useState(false);
-  const [role,setRole]=useState("school");
+  const [role,setRole]=useState("direction");
   const [iteration,setIteration]=useState(0);
   const [showControls,setShowControls]=useState(true);
   const [notice,setNotice]=useState("");
@@ -49,23 +42,40 @@ export default function RealDemoExperience(){
     return ()=>{window.fetch=original;};
   },[backend]);
 
+  const chooseRole=event=>{
+    const next=event.target.value;
+    backend.setRole(next);
+    setRole(next);
+    setNotice("");
+  };
+  const user={username:"demo."+role,first_name:"Visiteur",last_name:"YEM",is_platform_admin:role==="platform"};
   const reset=()=>{backend.reset();setIteration(i=>i+1);setNotice("Données de visite réinitialisées.");};
   const returnToReal=()=>{window.location.hash="#/";};
-  const interceptLinks=event=>{
-    const link=event.target.closest?.("a[href]");
-    if(link && !link.getAttribute("href")?.startsWith("#/")){
-      event.preventDefault();
-      setNotice("Lien externe ou document réel désactivé dans la démonstration.");
+  const interceptLinks=async event=>{
+    const href=event.target.closest?.("a[href]")?.getAttribute("href");
+    if(!href||href.startsWith("#/"))return;
+    event.preventDefault();
+    if(event.type!=="click")return;
+    if(href.startsWith("/api/v1/")&&/\/(pdf|receipt)$/.test(href)){
+      const result=await backend.fetch(href);
+      const document=await result.json();
+      if(result.ok&&document.lines){
+        downloadDemoPdf(document);
+        setNotice("Document fictif téléchargé.");
+        return;
+      }
     }
+    setNotice("Ce lien est indisponible dans la démonstration.");
   };
   const account=<p>Profil de visite fictif : aucun mot de passe ou accès réel n'est utilisé.</p>;
-  return <div className="yem-demo-real" data-demo="true" onClickCapture={interceptLinks}
+  return <div className="yem-demo-real" data-demo="true" onClickCapture={interceptLinks} onAuxClickCapture={interceptLinks}
+    onContextMenuCapture={interceptLinks} onDragStartCapture={interceptLinks}
     onSubmitCapture={event=>event.preventDefault()}>
     {ready&&<DemoRuntimeBoundary key={role+"-"+iteration} onReset={reset}>
       <div className="yem-demo-real-app">
-        {role==="school"?<SchoolDashboard user={DEMO_USER} accountView={account} onLogout={returnToReal} initialSchoolId="lycee"/>:
-         role==="platform"?<PlatformConsole user={DEMO_USER} mfaEnabled accountView={account} onLogout={returnToReal}/>:
-         <FamilyWorkspace accountView={account} onLogout={returnToReal}/>}
+        {role==="platform"?<PlatformConsole user={user} mfaEnabled accountView={account} onLogout={returnToReal}/>:
+         role==="parent"?<FamilyWorkspace accountView={account} onLogout={returnToReal}/>:
+         <SchoolDashboard user={user} accountView={account} onLogout={returnToReal} initialSchoolId="lycee"/>}
       </div>
     </DemoRuntimeBoundary>}
     <aside className={"yem-demo-pilot"+(showControls?"":" collapsed")} aria-label="Pilotage de la démonstration">
@@ -77,11 +87,11 @@ export default function RealDemoExperience(){
       </button>
       {showControls&&<div id="yem-demo-pilot-body" className="yem-demo-pilot-body">
         <p>Mêmes écrans que YEM réel · données fictives · aucun enregistrement serveur.</p>
-        <div className="yem-demo-pilot-roles">
-          {OPTIONS.map(([id,label])=><button type="button" key={id}
-            className={role===id?"selected":""} aria-pressed={role===id}
-            onClick={()=>{setRole(id);setNotice("");}}>{label}</button>)}
-        </div>
+        <label className="yem-demo-pilot-roles">Profil de démonstration
+          <select value={role} onChange={chooseRole}>
+            {Object.entries(DEMO_ROLES).map(([id,{label}])=><option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
         <div className="yem-demo-pilot-actions">
           <button type="button" onClick={reset}>Réinitialiser</button>
           <button type="button" onClick={returnToReal}>Espace de gestion réel</button>

@@ -43,9 +43,14 @@ function RealApp() {
 export default function App(){
   const [demo,setDemo]=useState(()=>window.location.hash.startsWith("#/demo"));
   useEffect(()=>{
-    const onHashChange=()=>setDemo(window.location.hash.startsWith("#/demo"));
+    const onHashChange=()=>{
+      const next=window.location.hash.startsWith("#/demo");
+      // Détruit le document et ses opérations en cours avant de retrouver l’API réelle.
+      if(demo&&!next)window.location.reload();
+      else setDemo(next);
+    };
     window.addEventListener("hashchange",onHashChange);
     return()=>window.removeEventListener("hashchange",onHashChange);
-  },[]);
+  },[demo]);
   return demo?<RealDemoExperience/>:<RealApp/>;
 }
