@@ -385,7 +385,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         attendanceCanFinalize:can("school.attendance.finalize"),
         onSettings:can("school.settings.write")&&can("school.settings.read")?()=>navigate("settings","attendance-policy"):undefined}:{})}/>}</div>
   </>;
-  else if (isOwner) content=<><OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></>;
+  else if (isOwner && !perms.includes("school.finance.read")) content=<><OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></>;
   else if (perms.includes("school.finance.read")) content=<>
     <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>
     <MySchoolFunctions schoolId={chosen}/>
