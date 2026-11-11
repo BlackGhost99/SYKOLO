@@ -132,6 +132,10 @@ def register_student(request, school_id):
     school, error = gate(request, school_id, "school.students.manage")
     if error is not None:
         return error
+    # The combined form creates guardians, contact details and document records.
+    # An administrative write permission alone must not bypass sensitive access.
+    if not can_read_sensitive(request.user, school):
+        return refuse()
     data, error = parse_body(request)
     if error is not None:
         return error
