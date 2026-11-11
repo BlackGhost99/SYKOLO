@@ -24,3 +24,39 @@ test("cashier selection never adds EUR and XAF balances",async()=>{
   await waitFor(()=>expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("overview/finance?currency=EUR"),expect.anything()));
   expect(fmtMoney("12.50","EUR")).toBe("12,5 EUR");
 });
+
+test.each([["50000","50000.00"],["10000","10000.00"]])(
+  "la caisse valide les espèces avec un montant saisi de %s sans bascule de paiement partiel",
+  async (amount, expected) => {
+    const report = {currency:"XAF", today:{date:"2026-11-11",total:"0",count:0,by_method:{},payments:[]},
+      yesterday:{total:"0",count:0}};
+    const fetchMock = vi.fn(async (path, options) => {
+      if (path.includes("finance/batches")) {
+        expect(JSON.parse(options.body)).toMatchObject({enrollment:"enrollment",method:"especes",
+          lines:[{charge:"charge",amount:expected}]});
+        return Response.json({id:"payment-123",total:expected,currency:"XAF",receipt_url:"/recu"});
+      }
+      if (path.includes("overview/students")) return Response.json({students:[{id:"student",active:true,
+        last_name:"Essai",first_name:"Lina",enrollment:{id:"enrollment",classroom:{name:"CM1"}}}]});
+      if (path.includes("finance/charges")) return Response.json({charges:[{id:"charge",label:"Scolarité",balance:"50000",currency:"XAF"}]});
+      return Response.json(report);
+    });
+    vi.stubGlobal("fetch",fetchMock);
+    render(<LivePayments schoolId="school" canReceive/>);
+    const user = userEvent.setup();
+    await screen.findByRole("option",{name:/Essai Lina/});
+    await user.selectOptions(screen.getByLabelText(/Élève/),"enrollment");
+    const field = screen.getByLabelText(/Montant saisi/);
+    const validate = screen.getByRole("button",{name:"Valider le paiement"});
+    await waitFor(()=>expect(field.disabled).toBe(false));
+    expect(validate.disabled).toBe(false);
+    await user.clear(field);
+    await user.type(field,"50001");
+    expect(validate.disabled).toBe(true);
+    await user.clear(field);
+    await user.type(field,amount);
+    expect(validate.disabled).toBe(false);
+    await user.click(validate);
+    expect((await screen.findByRole("link",{name:/Télécharger le reçu groupé/})).getAttribute("href")).toBe("/recu");
+  },
+);

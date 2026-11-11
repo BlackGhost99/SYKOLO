@@ -9,6 +9,7 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
 
 test("le caissier valide l'espèce réelle uniquement après confirmation de remise et voit le reçu",async()=>{
   const root="/api/v1/schools/lycee2/admission-cash";
+  const onUpdated=vi.fn();
   let received=false;
   const fetchMock=vi.fn(async(url,options={})=>{
     if(url==="/api/v1/auth/csrf")return Response.json({csrf:"ready"});
@@ -20,7 +21,7 @@ test("le caissier valide l'espèce réelle uniquement après confirmation de rem
       expect(body.reference).toBe("GUICHET-0001");
       received=true;return Response.json({status:"recu"},{status:201});
     }
-    if(url===root)return Response.json({payments:[{
+    if(url===root+"?application=dossier1")return Response.json({payments:[{
       request:"request1",child:"TEST ALA",classroom:"Seconde S",
       year:"2026-2027",parent:"Mme TEST",amount_xaf:2500,
       is_demo:false,admission_status:"submitted",
@@ -31,7 +32,7 @@ test("le caissier valide l'espèce réelle uniquement après confirmation de rem
   });
   vi.stubGlobal("fetch",fetchMock);
   const user=userEvent.setup();
-  render(<AdmissionCashDesk schoolId="lycee2" canReceive/>);
+  render(<AdmissionCashDesk schoolId="lycee2" applicationId="dossier1" canReceive onUpdated={onUpdated}/>);
   expect(await screen.findByText("TEST ALA")).toBeTruthy();
   const confirm=screen.getByRole("button",{name:"Confirmer les espèces reçues"});
   expect(confirm.disabled).toBe(true);
@@ -39,6 +40,7 @@ test("le caissier valide l'espèce réelle uniquement après confirmation de rem
   await user.click(screen.getByRole("checkbox"));
   await user.click(confirm);
   expect(await screen.findByText("Espèces reçues")).toBeTruthy();
+  expect(onUpdated).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("link",{name:"Reçu de caisse PDF"}).getAttribute("href"))
     .toBe(root+"/request1/receipt");
 });

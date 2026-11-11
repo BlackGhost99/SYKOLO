@@ -6,6 +6,7 @@ non-financial, requires school opt-in, and never reaches the real cashbook.
 from datetime import date
 from html import escape
 from io import BytesIO
+from uuid import UUID
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -60,12 +61,16 @@ def cashier_queue(request, school_id):
             or has_permission(request.user, school, "school.finance.receive")
             or has_permission(request.user, school, "school.admissions.read")):
         return refuse()
-    from django.db.models import Prefetch
     links = ParentAdmissionRequest.objects.select_related(
-        "application__classroom", "child", "owner",
-    ).filter(
-        application__school=school, payment_choice="cash",
-    ).order_by("-created_at")[:250]
+        "application__classroom", "application__year", "child", "owner",
+    ).filter(application__school=school, payment_choice="cash")
+    application = request.GET.get("application")
+    if application is not None:
+        try:
+            links = links.filter(application_id=UUID(application))
+        except ValueError:
+            return fail("Candidature invalide.")
+    links = links.order_by("-created_at")[:250]
     rows = []
     for link in links:
         cash = AdmissionCashReceipt.objects.filter(request=link).first()
