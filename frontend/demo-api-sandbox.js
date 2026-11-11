@@ -263,7 +263,7 @@ export function createOfflineDemoBackend(){
           guardians:[{id:"g-"+s.id,name:s.guardian,phone:"",email:"",relationship:"Parent"}]}))};
     }
     if(path.endsWith("/parent-links"))return {links:[]};
-    if(path.endsWith("/reports")){
+    if(path===`schools/${id}/reports`){
       const classroom=search.get("classroom");
       const pupils=studentsFor(id,yr).filter(s=>!classroom||
         classesFor(id,yr).some(cl=>cl.id===classroom&&cl.name===s.level)).map(s=>({
@@ -296,7 +296,7 @@ export function createOfflineDemoBackend(){
       }
       return {...rec,snapshot:reportSnapshot(id,yr,rec)};
     }
-    if(path.endsWith("/enrollments"))return {enrollments:enrollmentRows(id,yr)};
+    if(path===`schools/${id}/enrollments`)return {enrollments:enrollmentRows(id,yr)};
     if(path.endsWith("/finance/schedules")){
       if(method!=="GET")return {id:"tarif-demo",label:body.label||"Tarif",amount:body.amount,currency:"XAF"};
       return {schedules:schedulesFor(id,yr),years:years(),classes:classesFor(id,yr)};
