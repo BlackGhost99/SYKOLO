@@ -6,6 +6,7 @@ par les rôles SchoolMember/SchoolRole, et toute délégation par cycle doit êt
 contrôlée dans les vues métier avant d'être rendue exécutoire.
 """
 from .school_profiles import CYCLE_LABELS
+from .school_governance import GOVERNANCE_FUNCTIONS, governance_position_codes
 
 ALL_CYCLES = tuple(CYCLE_LABELS)
 SECONDARY = ("college", "lycee_general", "lycee_technique")
@@ -46,6 +47,14 @@ FUNCTIONS = {
     "comptable": ("Comptable", "Administration", "school", ALL_CYCLES, ()),
     "caissier": ("Caissier", "Administration", "school", ALL_CYCLES, ()),
     "assistant_scolaire": ("Assistant scolaire", "Administration", "cycle", ("prescolaire", "primaire"), ()),
+    "directeur_etudes_formation_initiale": ("Directeur des études · formation initiale", "Technique", "cycle", ("lycee_technique",), ()),
+    "directeur_etudes_vie_scolaire": ("Directeur des études · vie scolaire", "Vie scolaire", "cycle", ("lycee_technique",), ()),
+    "chef_departement": ("Chef de département pédagogique ou technique", "Technique", "cycle", ("lycee_technique",), ()),
+    "responsable_stages": ("Responsable des stages et relations entreprises", "Technique", "cycle", ("lycee_technique",), ()),
+    "assistant_social": ("Assistant social scolaire", "Vie scolaire", "cycle", SECONDARY, ()),
+    "psychologue_orientation": ("Psychologue de l’orientation", "Vie scolaire", "cycle", SECONDARY, ()),
+    **{code: (label, family, "school", ALL_CYCLES, ())
+       for rows in GOVERNANCE_FUNCTIONS.values() for code, label, family in rows},
 }
 
 
@@ -127,8 +136,18 @@ def positions_for_school(school):
     if school.school_type == "non_classe" or not cycles:
         return []
     positions = []
-    codes = PROFILE_POSITIONS.get(school.school_type, FUNCTIONS)
-    for code in codes:
+    codes = list(PROFILE_POSITIONS.get(school.school_type, FUNCTIONS))
+    if "lycee_technique" in cycles:
+        codes.extend(("directeur_etudes_formation_initiale", "directeur_etudes_vie_scolaire",
+                      "chef_departement", "responsable_stages"))
+    if cycles.intersection(SECONDARY):
+        codes.extend(("assistant_social", "psychologue_orientation"))
+    permitted_governance = set(governance_position_codes(school))
+    governance_all = {code for rows in GOVERNANCE_FUNCTIONS.values() for code, _, _ in rows}
+    codes.extend(permitted_governance)
+    for code in dict.fromkeys(codes):
+        if code in governance_all and code not in permitted_governance:
+            continue
         _, family, scope, compatible, types = FUNCTIONS[code]
         if types and school.school_type not in types:
             continue

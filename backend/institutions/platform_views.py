@@ -14,6 +14,9 @@ from .services import (
 )
 from .school_functions import account_functions, suggested_account_function, validate_account_functions
 from .school_profiles import CYCLE_LABELS, profile_options, validate_school_profile
+from .school_governance import (
+    DEFAULT_GOVERNANCE_MODE, governance_options, validate_governance_mode,
+)
 from .standard_classes import ensure_standard_levels
 from .views import parse_body, log_event, string
 
@@ -29,7 +32,11 @@ def platform_schools(request):
                 kind, cycles = validate_school_profile(request.GET["school_type"], request.GET.getlist("cycle"))
             except ValueError as exc:
                 return JsonResponse({"error": str(exc)}, status=422)
-            candidate = School(school_type=kind, education_cycles=cycles)
+            try:
+                governance_mode = validate_governance_mode(request.GET.get("governance_mode", DEFAULT_GOVERNANCE_MODE))
+            except ValueError as exc:
+                return JsonResponse({"error":str(exc)},status=422)
+            candidate = School(school_type=kind, education_cycles=cycles, governance_mode=governance_mode)
             roles = {code: label for code, label, _ in role_templates_for(candidate) if code not in {"parent", "eleve"}}
             head = SECONDARY_HEAD_CODES.get(kind)
             if head and head not in roles:
@@ -46,7 +53,8 @@ def platform_schools(request):
         ], "total": School.objects.count(), "organizations": Organization.objects.count(),
         "users": get_user_model().objects.count(),
         "organization_options": [{"id": str(o.pk), "name": o.name} for o in Organization.objects.order_by("name")[:300]],
-        "school_profiles": profile_options(), "cycle_labels": CYCLE_LABELS})
+        "school_profiles": profile_options(), "cycle_labels": CYCLE_LABELS,
+        "governance_options": governance_options()})
 
     data, error = parse_body(request)
     if error is not None:
@@ -65,6 +73,9 @@ def platform_schools(request):
         school_type, education_cycles = validate_school_profile(
             data.get("school_type"), data.get("education_cycles")
         )
+        governance_mode = validate_governance_mode(
+            data.get("governance_mode", DEFAULT_GOVERNANCE_MODE)
+        )
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=422)
     username, email = data.get("username"), data.get("email")
@@ -75,9 +86,14 @@ def platform_schools(request):
                 isinstance(first_name, str) and len(first_name) <= 150,
                 isinstance(last_name, str) and len(last_name) <= 150)):
         return JsonResponse({"error": "Données de l'établissement ou du compte invalides."}, status=422)
-    templates = role_templates_for(School(school_type=school_type, education_cycles=education_cycles))
+    templates = role_templates_for(School(school_type=school_type, education_cycles=education_cycles,
+                                      governance_mode=governance_mode))
     if not isinstance(role_code, str) or role_code not in {code for code, _, _ in templates} - {"parent", "eleve"}:
         return JsonResponse({"error": "Rôle initial incompatible avec le type ou les cycles de l’établissement."}, status=422)
+    if governance_mode == "public" and existing_org is not None and OrganizationMember.objects.filter(
+        organization=existing_org, role="founder"
+    ).exists():
+        return JsonResponse({"error":"Un établissement public doit être créé sans fondateur privé dans son organisation."},status=422)
     if not isinstance(password, str):
         return JsonResponse({"error": "Mot de passe requis."}, status=422)
     User = get_user_model()
@@ -99,6 +115,7 @@ def platform_schools(request):
             school = School.objects.create(
                 organization=org, name=school_name.strip(),
                 school_type=school_type, education_cycles=education_cycles,
+                governance_mode=governance_mode,
             )
             ensure_standard_levels(school)
             roles = {role.code: role for role in SchoolRole.objects.bulk_create([

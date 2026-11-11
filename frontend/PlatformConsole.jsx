@@ -56,7 +56,7 @@ function dateText(value) {
 }
 const fmt = n => (typeof n === "number" ? new Intl.NumberFormat("fr-GA").format(n) : "—");
 const orgBlank = {name:""};
-const schoolBlank = {organization_name:"",organization_id:"",school_name:"",school_type:"",education_cycles:[],username:"",email:"",first_name:"",last_name:"",password:"",role:""};
+const schoolBlank = {organization_name:"",organization_id:"",school_name:"",school_type:"",education_cycles:[],governance_mode:"prive_laique",username:"",email:"",first_name:"",last_name:"",password:"",role:""};
 const userBlank = {username:"",email:"",first_name:"",last_name:"",password:"",role:"",function_codes:null};
 const icons = {
   home:<><path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-6h6v6"/></>,
@@ -174,10 +174,11 @@ function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onP
     </div>
     {tab==="info"&&<div className="ya-detail-content">
       <div className="ya-info-row"><Icon name="users" size={20}/><span>Direction principale</span><strong>{director?director.name:"Non désignée"}</strong></div>
-      <div className="ya-info-row"><Icon name="shield" size={20}/><span>Propriétaire</span><strong>{owner?.name || "À attribuer"}</strong></div>
+      <div className="ya-info-row"><Icon name="shield" size={20}/><span>{s.governance_mode==="public"?"Autorité de tutelle":"Propriétaire"}</span><strong>{s.governance_mode==="public"?(s.governance?.authority||"Autorité compétente"):owner?.name || "À attribuer"}</strong></div>
       <div className="ya-info-row"><Icon name="mail" size={20}/><span>Contact</span><strong>{director?.email || "Non renseigné"}</strong></div>
       <div className="ya-info-row"><Icon name="shield" size={20}/><span>Rôle principal</span><strong>{director?.role || "À attribuer"}</strong></div>
       <div className="ya-info-row"><Icon name="school" size={20}/><span>Type d’établissement</span><strong>{s.school_type_label||"À classifier"}</strong></div>
+      <div className="ya-info-row"><Icon name="shield" size={20}/><span>Gouvernance</span><strong>{s.governance?.label||"Non renseignée"}</strong></div>
       <div className="ya-info-row"><Icon name="book" size={20}/><span>Cycles enseignés</span><strong>{(s.education_cycles||[]).map(c=>cycleLabels?.[c]||c).join(" · ")||"Non renseignés"}</strong></div>
       <div className="ya-info-row"><Icon name="users" size={20}/><span>Comptes actifs</span><strong>{fmt(detail.members_count)}</strong></div>
       <div className="ya-info-row"><Icon name="book" size={20}/><span>Élèves actifs</span><strong>{fmt(detail.students_count)}</strong></div>
@@ -233,9 +234,10 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const [organizations,setOrganizations]=useState([]);
   const [allSchools,setAllSchools]=useState([]);
   const [schoolProfiles,setSchoolProfiles]=useState([]);
+  const [governanceOptions,setGovernanceOptions]=useState([]);
   const [initialRoleCatalog,setInitialRoleCatalog]=useState(null);
   const [cycleLabels,setCycleLabels]=useState({});
-  const [profileForm,setProfileForm]=useState({school_type:"",education_cycles:[]});
+  const [profileForm,setProfileForm]=useState({school_type:"",education_cycles:[],governance_mode:"prive_laique"});
   const [events,setEvents]=useState([]);
   const [organizationForm,setOrganizationForm]=useState(orgBlank);
   const [schoolForm,setSchoolForm]=useState(schoolBlank);
@@ -256,7 +258,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const selectedName=selectedDetail?.school?.name||dashboard.schools.find(s=>s.id===schoolId)?.name||"établissement";
   const initialRolePath=view==="newSchool"&&schoolForm.school_type&&schoolForm.education_cycles.length
     ? "platform/schools?"+new URLSearchParams([
-      ["school_type",schoolForm.school_type], ...schoolForm.education_cycles.map(cycle=>["cycle",cycle]),
+      ["school_type",schoolForm.school_type], ["governance_mode",schoolForm.governance_mode], ...schoolForm.education_cycles.map(cycle=>["cycle",cycle]),
     ]).toString() : "";
   const initialRoles=initialRoleCatalog?.path===initialRolePath ? initialRoleCatalog.roles||[] : [];
   const initialRole=initialRoles.find(role=>role.code===schoolForm.role)
@@ -285,7 +287,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   useEffect(()=>{
     if(!mfaEnabled)return;
     let live=true;
-    api("platform/schools").then(result=>{if(live){setAllSchools(result.schools||[]);setSchoolProfiles(result.school_profiles||[]);setCycleLabels(result.cycle_labels||{});}})
+    api("platform/schools").then(result=>{if(live){setAllSchools(result.schools||[]);setSchoolProfiles(result.school_profiles||[]);setCycleLabels(result.cycle_labels||{});setGovernanceOptions(result.governance_options||[]);}})
       .catch(e=>{if(live)setNotice({type:"error",message:e.message});});
     return()=>{live=false;};
   },[mfaEnabled,refreshKey]);
@@ -379,8 +381,8 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     if(result){setOrganizationForm(orgBlank);setOrganizations(old=>[...old,{...result,schools_count:0}]);}
   }
   useEffect(()=>{
-    if(selectedDetail?.school){setProfileForm({school_type:selectedDetail.school.school_type||"",education_cycles:[...(selectedDetail.school.education_cycles||[])]});}
-  },[selectedDetail?.school?.id,selectedDetail?.school?.school_type,selectedDetail?.school?.education_cycles?.join(",")]);
+    if(selectedDetail?.school){setProfileForm({school_type:selectedDetail.school.school_type||"",education_cycles:[...(selectedDetail.school.education_cycles||[])],governance_mode:selectedDetail.school.governance_mode||"prive_laique"});}
+  },[selectedDetail?.school?.id,selectedDetail?.school?.school_type,selectedDetail?.school?.education_cycles?.join(","),selectedDetail?.school?.governance_mode]);
   function chooseProfile(code,setter){
     const p=schoolProfiles.find(x=>x.code===code);
     setter(old=>({...old,school_type:code,education_cycles:[...(p?.default_cycles||[])]}));
@@ -390,7 +392,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   }
   async function saveSchoolProfile(e){
     e.preventDefault();if(!schoolId)return;
-    const payload={action:"profile",school_type:profileForm.school_type,education_cycles:profileForm.education_cycles,reason:reason.trim()};
+    const payload={action:"profile",school_type:profileForm.school_type,education_cycles:profileForm.education_cycles,governance_mode:profileForm.governance_mode,reason:reason.trim()};
     const result=await execute(()=>api("platform/schools/"+schoolId+"/action",payload),"Classification enregistrée et auditée.");
     if(result){setDetail(result);setReason("");goto("schools");setNotice({type:"success",message:"Type et cycles mis à jour sans modifier les classes ni les élèves."});}
   }
@@ -499,10 +501,11 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       </div>}
       {view==="newSchool"&&<div className="ya-box ya-form-page"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="school"/></div><div><h2>Créer un établissement et son premier compte</h2><p>L'organisation, l'établissement et le compte sont créés ensemble.</p></div></div>
         <form onSubmit={newSchool}><h3>01 — Établissement</h3><div className="ya-form-grid">
-          <Field label="Organisation propriétaire"><select value={schoolForm.organization_id?"existing":"new"} onChange={e=>setSchoolForm(old=>({...old,organization_id:e.target.value==="new"?"":dashboard.organization_options?.[0]?.id||""}))}><option value="new">Nouvelle organisation</option>{dashboard.organization_options?.length>0&&<option value="existing">Organisation existante</option>}</select></Field>
+          <Field label="Organisation de tutelle ou de gestion"><select value={schoolForm.organization_id?"existing":"new"} onChange={e=>setSchoolForm(old=>({...old,organization_id:e.target.value==="new"?"":dashboard.organization_options?.[0]?.id||""}))}><option value="new">Nouvelle organisation</option>{dashboard.organization_options?.length>0&&<option value="existing">Organisation existante</option>}</select></Field>
           {schoolForm.organization_id?<Field label="Sélectionner l'organisation"><select value={schoolForm.organization_id} required onChange={e=>update(setSchoolForm,"organization_id",e.target.value)}>{(dashboard.organization_options||[]).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></Field>
           :<Field label="Nom de la nouvelle organisation"><input required maxLength={180} value={schoolForm.organization_name} onChange={e=>update(setSchoolForm,"organization_name",e.target.value)}/></Field>}
           <Field label="Nom de l'établissement"><input required maxLength={180} value={schoolForm.school_name} onChange={e=>update(setSchoolForm,"school_name",e.target.value)}/></Field>
+          <Field label="Gouvernance (public / privé)"><select value={schoolForm.governance_mode} onChange={e=>update(setSchoolForm,"governance_mode",e.target.value)}>{governanceOptions.map(g=><option key={g.code} value={g.code}>{g.label}</option>)}</select></Field>
           <Field label="Type d’établissement"><select required value={schoolForm.school_type} onChange={e=>chooseProfile(e.target.value,setSchoolForm)}><option value="">Choisir la catégorie…</option>{schoolProfiles.map(p=><option value={p.code} key={p.code}>{p.label}</option>)}</select></Field>
           {schoolForm.school_type&&<div className="ya-field"><span>Cycles réellement enseignés</span><div role="group" aria-label="Cycles enseignés" style={{display:"grid",gap:8}}>{(schoolProfiles.find(p=>p.code===schoolForm.school_type)?.allowed_cycles||[]).map(c=><label key={c}><input type="checkbox" checked={schoolForm.education_cycles.includes(c)} onChange={()=>toggleCycle(c,setSchoolForm)}/> {cycleLabels[c]||c}</label>)}</div><small>Les classes ne sont pas créées automatiquement.</small></div>}
         </div><h3>02 — Premier compte</h3><div className="ya-form-grid">
@@ -519,9 +522,11 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
         {selectedDetail?<form onSubmit={saveSchoolProfile}>
           <p className="ya-selected-school">Établissement : <b>{selectedDetail.school.name}</b></p>
           <div className="ya-form-grid">
+            <Field label="Gouvernance"><select required value={profileForm.governance_mode} onChange={e=>update(setProfileForm,"governance_mode",e.target.value)}>{governanceOptions.map(g=><option key={g.code} value={g.code} disabled={(g.code==="public")!==(selectedDetail?.school?.governance_mode==="public")}>{g.label}</option>)}</select></Field>
             <Field label="Catégorie administrative"><select required value={profileForm.school_type} onChange={e=>chooseProfile(e.target.value,setProfileForm)}><option value="">À classifier…</option>{schoolProfiles.map(p=><option key={p.code} value={p.code}>{p.label}</option>)}</select></Field>
             {profileForm.school_type!=="non_classe"&&<div className="ya-field"><span>Cycles réellement enseignés</span><div role="group" aria-label="Cycles enseignés" style={{display:"grid",gap:8}}>{(schoolProfiles.find(p=>p.code===profileForm.school_type)?.allowed_cycles||[]).map(c=><label key={c}><input type="checkbox" checked={profileForm.education_cycles.includes(c)} onChange={()=>toggleCycle(c,setProfileForm)}/> {cycleLabels[c]||c}</label>)}</div></div>}
           </div>
+          <p className="ya-note">Le passage public ↔ privé exige une procédure séparée de migration et de contrôle des comptes. La classification ne crée pas de fonction officielle ni d’autorisation ministérielle.</p>
           <Field label="Motif obligatoire"><textarea required maxLength={240} rows={3} value={reason} onChange={e=>setReason(e.target.value)}/></Field>
           <div className="ya-form-footer"><button className="ya-btn ya-btn-primary" disabled={busy||!profileForm.education_cycles.length||profileForm.school_type==="non_classe"} type="submit">Enregistrer la classification</button><button type="button" className="ya-btn ya-btn-outline" onClick={()=>goto("schools")}>Retour aux établissements</button></div>
         </form>:<p className="ya-empty">Sélectionnez d’abord un établissement dans le répertoire.</p>}
