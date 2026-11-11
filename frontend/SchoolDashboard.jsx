@@ -4,6 +4,7 @@ import AcademicPanel from "./AcademicPanel.jsx";
 import PedagogicalCalendar from "./PedagogicalCalendar.jsx";
 import StaffPanel from "./StaffPanel.jsx";
 import StaffOnboarding from "./StaffOnboarding.jsx";
+import StaffProfessionalDossier from "./StaffProfessionalDossier.jsx";
 import CycleWorkspace from "./CycleWorkspace.jsx";
 import OrganisationPanel, {MySchoolFunctions} from "./OrganisationPanel.jsx";
 import RoleManager from "./RoleManager.jsx";
@@ -254,7 +255,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         ...(ownCourseAssessment?[["bulletins",{...sections.bulletins,modules:["assessments"],lives:[]}]]:[]),
       ])
     : Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{
-        ...s,modules:s.modules.filter(allowed),lives:(s.lives||[]).filter(l=>l.need.every(can)),
+        ...s,modules:s.modules.filter(allowed),lives:(s.lives||[]).filter(l=>l.need.every(can) || (id==="staff" && l.key==="directory" && can("school.staff.dossier.read"))),
       }]).filter(([,s])=>s.modules.length||s.lives.length));
   if (availableSettings.length) visibleSections.settings = {
     subtitle:"Réglages de l’établissement", modules:[], lives:[],
@@ -335,7 +336,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       onSchoolWorkspace={canUseSchoolWorkspace?()=>setShowWorkspace(true):undefined}/>;
   }
   let content;
-  if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
+  if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}{chosen && access && <StaffProfessionalDossier own schoolId={chosen}/>}</div></>;
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p></Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
   else if (page==="settings"&&availableSettings.length) content=<SchoolSettings sections={availableSettings}
@@ -360,7 +361,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
         <div className="yd-real-body"><FamilyDirectory key={chosen} schoolId={chosen} onNavigate={navigate} workingYearId={workingYearId}/></div></>,
       "staff:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
-        <div className="yd-real-body"><StaffDirectory key={chosen} schoolId={chosen}
+        <div className="yd-real-body"><StaffDirectory key={chosen} schoolId={chosen} canReadDossiers={can("school.staff.dossier.read")} initialStaffId={params?.staffId||""}
           onAdd={allowed("onboarding")?()=>navigate("staff","onboarding"):undefined}
           onAssign={availableSettings.some(group=>group.items.some(item=>item.id==="staff-setup"))
             ?()=>navigate("settings","staff-setup"):undefined}/></div></>,

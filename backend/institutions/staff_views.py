@@ -79,8 +79,15 @@ def fail_validation(exc):
 @require_http_methods(["GET","POST"])
 @authorized
 def staff(request,school_id):
-    school,error=scope(request,school_id,"school.staff.read" if request.method=="GET" else "school.staff.manage")
-    if error is not None: return error
+    if request.method=="GET":
+        school,error=access(request,school_id)
+        if error is not None:return error
+        if not (has_permission(request.user,school,"school.staff.read") or
+                has_permission(request.user,school,"school.staff.dossier.read")):
+            return refuse()
+    else:
+        school,error=scope(request,school_id,"school.staff.manage")
+        if error is not None:return error
     if request.method=="GET":
         return JsonResponse({"staff":[staff_repr(s) for s in StaffRecord.objects.filter(school=school).order_by("last_name","first_name")[:500]]})
     data,error=parse_body(request)

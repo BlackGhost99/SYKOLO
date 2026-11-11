@@ -59,3 +59,23 @@ class StaffAssignment(models.Model):
             raise ValidationError("Classe et année incohérentes.")
         if self.active and self.staff_id and not self.staff.active:
             raise ValidationError("Impossible d'affecter un membre du personnel archivé.")
+
+
+class StaffProfessionalDossier(models.Model):
+    """Informations professionnelles optionnelles, sans données privées RH.
+
+    Une fiche sans dossier complémentaire reste parfaitement consultable ;
+    les enseignants sans compte de connexion ont également une fiche.
+    """
+    staff = models.OneToOneField(
+        StaffRecord, on_delete=models.PROTECT, primary_key=True,
+        related_name="professional_dossier",
+    )
+    qualification = models.CharField(max_length=180, blank=True)
+    specialty = models.CharField(max_length=180, blank=True)
+    employment_status = models.CharField(max_length=100, blank=True)
+    workload = models.CharField(max_length=100, blank=True)
+    professional_email = models.EmailField(blank=True)
+    professional_phone = models.CharField(max_length=45, blank=True)
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
