@@ -1,4 +1,5 @@
 from django.urls import path
+from conduct import views as conduct_views
 from . import import_views
 from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
@@ -59,6 +60,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/parent-listing", parent_admission_views.listing_settings),
     path("parents/children", parent_views.children),
     path("parents/children/<uuid:student_id>/enrollments", parent_views.child_enrollments),
+    path("parents/children/<uuid:student_id>/grades", parent_views.child_grades),
     path("parents/children/<uuid:student_id>/reports", parent_views.child_reports),
     path("parents/children/<uuid:student_id>/reports/<uuid:report_id>", parent_views.child_report_detail),
     path("parents/children/<uuid:student_id>/reports/<uuid:report_id>/pdf", parent_views.child_report_pdf),
@@ -88,6 +90,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/attendance/options", attendance_views.options),
     path("schools/<uuid:school_id>/attendance/sessions", attendance_views.sessions),
     path("schools/<uuid:school_id>/attendance/summary", attendance_views.summary),
+    path("schools/<uuid:school_id>/attendance/classes/<uuid:classroom_id>/conduct", conduct_views.notices),
+    path("schools/<uuid:school_id>/attendance/classes/<uuid:classroom_id>/conduct/<uuid:notice_id>/withdraw", conduct_views.withdraw),
     path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>", attendance_views.session_detail),
     path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/marks", attendance_views.record_marks),
     path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/close", attendance_views.close_session),

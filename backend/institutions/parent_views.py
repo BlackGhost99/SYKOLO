@@ -10,13 +10,17 @@ from uuid import UUID
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import F
+from django.db.models import Count, F, Q
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 from accounts.views import authorized
+from conduct.models import ConductNotice
+from conduct.views import notice_output
 
+from .academic_models import AcademicYear
+from .assessment_models import AssessmentGrade
 from .attendance_models import AttendanceMark
 from .council_models import ReportAmendment
 from .finance_models import FeeCharge
@@ -67,6 +71,17 @@ def permitted_child(user, student_id):
     if link is None:
         return None, reject("Enfant introuvable.", 404)
     return link.guardian.student, None
+
+
+def child_scope(request, student_id):
+    student, error = permitted_child(request.user, student_id)
+    if error is not None:
+        return None, None, error
+    requested_year = request.GET.get("year")
+    year_id = uuid_input(requested_year)
+    if requested_year is not None and year_id is None:
+        return None, None, reject("Année scolaire invalide.")
+    return student, year_id, None
 
 
 def link_output(row):
@@ -213,7 +228,8 @@ def children(request):
         user=request.user, active=True, school__is_active=True,
         role__school_id=F("school_id"), role__code="parent"
     ).exists()
-    return JsonResponse({"children": list(result.values()), "parent_role": has_parent_role})
+    return JsonResponse({"children": list(result.values()), "parent_role": has_parent_role,
+                         "parent_username": request.user.get_username()})
 
 
 @never_cache
@@ -223,14 +239,51 @@ def child_enrollments(request, student_id):
     student, error = permitted_child(request.user, student_id)
     if error is not None:
         return error
-    rows = Enrollment.objects.select_related("year", "classroom").filter(
-        school_id=student.school_id, student=student
-    ).order_by("-year__start_date", "pk")[:100]
+    rows = list(Enrollment.objects.select_related("year", "classroom").filter(
+        school_id=student.school_id, student=student,
+        year__school_id=student.school_id, classroom__school_id=student.school_id,
+    ).order_by("-year__start_date", "pk")[:100])
+    counts = dict(Enrollment.objects.filter(
+        school_id=student.school_id, classroom_id__in=[row.classroom_id for row in rows],
+        year_id=F("classroom__year_id"), active=True,
+    ).values("classroom_id").annotate(total=Count("pk")).values_list("classroom_id", "total"))
+    today = timezone.localdate()
     return JsonResponse({"student": str(student.pk), "enrollments": [{
         "id": str(row.pk), "year": row.year.name, "year_id": str(row.year_id),
         "classroom": row.classroom.name, "classroom_id": str(row.classroom_id),
-        "status": row.status, "active": row.active
+        "class_size": counts.get(row.classroom_id, 0), "enrolled_on": row.enrolled_on.isoformat(),
+        "year_status": row.year.status,
+        "year_in_progress": row.year.active and row.year.start_date <= today <= row.year.end_date,
+        "status": row.status, "active": row.active,
     } for row in rows]})
+
+
+@never_cache
+@require_GET
+@authorized
+def child_grades(request, student_id):
+    student, year_id, error = child_scope(request, student_id)
+    if error is not None:
+        return error
+    grades = AssessmentGrade.objects.select_related("assessment__course__subject", "assessment__period").filter(
+        school_id=student.school_id, enrollment__school_id=student.school_id, enrollment__student=student,
+        assessment__school_id=student.school_id, assessment__course__school_id=student.school_id,
+        assessment__course__year_id=F("enrollment__year_id"), assessment__published=True,
+    )
+    if year_id:
+        grades = grades.filter(enrollment__year_id=year_id)
+    items = []
+    for grade in grades.order_by("-assessment__assessment_date", "assessment__course__subject__name", "pk"):
+        assessment = grade.assessment
+        scale = assessment.policy_snapshot.get("scale", {})
+        items.append({
+            "id": str(grade.pk), "subject": assessment.course.subject.name,
+            "assessment": assessment.name, "date": assessment.assessment_date.isoformat(),
+            "period": assessment.period.name if assessment.period else None,
+            "score": grade.score, "scale_kind": scale.get("kind"), "scale_max": scale.get("max"),
+            "label": grade.label, "weight": str(assessment.weight),
+        })
+    return JsonResponse({"student": str(student.pk), "grades": items})
 
 
 def report_for_child(student, report_id):
@@ -251,14 +304,16 @@ def latest_document(row):
 @require_GET
 @authorized
 def child_reports(request, student_id):
-    student, error = permitted_child(request.user, student_id)
+    student, year_id, error = child_scope(request, student_id)
     if error is not None:
         return error
     reports = SchoolReport.objects.select_related("period", "year").filter(
         school_id=student.school_id, enrollment__student=student, status="published"
-    ).order_by("-published_at", "pk")[:100]
+    )
+    if year_id:
+        reports = reports.filter(year_id=year_id)
     items = []
-    for row in reports:
+    for row in reports.order_by("-published_at", "pk")[:100]:
         snapshot, amendment = latest_document(row)
         overall = snapshot.get("overall", {})
         items.append({
@@ -314,37 +369,58 @@ def child_report_pdf(request, student_id, report_id):
 @require_GET
 @authorized
 def child_attendance(request, student_id):
-    student, error = permitted_child(request.user, student_id)
+    student, year_id, error = child_scope(request, student_id)
     if error is not None:
         return error
     # Only completed registers can be viewed by families. Do not expose internal
     # staff notes or evidence submitted by other people.
-    rows = AttendanceMark.objects.select_related("session").filter(
-        school_id=student.school_id, enrollment__student=student,
+    rows = AttendanceMark.objects.filter(
+        school_id=student.school_id, enrollment__school_id=student.school_id, enrollment__student=student,
         session__school_id=student.school_id, session__closed_at__isnull=False,
-    ).order_by("-session__attendance_date", "session__slot")[:200]
+        session__classroom__year_id=F("enrollment__year_id"),
+    )
+    notices = ConductNotice.objects.filter(enrollment__school_id=student.school_id, enrollment__student=student,
+                                           withdrawn_at__isnull=True)
+    if year_id:
+        rows = rows.filter(enrollment__year_id=year_id)
+        notices = notices.filter(enrollment__year_id=year_id)
+    totals = rows.aggregate(
+        absent=Count("pk", filter=Q(status_group="absent")),
+        late=Count("pk", filter=Q(status_group="late")),
+        present=Count("pk", filter=Q(status_group="present")),
+    )
+    rows = rows.select_related("session").order_by("-session__attendance_date", "session__slot", "pk")
+    if not year_id:
+        rows = rows[:200]
     items = [{
-        "date": row.session.attendance_date.isoformat(), "slot": row.session.label,
+        "id": str(row.pk), "date": row.session.attendance_date.isoformat(), "slot": row.session.label,
         "status": row.status_label, "group": row.status_group,
         "justified": row.justified,
     } for row in rows]
-    return JsonResponse({"student": str(student.pk), "attendance": items})
+    return JsonResponse({"student": str(student.pk), "attendance": items, "totals": totals,
+                         "conduct": [notice_output(row) for row in notices.order_by("-date", "-published_at")]})
 
 
 @never_cache
 @require_GET
 @authorized
 def child_finance(request, student_id):
-    student, error = permitted_child(request.user, student_id)
+    student, year_id, error = child_scope(request, student_id)
     if error is not None:
         return error
     charges = FeeCharge.objects.filter(
         school_id=student.school_id, enrollment__student=student,
-    ).order_by("created_at", "pk")[:200]
+    )
+    enrollments = Enrollment.objects.filter(school_id=student.school_id, student=student)
+    if year_id:
+        charges = charges.filter(enrollment__year_id=year_id)
+        enrollments = enrollments.filter(year_id=year_id)
+    else:
+        enrollments = enrollments.filter(active=True)
     from decimal import Decimal
     totals = {}
     items = []
-    for row in charges:
+    for row in charges.order_by("created_at", "pk")[:200]:
         paid = cleared_total(row)
         currency = row.currency
         amounts = totals.setdefault(currency, {
@@ -360,7 +436,7 @@ def child_finance(request, student_id):
             "due_date": row.due_date.isoformat() if row.due_date else None,
         })
     from .admission_finance import scholarship_for_enrollment
-    current_enrollment = Enrollment.objects.filter(school_id=student.school_id, student=student, active=True).order_by("-year__start_date").first()
+    current_enrollment = enrollments.order_by("-year__start_date").first()
     award = scholarship_for_enrollment(current_enrollment) if current_enrollment else None
     return JsonResponse({
         "scholarship": ({"sponsor": "État", "coverage": award.coverage,
@@ -376,13 +452,15 @@ def child_finance(request, student_id):
 @require_GET
 @authorized
 def child_timetable(request, student_id):
-    student, error = permitted_child(request.user, student_id)
+    student, year_id, error = child_scope(request, student_id)
     if error is not None:
         return error
-    # Active enrollment(s) only; no classmate or personal pupil data returned.
-    class_ids = Enrollment.objects.filter(
-        school_id=student.school_id, student=student, active=True,
-    ).values_list("classroom_id", flat=True)
+    enrollments = Enrollment.objects.filter(school_id=student.school_id, student=student)
+    if year_id:
+        enrollments = enrollments.filter(year_id=year_id)
+    else:
+        enrollments = enrollments.filter(active=True)
+    class_ids = enrollments.values_list("classroom_id", flat=True)
     entries = TimetableEntry.objects.select_related(
         "slot", "room", "course__subject", "instructor__staff_assignment__staff"
     ).filter(

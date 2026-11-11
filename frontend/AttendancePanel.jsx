@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from "react";
 import {ClassField} from "./SchoolSettings.jsx";
+import SchoolConductPanel from "./SchoolConductPanel.jsx";
 
 async function request(path, data) {
   if (data !== undefined) await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
@@ -241,6 +242,8 @@ export default function AttendancePanel({schoolId, onSettings, attendanceAssigne
         Retards : {summary.groups.late} · Autres : {summary.groups.other}
       </p>}
     </details>}
+    {selectedClass&&attendanceCanFinalize&&<SchoolConductPanel key={schoolId+"/"+selectedClass}
+      path={base+"classes/"+selectedClass+"/conduct"} request={request}/>}
     {message&&<p role="status" aria-live="polite">{message}</p>}
   </section>;
 }

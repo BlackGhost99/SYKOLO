@@ -45,120 +45,219 @@ export function FamilyWorkspace({accountView, onLogout, onSchoolWorkspace}) {
   </div>;
 }
 
-export default function ParentPortal() {
-  const [children,setChildren] = useState(null);
-  const [selected,setSelected] = useState("");
-  const [tab,setTab] = useState("reports");
-  const [detail,setDetail] = useState(null);
-  const [message,setMessage] = useState("");
-  const [connected,setConnected] = useState(true);
+const CHILD_SECTIONS = [
+  ["grades", "Notes"], ["reports", "Bulletins"], ["attendance", "Vie scolaire"],
+  ["finance", "Frais"], ["timetable", "Emploi du temps"],
+];
 
-  useEffect(()=>{
-    let alive=true;
-    portalApi("parents/children").then(family=>{
-      if(alive)setChildren(family.children||[]);
-    }).catch(error=>{if(alive){setConnected(false);setMessage(error.message);}});
-    return()=>{alive=false};
-  },[]);
-  useEffect(()=>{
-    let alive=true;
-    setDetail(null);
-    if(!selected)return()=>{alive=false};
-    portalApi("parents/children/"+selected+"/"+tab)
-      .then(result=>{if(alive)setDetail(result)})
-      .catch(error=>{if(alive){setMessage(error.message);setDetail(null);}});
-    return()=>{alive=false};
-  },[selected,tab]);
-  const current=children?.find(c=>c.student===selected);
-  const relatedSchools=current?.matricule_yem
-    ? children.filter(child=>child.matricule_yem===current.matricule_yem)
-    : [];
-  const base="parents/children/"+selected;
+function gradeResult(grade) {
+  if (grade.score == null) return "Non renseignée";
+  const score = typeof grade.score === "number" ? String(grade.score).replace(".", ",") : String(grade.score);
+  if (grade.scale_kind === "percentage") return score + " %";
+  if (grade.scale_kind === "numeric" && grade.scale_max != null) return score + " / " + grade.scale_max;
+  return score;
+}
+
+function AttendanceEntries({entries}) {
+  return <ul>
+    {entries.map(entry => <li key={entry.id}>
+      {entry.date} · {entry.slot} · <strong>{entry.status}</strong>{entry.justified ? " (justifié)" : ""}
+    </li>)}
+  </ul>;
+}
+
+function ChildSchoolLife({detail}) {
+  const attendance = detail.attendance || [];
+  const incidents = attendance.filter(entry => entry.group !== "present");
+  const presences = attendance.filter(entry => entry.group === "present");
+  return <>
+    <h4>Absences et retards</h4>
+    <p>{detail.totals?.absent ?? 0} absence(s) · {detail.totals?.late ?? 0} retard(s)</p>
+    {incidents.length > 0 ? <AttendanceEntries entries={incidents}/> :
+      <p>{attendance.length ? "Aucune absence ni aucun retard enregistré." : "Aucun appel clôturé pour cette année."}</p>}
+    {presences.length > 0 && <details>
+      <summary>Présences enregistrées ({detail.totals?.present ?? presences.length})</summary>
+      <AttendanceEntries entries={presences}/>
+    </details>}
+    <h4>Comportement et discipline</h4>
+    {detail.conduct?.length ? <ul>
+      {detail.conduct.map(notice => <li key={notice.id}>
+        <strong>{notice.label}</strong> · {notice.date}<p>{notice.message}</p>
+      </li>)}
+    </ul> : <p>Aucune observation ni sanction communiquée par l’établissement.</p>}
+  </>;
+}
+
+function ChildSchoolSection({base, tab, year}) {
+  const [detail, setDetail] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    portalApi(base + "/" + tab + "?year=" + encodeURIComponent(year))
+      .then(result => { if (active) setDetail(result); })
+      .catch(failure => { if (active) setError(failure.message); });
+    return () => { active = false; };
+  }, [base, tab, year]);
+
+  if (error) return <p role="alert">{error}</p>;
+  if (!detail) return <p role="status">Chargement des données scolaires…</p>;
+
+  if (tab === "grades") return detail.grades?.length ? <Table className="yd-table"
+    headers={["Matière", "Évaluation", "Date", "Note", "Coefficient"]}
+    rows={detail.grades.map(grade => [
+      grade.subject,
+      grade.period ? grade.assessment + " · " + grade.period : grade.assessment,
+      grade.date,
+      <>{gradeResult(grade)}{grade.label && grade.label !== String(grade.score) ? " · " + grade.label : ""}</>,
+      Number(grade.weight).toLocaleString("fr-FR"),
+    ])}/> : <p>Aucune note publiée pour cette année.</p>;
+
+  if (tab === "reports") return detail.reports?.length ? detail.reports.map(report =>
+    <div key={report.id} style={{padding:"0.6rem 0",borderBottom:"1px solid #ddd"}}>
+      <strong>{report.year} · {report.period}</strong>
+      <span> · {report.score ?? report.label ?? "Résultat disponible"}
+        {report.amendment_sequence ? " · Rectificatif n° " + report.amendment_sequence : ""}</span>
+      <div><a href={"/api/v1/" + base + "/reports/" + report.id + "/pdf"}>Télécharger le bulletin PDF</a></div>
+    </div>
+  ) : <p>Aucun bulletin publié.</p>;
+
+  if (tab === "attendance") return <ChildSchoolLife detail={detail}/>;
+
+  if (tab === "finance") return <>
+    {detail.scholarship && <p role="status"><strong>Boursier de l'État</strong> ·
+      {detail.scholarship.coverage === "all"
+        ? " Frais d'inscription et de scolarité intégralement pris en charge."
+        : " Frais d'inscription pris en charge ; autres frais suivant le barème."}
+      {" "}Décision n° {detail.scholarship.reference}. Aucun paiement du parent
+      n'a été créé pour les frais couverts.</p>}
+    <p>Relevé des encaissements de l'établissement. Les paiements SingPay nécessitent une confirmation serveur du prestataire.</p>
+    {Object.entries(detail.totals || {}).map(([currency, value]) => <p key={currency}>
+      {currency} · Facturé : <strong>{value.billed}</strong> · Payé : <strong>{value.paid}</strong>
+      {" "}· Restant : <strong>{value.balance}</strong>
+    </p>)}
+    {(detail.charges || []).map(charge => <div key={charge.id}><p>{charge.label} · {charge.amount} {charge.currency}
+      {" "}· Solde {charge.balance}{charge.due_date ? " · Échéance " + charge.due_date : ""}</p>
+      {charge.currency === "XAF" && <SingPayPayment kind="charge" objectId={charge.id} api={portalApi} partial/>}
+    </div>)}
+    {!detail.charges?.length && <p>Aucun frais affecté.</p>}
+  </>;
+
+  return detail.entries?.length ? <Table className="yd-table"
+    headers={["Jour", "Heure", "Cours", "Enseignant", "Salle"]}
+    rows={detail.entries.map(entry => [
+      DAYS[entry.weekday], entry.start + "–" + entry.end, entry.subject, entry.teacher, entry.room || "—",
+    ])}/> : <p>Aucune séance programmée pour cette année.</p>;
+}
+
+function ChildSchoolRecord({child, relatedSchools, onSelectChild}) {
+  const base = "parents/children/" + child.student;
+  const [enrollments, setEnrollments] = useState(null);
+  const [error, setError] = useState("");
+  const [year, setYear] = useState("");
+  const [tab, setTab] = useState("grades");
+
+  useEffect(() => {
+    let active = true;
+    portalApi(base + "/enrollments").then(result => {
+      if (!active) return;
+      const rows = result.enrollments || [];
+      setEnrollments(rows);
+      const current = rows.find(row => row.year_status === "current")
+        || rows.find(row => row.year_in_progress) || rows[0];
+      setYear(current?.year_id || "");
+    }).catch(failure => { if (active) setError(failure.message); });
+    return () => { active = false; };
+  }, [base]);
+
+  const enrollment = enrollments?.find(row => row.year_id === year);
+  return <Card title={child.last_name + " " + child.first_name}>
+    <p>{child.school_name} · Matricule {child.student_code}</p>
+    {child.matricule_yem && child.matricule_yem !== child.student_code &&
+      <p>Identifiant permanent YEM · {child.matricule_yem}</p>}
+    {relatedSchools.length > 1 && <label className="field">Établissement du parcours
+      <select value={child.student} onChange={event => onSelectChild(event.target.value)}>
+        {relatedSchools.map(school => <option key={school.student} value={school.student}>{school.school_name}</option>)}
+      </select>
+    </label>}
+    {error ? <p role="alert">{error}</p> : !enrollments ? <p role="status">Chargement de la scolarité…</p> :
+      !enrollment ? <p>La classe s’affichera dès que l’établissement aura enregistré l’inscription.</p> :
+      <>
+        <label className="field">Année scolaire
+          <select value={year} onChange={event => setYear(event.target.value)}>
+            {enrollments.map(row => <option key={row.id} value={row.year_id}>{row.year}</option>)}
+          </select>
+        </label>
+        <p>Classe <strong>{enrollment.classroom}</strong> · <strong>{enrollment.class_size} {enrollment.class_size === 1 ? "élève inscrit" : "élèves inscrits"}</strong></p>
+        {enrollment.enrolled_on && <p>Date d’inscription · {enrollment.enrolled_on}</p>}
+        {(!enrollment.active || enrollment.status !== "inscrit") &&
+          <p>{enrollment.active ? "Statut de l’inscription" : "Inscription inactive"} · {enrollment.status}</p>}
+        <div className="actions" role="group" aria-label="Rubriques de la fiche scolaire">
+          {CHILD_SECTIONS.map(([id, label]) => <button key={id} type="button" aria-pressed={tab === id}
+            className={"yd-btn" + (tab === id ? " primary" : "")} onClick={() => setTab(id)}>{label}</button>)}
+        </div>
+        <ChildSchoolSection key={year + "/" + tab} base={base} tab={tab} year={year}/>
+      </>}
+  </Card>;
+}
+
+export default function ParentPortal() {
+  const [family, setFamily] = useState(null);
+  const [selected, setSelected] = useState("");
+  const [error, setError] = useState("");
+  const [refresh, setRefresh] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    portalApi("parents/children").then(result => {
+      if (!active) return;
+      const children = result.children || [];
+      setFamily(result);
+      setSelected(previous => children.some(child => child.student === previous)
+        ? previous : children[0]?.student || "");
+    }).catch(failure => { if (active) setError(failure.message); });
+    return () => { active = false; };
+  }, [refresh]);
+
+  const children = family?.children || [];
+  const current = children.find(child => child.student === selected);
+  const relatedSchools = current?.matricule_yem
+    ? children.filter(child => child.matricule_yem === current.matricule_yem) : [];
+  function refreshChildren() {
+    setFamily(null);
+    setError("");
+    setRefresh(previous => previous + 1);
+  }
+
   return <div className="yd-parent-real">
     <div className="yd-hero">
       <div><h1>Espace parents</h1>
-      <p>Consultation privée de vos enfants — informations réellement publiées par l'établissement.</p></div>
+      <p>Suivez la scolarité de vos enfants et vos démarches d’inscription.</p></div>
     </div>
-    <PWAInstall />
-    <ParentDiscovery />
-    {!connected&&<Card title="Connexion requise">
-      <p>Connectez-vous à un compte autorisé pour accéder à l'espace parents.</p><Message>{message}</Message>
-    </Card>}
-    {connected&&<>
-      <Card title="Suivi scolaire de mes enfants">
-        {!children?<p role="status">Chargement des dossiers scolaires liés…</p>:children.length===0?
-          <p>Aucun enfant n'est encore lié à ce compte. Contactez votre établissement pour faire vérifier votre qualité de responsable légal.</p>
-          :<label className="field">Enfant
-            <select value={selected} onChange={e=>{setSelected(e.target.value);setMessage("");}}>
-              <option value="">Choisir un enfant…</option>
-              {children.map(c=><option key={c.student} value={c.student}>{c.last_name} {c.first_name} · {c.school_name}</option>)}
+    <Card title="Suivi scolaire de mes enfants">
+      {error ? <><p role="alert">{error}</p><Button onClick={refreshChildren}>Réessayer</Button></> :
+        !family ? <p role="status">Chargement des dossiers scolaires liés…</p> :
+        <>
+          {children.length > 0 ? <label className="field">Enfant
+            <select value={selected} onChange={event => setSelected(event.target.value)}>
+              {children.map(child => <option key={child.student} value={child.student}>
+                {child.last_name} {child.first_name} · {child.school_name}
+              </option>)}
             </select>
-          </label>}
-      </Card>
-      {current&&<Card title={current.last_name+" "+current.first_name}>
-        <p>{current.school_name} · matricule {current.student_code}</p>
-        {current.matricule_yem&&current.matricule_yem!==current.student_code&&<p>Identifiant permanent YEM · {current.matricule_yem}</p>}
-        {relatedSchools.length>1&&<label className="field">Établissements du parcours
-          <select value={selected} onChange={e=>{setSelected(e.target.value);setMessage("");}}>
-            {relatedSchools.map(child=><option key={child.student} value={child.student}>{child.school_name}</option>)}
-          </select>
-        </label>}
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:"1rem"}}>
-          {[
-            ["reports","Bulletins"],["enrollments","Scolarité"],["attendance","Présences"],
-            ["finance","Frais"],["timetable","Emploi du temps"],
-          ].map(([id,label])=><button key={id} type="button" className={"yd-btn"+(tab===id?" primary":"")}
-            onClick={()=>{setTab(id);setMessage("");}}>{label}</button>)}
-        </div>
-        {!detail&&<p>Chargement des données autorisées…</p>}
-        {tab==="enrollments"&&detail&&<>
-          {(detail.enrollments||[]).length===0?<p>Aucune inscription disponible.</p>:
-            (detail.enrollments||[]).map(e=><p key={e.id}><strong>{e.year}</strong> · {e.classroom} · {e.status}</p>)}
+          </label> : <p>Votre compte attend le rattachement d’un enfant par son établissement.</p>}
+          <details open={children.length === 0 || undefined}>
+            <summary>Rattacher un enfant</summary>
+            <p>Communiquez votre identifiant YEM Parents et le nom de l’enfant au secrétariat.
+              L’établissement vérifie votre qualité de responsable légal et active l’accès à la fiche.</p>
+            {family.parent_username && <p>Identifiant à communiquer <strong>{family.parent_username}</strong></p>}
+            <Button onClick={refreshChildren}>Actualiser mes enfants</Button>
+          </details>
         </>}
-        {tab==="reports"&&detail&&<>
-          {(detail.reports||[]).length===0?<p>Aucun bulletin publié.</p>:
-          (detail.reports||[]).map(r=><div key={r.id} style={{padding:"0.6rem 0",borderBottom:"1px solid #ddd"}}>
-            <strong>{r.year} — {r.period}</strong>
-            <span> · {r.score||r.label||"Résultat disponible"}
-              {r.amendment_sequence?" · Rectificatif n° "+r.amendment_sequence:""}</span>
-            <div><a href={"/api/v1/"+base+"/reports/"+r.id+"/pdf"}>Télécharger le bulletin PDF</a></div>
-          </div>)}
-        </>}
-        {tab==="attendance"&&detail&&<>
-          {(detail.attendance||[]).length===0?<p>Aucun appel clôturé pour cet enfant.</p>:
-            (detail.attendance||[]).map((a,i)=><p key={i}>{a.date} · {a.slot} :
-              <strong> {a.status}</strong>{a.justified?" (justifié)":""}</p>)}
-        </>}
-        {tab==="finance"&&detail&&<>
-          {detail.scholarship&&<p role="status"><strong>Boursier de l'État</strong> ·
-            {detail.scholarship.coverage==="all"
-              ?" Frais d'inscription et de scolarité intégralement pris en charge."
-              :" Frais d'inscription pris en charge ; autres frais suivant le barème."}
-            {" "}Décision n° {detail.scholarship.reference}. Aucun paiement du parent
-            n'a été créé pour les frais couverts.</p>}
-          <p>Relevé des encaissements de l'établissement. Les paiements SingPay nécessitent une confirmation serveur du prestataire.</p>
-          {Object.entries(detail.totals||{}).map(([currency,value])=><p key={currency}>
-            {currency} · Facturé : <strong>{value.billed}</strong> · Payé : <strong>{value.paid}</strong>
-            {" "}· Restant : <strong>{value.balance}</strong>
-          </p>)}
-          {(detail.charges||[]).map(c=><div key={c.id}><p>{c.label} — {c.amount} {c.currency}
-            {" "}· Solde {c.balance}{c.due_date?" · Échéance "+c.due_date:""}</p>
-            {c.currency==="XAF"&&<SingPayPayment kind="charge" objectId={c.id} api={portalApi} partial/>}</div>)}
-          {(detail.charges||[]).length===0&&<p>Aucun frais affecté.</p>}
-        </>}
-        {tab==="timetable"&&detail&&<>
-          {(detail.entries||[]).length===0?<p>Aucune séance en vigueur n'a été programmée.</p>:
-            <div style={{overflowX:"auto"}}><table style={{width:"100%"}}>
-              <thead><tr><th>Jour</th><th>Heure</th><th>Cours</th><th>Enseignant</th><th>Salle</th></tr></thead>
-              <tbody>{(detail.entries||[]).map(e=><tr key={e.id}>
-                <td>{DAYS[e.weekday]}</td><td>{e.start}–{e.end}</td><td>{e.subject}</td>
-                <td>{e.teacher}</td><td>{e.room||"—"}</td>
-              </tr>)}</tbody>
-            </table></div>}
-        </>}
-      </Card>}
-      <Message>{message}</Message>
-    </>}
+    </Card>
+    {current && <ChildSchoolRecord key={current.student} child={current} relatedSchools={relatedSchools}
+      onSelectChild={setSelected}/>}
+    <ParentDiscovery />
+    <PWAInstall />
   </div>;
 }
 
@@ -205,7 +304,7 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
     {loadError&&<p role="alert">{loadError}</p>}
     <Message>{message}</Message>
     {canReadStudents&&links&&students&&<>
-      <p className="hint">Vérifiez l’identité du responsable légal hors de YEM avant d’activer l’accès à cet élève.</p>
+      <p className="hint">Demandez l’identifiant YEM Parents du responsable légal et vérifiez son identité avant d’activer l’accès à cet élève.</p>
       <label className="field">Élève
         <select value={student} disabled={busy} onChange={e=>{
           setStudent(e.target.value);setGuardian("");setGuardians(null);setGuardiansError("");setMessage("");
