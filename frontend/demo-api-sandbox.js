@@ -3,12 +3,13 @@
  * Le jeu est recréé à chaque ouverture, sans persistance navigateur. */
 import {createDemoState,DEMO_CURRENT_YEAR,DEMO_YEARS,SCHOOL_ROLES,schoolOf,remaining} from "./demo-data.js";
 
+import {createDemoImports} from "./demo-imports.js";
 import {DEMO_ROLES} from "./demo-roles.js";
 
 const demoRoleCatalog=()=>Object.entries(DEMO_ROLES).filter(([code])=>code!=="platform")
   .map(([code,profile])=>({id:"demo-role-"+code,code,...profile,revision:1,available_for_accounts:true}));
 const initialOrganizations=()=>[{id:"org-demo",name:"Groupe scolaire (exemple)"}];
-const order=DEMO_YEARS.map(y=>({id:y,name:y,status:y==="2025-2026"?"closed":y===DEMO_CURRENT_YEAR?"current":"preparation",active:y!== "2025-2026",start_date:y.slice(0,4)+"-09-07",end_date:y.slice(5)+"-07-10"}));
+const order=DEMO_YEARS.map(y=>({id:y,code:y,name:y,status:y==="2025-2026"?"closed":y===DEMO_CURRENT_YEAR?"current":"preparation",active:y!== "2025-2026",start_date:y.slice(0,4)+"-09-07",end_date:y.slice(5)+"-07-10"}));
 const response=(data,status=200)=>Promise.resolve({
   ok:status>=200&&status<300,status,
   headers:{get:key=>key?.toLowerCase()==="content-type"?"application/json; charset=utf-8":null},
@@ -19,6 +20,7 @@ const splitName=name=>{const parts=(name||"Élève").trim().split(/\s+/);return 
 const today="2026-11-09";
 export function createOfflineDemoBackend(){
   let data=createDemoState();
+  let handleImport=createDemoImports();
   let role="direction";
   let organizations=initialOrganizations();
   let audit=[];
@@ -36,6 +38,17 @@ export function createOfflineDemoBackend(){
   let timetable=[];
   let assignments=[];
   let forms={};
+  let delegations=[];
+  let enabledFunctions={};
+  let cycleScopes={};
+  let amendments={};
+  let admissionPolicies={};
+  let settings=[];
+  let appointments=[];
+  let gatewaySettings={};
+  let admissionFees=[];
+  let demoPaymentSettings={};
+  let familyProfiles=[];
   const defaultForm={fields:{},custom_fields:[],documents:[
     {key:"birth_certificate",label:"Acte de naissance",required:true},
     {key:"previous_report",label:"Dernier bulletin",required:false}
@@ -60,7 +73,7 @@ export function createOfflineDemoBackend(){
       const cls=cc.find(c=>c.name===s.level);
       const invoices=data.invoices.filter(i=>i.student===s.id&&i.year===yr);
       const billed=invoices.reduce((v,i)=>v+i.total,0),paid=invoices.reduce((v,i)=>v+i.paid,0);
-      return {...splitName(s.name),id:s.id,student_code:"YEM-"+s.id.toUpperCase().padStart(6,"0"),
+      return {...splitName(s.name),id:s.id,student_code:s.student_code||"YEM-"+s.id.toUpperCase().padStart(6,"0"),
         matricule_yem:"DEMO-"+s.id.toUpperCase(),active:true,
         guardian:s.guardians?.find(row=>row.active&&row.is_primary)||{full_name:s.guardian,phone:s.phone||""},
         enrollment:cls?{id:"en-"+s.id,classroom:{id:cls.id,name:cls.name}}:null,
@@ -96,6 +109,11 @@ export function createOfflineDemoBackend(){
   const pupilsIn=room=>room?studentsFor(room.school,room.year).filter(s=>s.level===room.name):[];
   const statuses=[{code:"present",label:"Présent",group:"present"},
     {code:"absent",label:"Absent",group:"absent"},{code:"late",label:"En retard",group:"late"}];
+  const decisionChoices=[{code:"passage",label:"Passage en classe supérieure"},
+    {code:"encouragements",label:"Encouragements"}];
+  const defaultGrading={name:"Notation sur 20",scale:{kind:"numeric",max:20},
+    missing:"exclude",precision:2,bands:[{min:0,value:0,label:"Insuffisant"},{min:50,value:50,label:"Passable"}],
+    report:{showScore:true,showLabel:true}};
   const invoicesFor=(id,yr)=>data.invoices.filter(f=>f.school===id&&f.year===yr);
   const chargesFor=(id,yr)=>invoicesFor(id,yr).map(f=>({id:f.id,enrollment:"en-"+f.student,
     label:f.label,amount:f.total,balance:remaining(f),paid:f.paid,currency:f.currency||"XAF",
@@ -132,8 +150,9 @@ export function createOfflineDemoBackend(){
     const byClass=Object.values(arrears.reduce((o,a)=>{
       const k=a.classroom;if(!o[k])o[k]={classroom:k,families:0};o[k].families++;return o;},{}));
     const yesterdayTotal=Math.floor(paid*.04);
-    const received=payments.filter(p=>p.school===id&&p.year===yr);
-    const seedTotal=Math.floor((paid-received.reduce((sum,p)=>sum+p.amount,0))*.1);
+    const activePayments=payments.filter(p=>p.school===id&&p.year===yr&&!p.voided);
+    const received=activePayments.filter(p=>p.paid_on===today);
+    const seedTotal=Math.floor((paid-activePayments.reduce((sum,p)=>sum+p.amount,0))*.1);
     const todayMethods={especes:Math.floor(seedTotal*.35),
       airtel_money:Math.floor(seedTotal*.4),moov_money:seedTotal-Math.floor(seedTotal*.35)-Math.floor(seedTotal*.4)};
     for(const payment of received)todayMethods[payment.method]=(todayMethods[payment.method]||0)+payment.amount;
@@ -232,7 +251,7 @@ export function createOfflineDemoBackend(){
       const weight=marks.reduce((sum,mark)=>sum+mark.weight,0);
       const score=weight?Math.round(marks.reduce((sum,mark)=>sum+mark.score*mark.weight,0)/weight*100)/100:st?.average??null;
       return {course:course.id,subject:subjectsFor(id,yr).find(row=>row.id===course.subject)?.name,
-        coefficient:course.coefficient,result:{score,label:"Résultat fictif"}};
+        coefficient:course.coefficient,result:{score,percent:score==null?null:score*5,label:"Résultat fictif"}};
     });
     const scored=results.filter(row=>row.result.score!=null);
     const coefficients=scored.reduce((sum,row)=>sum+row.coefficient,0);
@@ -252,6 +271,7 @@ export function createOfflineDemoBackend(){
     const id=schoolIdOf(path),school=schoolData(id);
     const yr=findYear(search.get("year")||DEMO_CURRENT_YEAR).id;
     if(path==="auth/csrf")return {};
+    if(path==="presets")return [{id:"demo-sur-20",title:"Notation sur 20",policy:defaultGrading}];
     if(path==="schools")return {schools:schoolList()};
     if(path==="platform/dashboard")return platformSummary(search);
     if(path==="platform/schools"&&method==="GET"&&search.has("school_type")){
@@ -382,24 +402,52 @@ export function createOfflineDemoBackend(){
       }
       if(method==="GET")return {applications:admissions.filter(row=>row.school===id)};
       const row={...body,id:"admission-demo-"+(admissions.length+1),school:id,
-        status:"submitted",revision:1,submitted_at:today,required_documents:[],history:[]};
+        status:"submitted",revision:1,submitted_at:today,
+        required_documents:fixtureFor("schools/"+id+"/admissions/policy",search,"GET",{}).required_documents[body.route]||[],
+        documents:[],history:[]};
       admissions.push(row);return row;
     }
-    if(schoolRoute==="admissions/policy"&&method==="GET")return {
-      enabled_routes:["direct","concours","orientation"],public_routes:["direct"],
-      required_documents:{direct:[],concours:[],orientation:[]},revision:1
-    };
+    if(schoolRoute==="admissions/policy"){
+      const policy=admissionPolicies[id]||{enabled_routes:["direct","concours","orientation"],
+        public_routes:["direct"],required_documents:{direct:[],concours:["concours_result"],
+          orientation:["orientation_decision"]},revision:1};
+      if(method==="GET")return policy;
+      if(body.revision!==policy.revision)throw Error("La politique fictive a changé.");
+      return admissionPolicies[id]={...policy,...body,revision:policy.revision+1};
+    }
     if(schoolRoute.startsWith("admissions/capacity/")){
       const room=roomById(schoolRoute.split("/").at(-1)),occupied=pupilsIn(room).length;
       return {occupied,accepted_pending:0,remaining:room?.capacity==null?null:room.capacity-occupied};
     }
-    const admissionRoute=schoolRoute.match(/^admissions\/([^/]+)\/(decide|convert|history|documents)$/);
+    const admissionRoute=schoolRoute.match(/^admissions\/([^/]+)\/(decide|convert|history|documents|eligibility)(?:\/([^/]+)\/review)?$/);
     if(admissionRoute){
       const row=admissions.find(item=>item.id===admissionRoute[1]&&item.school===id);
       if(!row)throw Error("Candidature fictive introuvable.");
       const action=admissionRoute[2];
       if(action==="history")return {history:row.history};
-      if(action==="documents"&&method==="GET")return {documents:[],required_documents:row.required_documents};
+      if(action==="documents"||action==="eligibility"){
+        row.documents??=[];
+        if(method==="GET")return {documents:row.documents,required_documents:row.required_documents,revision:row.revision};
+        if(row.revision!==body.revision||!["submitted","review"].includes(row.status))
+          throw Error("Le dossier fictif a changé ou est déjà traité.");
+        if(action==="eligibility"){
+          if(!body.reason?.trim()||!["pending","eligible","ineligible"].includes(body.result))
+            throw Error("L’éligibilité exige un résultat et un motif.");
+          Object.assign(row,{external_result:body.result,route_reference:body.route_reference,
+            orientation_authority:body.orientation_authority});
+        }else if(admissionRoute[3]){
+          const item=row.documents.find(doc=>doc.id===admissionRoute[3]);
+          if(!item||!can(id,"school.admissions.decide")||!body.reason?.trim()||
+            !["verified","rejected"].includes(body.status))throw Error("Contrôle du justificatif fictif refusé.");
+          Object.assign(item,{status:body.status,review_reason:body.reason});
+        }else{
+          if(!body.code||!body.reference?.trim()||row.documents.some(doc=>doc.code===body.code))
+            throw Error("Indiquez une référence et un type de pièce encore absent.");
+          row.documents.push({id:"piece-"+(row.documents.length+1),code:body.code,reference:body.reference,status:"submitted"});
+        }
+        row.revision++;
+        return {documents:row.documents,required_documents:row.required_documents,revision:row.revision};
+      }
       if(method==="POST"&&(action==="decide"||action==="convert")){
         if(row.revision!==body.revision)throw Error("Le dossier a été modifié.");
         if(action==="convert"){
@@ -410,6 +458,10 @@ export function createOfflineDemoBackend(){
             average:null,absences:0});
           row.status="enrolled";
         }else{
+          if(!can(id,"school.admissions.decide"))throw Error("Ce profil ne peut pas statuer.");
+          if(body.status==="accepted"&&((row.route!=="direct"&&row.external_result!=="eligible")||
+            row.required_documents.some(code=>!row.documents?.some(doc=>doc.code===code&&doc.status==="verified"))))
+            throw Error("Vérifiez l’éligibilité et les justificatifs requis avant d’accepter le dossier.");
           row.status=body.status;row.decision_reason=body.reason;
         }
         row.revision++;
@@ -420,13 +472,26 @@ export function createOfflineDemoBackend(){
     if(schoolRoute==="staff/me/assignments")return {
       assignments:classesFor(id,yr).slice(0,1).map(room=>({classroom:room.id}))
     };
-    if(schoolRoute==="attendance/options")return {statuses};
+    const attendanceStatuses=()=>settings.find(row=>row.school===id&&!Object.keys(row.scope).length)?.values.attendance?.statuses||statuses;
+    if(schoolRoute==="attendance/options")return {statuses:attendanceStatuses()};
+    if(schoolRoute==="attendance/summary"){
+      const rows=sessions.filter(row=>row.classroom===search.get("classroom")&&row.closed_at&&
+        row.date>=search.get("from")&&row.date<=search.get("to"));
+      const groups={present:0,absent:0,late:0,other:0};
+      for(const session of rows)for(const mark of Object.values(session.marks))groups[mark.group in groups?mark.group:"other"]++;
+      return {sessions:rows.length,groups};
+    }
+    const attendanceHistory=schoolRoute.match(/^attendance\/sessions\/([^/]+)\/marks\/([^/]+)\/history$/);
+    if(attendanceHistory){
+      const session=sessions.find(row=>row.id===attendanceHistory[1]&&roomById(row.classroom));
+      return {history:session?.history[attendanceHistory[2]]||[]};
+    }
     if(schoolRoute==="attendance/sessions"){
       const room=roomById(body.classroom||search.get("classroom"));
       if(method==="GET")return {sessions:sessions.filter(session=>session.classroom===room?.id)};
       if(!room)throw Error("Classe fictive introuvable.");
       const session={id:"appel-"+(sessions.length+1),classroom:room.id,date:body.date,
-        slot:body.slot,label:body.label,revision:1,closed_at:null,marks:{}};
+        slot:body.slot,label:body.label,revision:1,closed_at:null,marks:{},history:{}};
       sessions.push(session);return session;
     }
     const attendanceRoute=schoolRoute.match(/^attendance\/sessions\/([^/]+)(?:\/(marks|close))?$/);
@@ -439,13 +504,26 @@ export function createOfflineDemoBackend(){
       }))};
       if(session.closed_at)throw Error("Cet appel est clôturé.");
       if(attendanceRoute[2]==="marks"){
-        for(const mark of body.marks){
-          session.marks[mark.enrollment]={...mark,revision:mark.revision+1,
-            group:statuses.find(status=>status.code===mark.status)?.group};
+        const pupils=pupilsIn(roomById(session.classroom));
+        const updates=body.marks.map(mark=>{
+          const status=attendanceStatuses().find(row=>row.code===mark.status);
+          const previous=session.marks[mark.enrollment];
+          if(!status||!pupils.some(row=>"en-"+row.id===mark.enrollment)||mark.revision!==(previous?.revision||0))
+            throw Error("Saisie d’appel invalide ou modifiée.");
+          return {...mark,revision:mark.revision+1,group:status.group,label:status.label};
+        });
+        for(const mark of updates){
+          session.marks[mark.enrollment]=mark;
+          (session.history[mark.enrollment]??=[]).push({
+            after:mark,revision:mark.revision,reason:mark.reason,created_at:today+"T08:00:00+01:00"
+          });
         }
         return {marks:Object.values(session.marks),session_revision:++session.revision};
       }
       if(attendanceRoute[2]==="close"){
+        if(!can(id,"school.attendance.finalize")||body.revision!==session.revision||
+          pupilsIn(roomById(session.classroom)).some(row=>!session.marks["en-"+row.id]))
+          throw Error("Renseignez tous les élèves avant de clôturer l’appel.");
         session.closed_at=today;session.revision++;return session;
       }
     }
@@ -538,8 +616,7 @@ export function createOfflineDemoBackend(){
       }
     }
     if(path.endsWith("/academic/subjects"))return {subjects:subjectsFor(id,yr)};
-    if(path.endsWith("/positions"))return {positions:[]};
-    if(path.endsWith("/appointments"))return {appointments:[]};
+
     if(path.endsWith("/my-appointments"))return {appointments:[],functions:[]};
     if(schoolRoute==="roles"&&method==="GET"){
       return {roles:demoRoleCatalog(),available_permissions:DEMO_ROLES.direction.permissions,functions:[]};
@@ -606,8 +683,9 @@ export function createOfflineDemoBackend(){
       else timetable[index]=record;
       return record;
     }
-    if(schoolRoute==="council-choices")return {choices:[{code:"passage",label:"Passage en classe supérieure"},
-      {code:"encouragements",label:"Encouragements"}]};
+    if(schoolRoute==="council-choices")return {
+      choices:settings.find(row=>row.school===id&&!Object.keys(row.scope).length)?.values.deliberations?.decisions||decisionChoices
+    };
     if(schoolRoute==="councils"){
       if(method==="GET")return {councils:councils.filter(item=>item.school===id)};
       if(!roomById(body.classroom))throw Error("Classe fictive introuvable.");
@@ -633,7 +711,121 @@ export function createOfflineDemoBackend(){
         return decision;
       }
     }
-    if(path.endsWith("/members"))return {members:[]};
+    const members=()=>platformDetail(id).members.map(row=>({...row,user_id:row.id,member_id:row.id,
+      access_cycle_ids:cycleScopes[row.id]??null}));
+    const schoolCycles=()=>platformSchool(school).education_cycles.map(code=>({
+      id:id+"-cycle-"+code,code,name:({college:"Collège",lycee:"Lycée",primaire:"Primaire",maternelle:"Maternelle"})[code]||code
+    }));
+    if(schoolRoute==="settings"){
+      const scope=method==="GET"?Object.fromEntries(search):body.scope||{};
+      const current=settings.find(row=>row.school===id&&Object.keys(scope).length===Object.keys(row.scope).length&&
+        Object.entries(scope).every(([key,value])=>row.scope[key]===value));
+      if(method!=="GET"){
+        if(body.revision!==(current?.revision||0))throw Error("Ce réglage fictif a changé.");
+        if(current)Object.assign(current,{values:body.values,revision:current.revision+1});
+        else settings.push({school:id,scope,values:body.values,revision:1});
+      }
+      const local=current||settings.find(row=>row.school===id&&row.scope===scope)||null;
+      const effective={grading:defaultGrading,bulletin:{title:"Bulletin scolaire — démonstration",precision:2},
+        attendance:{statuses},deliberations:{decisions:decisionChoices}};
+      for(const row of settings.filter(row=>row.school===id&&Object.entries(row.scope)
+        .every(([key,value])=>scope[key]===value)).sort((a,b)=>Object.keys(a.scope).length-Object.keys(b.scope).length)){
+        for(const [key,value] of Object.entries(row.values))effective[key]={...effective[key],...value};
+      }
+      return {effective,local,revision:local?.revision||0};
+    }
+    if(schoolRoute==="student-numbering"){
+      const saved=data.numbering[id]||{enabled:false,template:"DEMO-{n}",digits:4,next_number:1,revision:0};
+      if(method==="GET")return saved;
+      if(body.revision!==saved.revision||body.enabled&&(!body.template?.includes("{n}")||
+        !Number.isInteger(body.digits)||body.digits<1||body.digits>15||!Number.isSafeInteger(body.start_number)||body.start_number<0))
+        throw Error("Série fictive invalide ou modifiée.");
+      const next={enabled:body.enabled,template:body.template,digits:body.digits,
+        next_number:Math.max(saved.template===body.template?saved.next_number:0,body.start_number||0),
+        revision:saved.revision+(method==="PUT"?1:0)};
+      next.next_code=next.template.replace("{n}",String(next.next_number).padStart(next.digits,"0"));
+      if(method==="PUT")data.numbering[id]=next;
+      return next;
+    }
+    if(schoolRoute==="admission-gateway"){
+      const current=gatewaySettings[id]||{mode:"sandbox",enabled:false,revision:0,has_keys:false,
+        live_enabled_by_platform:false,encryption_ready:true,webhook_url:"https://demo.yem.invalid/paycentral"};
+      if(method==="GET")return current;
+      if(body.mode!=="sandbox"||body.revision!==current.revision)throw Error("Seule une passerelle fictive peut être configurée.");
+      return gatewaySettings[id]={...current,enabled:Boolean(body.enabled),
+        has_keys:Boolean(body.api_key||current.has_keys),revision:current.revision+1};
+    }
+    if(schoolRoute==="admission-fees"){
+      if(method==="GET")return {fees:admissionFees.filter(row=>row.school===id)};
+      if(!Number.isInteger(body.amount_xaf)||body.amount_xaf<100)throw Error("Montant fictif invalide.");
+      const existing=admissionFees.find(row=>row.school===id&&row.year===body.year&&row.level===body.level);
+      if(existing){Object.assign(existing,body,{revision:existing.revision+1});return existing;}
+      const fee={...body,id:"frais-admission-"+(admissionFees.length+1),school:id,revision:1};
+      admissionFees.push(fee);return fee;
+    }
+    if(schoolRoute==="admission-payments")return {payments:[]};
+    if(schoolRoute==="demo-admission-payments"){
+      const current=demoPaymentSettings[id]||{revision:0,enabled:true,allowed_usernames:[],level_amounts_xaf:{}};
+      if(method==="GET")return current;
+      if(body.revision!==current.revision)throw Error("La configuration fictive a changé.");
+      return demoPaymentSettings[id]={...body,revision:current.revision+1};
+    }
+    if(schoolRoute==="positions"){
+      const positions=demoRoleCatalog().filter(row=>!["proprietaire","parent"].includes(row.code))
+        .map(row=>({code:row.code,label:row.label,family:"Administration et pédagogie",scope:"school",allowed_cycles:[]}));
+      return {positions,education_cycles:platformSchool(school).education_cycles,
+        cycle_labels:Object.fromEntries(schoolCycles().map(row=>[row.code,row.name])),
+        governance:{label:"Établissement fictif",organs:["Direction","Conseil pédagogique"]}};
+    }
+    if(schoolRoute==="appointments"||schoolRoute.startsWith("appointments/")){
+      const staff=data.staff.filter(row=>row.school===id);
+      if(method==="GET")return {appointments:appointments.filter(row=>row.school===id),staff_options:
+        staff.map(row=>({id:row.id,name:row.name,staff_code:"DEMO-"+row.id,active:row.active!==false,has_account:row.hasAccount}))};
+      if(method==="PATCH"){
+        const item=appointments.find(row=>row.school===id&&row.id===schoolRoute.split("/")[1]);
+        if(!item||item.revision!==body.revision)throw Error("Nomination fictive introuvable ou modifiée.");
+        Object.assign(item,body,{revision:item.revision+1});item.effective=item.active;return item;
+      }
+      const person=staff.find(row=>row.id===body.staff);
+      if(!person)throw Error("Collaborateur fictif introuvable.");
+      const item={...body,school:id,id:"nomination-"+(appointments.length+1),revision:1,active:true,effective:true,
+        staff_name:person.name,staff_code:"DEMO-"+person.id,has_account:person.hasAccount,cycle_label:"Établissement"};
+      appointments.push(item);return item;
+    }
+    if(schoolRoute==="members"&&method==="GET")return {members:members()};
+    const memberAccess=schoolRoute.match(/^members\/([^/]+)\/cycle-access$/);
+    if(memberAccess&&method==="PATCH"){
+      const member=members().find(row=>row.member_id===memberAccess[1]);
+      const selected=body.access_cycle_ids;
+      if(role!=="proprietaire"||!member||body.reason?.trim().length<8||
+        (selected!==null&&(!Array.isArray(selected)||!selected.length||
+          selected.some(cycle=>!schoolCycles().some(item=>item.id===cycle)))))
+        throw Error("Périmètre ou motif de changement invalide.");
+      cycleScopes[member.member_id]=selected;
+      recordPlatformEvent(school,"member_cycle_access_changed",body.reason);
+      return {...member,access_cycle_ids:selected};
+    }
+    if(schoolRoute==="functions"){
+      const options=demoRoleCatalog().filter(row=>row.code!=="parent");
+      if(method==="PATCH")enabledFunctions[id]=body.enabled_functions||[];
+      const functions=options.filter(row=>!enabledFunctions[id]||enabledFunctions[id].includes(row.code));
+      return {options,functions};
+    }
+    if(schoolRoute==="delegations"){
+      const available_permissions=DEMO_ROLES.direction.permissions;
+      if(method==="GET")return {available_permissions,delegations:delegations.filter(row=>row.school===id),
+        class_cycles:Object.fromEntries(schoolCycles().map(cycle=>[cycle.code,cycle.name]))};
+      if(!members().some(row=>row.user_id===body.user_id)||!body.reason?.trim()||!body.permissions?.length||
+        body.permissions.some(permission=>!available_permissions.includes(permission)))
+        throw Error("Choisissez un bénéficiaire, des droits et un motif.");
+      const grant={...body,id:"delegation-"+(delegations.length+1),school:id,revoked_at:null};
+      delegations.push(grant);return grant;
+    }
+    if(schoolRoute.startsWith("delegations/")&&method==="DELETE"){
+      const grant=delegations.find(row=>row.school===id&&row.id===schoolRoute.split("/")[1]&&!row.revoked_at);
+      if(!grant||!body.reason?.trim())throw Error("Délégation fictive ou motif de retrait invalide.");
+      Object.assign(grant,{revoked_at:today,revocation_reason:body.reason});return grant;
+    }
     if(schoolRoute==="enrollment-form"){
       if(method==="PUT")forms[id]={config:body.config,revision:(forms[id]?.revision||1)+1};
       return {...(forms[id]||{config:defaultForm,revision:1}),years:years(),classes:classOverview(id,yr).classes};
@@ -647,6 +839,12 @@ export function createOfflineDemoBackend(){
       const student={...body.student,id:studentId,school:id,year:room?.year||yr,level:room?.name||"",
         name:body.student.last_name+" "+body.student.first_name,guardian:guardians[0]?.full_name||"",
         guardians,enrolled_on:body.enrollment?.enrolled_on,average:null,absences:0};
+      const series=data.numbering[id];
+      if(series?.enabled){
+        student.student_code=series.next_code;
+        series.next_number++;
+        series.next_code=series.template.replace("{n}",String(series.next_number).padStart(series.digits,"0"));
+      }
       data.students.push(student);
       return {student:studentsOverview(id,student.year).students.find(row=>row.id===studentId),
         enrollment:enrollmentRows(id,student.year).find(row=>row.student===studentId)||null,
@@ -682,7 +880,8 @@ export function createOfflineDemoBackend(){
         missing_documents:form.documents.filter(doc=>doc.required&&!view.documents[doc.key]).map(doc=>doc.label),
         enrollments:enrollmentRows(id,student.year).filter(item=>item.student===student.id).map(item=>({
           ...item,finance:finance_visible?{...row.finance,currency:"XAF",
-            charges:chargesFor(id,student.year).filter(charge=>charge.enrollment===item.id),payments:[]}:null
+            charges:chargesFor(id,student.year).filter(charge=>charge.enrollment===item.id),
+            payments:payments.filter(payment=>payment.school===id&&payment.enrollment===item.id)}:null
         }))};
     }
     if(schoolRoute==="students")return {students:studentsOverview(id,yr).students};
@@ -736,6 +935,33 @@ export function createOfflineDemoBackend(){
       const selected=Object.values(reports).filter(report=>report.school===id&&
         pupils.some(pupil=>pupil.id===report.enrollment));
       return {reports:selected,pupils};
+    }
+    const amendmentRoute=schoolRoute.match(/^reports\/([^/]+)\/amendments(?:\/([^/]+)(?:\/(pdf))?)?$/);
+    if(amendmentRoute){
+      const report=reports[amendmentRoute[1]];
+      if(report?.school!==id||report.status!=="published")throw Error("Bulletin fictif publié introuvable.");
+      const list=amendments[report.id]??=[];
+      if(method==="GET"){
+        if(!amendmentRoute[2])return {amendments:list};
+        const item=list.find(row=>row.id===amendmentRoute[2]);
+        if(!item)throw Error("Rectificatif fictif introuvable.");
+        if(amendmentRoute[3])return {filename:"rectificatif-demo.pdf",lines:[
+          "Rectificatif de bulletin - DEMONSTRATION","Rectificatif "+item.sequence,
+          report.snapshot.student.last_name+" "+report.snapshot.student.first_name,
+          item.subject+" : "+item.before_percent+" % / "+item.after_percent+" %",item.reason
+        ]};
+        return item;
+      }
+      const subject=report.snapshot.subjects.find(row=>row.course===body.course);
+      const percent=Number(body.percent);
+      if(!can(id,"school.reports.amend")||!subject||body.percent===""||!Number.isFinite(percent)||
+        percent<0||percent>100||!body.reason||body.reason.trim().length<10||body.revision!==list.length)
+        throw Error("La matière, la note, le motif ou la version du rectificatif est invalide.");
+      const previous=list.filter(row=>row.course===body.course).at(-1);
+      const item={id:"rectificatif-"+(list.length+1),sequence:list.length+1,course:body.course,
+        subject:subject.subject,before_percent:previous?.after_percent??subject.result.percent,
+        after_percent:percent,reason:body.reason.trim()};
+      list.push(item);return item;
     }
     const reportPath=path.match(/^schools\/[^/]+\/reports\/([^/]+)(?:\/(publish|pdf))?$/);
     if(reportPath){
@@ -817,6 +1043,14 @@ export function createOfflineDemoBackend(){
       const enrollment=search.get("enrollment");
       return {charges:chargesFor(id,yr).filter(f=>!enrollment||f.enrollment===enrollment)};
     }
+    if(schoolRoute==="finance/payments"&&method==="POST"){
+      const invoice=data.invoices.find(row=>row.school===id&&row.id===body.charge);
+      if(!invoice||!can(id,"school.finance.receive"))throw Error("Ce profil ou ces frais ne permettent pas un encaissement.");
+      const batch=fixtureFor("schools/"+id+"/finance/batches",search,"POST",{
+        ...body,enrollment:"en-"+invoice.student,lines:[{charge:invoice.id,amount:body.amount}]
+      });
+      return payments.find(row=>row.id===batch.id);
+    }
     if(path.endsWith("/finance/batches")&&method!=="GET"){
       const key=body.idempotency_key && id+":"+body.idempotency_key;
       const fingerprint=JSON.stringify(body);
@@ -830,7 +1064,7 @@ export function createOfflineDemoBackend(){
       const student=data.students.find(s=>s.school===id&&"en-"+s.id===body.enrollment);
       for(const line of lines){
         const invoice=data.invoices.find(f=>f.school===id&&f.id===line.charge&&f.student===student?.id);
-        const cents=Math.round(Number(line.amount)*100);
+        const cents=/^\d+(?:\.\d{1,2})?$/.test(String(line.amount))?Math.round(Number(line.amount)*100):0;
         const total=(allocated.get(invoice)||0)+cents;
         if(!invoice||!Number.isSafeInteger(cents)||cents<=0||total>Math.round(remaining(invoice)*100))
           throw Error("Paiement fictif invalide : frais ou montant incorrect.");
@@ -841,21 +1075,39 @@ export function createOfflineDemoBackend(){
       const total=[...allocated.values()].reduce((sum,cents)=>sum+cents,0)/100;
       const batchId="SIM-"+String(payments.length+1).padStart(4,"0");
       payments.unshift({id:batchId,school:id,year:student.year,student:student.name,
-        classroom:student.level,amount:total,method:body.method,recorded_at:today+"T10:30:00+01:00"});
+        classroom:student.level,amount:total,method:body.method,currency:"XAF",
+        enrollment:"en-"+student.id,paid_on:body.paid_on||today,recorded_at:today+"T10:30:00+01:00",
+        lines:[...allocated].map(([invoice,cents])=>({charge:invoice.id,amount:cents/100})),voided:false});
       const result={id:batchId,total,currency:"XAF",simulated:true,
         receipt_url:`/api/v1/schools/${id}/finance/payments/${batchId}/receipt`};
       if(key)batches.set(key,{fingerprint,result});
       return result;
     }
-    if(path.endsWith("/finance/payments")&&method==="GET")
-      return {payments:payments.filter(payment=>payment.school===id&&payment.year===yr)};
+    if(schoolRoute==="finance/payments"&&method==="GET"){
+      const charge=search.get("charge");
+      return {payments:payments.filter(row=>row.school===id&&(!charge||row.lines.some(item=>item.charge===charge)))};
+    }
+    const reversal=schoolRoute.match(/^finance\/payments\/([^/]+)\/void$/);
+    if(reversal&&method==="POST"){
+      const payment=payments.find(row=>row.school===id&&row.id===reversal[1]);
+      if(!can(id,"school.finance.reverse")||!payment||payment.voided||body.reason?.trim().length<10)
+        throw Error("L’annulation exige un paiement actif, un motif et le profil comptabilité.");
+      for(const line of payment.lines){
+        const invoice=data.invoices.find(row=>row.id===line.charge);
+        invoice.paid=(Math.round(invoice.paid*100)-Math.round(line.amount*100))/100;
+      }
+      Object.assign(payment,{voided:true,void_reason:body.reason});
+      return payment;
+    }
     const receipt=schoolRoute.match(/^finance\/payments\/([^/]+)\/receipt$/);
     if(receipt){
-      const payment=financeOverview(id,yr).today.payments.find(row=>row.id===receipt[1]);
+      const payment=payments.find(row=>row.school===id&&row.id===receipt[1])||
+        financeOverview(id,yr).today.payments.find(row=>row.id===receipt[1]);
       if(!payment)throw Error("Reçu fictif introuvable.");
       return {filename:"recu-demo.pdf",lines:["Reçu de paiement - DEMONSTRATION",
         "Référence "+payment.id,school.name,payment.student+" / "+payment.classroom,
-        payment.amount+" XAF",payment.method+" / "+payment.recorded_at.slice(0,10)]};
+        payment.amount+" XAF",payment.method+" / "+(payment.paid_on||payment.recorded_at.slice(0,10)),
+        payment.voided?"Paiement annulé : "+payment.void_reason:"Paiement fictif enregistré"]};
     }
     const financeStatement=path.match(/^schools\/[^/]+\/finance\/enrollments\/([^/]+)\/statement$/);
     if(financeStatement){
@@ -887,6 +1139,36 @@ export function createOfflineDemoBackend(){
       conduct.push(row);
       return withStudent(row);
     }
+    if(path==="parents/catalog"){
+      return {schools:data.schools.filter(row=>row.active!==false).map(row=>({
+        ...platformSchool(row),city:row.city,description:"Établissement fictif de démonstration",
+        cash_at_school:true,classes:classesFor(row.id,DEMO_CURRENT_YEAR).map(room=>({
+          id:room.id,name:room.name,year:room.year,remaining:room.capacity-pupilsIn(room).length,
+          routes:["direct","concours","orientation"],online_payment_available:false,fee_amount_xaf:2500
+        }))
+      }))};
+    }
+    if(path==="parents/family-children"){
+      if(method==="GET")return {children:[{id:"famille-demo",first_name:"Noémie",last_name:"Exemple"},...familyProfiles]};
+      const child={...body,id:"enfant-demo-"+(familyProfiles.length+1)};
+      familyProfiles.push(child);return child;
+    }
+    if(path==="parents/applications"){
+      const family=()=>admissions.filter(row=>row.source==="parent_mobile");
+      if(method==="GET")return {applications:family().map(row=>({...row,school_name:schoolData(row.school).name,
+        classroom_name:data.classes.find(room=>room.id===row.classroom)?.name}))};
+      const room=data.classes.find(row=>row.id===body.classroom&&row.year===DEMO_CURRENT_YEAR);
+      const child=fixtureFor("parents/family-children",search,"GET",{}).children.find(row=>row.id===body.child);
+      if(!room||!child||family().some(row=>row.classroom===room.id&&row.family_child===child.id))
+        throw Error("Choisissez un enfant et une classe sans candidature déjà déposée.");
+      const application=fixtureFor("schools/"+room.school+"/admissions",search,"POST",{
+        ...body,school:room.school,year:room.year,source:"parent_mobile",family_child:child.id,
+        first_name:child.first_name,last_name:child.last_name,guardian_name:"Parent fictif",
+        payment_choice:"cash",payment_status:"a_regler_sur_place",fee_amount_xaf:2500,is_demo_cash:true
+      });
+      return application;
+    }
+    if(path==="parents/notifications")return {notifications:[]};
     if(path==="parents/children")return {parent_username:"parent-demo",children:data.students.filter(s=>["s1","s4","s7"].includes(s.id)).map(s=>({
       student:s.id,...splitName(s.name),school_name:schoolData(s.school).name,
       matricule_yem:"YEM-"+s.id,student_code:"DEMO-"+s.id}))};
@@ -965,8 +1247,9 @@ export function createOfflineDemoBackend(){
         return {staff:{...newPerson,...splitName(newPerson.name),staff_code:"DEMO-"+newPerson.id},account_created:Boolean(body.account),appointments:body.appointments||[]};
       }
       return {school_name:school.name,can_create_account:can(id,"school.members.write"),can_appoint:can(id,"school.organization.manage"),can_manage_cycle_access:role==="proprietaire",
-        education_cycles:[school.type],academic_cycles:[{id:"cycle-demo",code:"college",name:school.type}],
-        actor_access_cycle_ids:null,existing_accounts:[],roles,positions,years:years(),
+        education_cycles:platformSchool(school).education_cycles,academic_cycles:schoolCycles(),
+        actor_access_cycle_ids:null,existing_accounts:members().filter(row=>row.role_code!=="proprietaire"),
+        roles,positions,years:years(),
         classes:classOverview(id,yr).classes};
     }
     if(path.includes("/onboarding")||path.includes("/staff/setup"))return {staff:[],roles:[],functions:[],appointments:[],years:years(),classes:[]};
@@ -982,13 +1265,30 @@ export function createOfflineDemoBackend(){
     const method=(options?.method||"GET").toUpperCase();
     if(!parsed.pathname.startsWith("/api/v1/"))return response({error:"Démonstration hors ligne : accès réseau bloqué."},403);
     const path=parsed.pathname.slice("/api/v1/".length).replace(/\/$/,"");
-    let body={};try{if(options.body)body=JSON.parse(options.body)}catch{}
+    const form=options.body instanceof FormData?options.body:null;
+    let body={};try{if(options.body&&!form)body=JSON.parse(options.body)}catch{}
     try{
+      const importRoute=path.match(/^schools\/([^/]+)\/imports\/students\/(inspect|preview|commit|profiles|export)$/);
+      if(importRoute){
+        const [,school,action]=importRoute;
+        if(!schoolOf(data,school)||!can(school,"school.students.manage"))
+          return response({error:"Import fictif indisponible pour ce profil."},403);
+        if(["inspect","preview","commit"].includes(action)&&!form)throw Error("Fichier fictif requis.");
+        const state=data;
+        const context={get students(){return state.students.filter(row=>row.school===school);},
+          classrooms:data.classes.filter(row=>row.school===school),years:years(),defaultYear:DEMO_CURRENT_YEAR,
+          register:(record,year)=>{
+            if(state!==data)throw Error("La démonstration a été réinitialisée. Recalculez l’aperçu.");
+            return fixtureFor("schools/"+school+"/students/register",new URLSearchParams({year}),"POST",record);
+          }};
+        const result=await handleImport(action,school,form||body,context);
+        return result instanceof Response?result:response(result,result.error?400:200);
+      }
       const result=fixtureFor(path,parsed.searchParams,method,body);
       return response(structuredClone(result),result.error?400:200);
     }
     catch(error){return response({error:"Données de présentation indisponibles : "+error.message},400)}
   }
-  function reset(){data=createDemoState();organizations=initialOrganizations();audit=[];platformAccess=null;assessments={};grades={};reports={};closings=[];payments=[];batches=new Map();sessions=[];calendar=[];councils=[];admissions=[];mobilePayments=[];schedules=[];timetable=[];assignments=[];forms={};conduct=initialConduct();}
+  function reset(){data=createDemoState();handleImport=createDemoImports();organizations=initialOrganizations();audit=[];platformAccess=null;assessments={};grades={};reports={};closings=[];payments=[];batches=new Map();sessions=[];calendar=[];councils=[];admissions=[];mobilePayments=[];schedules=[];timetable=[];assignments=[];forms={};delegations=[];enabledFunctions={};cycleScopes={};amendments={};admissionPolicies={};settings=[];appointments=[];gatewaySettings={};admissionFees=[];demoPaymentSettings={};familyProfiles=[];conduct=initialConduct();}
   return {fetch,reset,setRole:next=>{role=next;}};
 }

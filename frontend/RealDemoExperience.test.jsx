@@ -200,3 +200,54 @@ test("le calendrier affiche les événements et le bilan annuel dans les composa
   expect(screen.queryByText(/Cette rubrique de démonstration ne peut pas s'afficher/)).toBeNull();
   expect(network).not.toHaveBeenCalled();
 });
+
+test("le propriétaire peut modifier et relire le périmètre d’un compte fictif",async()=>{
+  const network=vi.fn(()=>{throw Error("Réseau interdit");});
+  vi.stubGlobal("fetch",network);
+  const user=userEvent.setup();
+  render(<RealDemoExperience/>);
+  await chooseRole(user,"proprietaire");
+  const nav=await screen.findByRole("navigation",{name:"Navigation principale"});
+  await user.click(await within(nav).findByRole("button",{name:"Paramètres"}));
+  await user.click(screen.getByRole("button",{name:"Droits généraux"}));
+  await user.click(await screen.findByRole("button",{name:"Accès par cycle"}));
+  const section=await screen.findByRole("region",{name:"Modifier les cycles d'accès du personnel"});
+  const account=within(section).getByLabelText("Compte existant");
+  await user.selectOptions(account,"p1");
+  await user.click(within(section).getByRole("radio",{name:"Limiter aux cycles suivants"}));
+  await user.click(within(section).getByRole("checkbox",{name:"Collège"}));
+  await user.type(within(section).getByLabelText(/Motif obligatoire/),"Affectation au collège");
+  await user.click(within(section).getByRole("button",{name:"Enregistrer les cycles autorisés"}));
+  expect(await within(section).findByText(/Restrictions enregistrées/)).toBeTruthy();
+  expect(network).not.toHaveBeenCalled();
+});
+
+test("l’écran réel d’import CSV affiche l’aperçu avant de créer le dossier fictif",async()=>{
+  const network=vi.fn(()=>{throw Error("Réseau interdit");});
+  vi.stubGlobal("fetch",network);
+  const user=userEvent.setup();
+  render(<RealDemoExperience/>);
+  const nav=await screen.findByRole("navigation",{name:"Navigation principale"});
+  await user.click(await within(nav).findByRole("button",{name:"Élèves"}));
+  await user.click(await screen.findByRole("button",{name:"Importer Excel"}));
+  const csv="Nom;Prénoms;Classe\nExemple;Camille;6e A";
+  const file=new File([csv],"classe-fictive.csv",{type:"text/csv"});
+  file.text=async()=>csv;
+  await user.upload(await screen.findByLabelText(/Fichier de l'établissement/),file);
+  await user.click(await screen.findByRole("button",{name:"Vérifier les données avant import"}));
+  expect(await screen.findByText(/1 ligne\(s\) valides, 0 erreur/)).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"Confirmer l'import des 1 élèves"}));
+  expect(await screen.findByText(/1 dossier\(s\) créé\(s\) avec succès/)).toBeTruthy();
+  expect(network).not.toHaveBeenCalled();
+});
+
+test("les réglages de notation sont consultables sans page blanche",async()=>{
+  const user=userEvent.setup();
+  render(<RealDemoExperience/>);
+  const nav=await screen.findByRole("navigation",{name:"Navigation principale"});
+  await user.click(await within(nav).findByRole("button",{name:"Paramètres"}));
+  await user.click(screen.getByRole("button",{name:"Classes de l’établissement"}));
+  await user.click(await screen.findByRole("button",{name:"Barèmes et bulletins"}));
+  expect((await screen.findByRole("textbox",{name:"Nom du barème"})).value).toBe("Notation sur 20");
+  expect(screen.queryByText(/Cette rubrique de démonstration ne peut pas s'afficher/)).toBeNull();
+});
