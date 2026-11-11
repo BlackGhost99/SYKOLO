@@ -35,6 +35,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const [feeAmount, setFeeAmount] = useState("");
   const [currency, setCurrency] = useState("XAF");
   const [dueDate, setDueDate] = useState("");
+  const [dateEdit, setDateEdit] = useState(null);
   const [selectedStudent, setSelectedStudent] = useState("");
   const [selectedSchedule, setSelectedSchedule] = useState("");
   const [selectedCharge, setSelectedCharge] = useState("");
@@ -134,6 +135,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
     <h2>{settings ? "Tarifs et échéances" : "Frais scolaires et caisse"}</h2>
     {canManage && mode !== "daily" && <>
     <h3>Configurer les frais d'une année</h3>
+    <p className="hint">Créez un tarif par tranche, avec son montant et sa propre date d’échéance. Les familles reçoivent un rappel dans YEM le jour où le solde devient exigible.</p>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       await financeApi(finance+"schedules",{
         year:selectedYear, classroom:selectedClass||null, code:feeCode, label:feeLabel,
@@ -177,9 +179,43 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
     {settings ? <div>
       <h3>Tarifs enregistrés</h3>
       {schedules.length === 0 && <p>Aucun tarif configuré.</p>}
-      {schedules.map(item => <p key={item.id}><strong>{item.label}</strong> · {item.amount} {item.currency} · {
-        years.find(year => year.id === item.year)?.name
-      } · {classes.find(room => room.id === item.classroom)?.name || "Toutes les classes"}</p>)}
+      {schedules.map(item => <div key={item.id}>
+        <p><strong>{item.label}</strong> · {item.amount} {item.currency} · {
+          years.find(year => year.id === item.year)?.name || "Année archivée"
+        } · {item.classroom ? classes.find(room => room.id === item.classroom)?.name || "Classe archivée" : "Toutes les classes"} · {
+          item.due_date ? "Échéance le " + item.due_date.split("-").reverse().join("/") : "Sans échéance"
+        }</p>
+        {canManage && (dateEdit?.id === item.id ? <form onSubmit={event => {
+          event.preventDefault();
+          run(async () => {
+            const updated = await financeApi(finance+"schedules/"+item.id, {
+              due_date:dateEdit.date || null, revision:dateEdit.revision,
+              reschedule_open_charges:dateEdit.applyToUnpaid,
+            }, "PATCH");
+            setDateEdit(null);
+            setMessage(updated.rescheduled_charges
+              ? `Échéance enregistrée pour ${updated.rescheduled_charges} frais en attente.`
+              : "Échéance du tarif enregistrée.");
+          });
+        }}>
+          <label className="field">Nouvelle date d’échéance
+            <input type="date" value={dateEdit.date} disabled={busy}
+              onChange={event => setDateEdit({...dateEdit,date:event.target.value})}/>
+          </label>
+          <label>
+            <input type="checkbox" checked={dateEdit.applyToUnpaid} disabled={busy}
+              onChange={event => setDateEdit({...dateEdit,applyToUnpaid:event.target.checked})}/>
+            Appliquer aussi aux frais déjà affectés dont le solde reste à payer
+          </label>
+          <div className="actions">
+            <button type="submit" disabled={busy}>Enregistrer l’échéance</button>
+            <button type="button" disabled={busy} onClick={() => setDateEdit(null)}>Annuler</button>
+          </div>
+        </form> : <button type="button" disabled={busy}
+          onClick={() => setDateEdit({id:item.id,revision:item.revision,date:item.due_date || "",applyToUnpaid:true})}>
+          Modifier l’échéance
+        </button>)}
+      </div>)}
     </div> : <>
     <h3>Consulter les frais d’un élève</h3>
     <label className="field">Inscription de l'élève

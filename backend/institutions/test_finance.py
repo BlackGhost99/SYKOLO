@@ -89,6 +89,29 @@ class FinanceLedgerTests(TestCase):
             "idempotency_key": idem or str(uuid.uuid4()),
         })
 
+    def test_reschedule_applies_to_unpaid_tranches_without_rewriting_settled_charges(self):
+        unpaid = self.schedule(code="tranche-1")
+        settled = self.schedule(code="tranche-2")
+        unpaid_charge = self.charge(unpaid)
+        settled_charge = self.charge(settled)
+        self.assertEqual(self.pay(unpaid_charge, "20000").status_code, 201)
+        self.assertEqual(self.pay(settled_charge, "120000").status_code, 201)
+        for schedule, expected in ((unpaid, 1), (settled, 0)):
+            result = self.post("schedules/" + schedule["id"], {
+                "due_date": "2026-12-15", "revision": schedule["revision"],
+                "reschedule_open_charges": True,
+            }, method="patch")
+            self.assertEqual(result.status_code, 200, result.content.decode())
+            self.assertEqual(result.json()["rescheduled_charges"], expected)
+        self.assertEqual(self.client.get(self.base + "charges/" + unpaid_charge["id"]).json()["due_date"], "2026-12-15")
+        self.assertEqual(self.client.get(self.base + "charges/" + settled_charge["id"]).json()["due_date"], "2026-10-15")
+        self.login(self.accountant)
+        result = self.post("schedules/" + unpaid["id"], {
+            "due_date": "2026-12-16", "revision": unpaid["revision"] + 1,
+            "reschedule_open_charges": True,
+        }, method="patch")
+        self.assertEqual(result.status_code, 403)
+
     def test_payment_lifecycle_partial_receipt_void_and_balance(self):
         schedule = self.schedule()
         charge = self.charge(schedule)

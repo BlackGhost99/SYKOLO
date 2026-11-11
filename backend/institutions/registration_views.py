@@ -71,8 +71,9 @@ def apply_fees(school, enrollment, user):
     award = scholarship_for_enrollment(enrollment)
     if award and award.coverage == "all":
         return 0  # Budget pris en charge : aucune dette parent, aucun encaissement simulé.
-    schedules = FeeSchedule.objects.filter(school=school, year_id=enrollment.year_id, active=True).filter(
-        Q(classroom__isnull=True) | Q(classroom_id=enrollment.classroom_id))
+    schedules = FeeSchedule.objects.select_for_update(no_key=True).filter(
+        school=school, year_id=enrollment.year_id, active=True,
+    ).filter(Q(classroom__isnull=True) | Q(classroom_id=enrollment.classroom_id)).order_by("pk")
     existing = set(FeeCharge.objects.filter(school=school, enrollment=enrollment).values_list("schedule_id", flat=True))
     created = 0
     for s in schedules:

@@ -219,6 +219,20 @@ def schedules(request, school_id):
     return JsonResponse(schedule_data(row), status=201)
 
 
+def reschedule_open_charges(schedule):
+    charges = list(FeeCharge.objects.select_for_update(of=("self",)).filter(
+        schedule=schedule, school_id=schedule.school_id, enrollment__active=True,
+    ).exclude(due_date=schedule.due_date).order_by("pk").only("pk", "amount"))
+    paid = dict(FeePayment.objects.filter(
+        school_id=schedule.school_id, charge_id__in=[charge.pk for charge in charges],
+        void__isnull=True,
+    ).values("charge_id").annotate(total=Sum("amount")).values_list("charge_id", "total"))
+    open_ids = [charge.pk for charge in charges if paid.get(charge.pk, 0) < charge.amount]
+    return FeeCharge.objects.filter(school_id=schedule.school_id, pk__in=open_ids).update(
+        due_date=schedule.due_date,
+    )
+
+
 @require_http_methods(["GET", "PATCH"])
 @authorized
 def schedule_detail(request, school_id, schedule_id):
@@ -231,13 +245,16 @@ def schedule_detail(request, school_id, schedule_id):
     data, error = parse_body(request)
     if error is not None:
         return error
+    reschedule = data.pop("reschedule_open_charges", False)
+    if type(reschedule) is not bool or (reschedule and "due_date" not in data):
+        return JsonResponse({"error": "Indiquez la date à appliquer aux frais en attente."}, status=422)
     try:
         changes = schedule_fields(data, updating=True)
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
-            row = FeeSchedule.objects.select_for_update().filter(school=school, pk=schedule_id).first()
+            row = FeeSchedule.objects.select_for_update(no_key=True).filter(school=school, pk=schedule_id).first()
             if row is None:
                 return JsonResponse({"error": "Frais introuvable."}, status=404)
             if row.revision != data["revision"]:
@@ -247,12 +264,14 @@ def schedule_detail(request, school_id, schedule_id):
             row.full_clean()
             row.revision += 1
             row.save()
-            log_event(school, request, "fee_schedule_updated", row.pk)
+            updated = reschedule_open_charges(row) if reschedule else 0
+            log_event(school, request, "fee_schedule_updated", row.pk,
+                      {"rescheduled_charges": updated})
     except ValidationError as exc:
         return model_error(exc)
     except IntegrityError:
         return JsonResponse({"error": "Tarif déjà existant."}, status=409)
-    return JsonResponse(schedule_data(row))
+    return JsonResponse({**schedule_data(row), "rescheduled_charges": updated})
 
 
 @require_http_methods(["GET", "POST"])
@@ -281,7 +300,9 @@ def charges(request, school_id):
             ).first()
             if enrollment is None:
                 return JsonResponse({"error": "Inscription introuvable."}, status=404)
-            schedule = FeeSchedule.objects.filter(school=school, pk=uid(data["schedule"]), active=True).first()
+            schedule = FeeSchedule.objects.select_for_update(no_key=True).filter(
+                school=school, pk=uid(data["schedule"]), active=True,
+            ).first()
             if schedule is None:
                 return JsonResponse({"error": "Tarif introuvable."}, status=404)
             row = FeeCharge(
