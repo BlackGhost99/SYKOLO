@@ -254,6 +254,9 @@ def schedule_detail(request, school_id, schedule_id):
         return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
+            if reschedule:
+                # Cash operations also lock the school before locking charges.
+                School.objects.select_for_update(no_key=True).get(pk=school.pk)
             row = FeeSchedule.objects.select_for_update(no_key=True).filter(school=school, pk=schedule_id).first()
             if row is None:
                 return JsonResponse({"error": "Frais introuvable."}, status=404)
