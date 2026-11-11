@@ -34,7 +34,8 @@ Un directeur, un comptable, un enseignant, un utilisateur portant uniquement le 
 
 ## Navigation
 
-- Connexion en tant que propriétaire → **Tableau de bord** directement enrichi.
+- Connexion avec le rôle propriétaire sans lecture financière → **Tableau de bord** directement enrichi.
+- Propriétaire également directeur ou doté de `school.finance.read` → conserve le tableau de bord de direction ; le menu **Pilotage propriétaire** lui permet d'accéder à la synthèse sans remplacer la vue opérationnelle.
 - Nouveau menu réservé au propriétaire : **Pilotage propriétaire**, avec six onglets.
 - Le module « Comptes et droits » continue à fonctionner pour les titulaires autorisés.
 
