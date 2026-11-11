@@ -2,7 +2,7 @@ import React, {useEffect, useState} from "react";
 import {AdmissionPolicyEditor,AdmissionProofPanel,ROUTES} from "./AdmissionRoutesPanel.jsx";
 import {SchoolCatalogSettings} from "./ParentDiscovery.jsx";
 import SchoolPaymentSetup from "./SchoolPaymentSetup.jsx";
-import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
+import AdmissionCashDesk, {librevilleToday} from "./AdmissionCashDesk.jsx";
 import {FinancePolicyEditor,GovernmentScholarshipPanel} from "./AdmissionFinance.jsx";
 import {useSchoolData} from "./SchoolSettings.jsx";
 
@@ -61,6 +61,7 @@ export function AdmissionPaymentSettings({schoolId}) {
 export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canEnroll=true,canReceive=false,canApproveScholarship=false}){
   const root="schools/"+schoolId+"/";
   const base=root+"admissions";
+  const [formError,setFormError]=useState("");
   const [years,setYears]=useState([]),[classes,setClasses]=useState([]),
     [students,setStudents]=useState([]),[applications,setApplications]=useState([]);
   const [year,setYear]=useState(""),[classroom,setClassroom]=useState(""),
@@ -76,21 +77,25 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
     [history,setHistory]=useState(null),[busy,setBusy]=useState(false),
     [message,setMessage]=useState(""),[loadError,setLoadError]=useState("");
   async function refresh(){
-    const [applications]=await Promise.all([admissionApi(base)]);
-    setApplications(applications.applications||[]);
+    const result=await admissionApi(base);
+    setApplications(result.applications||[]);
   }
   useEffect(()=>{
     let active=true;
+    admissionApi(base).then(result=>{
+      if(active)setApplications(result.applications||[]);
+    }).catch(error=>{if(active)setLoadError(error.message);});
     Promise.all([
       admissionApi(root+"academic/years"),admissionApi(root+"academic/classes"),
-      admissionApi(root+"students"),admissionApi(base)
-    ]).then(([ys,cs,ss,apps])=>{
+    ]).then(([ys,cs])=>{
       if(!active)return;
       setYears(ys.years||[]);setClasses(cs.classes||[]);
-      setStudents(ss.students||[]);setApplications(apps.applications||[]);
-    }).catch(error=>{if(active)setLoadError(error.message);});
+    }).catch(error=>{if(active && canCreate)setFormError(error.message);});
+    if(canCreate) admissionApi(root+"students").then(result=>{
+      if(active)setStudents(result.students||[]);
+    }).catch(()=>{if(active)setStudents([]);});
     return()=>{active=false};
-  },[schoolId]);
+  },[schoolId,canCreate]);
   useEffect(()=>{
     let active=true;setCapacity(null);
     if(classroom)admissionApi(base+"/capacity/"+classroom).then(x=>{if(active)setCapacity(x)})
@@ -118,9 +123,10 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
   const availableClasses=classes.filter(x=>x.active&&x.year===year);
   return <section className="card" style={{marginTop:"1rem"}} aria-label="Admissions et préinscriptions">
     <h2>Admissions et préinscriptions</h2>
-    <p className="hint">Consultez les demandes reçues ou enregistrez un dossier au secrétariat.</p>
+    <p className="hint">La direction statue sur la candidature. La caisse confirme les espèces reçues. Le secrétariat ou la direction finalise ensuite l’inscription si le dossier est admis et que les frais obligatoires sont réglés ou couverts.</p>
     {canCreate && <details>
     <summary>Nouvelle candidature</summary>
+    {formError && <p role="alert">{formError}</p>}
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       const application=await admissionApi(base,{
         year,classroom,first_name:first,last_name:last,
@@ -130,7 +136,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
         route,origin_school:origin,route_reference:route==="direct"?"":routeReference,
         orientation_authority:route==="orientation"?orientationAuthority:""
       });
-      setChosen(application.id);setFirst("");setLast("");setBirth("");setGuardian("");
+      setChosen(application.id);setEnrollDate(librevilleToday());setFirst("");setLast("");setBirth("");setGuardian("");
       setPhone("");setEmail("");setRelation("");setExisting("");
       setRouteReference("");setOrientationAuthority("");setOrigin("");
       setMessage("Candidature enregistrée. Aucun dossier élève officiel n'a encore été créé.");
@@ -197,10 +203,12 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
       </p>}
       <button disabled={busy||!year||!classroom} type="submit">Déposer la candidature</button>
     </form></details>}
-    <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive}/>
     <h3>Traitement des candidatures</h3>
+    <button type="button" disabled={busy} onClick={()=>run(()=>{
+      setMessage("Candidatures actualisées.");
+    })}>Actualiser les candidatures</button>
     <label className="field">Candidature
-      <select value={chosen} onChange={e=>{setChosen(e.target.value);setReason("");setHistory(null);}}>
+      <select value={chosen} onChange={e=>{setChosen(e.target.value);setReason("");setHistory(null);setEnrollDate(librevilleToday());}}>
         <option value="">Choisir un dossier…</option>
         {applications.map(x=><option key={x.id} value={x.id}>{x.last_name} {x.first_name} · {STATES[x.status]||x.status}</option>)}
       </select>
@@ -213,13 +221,19 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
       <p className="hint">Responsable : {current.guardian_name} · Dépôt : {new Date(current.submitted_at).toLocaleDateString("fr-FR")}.
         {current.decision_reason?" Décision : "+current.decision_reason:""}
       </p>
+      {current.source==="parent_mobile" && <AdmissionCashDesk key={current.id} schoolId={schoolId}
+        applicationId={current.id} canReceive={canReceive} onUpdated={refresh}/>}
+      {current.status!=="enrolled"&&current.status!=="rejected"&&current.finance?.blocker&&
+        <p role="status">Avant l’inscription définitive. {current.finance.blocker}</p>}
+      {(current.status==="submitted"||current.status==="review")&&!canDecide&&
+        <p>Décision d’admission attendue de la direction.</p>}
       <AdmissionProofPanel key={current.id} api={admissionApi} base={base}
         application={current} canDecide={canDecide} onUpdated={refresh}/>
       <GovernmentScholarshipPanel schoolId={schoolId} application={current}
         canApprove={canApproveScholarship} onUpdated={refresh}/>
       {(current.status==="submitted"||current.status==="review")&&canDecide&&<form onSubmit={e=>e.preventDefault()}>
-        <label className="field">Motif de la décision
-          <textarea maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/>
+        <label className="field">Motif de la décision (requis pour accepter ou refuser)
+          <textarea placeholder="Ex. dossier complet et place disponible" maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/>
         </label>
         {current.status==="submitted"&&<button disabled={busy} type="button" onClick={()=>run(async()=>{
           await admissionApi(base+"/"+current.id+"/decide",{revision:current.revision,status:"review",reason});
@@ -234,8 +248,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
           setReason("");
         })}>Refuser la candidature (direction)</button>
       </form>}
-      {current.status==="accepted"&&canEnroll&&current.finance?.blocker&&
-        <p role="status">Inscription bloquée : {current.finance.blocker}</p>}
+      {current.status==="accepted"&&!canEnroll&&<p>Le secrétariat ou la direction peut finaliser l’inscription.</p>}
       {current.status==="accepted"&&canEnroll&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
         await admissionApi(base+"/"+current.id+"/convert",{
           revision:current.revision,enrolled_on:enrollDate
@@ -248,7 +261,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
             <input type="date" required value={enrollDate} onChange={e=>setEnrollDate(e.target.value)}/>
           </label>
         </div>
-        <button disabled={busy||!enrollDate||Boolean(current.finance?.blocker)} type="submit">Transformer en inscription officielle</button>
+        <button disabled={busy||!enrollDate||Boolean(current.finance?.blocker)} type="submit">Confirmer l’inscription définitive</button>
       </form>}
       {current.status==="enrolled"&&<p>Inscription confirmée</p>}
       <button type="button" disabled={busy} onClick={()=>run(async()=>{

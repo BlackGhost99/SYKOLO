@@ -251,6 +251,13 @@ class DualPilotAdmissionTests(TestCase):
             f"/api/v1/parents/applications/{link.pk}/cash-receipt"
         ).status_code,404)
         self.login(self.proviseur)
+        queue = f"/api/v1/schools/{self.school.pk}/admission-cash"
+        filtered = self.client.get(queue, {"application": str(link.application_id)})
+        self.assertEqual(filtered.status_code, 200)
+        self.assertFalse(filtered.json()["can_receive"])
+        self.assertEqual([row["request"] for row in filtered.json()["payments"]], [str(link.pk)])
+        self.assertEqual(self.client.get(queue, {"application": str(link.pk)}).json()["payments"], [])
+        self.assertEqual(self.client.get(queue, {"application": "invalid"}).status_code, 422)
         self.assertEqual(self.post(cash_path+"/confirm",{
             "reference":"FAUX-PROVISEUR","received_on":"2026-11-10",
             "received_cash":True,"acknowledge_demo":False,

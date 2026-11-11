@@ -13,21 +13,28 @@ async function cashApi(path,body){
   return json;
 }
 
-export default function AdmissionCashDesk({schoolId,canReceive=false}){
+export function librevilleToday(){
+  return new Intl.DateTimeFormat("sv-SE",{
+    timeZone:"Africa/Libreville",year:"numeric",month:"2-digit",day:"2-digit",
+  }).format(new Date());
+}
+
+export default function AdmissionCashDesk({schoolId,canReceive=false,applicationId,onUpdated}){
   const base="schools/"+schoolId+"/admission-cash";
-  const [items,setItems]=useState([]);
+  const queue=applicationId ? base+"?application="+encodeURIComponent(applicationId) : base;
+  const [items,setItems]=useState(null);
   const [reference,setReference]=useState({});
   const [acknowledged,setAcknowledged]=useState({});
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
   useEffect(()=>{
     let live=true;
-    cashApi(base).then(data=>{if(live)setItems(data.payments||[]);})
+    cashApi(queue).then(data=>{if(live)setItems(data.payments||[]);})
       .catch(e=>{if(live)setMessage(e.message);});
     return()=>{live=false;};
-  },[base]);
+  },[queue]);
   async function refresh(){
-    const data=await cashApi(base);
+    const data=await cashApi(queue);
     setItems(data.payments||[]);
   }
   async function confirm(row){
@@ -38,17 +45,22 @@ export default function AdmissionCashDesk({schoolId,canReceive=false}){
       );
       const ref=(reference[row.request]||"").trim();
       if(ref.length<3)throw Error("Indiquez une référence de caisse (au moins 3 caractères).");
-      await cashApi(base+"/"+row.request+"/confirm",{
+      const receipt=await cashApi(base+"/"+row.request+"/confirm",{
         reference:ref,
-        received_on:new Intl.DateTimeFormat("sv-SE",{timeZone:"Africa/Libreville",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()),
+        received_on:librevilleToday(),
         received_cash:!row.is_demo,
         acknowledge_demo:row.is_demo,
       });
       setAcknowledged(v=>({...v,[row.request]:false}));
-      await refresh();
+      setItems(current=>current.map(item=>item.request===row.request ? {
+        ...item,payment_status:receipt.status,
+        receipt_url:"/api/v1/"+base+"/"+row.request+"/receipt",
+      } : item));
       setMessage(row.is_demo?
         "Simulation validée par le caissier : aucun argent encaissé. Notification et document accessibles au parent.":
         "Espèces reçues et enregistrées. Notification et reçu PDF accessibles au parent.");
+      try { await onUpdated?.(); }
+      catch(e) { setMessage("Paiement enregistré. Actualisez la candidature pour mettre à jour son état. "+e.message); }
     }catch(e){setMessage(e.message)}finally{setBusy(false)}
   }
   return <section className="yp-settings" aria-label="Caisse des candidatures en espèces" style={{marginTop:22}}>
@@ -61,8 +73,9 @@ export default function AdmissionCashDesk({schoolId,canReceive=false}){
         .catch(e=>setMessage(e.message)).finally(()=>setBusy(false));}}>
       Actualiser la caisse des admissions
     </button>
-    {items.length===0&&<p>Aucune candidature avec règlement en espèces.</p>}
-    {items.map(row=><article key={row.request} style={{borderTop:"1px solid #ddd",padding:"12px 0"}}>
+    {!items&&!message&&<p role="status">Chargement des paiements en espèces…</p>}
+    {items?.length===0&&<p>{applicationId ? "Cette candidature ne prévoit pas de règlement en espèces." : "Aucune candidature avec règlement en espèces."}</p>}
+    {items?.map(row=><article key={row.request} style={{borderTop:"1px solid #ddd",padding:"12px 0"}}>
       <strong>{row.child}</strong> · {row.classroom} · {row.year}
       <p>Parent : {row.parent} · Dossier : {row.admission_status}</p>
       <p>Montant : {row.amount_xaf?Number(row.amount_xaf).toLocaleString("fr-FR")+" FCFA":"Tarif non configuré"}
@@ -76,7 +89,7 @@ export default function AdmissionCashDesk({schoolId,canReceive=false}){
       {row.receipt_url&&<a href={row.receipt_url} target="_blank" rel="noreferrer">
         {row.is_demo?"Document de simulation PDF":"Reçu de caisse PDF"}
       </a>}
-      {canReceive&&row.payment_status==="a_regler_sur_place"&&row.amount_xaf&&<>
+      {canReceive&&row.admission_status!=="rejected"&&row.payment_status==="a_regler_sur_place"&&Boolean(row.amount_xaf)&&<>
         <label className="yp-field">Référence de caisse
           <input maxLength={100} value={reference[row.request]||""}
             onChange={e=>setReference(v=>({...v,[row.request]:e.target.value}))}
@@ -89,7 +102,7 @@ export default function AdmissionCashDesk({schoolId,canReceive=false}){
             " Je confirme que cette opération est un TEST : aucun argent reçu.":
             " Je confirme avoir physiquement reçu les espèces indiquées."}
         </label>
-        <button className="yp-button yp-primary" type="button" disabled={busy||!acknowledged[row.request]}
+        <button className="yp-button yp-primary" type="button" disabled={busy||!acknowledged[row.request]||(reference[row.request]||"").trim().length<3}
           onClick={()=>confirm(row)}>
           {row.is_demo?"Valider la simulation sans encaissement":"Confirmer les espèces reçues"}
         </button>

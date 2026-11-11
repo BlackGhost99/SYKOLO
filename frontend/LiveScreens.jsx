@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import CashClosingPanel from "./CashClosingPanel.jsx";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
 import SingPayControl from "./SingPayControl.jsx";
-import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Toggle, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
+import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
 
 /* Écrans réels branchés sur l'API, avec la présentation des maquettes (docs/maquettes). */
 
@@ -150,13 +150,15 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
-  const roster = useData(`schools/${schoolId}/overview/students`);
+  const roster = useData(`schools/${schoolId}/overview/students?year=${encodeURIComponent(viewYear)}`);
   const [enrollment, setEnrollment] = useState(params?.enrollment || "");
   const [charges, setCharges] = useState([]);
   const [picked, setPicked] = useState({});
   const [method, setMethod] = useState("especes");
-  const [partial, setPartial] = useState(false);
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(null);
+  const [chargeVersion, setChargeVersion] = useState(0);
+  const [loadedEnrollment, setLoadedEnrollment] = useState("");
+  const [chargeError, setChargeError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [pendingOperation, setPendingOperation] = useState(null);
@@ -164,18 +166,30 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   const enrolled = (roster.data?.students || []).filter(s => s.active && s.enrollment);
   const student = enrolled.find(s => s.enrollment.id === enrollment);
   useEffect(() => {
-    if (!enrollment) { setCharges([]); return; }
+    if (!enrollment || !canReceive) return;
     let live = true;
-    api(`schools/${schoolId}/finance/charges?enrollment=${enrollment}`).then(r => { if (!live) return; const open = r.charges.filter(c => Number(c.balance) > 0); setCharges(open); setPicked(open.length ? { [open[0].id]: true } : {}); }).catch(e => live && setMessage(e.message));
+    setLoadedEnrollment("");
+    setChargeError("");
+    api(`schools/${schoolId}/finance/charges?enrollment=${enrollment}`).then(r => {
+      if (!live) return;
+      const open = r.charges.filter(c => Number(c.balance) > 0);
+      setCharges(open);
+      setPicked(open.length ? { [open[0].id]: true } : {});
+      setLoadedEnrollment(enrollment);
+    }).catch(e => { if (live) setChargeError(e.message); });
     return () => { live = false; };
-  }, [schoolId, enrollment, fin.data]);
-  const selected = charges.filter(c => picked[c.id]);
-  const due = selected.reduce((a, c) => a + Number(c.balance), 0);
-  const entered = partial ? Number(String(amount).replace(/\s/g, "").replace(",", ".")) || 0 : due;
-  const currency = charges.find(c => picked[c.id])?.currency || fin.data?.currency;
-  const remaining = charges.filter(c => c.currency === currency).reduce((a, c) => a + Number(c.balance), 0) - entered;
+  }, [schoolId, enrollment, canReceive, chargeVersion]);
+  const openCharges = loadedEnrollment === enrollment ? charges : [];
+  const selected = openCharges.filter(c => picked[c.id]);
+  const dueCents = selected.reduce((total, charge) => total + Math.round(Number(charge.balance) * 100), 0);
+  const defaultAmount = new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(dueCents / 100).replace(/ | /g, " ");
+  const typedAmount = String(amount ?? defaultAmount).replace(/\s/g, "").replace(",", ".");
+  const enteredCents = /^\d+(?:\.\d{1,2})?$/.test(typedAmount) ? Math.round(Number(typedAmount) * 100) : 0;
+  const validAmount = Number.isSafeInteger(enteredCents) && enteredCents > 0 && enteredCents <= dueCents;
+  const currency = selected[0]?.currency || fin.data?.currency;
+  const remaining = openCharges.filter(c => c.currency === currency).reduce((a, c) => a + Number(c.balance), 0) - (validAmount ? enteredCents / 100 : 0);
   async function submit() {
-    if (!enrollment || !selected.length || !Number.isFinite(entered) || entered <= 0 || entered > due + 0.001) {
+    if (!enrollment || !selected.length || !validAmount) {
       setMessage("Montant invalide : choisissez les frais et un montant positif qui ne dépasse pas le solde."); return;
     }
     if (new Set(selected.map(c => c.currency)).size !== 1) {
@@ -184,7 +198,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
     setBusy(true); setMessage(""); setReceiptUrl("");
     try {
       // Allocate integer cents, never floating-point payment fragments.
-      let left = Math.round(entered * 100);
+      let left = enteredCents;
       const lines = selected.map(c => {
         const part = Math.min(left, Math.round(Number(c.balance) * 100));
         left -= part;
@@ -200,7 +214,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
       setPendingOperation(null);
       setReceiptUrl(batch.receipt_url);
       setMessage(`Encaissement de ${fmtMoney(batch.total, batch.currency)} enregistré sous la référence ${batch.id.slice(0, 8).toUpperCase()}.`);
-      setAmount(""); setPartial(false); fin.reload();
+      setAmount(null); setLoadedEnrollment(""); setChargeVersion(version => version + 1); fin.reload();
     } catch (e) {
       // Keep the same key on retry after an uncertain connection result.
       setMessage(e.message);
@@ -213,10 +227,10 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   const share = v => total ? `${(v / total * 100).toFixed(1).replace(".", ",")} %` : "0,0 %";
   const donutRows = METHODS.map(([k, l]) => [l, Number(byMethod[k] || 0)]);
   return <>
-    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
+    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);setEnrollment("");setAmount(null);setMessage("");onWorkingYearChange?.(value)}}/>
     <PageHeader title="Encaissements et caisse journalière" subtitle="Suivi des paiements, reçus et méthodes d’encaissement" badge="Économe" badgeIcon="coins" actions={advancedSettings}/>
     {tabs}
-    <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive}/>
+    <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive} onUpdated={fin.reload}/>
     <Loading state={fin}>{d && <>
       <div className="yd-metrics four">
         <Metric icon="coins" label="Encaissé aujourd’hui" value={fmtMoney(d.today.total, d.currency)} trend={total >= Number(d.yesterday.total) ? "up" : "down"} trendValue={pct(d.today.total, d.yesterday.total) || ""} trendLabel={`vs. hier (${fmtMoney(d.yesterday.total, d.currency)})`}/>
@@ -225,22 +239,38 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
         <Metric icon="mobile" label="Mobile money" value={fmtMoney(mobile, d.currency)} trend="none" trendValue={share(mobile)} trendLabel="du total"/>
       </div>
       <div className="yd-grid payments-grid">
-        <Card title="Nouvel encaissement" icon="card" className="payment-form">
+        <Card title="Nouvel encaissement" subtitle="Frais scolaires d’un élève déjà inscrit" icon="card" className="payment-form">
           {!canReceive ? <Empty>Votre rôle ne permet pas d’enregistrer des encaissements.</Empty> : <>
             <label className="yd-label" htmlFor="pay-student">Élève <i>*</i></label>
-            <div className="yd-input"><Icon name="user" size={20}/><select id="pay-student" value={enrollment} onChange={e => { setEnrollment(e.target.value); setMessage(""); }}><option value="">Choisir un élève…</option>{enrolled.map(s => <option key={s.enrollment.id} value={s.enrollment.id}>{s.last_name} {s.first_name} — {s.enrollment.classroom.name}</option>)}</select></div>
+            <div className="yd-input"><Icon name="user" size={20}/><select id="pay-student" disabled={busy} value={enrollment} onChange={e => { setEnrollment(e.target.value); setLoadedEnrollment(""); setAmount(null); setChargeError(""); setMessage(""); }}><option value="">Choisir un élève…</option>{enrolled.map(s => <option key={s.enrollment.id} value={s.enrollment.id}>{s.last_name} {s.first_name} — {s.enrollment.classroom.name}</option>)}</select></div>
             <label className="yd-label">Parent <i>*</i></label>
             <div className="yd-input"><Icon name="users" size={20}/><span>{student?.guardian ? `${student.guardian.full_name}${student.guardian.relationship ? ` (${student.guardian.relationship})` : ""}` : "—"}</span>{student?.guardian?.phone && <em><Icon name="phone" size={16}/>{student.guardian.phone}</em>}</div>
             <label className="yd-label">Impayés sélectionnés <i>*</i></label>
-            <div className="yd-debts">{charges.length === 0 ? <p className="yd-card-sub yd-empty">{enrollment ? "Aucun frais restant dû pour cet élève." : "Choisissez d’abord un élève."}</p> : charges.map(c => <button type="button" key={c.id} className={picked[c.id] ? "active" : ""} onClick={() => setPicked(p => selected.some(row => row.currency !== c.currency) ? {[c.id]:true} : ({ ...p, [c.id]: !p[c.id] }))}><Check on={!!picked[c.id]}/><span>{c.label}{c.due_date ? ` · échéance ${fmtDate(c.due_date)}` : ""}</span><b>{fmtMoney(c.balance, c.currency)}</b></button>)}</div>
+            {roster.error && <p role="alert">Liste des élèves indisponible. {roster.error}</p>}
+            {chargeError && <p role="alert">{chargeError}</p>}
+            <div className="yd-debts">{openCharges.length === 0 ? <Empty>{
+              !enrollment ? "Choisissez d’abord un élève." : chargeError ? "Frais indisponibles." :
+              loadedEnrollment !== enrollment ? "Chargement des frais…" : "Aucun frais restant dû pour cet élève."
+            }</Empty> : openCharges.map(c => <button type="button" key={c.id} disabled={busy} className={picked[c.id] ? "active" : ""} onClick={() => {
+              setAmount(null);
+              setPicked(p => selected.some(row => row.currency !== c.currency) ? {[c.id]:true} : ({ ...p, [c.id]: !p[c.id] }));
+            }}><Check on={!!picked[c.id]}/><span>{c.label}{c.due_date ? ` · échéance ${fmtDate(c.due_date)}` : ""}</span><b>{fmtMoney(c.balance, c.currency)}</b></button>)}</div>
             <label className="yd-label">Mode de paiement <i>*</i></label>
             <div className="yd-paymodes">{METHODS.map(([k, l, ic]) => <Button key={k} primary={method === k} icon={ic} onClick={() => setMethod(k)}>{l}</Button>)}</div>
             <label className="yd-label" htmlFor="pay-amount">Montant saisi <i>*</i></label>
-            <div className="yd-amount-row"><div className="yd-amount"><input id="pay-amount" inputMode="decimal" disabled={!partial} value={partial ? amount : new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(due).replace(/ | /g, " ")} onChange={e => setAmount(e.target.value)}/><em>{cur(currency)}</em></div><button type="button" className="yd-toggle-btn" aria-pressed={partial} onClick={() => { setPartial(p => !p); setAmount(""); }}><Toggle on={partial}/>Paiement partiel</button></div>
+            <div className="yd-amount-row"><div className="yd-amount">
+              <input id="pay-amount" inputMode="decimal" disabled={busy || !selected.length}
+                value={amount ?? (selected.length ? defaultAmount : "")} onChange={e => setAmount(e.target.value)}
+                aria-describedby="pay-amount-help"/><em>{cur(currency)}</em>
+            </div></div>
+            <p id="pay-amount-help" className="yd-card-sub">{!selected.length
+              ? "Sélectionnez les frais à encaisser."
+              : !validAmount ? `Saisissez un montant positif jusqu’à ${fmtMoney(dueCents / 100, currency)} (deux décimales au maximum).`
+              : enteredCents < dueCents ? "Paiement partiel." : "Paiement intégral des frais sélectionnés."}</p>
             <div className="yd-balance"><span><Icon name="coins" size={22}/>Solde après paiement</span><strong>{fmtMoney(Math.max(remaining, 0), currency)}</strong></div>
             {message && <p role="status" className="yd-form-msg">{message}</p>}
             {receiptUrl && <p><a className="yd-link" href={receiptUrl} target="_blank" rel="noreferrer">Télécharger le reçu groupé PDF</a></p>}
-            <Button primary icon="check" className="wide" disabled={busy || !selected.length || entered <= 0} onClick={submit}>Valider le paiement</Button>
+            <Button primary icon="check" className="wide" disabled={busy || !selected.length || !validAmount} onClick={submit}>Valider le paiement</Button>
           </>}
         </Card>
         <div className="yd-stack">
