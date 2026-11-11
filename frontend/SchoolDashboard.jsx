@@ -47,21 +47,21 @@ const modules = {
 const sections = {
   owner:{title:"Pilotage propriétaire",subtitle:"Suivi consolidé de l’établissement",modules:[],lives:[{key:"overview",label:"Synthèse",need:[]}]},
   students:{title:"Gestion des élèves",subtitle:"Inscriptions, classes, responsables et suivi administratif",modules:[],lives:[
-    {key:"live",label:"Liste des élèves",need:["school.students.read"]},
-    {key:"byclass",label:"Inscriptions par classe",need:["school.students.read","school.academic.read"]}],
-    hidden:{new:"school.students.manage",import:"school.students.manage",fiche:"school.students.read"}},
+    {key:"live",label:"Liste des élèves",need:["school.students.profile.read"]},
+    {key:"byclass",label:"Inscriptions par classe",need:["school.students.profile.read","school.academic.read"]}],
+    hidden:{new:"school.students.manage",import:"school.students.manage",fiche:"school.students.profile.read"}},
   classes:{modules:[],lives:[{key:"live",label:"Classes et effectifs",need:["school.academic.read"]}]},
   calendar:{title:"Calendrier pédagogique",subtitle:"Année, trimestres, vacances et événements",modules:[],lives:[
     {key:"live",label:"Calendrier pédagogique",need:["school.academic.read"]}]},
   admissions:{title:"Admissions et préinscriptions",subtitle:"Consultez les demandes et suivez leur inscription",modules:["admissions"]},
   payments:{title:"Encaissements et caisse journalière",subtitle:"Suivi des paiements, reçus et méthodes d’encaissement",modules:["finance"],lives:[
     {key:"live",label:"Caisse du jour",need:["school.finance.read"]},
-    {key:"tracking",label:"Suivi des paiements",need:["school.finance.read","school.students.read"]}]},
+    {key:"tracking",label:"Suivi des paiements",need:["school.finance.read","school.students.finance.read"]}]},
   arrears:{title:"Impayés & relances",subtitle:"Suivi des échéances, retards et soldes des familles",modules:[],lives:[{key:"live",label:"Impayés",need:["school.finance.read"]}]},
   bulletins:{title:"Évaluations et notes",subtitle:"Retrouvez les notes, bulletins et décisions à partir de la classe",modules:["assessments","reports","council"]},
   absences:{title:"Absences et retards",subtitle:"Consultez les appels et les retards par classe",modules:["attendance"]},
   parents:{title:"Parents",subtitle:"Les responsables légaux de chaque élève, par classe",modules:[],lives:[
-    {key:"directory",label:"Parents par classe",need:["school.parents.manage","school.students.read","school.academic.read"]}]},
+    {key:"directory",label:"Parents par classe",need:["school.parents.manage","school.students.profile.read","school.students.sensitive.read","school.academic.read"]}]},
   staff:{title:"Personnel",subtitle:"Retrouvez les collaborateurs et gérez leurs affectations",modules:["onboarding"],lives:[
     {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]}]},
 };
@@ -249,7 +249,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     return()=>{live=false};
   },[chosen,workingYearId,access,yearCatalogVersion]);
   const perms=access?.permissions||[];
-  const can = permission => perms.includes(permission);
+  const can = permission => perms.includes(permission) ||
+    (permission==="school.students.profile.read" && perms.includes("school.students.read"));
   const isOwner = Boolean(access?.is_owner);
   // A teacher can grade assigned courses without a school-wide grade permission.
   // The API still checks the course instructor assignment for each operation.
@@ -267,7 +268,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   })).filter(section => section.items.length);
   const visibleSections = restricted
     ? Object.fromEntries([
-        ...(can("school.students.read")?[["students",{...sections.students,modules:[],lives:[{key:"cycle-list",label:"Élèves autorisés",need:[]}]}]]:[]),
+        ...(can("school.students.profile.read")?[["students",{...sections.students,modules:[],lives:[{key:"cycle-list",label:"Élèves autorisés",need:[]}]}]]:[]),
         ...(can("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],lives:[]}]]:[]),
         ...(ownCourseAssessment?[["bulletins",{...sections.bulletins,modules:["assessments"],lives:[]}]]:[]),
       ])
@@ -288,7 +289,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   }
   const section=visibleSections[page];
   const tabs=section?[...section.lives.map(l=>[l.key,l.label]),...section.modules.map(k=>[k,modules[k].label])]:[];
-  const hiddenTab=section?.hidden?.[sub]&&perms.includes(section.hidden[sub])?sub:null;
+  const hiddenTab=section?.hidden?.[sub]&&can(section.hidden[sub])?sub:null;
   const tab=hiddenTab||tabs.find(t=>t[0]===sub)?.[0]||tabs[0]?.[0];
   const View=tab&&modules[tab]?.view;
   const targets = page==="bulletins" && tab==="council"
@@ -327,7 +328,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       fees:<FinancePanel key={chosen} schoolId={chosen} mode="settings" workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
       gateway:<AdmissionPaymentSettings key={chosen} schoolId={chosen}/>,
       amendments:<CouncilPanel key={chosen} schoolId={chosen} mode="amendments"/>,
-      "parent-access":<SchoolParentAccess key={chosen} schoolId={chosen} canAssignRole={canUsers} canReadStudents={can("school.students.read")}/>,
+      "parent-access":<SchoolParentAccess key={chosen} schoolId={chosen} canAssignRole={canUsers} canReadStudents={can("school.students.profile.read")}/>,
       "staff-setup":<StaffPanel key={chosen} schoolId={chosen} mode="settings" workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
     }[id] || (SettingView && <SettingView key={chosen+id} {...panelProps}/>);
   }
@@ -361,7 +362,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     selection={settingsSelection} onSelect={setSettingsSelection} render={renderSetting} isOwner={isOwner}
     onReturn={settingsReturn ? ()=>navigate(settingsReturn.page,settingsReturn.tab,settingsReturn.params) : undefined}/>;
   else if (section&&(hiddenTab||section.lives.some(l=>l.key===tab))) {
-    const props={schoolId:chosen,schoolName,tabs:tabBar,advancedSettings,onNavigate:navigate,params,workingYearId,onWorkingYearChange:setWorkingYearId,canManage:perms.includes("school.students.manage"),canIssueTransfer:perms.includes("school.students.manage")&&perms.includes("school.admissions.decide"),canReceive:perms.includes("school.finance.receive")};
+    const props={schoolId:chosen,schoolName,tabs:tabBar,advancedSettings,onNavigate:navigate,params,workingYearId,onWorkingYearChange:setWorkingYearId,canManage:perms.includes("school.students.manage"),canEditAdministration:can("school.students.admin.write")||can("school.students.manage"),canIssueTransfer:perms.includes("school.students.manage")&&perms.includes("school.admissions.decide"),canReceive:perms.includes("school.finance.receive")};
     const k=chosen+JSON.stringify(params);
     content={
       "students:cycle-list":<CycleWorkspace key={chosen} schoolId={chosen} access={access}/>,
@@ -370,7 +371,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "students:new":<StudentForm key={k} {...props}/>,
       "students:fiche":<StudentFile key={k} {...props}/>,
       "students:import":<ImportStudents key={chosen} {...props}/>,
-      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.read")} canReadRoster={can("school.students.read")||can("school.attendance.read")||can("school.curriculum.manage")} advancedSettings={advancedSettings} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
+      "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.profile.read")} canReadRoster={can("school.students.profile.read")||can("school.attendance.read")||can("school.curriculum.manage")} advancedSettings={advancedSettings} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
       "calendar:live":<PedagogicalCalendar key={chosen} schoolId={chosen} workingYearId={workingYearId}
         onWorkingYearChange={setWorkingYearId} onYearsUpdated={()=>setYearCatalogVersion(v=>v+1)}/>,
       "payments:live":<LivePayments key={k} {...props}/>,
