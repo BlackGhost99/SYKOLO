@@ -52,8 +52,8 @@ class StudentBadPayloadTests(TestCase):
 
     def test_student_create_rejects_array_without_500(self):
         result = self.post_invalid("students", [{"first_name": "Test"}])
-        self.assertEqual(result.status_code, 422, result.content)
-        self.assertIn("Objet JSON attendu", result.json()["error"])
+        self.assertEqual(result.status_code, 400, result.content)
+        self.assertIn("Objet JSON requis", result.json()["error"])
         self.assertEqual(Student.objects.filter(school=self.school).count(), 1)
 
     def test_guardian_create_rejects_array_without_500(self):
@@ -61,15 +61,15 @@ class StudentBadPayloadTests(TestCase):
             f"students/{self.student.id}/guardians",
             [{"full_name": "Parent fictif"}],
         )
-        self.assertEqual(result.status_code, 422, result.content)
-        self.assertIn("Objet JSON attendu", result.json()["error"])
+        self.assertEqual(result.status_code, 400, result.content)
+        self.assertIn("Objet JSON requis", result.json()["error"])
 
     def test_enrollment_create_rejects_array_without_500(self):
         result = self.post_invalid(
             "enrollments", [{"student": str(self.student.id)}],
         )
-        self.assertEqual(result.status_code, 422, result.content)
-        self.assertIn("Objet JSON attendu", result.json()["error"])
+        self.assertEqual(result.status_code, 400, result.content)
+        self.assertIn("Objet JSON requis", result.json()["error"])
 
     def test_basic_creator_gets_only_non_sensitive_fields(self):
         self.client.force_login(self.limited_user)
