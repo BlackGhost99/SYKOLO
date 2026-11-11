@@ -23,6 +23,19 @@ def authorize_existing_standard_roles(apps, schema_editor):
             role.save(update_fields=("permissions", "revision"))
 
 
+def enable_dossier_rls(apps, schema_editor):
+    """Keep the new staff table behind the same PostgreSQL RLS boundary.
+
+    Django's table owner continues to apply application-level permissions;
+    Supabase anon/authenticated roles are not granted access to this table.
+    """
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        'ALTER TABLE "public"."institutions_staffprofessionaldossier" ENABLE ROW LEVEL SECURITY'
+    )
+
+
 class Migration(migrations.Migration):
     dependencies = [("institutions", "0042_admission_finance_scholarship")]
 
@@ -45,5 +58,6 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
             ],
         ),
+        migrations.RunPython(enable_dossier_rls, migrations.RunPython.noop),
         migrations.RunPython(authorize_existing_standard_roles, migrations.RunPython.noop),
     ]
