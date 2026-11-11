@@ -81,6 +81,7 @@ def allowed_school_permissions(perms, scoped_ids):
         return sorted(perms)
     allowed = {
         "school.view", "school.academic.read", "school.students.read",
+        "school.students.profile.read", "school.students.sensitive.read",
         "school.staff.manage",
     }
     return sorted(set(perms) & allowed)
