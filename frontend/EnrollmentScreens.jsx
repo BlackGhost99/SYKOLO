@@ -252,7 +252,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
         <Card title="Renseignements" icon="idcard" right={canEditAdministration && !editing && <Button className="small" icon="edit" onClick={startEdit}>Modifier</Button>}>
           {!editing ? <div className="yd-info-list">
             {s.matricule_yem && s.matricule_yem !== s.student_code && <InfoRow k="Identifiant permanent YEM" v={s.matricule_yem}/>}
-            {d.sensitive_visible && info.filter(([k]) => shown(form, k) || s[k]).map(([k, l, fmt]) => <InfoRow key={k} k={l} v={(fmt ? fmt(s[k]) : s[k]) || "—"/>)}
+            {d.sensitive_visible && info.filter(([k]) => shown(form, k) || s[k]).map(([k, l, fmt]) => <InfoRow key={k} k={l} v={(fmt ? fmt(s[k]) : s[k]) || "—"}/>)}
             {d.sensitive_visible && form.custom_fields.map(q => <InfoRow key={q.key} k={q.label} v={q.type === "yesno" ? (s.extra_fields[q.key] === true ? "Oui" : s.extra_fields[q.key] === false ? "Non" : "—") : q.type === "date" ? fmtDate(s.extra_fields[q.key]) : String(s.extra_fields[q.key] ?? "—")}/>)}
           </div> : <form onSubmit={e => { e.preventDefault(); saveEdit(); }}>
             <div className="yf-grid">
