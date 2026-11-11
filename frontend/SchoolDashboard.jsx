@@ -4,6 +4,7 @@ import AcademicPanel from "./AcademicPanel.jsx";
 import PedagogicalCalendar from "./PedagogicalCalendar.jsx";
 import StaffPanel from "./StaffPanel.jsx";
 import StaffOnboarding from "./StaffOnboarding.jsx";
+import OwnerDashboard from "./OwnerDashboard.jsx";
 import CycleWorkspace from "./CycleWorkspace.jsx";
 import OrganisationPanel, {MySchoolFunctions} from "./OrganisationPanel.jsx";
 import RoleManager from "./RoleManager.jsx";
@@ -44,6 +45,7 @@ const modules = {
 };
 /* Chaque entrée du menu des maquettes regroupe un ou plusieurs modules réels. */
 const sections = {
+  owner:{title:"Pilotage propriétaire",subtitle:"Suivi consolidé de l’établissement",modules:[],lives:[{key:"overview",label:"Synthèse",need:[]}]},
   students:{title:"Gestion des élèves",subtitle:"Inscriptions, classes, responsables et suivi administratif",modules:[],lives:[
     {key:"live",label:"Liste des élèves",need:["school.students.read"]},
     {key:"byclass",label:"Inscriptions par classe",need:["school.students.read","school.academic.read"]}],
@@ -63,7 +65,7 @@ const sections = {
   staff:{title:"Personnel",subtitle:"Retrouvez les collaborateurs et gérez leurs affectations",modules:["onboarding"],lives:[
     {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]}]},
 };
-const schoolNav = [...NAV.slice(0,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
+const schoolNav = [...NAV.slice(0,1), ["owner","barchart","Pilotage propriétaire"], ...NAV.slice(1,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
 const sectionIcon=Object.fromEntries(schoolNav.map(([id,icon])=>[id,icon]));
 
 const settingsSections = [
@@ -253,7 +255,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         ...(can("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],lives:[]}]]:[]),
         ...(ownCourseAssessment?[["bulletins",{...sections.bulletins,modules:["assessments"],lives:[]}]]:[]),
       ])
-    : Object.fromEntries(Object.entries(sections).map(([id,s])=>[id,{
+    : Object.fromEntries(Object.entries(sections).filter(([id])=>id!=="owner"||isOwner).map(([id,s])=>[id,{
         ...s,modules:s.modules.filter(allowed),lives:(s.lives||[]).filter(l=>l.need.every(can)),
       }]).filter(([,s])=>s.modules.length||s.lives.length));
   if (availableSettings.length) visibleSections.settings = {
@@ -338,6 +340,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p></Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
+  else if (page==="owner"&&isOwner) content=<OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/>;
   else if (page==="settings"&&availableSettings.length) content=<SchoolSettings sections={availableSettings}
     selection={settingsSelection} onSelect={setSettingsSelection} render={renderSetting} isOwner={isOwner}
     onReturn={settingsReturn ? ()=>navigate(settingsReturn.page,settingsReturn.tab,settingsReturn.params) : undefined}/>;
@@ -382,6 +385,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         attendanceCanFinalize:can("school.attendance.finalize"),
         onSettings:can("school.settings.write")&&can("school.settings.read")?()=>navigate("settings","attendance-policy"):undefined}:{})}/>}</div>
   </>;
+  else if (isOwner && !perms.includes("school.finance.read")) content=<><OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></>;
   else if (perms.includes("school.finance.read")) content=<>
     <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>
     <MySchoolFunctions schoolId={chosen}/>
