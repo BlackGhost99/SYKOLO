@@ -15,6 +15,7 @@ from django.views.decorators.http import require_GET
 from accounts.views import authorized
 from .views import access, refuse
 from .services import has_permission
+from .student_access import can_read_profile, can_read_sensitive, can_read_finance
 from .academic_models import AcademicYear, AcademicClass
 from .student_models import Student, StudentGuardian, Enrollment
 from .finance_models import FeeCharge, FeePayment
@@ -95,9 +96,12 @@ def finance_status(b):
 @require_GET
 @authorized
 def students_overview(request, school_id):
-    school, error = gate(request, school_id, "school.students.read")
+    school, error = access(request, school_id)
     if error is not None:
         return error
+    if not (can_read_profile(request.user, school) or can_read_finance(request.user, school)):
+        return refuse()
+    sensitive_visible = can_read_sensitive(request.user, school)
     year = current_year(school, request.GET.get("year") or None)
     if request.GET.get("year") and year is None:
         return JsonResponse({"error": "Année scolaire introuvable."}, status=422)
@@ -114,8 +118,8 @@ def students_overview(request, school_id):
     if year:
         for e in Enrollment.objects.select_related("classroom").filter(school=school, year=year, student_id__in=ids, active=True):
             enrollments[e.student_id] = e
-    guardians = primary_guardians(school, ids)
-    finance_visible = has_permission(request.user, school, "school.finance.read")
+    guardians = primary_guardians(school, ids) if sensitive_visible else {}
+    finance_visible = can_read_finance(request.user, school)
     currency, balances = enrollment_balances(school, [e.pk for e in enrollments.values()], request.GET.get("currency")) if finance_visible else (None, {})
     today = timezone.localdate()
     methods, last_paid = defaultdict(set), {}
@@ -130,7 +134,7 @@ def students_overview(request, school_id):
             methods[eid].add(method)
             last_paid[eid] = paid_on
     from .enrollment_form import load_config, missing_documents
-    form, _ = load_config(school)
+    form, _ = load_config(school) if sensitive_visible else (None, None)
     rows = []
     for s in students:
         e = enrollments.get(s.pk)
@@ -138,7 +142,7 @@ def students_overview(request, school_id):
         b = balances.get(e.pk) if e else None
         rows.append({
             "id": str(s.pk), "student_code": s.student_code, "matricule_yem": s.matricule_yem, "first_name": s.first_name, "last_name": s.last_name,
-            "active": s.active, "missing_documents": len(missing_documents(form, s.documents)),
+            "active": s.active, "missing_documents": len(missing_documents(form, s.documents)) if sensitive_visible else None,
             "enrollment": {"id": str(e.pk), "status": e.status, "enrolled_on": e.enrolled_on.isoformat(),
                            "classroom": {"id": str(e.classroom_id), "name": e.classroom.name}} if e else None,
             "guardian": {"full_name": g.full_name, "relationship": g.relationship, "phone": g.phone, "email": g.email} if g else None,
@@ -161,15 +165,16 @@ def students_overview(request, school_id):
         "currencies": sorted(set(FeeCharge.objects.filter(school=school, enrollment_id__in=[e.pk for e in enrollments.values()]).values_list("currency", flat=True))),
         "currency": currency,
         "finance_visible": finance_visible,
+        "sensitive_visible": sensitive_visible,
         "students": rows,
         "metrics": {
             "active": len(active),
             "enrolled": sum(1 for r in active if r["enrollment"]),
             "new_30d": enrolled_between(today - timedelta(days=30), today + timedelta(days=1)),
             "new_prev_30d": enrolled_between(today - timedelta(days=60), today - timedelta(days=30)),
-            "incomplete": sum(1 for r in active if not r["guardian"] or not r["enrollment"]),
-            "missing_documents": sum(1 for r in active if r["missing_documents"]),
-            "missing_phone": sum(1 for r in active if r["guardian"] and not r["guardian"]["phone"]),
+            "incomplete": sum(1 for r in active if not r["guardian"] or not r["enrollment"]) if sensitive_visible else 0,
+            "missing_documents": sum(1 for r in active if r["missing_documents"]) if sensitive_visible else 0,
+            "missing_phone": sum(1 for r in active if r["guardian"] and not r["guardian"]["phone"]) if sensitive_visible else 0,
         },
     })
 
@@ -216,7 +221,8 @@ def finance_overview(request, school_id):
         end = month_start(today, back - 1)
         months.append({"month": start.isoformat()[:7], "total": money(total(payments.filter(paid_on__gte=start, paid_on__lt=end)))})
     todays = list(payments.filter(paid_on=today).select_related("charge__enrollment__student", "charge__enrollment__classroom").order_by("-created_at")[:50])
-    guardians = primary_guardians(school, [e.student_id for e in enrollments.values()])
+    guardians = (primary_guardians(school, [e.student_id for e in enrollments.values()])
+                 if can_read_sensitive(request.user, school) else {})
     last_payment = {}
     for p in payments.order_by("paid_on").values("charge__enrollment_id", "paid_on"):
         last_payment[p["charge__enrollment_id"]] = p["paid_on"]

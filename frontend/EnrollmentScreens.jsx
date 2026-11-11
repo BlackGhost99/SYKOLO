@@ -177,7 +177,7 @@ export function StudentForm({ schoolId, params, onNavigate, tabs, workingYearId 
 }
 
 /* ---------- Dossier élève ---------- */
-export function StudentFile({ schoolId, params, canManage, canIssueTransfer, canReceive, onNavigate, tabs, workingYearId = "" }) {
+export function StudentFile({ schoolId, params, canManage, canEditAdministration=false, canIssueTransfer, canReceive, onNavigate, tabs, workingYearId = "" }) {
   const id = params?.student;
   const dossier = useLoad(id ? `schools/${schoolId}/students/${id}/dossier` : "");
   const classes = useLoad(canManage ? `schools/${schoolId}/overview/classes${workingYearId ? `?year=${workingYearId}` : ""}` : "");
@@ -201,11 +201,19 @@ export function StudentFile({ schoolId, params, canManage, canIssueTransfer, can
   const curYear = classes.data?.year;
   const current = curYear ? d?.enrollments.find(e => e.year === curYear.id) : d?.enrollments[0];
   const enrolledThisYear = d?.enrollments.some(e => e.year === curYear?.id);
-  function startEdit() { setDraft({ first_name: s.first_name, last_name: s.last_name, date_of_birth: s.date_of_birth || "", gender: s.gender, place_of_birth: s.place_of_birth, nationality: s.nationality, address: s.address, previous_school: s.previous_school, extra_fields: { ...s.extra_fields } }); setEditing(true); }
+  function startEdit() {
+    const base = {first_name:s.first_name,last_name:s.last_name};
+    setDraft(d.sensitive_visible ? {...base, date_of_birth:s.date_of_birth||"",
+      gender:s.gender,place_of_birth:s.place_of_birth,nationality:s.nationality,
+      address:s.address,previous_school:s.previous_school,extra_fields:{...s.extra_fields}} : base);
+    setEditing(true);
+  }
   function saveEdit() {
     run(async () => {
       const { extra_fields, ...rest } = draft;
-      await req(`schools/${schoolId}/students/${s.id}`, { revision: s.revision, ...rest, date_of_birth: rest.date_of_birth || null, extra_fields }, "PATCH");
+      const patch={revision:s.revision,...rest};
+      if(d.sensitive_visible){patch.date_of_birth=rest.date_of_birth||null;patch.extra_fields=extra_fields;}
+      await req(`schools/${schoolId}/students/${s.id}`, patch, "PATCH");
       setEditing(false);
     }, "Fiche mise à jour.");
   }
@@ -241,29 +249,29 @@ export function StudentFile({ schoolId, params, canManage, canIssueTransfer, can
             </Field>}
           </details>
         </Card>}
-        <Card title="Renseignements" icon="idcard" right={canManage && !editing && <Button className="small" icon="edit" onClick={startEdit}>Modifier</Button>}>
+        <Card title="Renseignements" icon="idcard" right={canEditAdministration && !editing && <Button className="small" icon="edit" onClick={startEdit}>Modifier</Button>}>
           {!editing ? <div className="yd-info-list">
             {s.matricule_yem && s.matricule_yem !== s.student_code && <InfoRow k="Identifiant permanent YEM" v={s.matricule_yem}/>}
-            {info.filter(([k]) => shown(form, k) || s[k]).map(([k, l, fmt]) => <InfoRow key={k} k={l} v={(fmt ? fmt(s[k]) : s[k]) || "—"}/>)}
-            {form.custom_fields.map(q => <InfoRow key={q.key} k={q.label} v={q.type === "yesno" ? (s.extra_fields[q.key] === true ? "Oui" : s.extra_fields[q.key] === false ? "Non" : "—") : q.type === "date" ? fmtDate(s.extra_fields[q.key]) : String(s.extra_fields[q.key] ?? "—")}/>)}
+            {d.sensitive_visible && info.filter(([k]) => shown(form, k) || s[k]).map(([k, l, fmt]) => <InfoRow key={k} k={l} v={(fmt ? fmt(s[k]) : s[k]) || "—"/>)}
+            {d.sensitive_visible && form.custom_fields.map(q => <InfoRow key={q.key} k={q.label} v={q.type === "yesno" ? (s.extra_fields[q.key] === true ? "Oui" : s.extra_fields[q.key] === false ? "Non" : "—") : q.type === "date" ? fmtDate(s.extra_fields[q.key]) : String(s.extra_fields[q.key] ?? "—")}/>)}
           </div> : <form onSubmit={e => { e.preventDefault(); saveEdit(); }}>
             <div className="yf-grid">
               <Field label="Nom" required><input required value={draft.last_name} onChange={e => setDraft(x => ({ ...x, last_name: e.target.value }))}/></Field>
               <Field label="Prénom(s)" required><input required value={draft.first_name} onChange={e => setDraft(x => ({ ...x, first_name: e.target.value }))}/></Field>
-              <Field label="Date de naissance"><input type="date" value={draft.date_of_birth} onChange={e => setDraft(x => ({ ...x, date_of_birth: e.target.value }))}/></Field>
+              {d.sensitive_visible && <><Field label="Date de naissance"><input type="date" value={draft.date_of_birth} onChange={e => setDraft(x => ({ ...x, date_of_birth: e.target.value }))}/></Field>
               <Field label="Sexe"><select value={draft.gender} onChange={e => setDraft(x => ({ ...x, gender: e.target.value }))}><option value="">—</option><option value="F">Féminin</option><option value="M">Masculin</option></select></Field>
               {["place_of_birth", "nationality", "address", "previous_school"].map(k => <Field key={k} label={info.find(i => i[0] === k)[1]}><input value={draft[k]} onChange={e => setDraft(x => ({ ...x, [k]: e.target.value }))}/></Field>)}
-              {form.custom_fields.map(q => <Field key={q.key} label={q.label} wide={q.type === "textarea"}><CustomInput q={{ ...q, required: false }} value={draft.extra_fields[q.key]} onChange={v => setDraft(x => ({ ...x, extra_fields: { ...x.extra_fields, [q.key]: v } }))}/></Field>)}
+              {form.custom_fields.map(q => <Field key={q.key} label={q.label} wide={q.type === "textarea"}><CustomInput q={{ ...q, required: false }} value={draft.extra_fields[q.key]} onChange={v => setDraft(x => ({ ...x, extra_fields: { ...x.extra_fields, [q.key]: v } }))}/></Field>)}</>}
             </div>
             <div className="yf-actions"><Button onClick={() => setEditing(false)}>Annuler</Button><Button primary type="submit" icon="check" disabled={busy}>Enregistrer</Button></div>
           </form>}
         </Card>
-        <Card title="Responsables légaux" icon="users" right={canManage && !newGuardian && <Button className="small" icon="plus" onClick={() => setNewGuardian({ ...emptyGuardian, relationship: "Père" })}>Ajouter</Button>}>
+        {d.sensitive_visible && <Card title="Responsables légaux" icon="users" right={canEditAdministration && !newGuardian && <Button className="small" icon="plus" onClick={() => setNewGuardian({ ...emptyGuardian, relationship: "Père" })}>Ajouter</Button>}>
           {d.guardians.filter(g => g.active).length === 0 && <Empty>Aucun responsable enregistré : le dossier est incomplet.</Empty>}
           {d.guardians.filter(g => g.active).map(g => <div key={g.id} className="yf-person">
             <div><b>{g.full_name}</b>{g.is_primary && <Status>Principal</Status>}<small>{[g.relationship, g.profession].filter(Boolean).join(" · ")}</small></div>
             <div className="yf-contact">{g.phone && <a href={`https://wa.me/${g.phone.replace(/[^\d]/g, "")}`} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={18}/>{g.phone}</a>}{g.email && <a href={`mailto:${g.email}`}><Icon name="mail" size={18}/>{g.email}</a>}{g.address && <span>{g.address}</span>}</div>
-            {canManage && <div className="yf-row-actions">
+            {canEditAdministration && <div className="yf-row-actions">
               {!g.is_primary && <button type="button" className="yf-link" disabled={busy} onClick={() => run(async () => { for (const o of d.guardians.filter(x => x.is_primary && x.active)) await req(`schools/${schoolId}/students/${s.id}/guardians/${o.id}`, { revision: o.revision, is_primary: false }, "PATCH"); await req(`schools/${schoolId}/students/${s.id}/guardians/${g.id}`, { revision: g.revision, is_primary: true }, "PATCH"); }, "Responsable principal modifié.")}>Définir principal</button>}
               <button type="button" className="yf-link danger" disabled={busy} onClick={() => run(() => req(`schools/${schoolId}/students/${s.id}/guardians/${g.id}`, { revision: g.revision, active: false }, "PATCH"), "Responsable retiré du dossier.")}>Retirer</button>
             </div>}
@@ -279,12 +287,12 @@ export function StudentFile({ schoolId, params, canManage, canIssueTransfer, can
             </div>
             <div className="yf-actions"><Button onClick={() => setNewGuardian(null)}>Annuler</Button><Button primary type="submit" icon="check" disabled={busy}>Ajouter le responsable</Button></div>
           </form>}
-        </Card>
-        <Card title="Pièces du dossier" icon="paperclip" subtitle={d.missing_documents.length ? `Manquant : ${d.missing_documents.join(", ")}` : "Toutes les pièces obligatoires sont fournies."}>
+        </Card>}
+        {d.sensitive_visible && <Card title="Pièces du dossier" icon="paperclip" subtitle={d.missing_documents.length ? `Manquant : ${d.missing_documents.join(", ")}` : "Toutes les pièces obligatoires sont fournies."}>
           {form.documents.length === 0 ? <Empty>Aucune pièce demandée par l’établissement.</Empty> :
-            <div className="yf-checks">{form.documents.map(doc => { const on = !!s.documents[doc.key]; return <button type="button" key={doc.key} disabled={!canManage || busy} className={on ? "active" : ""}
+            <div className="yf-checks">{form.documents.map(doc => { const on = !!s.documents[doc.key]; return <button type="button" key={doc.key} disabled={!canEditAdministration || busy} className={on ? "active" : ""}
               onClick={() => run(() => req(`schools/${schoolId}/students/${s.id}`, { revision: s.revision, documents: { ...s.documents, [doc.key]: !on } }, "PATCH"), on ? "Pièce retirée." : "Pièce enregistrée comme fournie.")}><Check on={on}/><span>{doc.label}{doc.required && <i> *</i>}</span></button>; })}</div>}
-        </Card>
+        </Card>}
       </div>
       <div className="yd-stack">
         <Card title="Scolarité" icon="cap">

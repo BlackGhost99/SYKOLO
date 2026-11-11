@@ -66,13 +66,13 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
       setSchedules((await financeApi(finance+"schedules")).schedules || []);
       return;
     }
-    const [ys, cs, es, ss, fs, ch] = await Promise.all([
+    const [ys, cs, roster, fs, ch] = await Promise.all([
       financeApi(root+"academic/years"), financeApi(root+"academic/classes"),
-      financeApi(root+"enrollments"), financeApi(root+"students"),
+      financeApi(finance+"roster"),
       financeApi(finance+"schedules"), financeApi(finance+"charges"),
     ]);
     setYears(ys.years || []);setClasses(cs.classes || []);
-    setEnrollments(es.enrollments || []);setStudents(ss.students || []);
+    setEnrollments(roster.enrollments || []);setStudents(roster.students || []);
     setSchedules(fs.schedules || []);setCharges(ch.charges || []);
   }
 
@@ -87,12 +87,12 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
     }
     Promise.all([
       financeApi(root+"academic/years"),financeApi(root+"academic/classes"),
-      financeApi(root+"enrollments"),financeApi(root+"students"),
+      financeApi(finance+"roster"),
       financeApi(finance+"schedules"),financeApi(finance+"charges"),
-    ]).then(([ys,cs,es,ss,fs,ch])=>{
+    ]).then(([ys,cs,roster,fs,ch])=>{
       if(!mounted)return;
       setYears(ys.years||[]);setClasses(cs.classes||[]);
-      setEnrollments(es.enrollments||[]);setStudents(ss.students||[]);
+      setEnrollments(roster.enrollments||[]);setStudents(roster.students||[]);
       setSchedules(fs.schedules||[]);setCharges(ch.charges||[]);
     }).catch(error=>{if(mounted){setAllowed(false);setMessage(error.message);}});
     return()=>{mounted=false;};

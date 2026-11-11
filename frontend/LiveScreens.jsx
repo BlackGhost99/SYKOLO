@@ -110,23 +110,23 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
       <div className="yd-metrics four">
         <Metric icon="users" label="Élèves actifs" value={num(m.active)} trend="none" trendValue={num(m.enrolled)} trendLabel={`inscrits en ${d.year?.name || "cours"}`}/>
         <Metric icon="cap" label="Nouveaux inscrits" value={num(m.new_30d)} trend={m.new_30d >= m.new_prev_30d ? "up" : "down"} trendValue={pct(m.new_30d, m.new_prev_30d) || `${m.new_prev_30d}`} trendLabel="vs. 30 jours précédents"/>
-        <Metric icon="alert" label="Dossiers incomplets" value={num(m.incomplete)} trend="none" trendLabel={m.missing_documents ? `${num(m.missing_documents)} avec pièces manquantes` : "sans responsable ou sans classe"}/>
-        <Metric icon="whatsapp" label="Parents sans numéro WhatsApp" value={num(m.missing_phone)} trend="none" trendLabel="responsables sans téléphone"/>
+        {d.sensitive_visible && <><Metric icon="alert" label="Dossiers incomplets" value={num(m.incomplete)} trend="none" trendLabel={m.missing_documents ? `${num(m.missing_documents)} avec pièces manquantes` : "sans responsable ou sans classe"}/>
+        <Metric icon="whatsapp" label="Parents sans numéro WhatsApp" value={num(m.missing_phone)} trend="none" trendLabel="responsables sans téléphone"/></>}
       </div>
       <div className="yd-grid students-grid">
         <Card title="Liste des élèves" count={`(${rows.length})`} icon="users">
           {rows.length === 0 ? <Empty>Aucun élève ne correspond. Créez une fiche depuis « Nouvel élève » ou importez votre liste Excel.</Empty> :
-            <TableScroll label="Liste des élèves"><table className="clickable nowrap dense"><thead><tr>{["#", "Élève", "Classe", "Parent / Tuteur", "Téléphone", <>Situation<br/>financière</>, "Statut", "Actions"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+            <TableScroll label="Liste des élèves"><table className="clickable nowrap dense"><thead><tr>{["#", "Élève", "Classe", ...(d.sensitive_visible?["Parent / Tuteur", "Téléphone"]:[]), <>Situation<br/>financière</>, "Statut", "Actions"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>{rows.map((s, i) => { const f = s.finance && FIN[s.finance.status]; return <tr key={s.id} className={current?.id === s.id ? "selected" : ""} onClick={() => setSelected(s.id)}>
-                <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.enrollment?.classroom.name || "—"}</td><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td>
+                <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.enrollment?.classroom.name || "—"}</td>{d.sensitive_visible&&<><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td></>}
                 <td>{f ? f[1] : "—"}</td><td>{s.enrollment ? (f ? <Status tone={f[0]}>{f[1]}</Status> : <Status>Inscrit</Status>) : <Status tone="gray">Non inscrit</Status>}</td>
                 <td><button type="button" className="yd-dots" aria-label="Ouvrir la fiche" onClick={e => { e.stopPropagation(); onNavigate("students", "fiche", { student: s.id }); }}><Icon name="dots" size={22}/></button></td></tr>; })}</tbody></table></TableScroll>}
         </Card>
         {current ? <Card title="Aperçu de l’élève" icon="user" className="student-preview">
           <div className="yd-person"><div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div><div><h3>{current.last_name} {current.first_name}</h3><span>Classe : {current.enrollment?.classroom.name || "non inscrit"}</span><span>Matricule : {current.student_code}</span>{current.matricule_yem && current.matricule_yem !== current.student_code && <small>Identifiant YEM : {current.matricule_yem}</small>}</div></div>
           <div className="yd-info-list">
-            <InfoRow icon="user" k="Parent / Tuteur" v={current.guardian?.full_name || "—"}/>
-            <InfoRow icon="whatsapp" k="Téléphone" v={current.guardian?.phone || "—"} vIcon={current.guardian?.phone ? "whatsapp" : undefined}/>
+            {d.sensitive_visible && <InfoRow icon="user" k="Parent / Tuteur" v={current.guardian?.full_name || "—"}/>}
+            {d.sensitive_visible && <InfoRow icon="whatsapp" k="Téléphone" v={current.guardian?.phone || "—"} vIcon={current.guardian?.phone ? "whatsapp" : undefined}/>}
             {current.finance && <><InfoRow icon="coins" k="Total annuel" v={fmtMoney(current.finance.billed, d.currency)}/>
               <InfoRow icon="wallet" k="Montant payé" v={fmtMoney(current.finance.paid, d.currency)}/>
               <InfoRow icon="scale" k="Reste à payer" v={fmtMoney(current.finance.balance, d.currency)} highlight/></>}
@@ -134,7 +134,7 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
           <div className="yd-btn-stack">
             <Button primary icon="file" onClick={() => onNavigate("students", "fiche", { student: current.id })}>Voir la fiche</Button>
             {canReceive && current.enrollment && <Button icon="coins" onClick={() => onNavigate("payments", "live", { enrollment: current.enrollment.id })}>Encaisser</Button>}
-            {waLink(current.guardian?.phone) ? <a className="yd-btn" href={waLink(current.guardian.phone)} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={20}/><span>Contacter le parent</span></a> : <Button icon="whatsapp" disabled>Contacter le parent</Button>}
+            {d.sensitive_visible && (waLink(current.guardian?.phone) ? <a className="yd-btn" href={waLink(current.guardian.phone)} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={20}/><span>Contacter le parent</span></a> : <Button icon="whatsapp" disabled>Contacter le parent</Button>)}
           </div>
         </Card> : <Card title="Aperçu de l’élève" icon="user"><Empty>Sélectionnez un élève dans la liste.</Empty></Card>}
       </div>

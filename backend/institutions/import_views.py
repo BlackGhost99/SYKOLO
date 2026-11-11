@@ -29,7 +29,7 @@ from .import_models import StudentImportBatch, StudentImportProfile
 from .import_service import FIELDS, normalized, parse_upload, parse_date, parse_gender, suggested_mapping, validate_mapping
 from .models import School, SchoolAdminPolicy
 from .overview_views import gate
-from .services import quota_reached
+from .services import quota_reached, has_permission
 from .student_numbering import synchronize_import
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .student_views import parse_fields, validate_enrollment_slot
@@ -395,10 +395,13 @@ def safe_spreadsheet_cell(value):
 @require_POST
 @authorized
 def export_students(request, school_id):
-    """Private school-scoped CSV export, explicitly initiated by an authorized manager."""
+    """Export contacts, naissance et adresses : droit sensible explicite obligatoire."""
     school, error = gate(request, school_id, "school.students.manage")
     if error is not None:
         return error
+    if not has_permission(request.user, school, "school.students.sensitive.read"):
+        from .views import refuse
+        return refuse()
     data, error = parse_body(request)
     if error is not None:
         return error

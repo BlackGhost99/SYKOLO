@@ -25,6 +25,7 @@ from .finance_models import FeeSchedule, FeeCharge, FeePayment
 from .admission_finance import direct_enrollment_blocker, scholarship_for_enrollment
 from .overview_views import gate, current_year, enrollment_balances, finance_status, money, ZERO
 from .services import can_manage_classes, class_management_scope, has_permission, quota_reached
+from .student_access import can_read_profile, can_read_sensitive, can_read_finance
 from .school_profiles import CLASS_LEVELS, CYCLE_LABELS, class_level_options
 from .preschool_classes import preschool_enabled
 from .standard_classes import enabled_standard_cycles, ensure_standard_classes
@@ -224,13 +225,16 @@ def next_code(request, school_id):
 @authorized
 def student_dossier(request, school_id, student_id):
     """Fiche complète d'un élève : identité, responsables, parcours et paiements (si autorisé)."""
-    school, error = gate(request, school_id, "school.students.read")
+    school, error = access(request, school_id)
     if error is not None:
         return error
+    if not can_read_profile(request.user, school):
+        return refuse()
     student = Student.objects.filter(school=school, pk=student_id).first()
     if student is None:
         return JsonResponse({"error": "Élève introuvable."}, status=404)
-    finance_visible = has_permission(request.user, school, "school.finance.read")
+    finance_visible = can_read_finance(request.user, school)
+    sensitive_visible = can_read_sensitive(request.user, school)
     rows = list(Enrollment.objects.select_related("year", "classroom").filter(school=school, student=student).order_by("-year__start_date"))
     enrollments = []
     for e in rows:
@@ -259,14 +263,17 @@ def student_dossier(request, school_id, student_id):
             }
         enrollments.append(item)
     config, _ = load_config(school)
+    from .student_views import describe_student
     return JsonResponse({
-        "student": describe(student),
+        "student": describe_student(student, sensitive=sensitive_visible),
         "form": config,
-        "missing_documents": missing_documents(config, student.documents),
-        "guardians": [describe(g) for g in student.guardians.order_by("-is_primary", "full_name")[:20]],
+        "missing_documents": missing_documents(config, student.documents) if sensitive_visible else [],
+        "guardians": ([describe(g) for g in student.guardians.order_by("-is_primary", "full_name")[:20]]
+                      if sensitive_visible else []),
         "enrollments": enrollments,
+        "sensitive_visible": sensitive_visible,
         "finance_visible": finance_visible,
-    })
+    }, headers={"Cache-Control": "no-store"})
 
 
 @require_GET
@@ -371,7 +378,7 @@ def class_students(request, school_id, class_id):
         return JsonResponse({"error": "Classe introuvable."}, status=404)
     if scoped_cycle_ids(request.user, school) is not None:
         return refuse()
-    global_reader = has_permission(request.user, school, "school.students.read")
+    global_reader = can_read_profile(request.user, school)
     life_school_reader = has_permission(request.user, school, "school.attendance.read")
     studies_reader = has_permission(request.user, school, "school.curriculum.manage")
     assigned_teacher = StaffAssignment.objects.filter(
