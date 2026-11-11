@@ -16,7 +16,7 @@ Ne jamais attribuer automatiquement un périmètre à partir du nom d'un poste. 
 - accès à un ou plusieurs cycles réellement actifs ;
 - révision ou désactivation d'un compte devenu inutile.
 
-Les changements passent par **Paramètres → Droits généraux → Accès par cycle**, sont justifiés et audités. La liste signale désormais le nombre de comptes à accès global et les distingue visuellement. Ne pas appliquer de restriction sans recette : pour les comptes limités, certains modules métier renvoient encore 403 par sécurité (middleware fail-closed) ; cela empêche des fuites mais peut gêner un parcours si les routes ne sont pas encore adaptées.
+Les changements passent par **Paramètres → Droits généraux → Accès par cycle**, sont justifiés et audités. La liste signale désormais le nombre de comptes à accès global et les distingue visuellement. Dans l'ancien écran « Créer un compte », la sélection des cycles devient explicite dès que plusieurs cycles sont configurés. L'API valide les UUID des cycles actifs de la même école ; les comptes restent attachés à leur établissement. Ne pas appliquer de restriction sans recette : pour les comptes limités, certains modules métier renvoient encore 403 par sécurité (middleware fail-closed) ; cela empêche des fuites mais peut gêner un parcours si les routes ne sont pas encore adaptées.
 
 ## Critères de clôture de la revue
 
@@ -26,4 +26,4 @@ Les changements passent par **Paramètres → Droits généraux → Accès par c
 - [ ] Aucun droit supplémentaire n'est octroyé par simple nomination dans l'organigramme.
 - [ ] Le nombre de comptes globaux est revérifié après la recette, sans interpréter automatiquement tout compte global comme une anomalie.
 
-Cette PR **ne change aucun droit** et n'applique aucune restriction automatique.
+Cette PR **ne change aucun droit existant** et n'applique aucune restriction automatique. Le contrôle de portée demandé par le nouveau formulaire s'applique aux comptes nouvellement créés. Les clients API historiques qui ne renseignent pas encore `access_cycle_ids` conservent temporairement l'ancien défaut global ; cela reste un point de durcissement à programmer après migration de leurs parcours.
