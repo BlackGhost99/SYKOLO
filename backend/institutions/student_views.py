@@ -9,6 +9,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from accounts.views import authorized
 from .views import access, refuse, parse_body, log_event
 from .services import has_permission, quota_reached
+from .student_access import can_read_profile, can_edit_administration, can_read_sensitive
 from .cycle_scope import scoped_cycle_ids
 from .academic_models import AcademicYear, AcademicClass
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
@@ -46,6 +47,8 @@ GUARDIAN_INFO = ("profession", "address")
 
 
 def parse_fields(data, allowed, required=(), *, revision=False):
+    if not isinstance(data, dict):
+        raise ValueError("Objet JSON attendu.")
     if set(data) - set(allowed) - ({"revision"} if revision else set()):
         raise ValueError("Champs inconnus ou non modifiables.")
     if not revision and not set(required).issubset(data):
@@ -122,6 +125,20 @@ def describe(obj):
     return result
 
 
+STUDENT_SENSITIVE_FIELDS = frozenset({
+    "date_of_birth", "gender", "place_of_birth", "nationality",
+    "address", "previous_school", "extra_fields", "documents",
+})
+
+
+def describe_student(student, *, sensitive=False):
+    result = describe(student)
+    if not sensitive:
+        for field in STUDENT_SENSITIVE_FIELDS:
+            result.pop(field, None)
+    return result
+
+
 def validation_response(exc):
     if hasattr(exc, "message_dict"):
         messages = [msg for group in exc.message_dict.values() for msg in group]
@@ -133,8 +150,12 @@ def validation_response(exc):
 @require_http_methods(["GET", "POST"])
 @authorized
 def students(request, school_id):
-    school, error = check(request, school_id, "school.students.read" if request.method == "GET" else "school.students.manage")
+    school, error = access(request, school_id)
     if error is not None: return error
+    if request.method == "GET" and not can_read_profile(request.user, school):
+        return refuse()
+    if request.method == "POST" and not has_permission(request.user, school, "school.students.manage"):
+        return refuse()
     if request.method == "GET":
         rows = visible_students(request.user, school)
         matricule = request.GET.get("matricule")
@@ -142,11 +163,19 @@ def students(request, school_id):
             if not re.fullmatch(r"YEM-[0-9A-F]{32}", matricule.strip().upper()):
                 return JsonResponse({"error": "Matricule YEM invalide."}, status=422)
             rows = rows.filter(identity_id=UUID(hex=matricule.strip()[4:]))
-        return JsonResponse({"students": [describe(s) for s in rows.order_by("last_name","first_name")[:500]]})
+        sensitive = can_read_sensitive(request.user, school)
+        return JsonResponse({"students": [
+            describe_student(row, sensitive=sensitive)
+            for row in rows.order_by("last_name", "first_name")[:500]
+        ], "sensitive_visible": sensitive}, headers={"Cache-Control": "no-store"})
     data, error = parse_body(request)
     if error is not None: return error
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Objet JSON attendu."}, status=422)
     try:
         data.pop("student_code", None)  # Compatibility with clients that still send the old field.
+        if not can_read_sensitive(request.user, school) and STUDENT_SENSITIVE_FIELDS.intersection(data):
+            return refuse()
         values = parse_fields(data, ("first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "active"), ("first_name", "last_name"))
         with transaction.atomic():
             from .models import School
@@ -160,20 +189,28 @@ def students(request, school_id):
     except ValueError as exc: return JsonResponse({"error": str(exc)}, status=422)
     except ValidationError as exc: return validation_response(exc)
     except IntegrityError: return JsonResponse({"error": "Code élève déjà utilisé."}, status=409)
-    return JsonResponse(describe(student), status=201)
+    return JsonResponse(describe_student(student, sensitive=can_read_sensitive(request.user, school)), status=201)
 
 
 @require_http_methods(["GET", "PATCH"])
 @authorized
 def student_detail(request, school_id, student_id):
-    school, error = check(request, school_id, "school.students.read" if request.method == "GET" else "school.students.manage")
+    school, error = access(request, school_id)
     if error is not None: return error
+    if request.method == "GET" and not can_read_profile(request.user, school):
+        return refuse()
+    if request.method == "PATCH" and not can_edit_administration(request.user, school):
+        return refuse()
     if request.method == "GET":
         student = visible_students(request.user,school).filter(id=student_id).first()
-        return JsonResponse(describe(student)) if student else JsonResponse({"error": "Élève introuvable."}, status=404)
+        return (JsonResponse(describe_student(student, sensitive=can_read_sensitive(request.user, school)),
+                             headers={"Cache-Control": "no-store"}) if student
+                else JsonResponse({"error": "Élève introuvable."}, status=404))
     data,error = parse_body(request)
     if error is not None: return error
     if not isinstance(data, dict): return JsonResponse({"error": "Objet JSON attendu."}, status=422)
+    if not can_read_sensitive(request.user, school) and STUDENT_SENSITIVE_FIELDS.intersection(data):
+        return refuse()
     answers = {k: data.pop(k) for k in ("extra_fields", "documents") if k in data}
     try:
         if answers and set(data) == {"revision"}:
@@ -203,14 +240,18 @@ def student_detail(request, school_id, student_id):
             obj.save()
             log_event(school, request, "student_updated", obj.pk)
     except ValidationError as exc: return validation_response(exc)
-    return JsonResponse(describe(obj))
+    return JsonResponse(describe_student(obj, sensitive=can_read_sensitive(request.user, school)))
 
 
 @require_http_methods(["GET","POST"])
 @authorized
 def guardians(request, school_id, student_id):
-    school, error = check(request, school_id, "school.students.read" if request.method == "GET" else "school.students.manage")
+    school, error = access(request, school_id)
     if error is not None: return error
+    if not can_read_sensitive(request.user, school):
+        return refuse()
+    if request.method == "POST" and not can_edit_administration(request.user, school):
+        return refuse()
     student = visible_students(request.user,school).filter(pk=student_id).first()
     if student is None: return JsonResponse({"error": "Élève introuvable."}, status=404)
     if request.method == "GET":
@@ -233,7 +274,7 @@ def guardians_by_class(request, school_id):
     school, error = check(request, school_id, "school.parents.manage")
     if error is not None:
         return error
-    if not has_permission(request.user, school, "school.students.read"):
+    if not can_read_sensitive(request.user, school):
         return refuse()
     try:
         classroom_id = UUID(request.GET.get("classroom", ""))
@@ -264,8 +305,10 @@ def guardians_by_class(request, school_id):
 @require_http_methods(["PATCH"])
 @authorized
 def guardian_detail(request, school_id, student_id, guardian_id):
-    school,error=check(request,school_id,"school.students.manage")
+    school,error=access(request, school_id)
     if error is not None: return error
+    if not can_edit_administration(request.user, school) or not can_read_sensitive(request.user, school):
+        return refuse()
     data,error=parse_body(request)
     if error is not None: return error
     try: fields=parse_fields(data,("full_name","relationship","phone","email",*GUARDIAN_INFO,"is_primary","active"),revision=True)
@@ -308,8 +351,12 @@ def validate_enrollment_slot(classroom, student, year, *, active=True, enrollmen
 @require_http_methods(["GET","POST"])
 @authorized
 def enrollments(request,school_id):
-    school,error=check(request,school_id,"school.students.read" if request.method=="GET" else "school.students.manage")
+    school,error=access(request,school_id)
     if error is not None: return error
+    if request.method=="GET" and not can_read_profile(request.user, school):
+        return refuse()
+    if request.method=="POST" and not has_permission(request.user, school, "school.students.manage"):
+        return refuse()
     if request.method=="GET":
         student_id=request.GET.get("student")
         qs=visible_enrollments(request.user,school).order_by("-enrolled_on","pk")
@@ -344,8 +391,12 @@ def enrollments(request,school_id):
 @require_http_methods(["GET","PATCH"])
 @authorized
 def enrollment_detail(request,school_id,enrollment_id):
-    school,error=check(request,school_id,"school.students.read" if request.method=="GET" else "school.students.manage")
+    school,error=access(request,school_id)
     if error is not None: return error
+    if request.method=="GET" and not can_read_profile(request.user, school):
+        return refuse()
+    if request.method=="PATCH" and not has_permission(request.user, school, "school.students.manage"):
+        return refuse()
     if request.method=="GET":
         record=visible_enrollments(request.user,school).filter(pk=enrollment_id).first()
         return JsonResponse(describe(record)) if record else JsonResponse({"error":"Inscription introuvable."},status=404)
@@ -378,8 +429,10 @@ def enrollment_detail(request,school_id,enrollment_id):
 @require_http_methods(["GET"])
 @authorized
 def enrollment_history(request,school_id,enrollment_id):
-    school,error=check(request,school_id,"school.students.read")
+    school,error=access(request,school_id)
     if error is not None: return error
+    if not can_read_profile(request.user, school):
+        return refuse()
     if not Enrollment.objects.filter(school=school,pk=enrollment_id).exists():
         return JsonResponse({"error":"Inscription introuvable."},status=404)
     rows=EnrollmentEvent.objects.filter(school=school,enrollment_id=enrollment_id).order_by("-at")[:100]

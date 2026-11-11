@@ -45,6 +45,8 @@ export function createOfflineDemoBackend(){
   const initialConduct = () => [{id:"conduct-demo",enrollment:"en-s1",kind:"observation",date:"2026-11-04",
     label:"Observation de comportement",message:"Bonne participation aux activités de la classe.",withdrawn:false}];
   let conduct = initialConduct();
+  const effectiveRole=id=>role==="platform"&&platformAccess===id?"direction":role;
+  const can=(id,permission)=>DEMO_ROLES[effectiveRole(id)].permissions.includes(permission);
   const schoolList=()=>data.schools.filter(s=>s.active!==false&&(role!=="platform"||s.id===platformAccess))
     .map(s=>({id:s.id,name:s.name,school_type:s.type,active:true,login_code:"DEMO-"+s.id.toUpperCase()}));
   const years=()=>order.map(y=>({...y}));
@@ -67,6 +69,7 @@ export function createOfflineDemoBackend(){
     });
     return {year:findYear(yr),years:years(),currency:"XAF",currencies:["XAF"],finance_visible:true,
       classes:cc.map(c=>({id:c.id,name:c.name})),students:rows,
+      sensitive_visible:can(id,"school.students.sensitive.read"),
       metrics:{active:ss.length,enrolled:rows.filter(s=>s.enrollment).length,
         new_30d:1,new_prev_30d:1,incomplete:0,missing_documents:0,missing_phone:0}};
   };
@@ -329,13 +332,13 @@ export function createOfflineDemoBackend(){
     }
     if(path.startsWith("platform/")&&method==="GET")return {roles:demoRoleCatalog(),default_role:"proprietaire"};
     if(path===`schools/${id}/my-access`){
-      const effectiveRole=role==="platform"&&platformAccess===id?"direction":role;
-      return {is_owner:role==="proprietaire",role:effectiveRole,role_label:DEMO_ROLES[effectiveRole].label,
-        permissions:DEMO_ROLES[effectiveRole].permissions,school:{id,name:school.name,login_code:"DEMO-"+id.toUpperCase()},
+      const currentRole=effectiveRole(id);
+      return {is_owner:role==="proprietaire",role:currentRole,role_label:DEMO_ROLES[currentRole].label,
+        permissions:DEMO_ROLES[currentRole].permissions,school:{id,name:school.name,login_code:"DEMO-"+id.toUpperCase()},
         cycle_scope_restricted:false};
     }
     const schoolRoute=path.slice(`schools/${id}/`.length);
-    const can=permission=>DEMO_ROLES[role].permissions.includes(permission);
+
     const roomById=roomId=>data.classes.find(room=>room.school===id&&room.id===roomId);
     if(schoolRoute==="academic/annual-snapshot")return {
       year:findYear(yr),years:years(),periods:periodsFor(yr),
@@ -346,7 +349,7 @@ export function createOfflineDemoBackend(){
         {code:"vacances",label:"Vacances"},{code:"examen",label:"Examen"}];
       const scopes=[{code:"all",label:"Tout l’établissement"}];
       const eventId=schoolRoute.split("/")[2];
-      if(method==="GET")return {kinds,scopes,can_manage:can("school.academic.manage")&&findYear(yr).active,
+      if(method==="GET")return {kinds,scopes,can_manage:can(id,"school.academic.manage")&&findYear(yr).active,
         events:[...calendar.filter(row=>row.school===id&&row.year===yr),
           {id:"demo-rentree",title:"Rentrée des classes",kind:"rentree",scope:"all",
             start_date:findYear(yr).start_date,end_date:findYear(yr).start_date,active:true}]};
@@ -462,10 +465,10 @@ export function createOfflineDemoBackend(){
     if(path.endsWith("/academic/terms"))return {terms:periodsFor(yr)};
     if(path.endsWith("/academic/periods"))return {periods:search.has("year")?periodsFor(yr):order.flatMap(year=>periodsFor(year.id))};
     if(schoolRoute==="subjects"&&method==="GET")return {
-      subjects:order.flatMap(year=>subjectsFor(id,year.id)),can_manage:can("school.curriculum.manage")
+      subjects:order.flatMap(year=>subjectsFor(id,year.id)),can_manage:can(id,"school.curriculum.manage")
     };
     if(schoolRoute==="courses"&&method==="GET")return {courses:order.flatMap(year=>coursesFor(id,year.id)),
-      can_manage:can("school.curriculum.manage")};
+      can_manage:can(id,"school.curriculum.manage")};
     if(schoolRoute==="courses/generate"&&method==="POST"){
       const room=roomById(body.classroom);
       if(!room)throw Error("Classe fictive introuvable.");
@@ -661,9 +664,9 @@ export function createOfflineDemoBackend(){
       const row=studentsOverview(id,student.year).students.find(item=>item.id===student.id);
       const view={...student,...row,documents:student.documents||{},extra_fields:student.extra_fields||{},revision:student.revision||1};
       if(action!=="dossier")return view;
-      const finance_visible=can("school.finance.read");
+      const finance_visible=can(id,"school.finance.read");
       const form=forms[id]?.config||defaultForm;
-      return {student:view,form,guardians:student.guardians,finance_visible,
+      return {student:view,form,guardians:student.guardians,finance_visible,sensitive_visible:can(id,"school.students.sensitive.read"),
         missing_documents:form.documents.filter(doc=>doc.required&&!view.documents[doc.key]).map(doc=>doc.label),
         enrollments:enrollmentRows(id,student.year).filter(item=>item.student===student.id).map(item=>({
           ...item,finance:finance_visible?{...row.finance,currency:"XAF",
@@ -772,17 +775,17 @@ export function createOfflineDemoBackend(){
       const closing=closings.find(row=>row.id===cashRoute[1]&&row.school===id);
       if(!closing)throw Error("Clôture fictive introuvable.");
       if(cashRoute[2]==="approve"){
-        if(!can("school.finance.approve"))throw Error("Ce profil ne peut pas contrôler la caisse.");
+        if(!can(id,"school.finance.approve"))throw Error("Ce profil ne peut pas contrôler la caisse.");
         closing.status="approved";closing.approved_by=DEMO_ROLES[role].label;return closing;
       }
       if(closing.status!=="approved")throw Error("La clôture doit être validée.");
       if(cashRoute[3]){
-        if(!can("school.finance.approve"))throw Error("Ce profil ne peut pas contrôler la remise.");
+        if(!can(id,"school.finance.approve"))throw Error("Ce profil ne peut pas contrôler la remise.");
         const transfer=closing.transfers.find(row=>row.id===cashRoute[3]);
         if(!transfer)throw Error("Justificatif fictif introuvable.");
         transfer.approved_by=DEMO_ROLES[role].label;return transfer;
       }
-      if(!can("school.finance.deposit"))throw Error("Ce profil ne peut pas déclarer de remise.");
+      if(!can(id,"school.finance.deposit"))throw Error("Ce profil ne peut pas déclarer de remise.");
       const transfer={...body,id:"remise-demo-"+(closing.transfers.length+1)};
       closing.transfers.push(transfer);return transfer;
     }
@@ -949,7 +952,7 @@ export function createOfflineDemoBackend(){
           id:"affectation-demo-"+(assignments.length+1),active:true});
         return {staff:{...newPerson,...splitName(newPerson.name),staff_code:"DEMO-"+newPerson.id},account_created:Boolean(body.account),appointments:body.appointments||[]};
       }
-      return {school_name:school.name,can_create_account:can("school.members.write"),can_appoint:can("school.organization.manage"),can_manage_cycle_access:role==="proprietaire",
+      return {school_name:school.name,can_create_account:can(id,"school.members.write"),can_appoint:can(id,"school.organization.manage"),can_manage_cycle_access:role==="proprietaire",
         education_cycles:[school.type],academic_cycles:[{id:"cycle-demo",code:"college",name:school.type}],
         actor_access_cycle_ids:null,existing_accounts:[],roles,positions,years:years(),
         classes:classOverview(id,yr).classes};

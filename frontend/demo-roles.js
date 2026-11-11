@@ -15,12 +15,14 @@ export const DEMO_ROLES = {
     "school.organization.read", "school.parents.manage", "school.reports.amend", "school.reports.manage",
     "school.reports.publish", "school.reports.read", "school.roles.manage", "school.roles.read",
     "school.settings.read", "school.settings.write", "school.staff.manage", "school.staff.read",
-    "school.students.manage", "school.students.read", "school.timetable.manage", "school.timetable.read",
+    "school.students.manage", "school.students.read",
+    "school.students.profile.read", "school.students.admin.write", "school.students.sensitive.read", "school.students.finance.read", "school.timetable.manage", "school.timetable.read",
     "school.view",
   ]},
   secretariat: {label: "Secrétariat", permissions: [
     "school.view", "school.members.read", "school.settings.read", "school.academic.read",
     "school.students.read", "school.students.manage", "school.admissions.read", "school.admissions.manage",
+    "school.students.profile.read", "school.students.admin.write", "school.students.sensitive.read",
     "school.admissions.enroll", "school.staff.read", "school.staff.manage", "school.organization.read",
     "school.curriculum.read", "school.curriculum.manage", "school.reports.read", "school.deliberations.read",
     "school.attendance.read", "school.attendance.write", "school.timetable.read", "school.timetable.manage",
@@ -30,11 +32,11 @@ export const DEMO_ROLES = {
     "school.timetable.read", "school.attendance.assigned",
   ]},
   comptabilite: {label: "Comptabilité", permissions: [
-    "school.view", "school.students.read", "school.academic.read", "school.finance.read",
+    "school.view", "school.students.finance.read", "school.academic.read", "school.finance.read",
     "school.finance.approve", "school.finance.reverse",
   ]},
   econome: {label: "Économe / Caissier", permissions: [
-    "school.view", "school.students.read", "school.academic.read", "school.finance.read",
+    "school.view", "school.students.finance.read", "school.academic.read", "school.finance.read",
     "school.finance.receive", "school.finance.deposit",
   ]},
   tarification: {label: "Responsable des tarifs", permissions: [

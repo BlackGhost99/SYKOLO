@@ -528,6 +528,11 @@ class RegistrationTests(TestCase):
         self.assertEqual(c["finance"]["billed"], "400000.00")
         self.assertEqual(c["finance"]["partiel"], 1)
         self.assertEqual(o["unassigned_students"], 1)
+        # The tariff manager may create fee charges without being authorized to
+        # inspect each child's payment ledger (student finance read is separate).
+        biller_rows = {s["id"]: s for s in self.client.get(self.base + "overview/students").json()["students"]}
+        self.assertIsNone(biller_rows[str(students[0].pk)]["finance"])
+        self.client.force_login(self.director)
         rows = {s["id"]: s for s in self.client.get(self.base + "overview/students").json()["students"]}
         self.assertEqual(rows[str(students[0].pk)]["finance"]["methods"], ["moov_money"])
         dossier = self.client.get(self.base + f"students/{students[0].pk}/dossier").json()
