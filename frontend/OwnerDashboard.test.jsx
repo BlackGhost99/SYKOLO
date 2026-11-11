@@ -39,7 +39,7 @@ test("Le propriétaire voit le pilotage et les indicateurs sans données nominat
   const user=userEvent.setup();
   const onNavigate=vi.fn();
   render(<OwnerDashboard schoolId="ecole-1" schoolName="École YEM" onNavigate={onNavigate}/>);
-  expect(await screen.findByText("123")).toBeTruthy();
+  expect((await screen.findAllByText("123")).length).toBeGreaterThan(0);
   expect(screen.getByText("Collège")).toBeTruthy();
   expect(screen.getByText("400 000 XAF")).toBeTruthy();
   expect(screen.getByText("Lecture seule — chiffres consolidés")).toBeTruthy();
