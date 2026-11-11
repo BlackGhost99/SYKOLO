@@ -188,3 +188,15 @@ test("la direction accepte une candidature puis le secrétariat confirme l’ins
   expect(screen.getByText("Mme Obame")).toBeTruthy();
   expect(network).not.toHaveBeenCalled();
 });
+test("le calendrier affiche les événements et le bilan annuel dans les composants réels",async()=>{
+  const network=vi.fn(()=>{throw Error("Réseau interdit");});
+  vi.stubGlobal("fetch",network);
+  const user=userEvent.setup();
+  render(<RealDemoExperience/>);
+  const nav=await screen.findByRole("navigation",{name:"Navigation principale"});
+  await user.click(await within(nav).findByRole("button",{name:"Calendrier pédagogique"}));
+  expect(await screen.findByText("Rentrée des classes",{exact:true})).toBeTruthy();
+  expect(await screen.findByRole("heading",{name:"Classes de 2026-2027"})).toBeTruthy();
+  expect(screen.queryByText(/Cette rubrique de démonstration ne peut pas s'afficher/)).toBeNull();
+  expect(network).not.toHaveBeenCalled();
+});

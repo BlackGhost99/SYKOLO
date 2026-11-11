@@ -81,7 +81,9 @@ export function createOfflineDemoBackend(){
     .map(subject=>({id:"course-"+room.id+"-"+subject.id,school:id,year:yr,
       classroom:room.id,subject:subject.id,coefficient:subject.coefficient,active:true})));
   const periodsFor=(yr)=>["1er trimestre","2e trimestre","3e trimestre"]
-    .map((name,i)=>({id:"period-"+yr+"-"+(i+1),year:yr,name,code:"T"+(i+1),active:true}));
+    .map((name,i)=>({id:"period-"+yr+"-"+(i+1),year:yr,name,code:"T"+(i+1),active:true,revision:1,
+      start_date:[yr.slice(0,4)+"-09-07",yr.slice(0,4)+"-12-07",yr.slice(5)+"-03-15"][i],
+      end_date:[yr.slice(0,4)+"-11-28",yr.slice(5)+"-03-06",yr.slice(5)+"-07-10"][i]}));
   const assessmentFor=(id,courseId,yr)=>{
     if(!assessments[courseId]){
       assessments[courseId]=[{id:"assessment-"+courseId,school:id,course:courseId,year:yr,
@@ -340,10 +342,20 @@ export function createOfflineDemoBackend(){
     const schoolRoute=path.slice(`schools/${id}/`.length);
 
     const roomById=roomId=>data.classes.find(room=>room.school===id&&room.id===roomId);
-    if(schoolRoute==="academic/annual-snapshot")return {
-      year:findYear(yr),years:years(),periods:periodsFor(yr),
-      can_edit_year:false,classes:classesFor(id,yr),students:studentsFor(id,yr)
-    };
+    if(schoolRoute==="academic/annual-snapshot"){
+      const overview=classOverview(id,yr),periods=periodsFor(yr);
+      const published=Object.values(reports).filter(row=>row.school===id&&row.year===yr&&row.status==="published");
+      const staff=assignments.filter(row=>row.school===id&&row.year===yr);
+      return {year:findYear(yr),years:years(),periods,can_edit_year:false,
+        classes:overview.classes.map(room=>({...room,level:overview.levels.find(row=>row.id===room.level)?.name,
+          cycle:school.type,team:staff.filter(row=>row.classroom===room.id).map(row=>({
+            staff_id:row.staff,name:data.staff.find(person=>person.id===row.staff)?.name,duty:row.duty
+          }))})),
+        stats:{classes:overview.classes.length,periods:periods.length,enrollments:enrollmentRows(id,yr).length,
+          staff_assignments:staff.length,published_reports:published.length,
+          assessments:Object.values(assessments).flat().filter(row=>row.school===id&&row.year===yr).length}
+      };
+    }
     if(schoolRoute.startsWith("academic/pedagogical-calendar")){
       const kinds=[{code:"autre",label:"Autre"},{code:"rentree",label:"Rentrée"},
         {code:"vacances",label:"Vacances"},{code:"examen",label:"Examen"}];
@@ -487,7 +499,7 @@ export function createOfflineDemoBackend(){
       const courseId=courseAssessments[1];
       if(method!=="GET"){
         const list=assessmentFor(id,courseId,yr);
-        const record={id:"assessment-demo-"+(list.length+1)+"-"+courseId,course:courseId,
+        const record={id:"assessment-demo-"+(list.length+1)+"-"+courseId,school:id,year:yr,course:courseId,
           name:String(body.name||"Évaluation fictive"),assessment_date:body.assessment_date||today,
           kind:body.kind||"devoir",weight:Number(body.weight)||1,period:body.period||null,
           active:true,published:false,revision:1,
