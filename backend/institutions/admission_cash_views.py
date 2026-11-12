@@ -21,6 +21,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from accounts.views import authorized
 
 from .admission_models import AdmissionEvent
+from .admission_finance import current_scholarship, GovernmentScholarship
 from .demo_payment_views import demo_amount
 from .finance_cash_policy import cash_closed_for_recorder
 from .models import School
@@ -70,7 +71,11 @@ def cashier_queue(request, school_id):
             links = links.filter(application_id=UUID(application))
         except ValueError:
             return fail("Candidature invalide.")
-    links = links.order_by("-created_at")[:250]
+    links = list(links.order_by("-created_at")[:250])
+    covered_applications = set(GovernmentScholarship.objects.filter(
+        school=school, application_id__in=[link.application_id for link in links],
+        active=True,
+    ).values_list("application_id", flat=True))
     rows = []
     for link in links:
         cash = AdmissionCashReceipt.objects.filter(request=link).first()
@@ -83,6 +88,9 @@ def cashier_queue(request, school_id):
             "amount_xaf": link.fee_amount_xaf,
             "is_demo": link.is_demo_cash,
             "admission_status": link.application.status,
+            "scholarship_active": link.application_id in covered_applications,
+            "can_pay": link.application_id not in covered_applications
+                and link.application.status not in ("enrolled", "rejected"),
             "payment_status": receipt_payload(cash)["status"] if cash else "a_regler_sur_place",
             "receipt_url": f"/api/v1/schools/{school.pk}/admission-cash/{link.pk}/receipt"
                 if cash else None,
@@ -130,8 +138,10 @@ def confirm_cash(request, school_id, application_id):
                 if same:
                     return JsonResponse(receipt_payload(previous), status=200)
                 return fail("Le règlement de ce dossier est déjà enregistré.", 409)
-            if link.application.status == "rejected":
-                return fail("Candidature refusée : aucun nouveau paiement admis.", 409)
+            if link.application.status in ("rejected", "enrolled"):
+                return fail("Candidature refusée ou déjà inscrite : aucun nouveau paiement admis.", 409)
+            if current_scholarship(link.application):
+                return fail("Bourse gouvernementale déjà validée : aucun encaissement supplémentaire autorisé.", 409)
             if not link.fee_amount_xaf:
                 return fail("Aucun tarif d'admission enregistré pour ce dossier.", 409)
             if not link.application.year.start_date <= paid_on <= link.application.year.end_date:
