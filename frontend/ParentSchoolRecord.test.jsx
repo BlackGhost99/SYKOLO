@@ -23,10 +23,10 @@ function renderPortal(responses) {
 test("le parent retrouve l’identifiant à donner à l’école pendant le rattachement", async () => {
   const path = "/api/v1/parents/children";
   const fetch = renderPortal({[path]:{children:[], parent_username:"compte-test"}});
-  await screen.findByText(/Communiquez votre identifiant YEM Parents/);
+  await screen.findByText(/Pour suivre sa scolarité/);
   expect(screen.getAllByText("compte-test").length).toBeGreaterThan(0);
   await userEvent.setup().click(screen.getByRole("button", {name:"Actualiser mes enfants"}));
-  await screen.findByText(/Communiquez votre identifiant YEM Parents/);
+  await screen.findByText(/Pour suivre sa scolarité/);
   expect(fetch.mock.calls.filter(([url]) => url === path)).toHaveLength(2);
 });
 
@@ -48,14 +48,14 @@ test("la fiche affiche la classe, les notes et la vie scolaire de l’année cho
   });
   const user = userEvent.setup();
   expect(await screen.findByRole("heading", {name:"Lina Nkomo"})).toBeTruthy();
-  expect(await screen.findByText("24 élèves inscrits")).toBeTruthy();
+  expect(await screen.findByText("CM1 A")).toBeTruthy();
   await user.click(within(screen.getByRole("navigation", {name:"Navigation YEM Familles"})).getByRole("button", {name:"Scolarité"}));
   expect(await screen.findByText("0 / 15")).toBeTruthy();
   await user.click(screen.getByRole("button", {name:"Vie scolaire"}));
   expect(await screen.findByText("Travail de rattrapage mercredi.")).toBeTruthy();
-  expect(screen.getByText("1")).toBeTruthy();
+  expect(screen.getAllByText("1").length).toBeGreaterThan(0);
   await user.selectOptions(screen.getByLabelText("Année scolaire"), "year-2");
-  expect(screen.getByText("18 élèves inscrits")).toBeTruthy();
+  expect(screen.getByText("CE2 B")).toBeTruthy();
   expect(await screen.findByText(/Aucune observation ni sanction communiquée/)).toBeTruthy();
   expect(screen.queryByText("Travail de rattrapage mercredi.")).toBeNull();
 });
