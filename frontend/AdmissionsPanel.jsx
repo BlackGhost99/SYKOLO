@@ -204,6 +204,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
       <button disabled={busy||!year||!classroom} type="submit">Déposer la candidature</button>
     </form></details>}
     <h3>Traitement des candidatures</h3>
+    <p className="hint">Parcours : 1. Pièces exigées et vérification · 2. Décision · 3. Frais ou bourse · 4. Inscription définitive.</p>
     <button type="button" disabled={busy} onClick={()=>run(()=>{
       setMessage("Candidatures actualisées.");
     })}>Actualiser les candidatures</button>
@@ -226,16 +227,14 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
         <p>La classe est demandée, mais l’élève ne fait pas encore partie des effectifs inscrits. Le dossier financier (bourse, espèces ou Mobile Money) prend le relais avant création du matricule.</p>
         {onNavigate&&<button type="button" onClick={()=>onNavigate("payments","finance")}>Ouvrir Paiements et la caisse des admissions</button>}
       </div>}
-      {current.status!=="enrolled"&&current.status!=="rejected"&&current.finance?.blocker&&
-        <p role="status">Avant l’inscription définitive. {current.finance.blocker}</p>}
       {(current.status==="submitted"||current.status==="review")&&!canDecide&&
         <p>{canPrepare?"Secrétariat : constituez et étudiez le dossier. La direction conserve seule la décision d’admission.":"Décision d’admission attendue de la direction."}</p>}
       <AdmissionProofPanel key={current.id} api={admissionApi} base={base}
         application={current} canDecide={canDecide} canPrepare={canPrepare} onUpdated={refresh}/>
       <AdmissionDecisionReadiness application={current}/>
-      <GovernmentScholarshipPanel schoolId={schoolId} application={current}
-        canApprove={canApproveScholarship} onUpdated={refresh}/>
       {(current.status==="submitted"||current.status==="review")&&(canDecide||canPrepare)&&<form onSubmit={e=>e.preventDefault()}>
+        <h3>Décision de la direction</h3>
+        <p className="hint">La décision d’admission se prend après la vérification des pièces obligatoires. Le paiement ou la bourse intervient ensuite.</p>
         <label className="field">Motif de la décision ou du traitement (requis pour accepter ou refuser)
           <textarea placeholder="Ex. dossier complet et place disponible" maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/>
         </label>
@@ -253,12 +252,23 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
         })}>Refuser la candidature (direction)</button>}
       </form>}
       {current.status==="accepted"&&!canEnroll&&<p>Le secrétariat ou la direction peut finaliser l’inscription.</p>}
+      {current.status!=="enrolled"&&current.status!=="rejected"&&<div className="ar-finance-step">
+        <h3>Paiement ou bourse</h3>
+        <p className="hint">Une bourse est facultative et doit être vérifiée avant d'exempter les frais concernés.</p>
+        <details className="ar-options" key={current.id+"-scholarship"} defaultOpen={Boolean(current.finance?.scholarship)}>
+          <summary>Bourse / prise en charge (si concerné)</summary>
+          <GovernmentScholarshipPanel schoolId={schoolId} application={current}
+            canApprove={canApproveScholarship} onUpdated={refresh}/>
+        </details>
+        {current.finance?.blocker&&<p role="status" className="ar-missing">Avant l’inscription définitive : {current.finance.blocker}</p>}
+      </div>}
       {current.status==="accepted"&&canEnroll&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
         await admissionApi(base+"/"+current.id+"/convert",{
           revision:current.revision,enrolled_on:enrollDate
         });
         setMessage("Inscription officielle créée ; vous pouvez gérer les frais dans la caisse scolaire.");
       })}}>
+        <h3>Inscription définitive</h3>
         <p className="hint">Le bouton devient disponible une fois les frais exigibles payés ou couverts par une bourse. La capacité est revérifiée avant la finalisation.</p>
         <div className="two">
           <label className="field">Date de l'inscription
@@ -268,14 +278,17 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
         <button disabled={busy||!enrollDate||Boolean(current.finance?.blocker)} type="submit">Confirmer l’inscription définitive</button>
       </form>}
       {current.status==="enrolled"&&<p>Inscription confirmée</p>}
-      <button type="button" disabled={busy} onClick={()=>run(async()=>{
-        const result=await admissionApi(base+"/"+current.id+"/history");
-        setHistory(result.history||[]);
-      })}>Voir l'historique des décisions</button>
-      {history&&<div>
-        {history.map((h,i)=><p key={i}><strong>{STATES[h.status]||h.status}</strong> · {new Date(h.at).toLocaleString("fr-FR")}
-          {h.reason?" — "+h.reason:""}</p>)}
-      </div>}
+      <details className="ar-options">
+        <summary>Options avancées — historique des décisions</summary>
+        <button type="button" disabled={busy} onClick={()=>run(async()=>{
+          const result=await admissionApi(base+"/"+current.id+"/history");
+          setHistory(result.history||[]);
+        })}>Voir l'historique des décisions</button>
+        {history&&<div>
+          {history.map((h,i)=><p key={i}><strong>{STATES[h.status]||h.status}</strong> · {new Date(h.at).toLocaleString("fr-FR")}
+            {h.reason?" — "+h.reason:""}</p>)}
+        </div>}
+      </details>
     </div>}
     {message&&<p role="status" aria-live="polite">{message}</p>}
   </section>;
