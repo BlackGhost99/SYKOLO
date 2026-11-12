@@ -304,3 +304,31 @@ class EnrollmentFinancialConditionsTests(TestCase):
         self.assertEqual(receipt.status_code, 409, receipt.content)
         self.assertIn("déjà inscrite", receipt.json()["error"])
         self.assertFalse(AdmissionCashReceipt.objects.exists())
+
+
+    def test_disabling_new_awards_preserves_existing_award_and_allows_later_revoke(self):
+        app, link = self.make_app(index=24)
+        self.login("direction")
+        self.assertEqual(self.award(app).status_code, 201)
+        config = self.post(f"schools/{self.school.pk}/admissions/finance-policy", {
+            "year": str(self.year.pk), "level": str(self.room.level_id),
+            "require_payment": True, "allow_government_scholarship": False,
+            "revision": 0,
+        })
+        self.assertEqual(config.status_code, 200, config.content)
+        self.assertTrue(finance_policy(self.school, self.year.pk, self.room.level_id)["require_payment"])
+        self.assertFalse(finance_policy(self.school, self.year.pk, self.room.level_id)["allow_government_scholarship"])
+        from .admission_finance import payment_blocker
+        self.assertIsNone(payment_blocker(app), "Une bourse vérifiée n'est pas annulée par un réglage futur")
+
+        another, _ = self.make_app(index=25)
+        self.assertEqual(self.award(another).status_code, 409)
+        revoked = self.award(app, revision=1, action="revoke",
+                            reference="ETAT-REVOCATION-2026-001")
+        self.assertEqual(revoked.status_code, 200, revoked.content)
+        self.assertFalse(revoked.json()["ready_for_enrollment"])
+        self.login("secretariat")
+        denied = self.convert(app)
+        self.assertEqual(denied.status_code, 409, denied.content)
+        self.assertIn("espèces", denied.json()["error"])
+        self.assertFalse(AdmissionCashReceipt.objects.exists())
