@@ -4,6 +4,7 @@ Checks real Django endpoints with distinct cashier/secretary/director/parent
 sessions. An award is never a cash receipt or a fictitious payment.
 """
 import json
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -221,3 +222,84 @@ class EnrollmentFinancialConditionsTests(TestCase):
         result=self.award(app)
         self.assertEqual(result.status_code,409,result.content)
         self.assertIn("remboursement",result.json()["error"])
+
+    def test_awarded_scholarship_blocks_later_cash_and_cashier_queue_explains_why(self):
+        app, link = self.make_app(index=20)
+        self.login("direction")
+        approved = self.award(app)
+        self.assertEqual(approved.status_code, 201, approved.content)
+        self.login("econome")
+        queue = self.client.get(f"/api/v1/schools/{self.school.pk}/admission-cash?application={app.pk}")
+        self.assertEqual(queue.status_code, 200, queue.content)
+        self.assertEqual(len(queue.json()["payments"]), 1)
+        self.assertTrue(queue.json()["payments"][0]["scholarship_active"])
+        self.assertFalse(queue.json()["payments"][0]["can_pay"])
+        received = self.post(f"schools/{self.school.pk}/admission-cash/{link.pk}/confirm", {
+            "reference": "CAISSE-INTERDITE-2026",
+            "received_on": "2026-11-10", "received_cash": True,
+            "acknowledge_demo": False,
+        })
+        self.assertEqual(received.status_code, 409, received.content)
+        self.assertIn("Bourse gouvernementale", received.json()["error"])
+        self.assertFalse(AdmissionCashReceipt.objects.exists())
+        self.assertFalse(FeePayment.objects.exists())
+
+    def test_online_payment_providers_cannot_start_after_government_award(self):
+        app, link = self.make_app(index=21)
+        link.payment_choice = "online"
+        link.save(update_fields=["payment_choice"])
+        self.login("direction")
+        self.assertEqual(self.award(app).status_code, 201)
+        self.login("parent")
+        paycentral = self.post(f"parents/applications/{link.pk}/pay", {
+            "channel": "airtel", "phone": "+24107123456",
+        })
+        self.assertEqual(paycentral.status_code, 409, paycentral.content)
+        self.assertIn("Bourse gouvernementale", paycentral.json()["error"])
+        singpay = self.post(f"parents/singpay/admission/{link.pk}/pay", {
+            "amount_xaf": 2500, "channel": "airtel",
+            "phone": "071234567",
+            "merchant_revision": 0,
+            "idempotency_key": str(uuid.uuid4()),
+        })
+        self.assertEqual(singpay.status_code, 409, singpay.content)
+        self.assertIn("Bourse gouvernementale", singpay.json()["error"])
+        from .parent_payment_models import ParentPaymentAttempt
+        from .singpay_models import SingPayIntent
+        self.assertFalse(ParentPaymentAttempt.objects.exists())
+        self.assertFalse(SingPayIntent.objects.exists())
+
+    def test_cashier_may_receive_after_scholarship_revoked_before_enrollment(self):
+        app, link = self.make_app(index=22)
+        self.login("direction")
+        self.assertEqual(self.award(app).status_code, 201)
+        revoked = self.award(app, revision=1, action="revoke",
+                            reference="REVOCATION-BOURSE-2026")
+        self.assertEqual(revoked.status_code, 200, revoked.content)
+        self.assertFalse(revoked.json()["ready_for_enrollment"])
+        self.login("econome")
+        receipt = self.post(f"schools/{self.school.pk}/admission-cash/{link.pk}/confirm", {
+            "reference": "CASH-APRES-REVOCATION-2026",
+            "received_on": "2026-11-10", "received_cash": True,
+            "acknowledge_demo": False,
+        })
+        self.assertEqual(receipt.status_code, 201, receipt.content)
+        self.assertTrue(receipt.json()["received_confirmed"])
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 201)
+
+    def test_cannot_record_cash_against_an_already_enrolled_scholarship(self):
+        app, link = self.make_app(index=23)
+        self.login("direction")
+        self.assertEqual(self.award(app).status_code, 201)
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 201)
+        self.login("econome")
+        receipt = self.post(f"schools/{self.school.pk}/admission-cash/{link.pk}/confirm", {
+            "reference": "PAIEMENT-APRES-INSCRIPTION-2026",
+            "received_on": "2026-11-10", "received_cash": True,
+            "acknowledge_demo": False,
+        })
+        self.assertEqual(receipt.status_code, 409, receipt.content)
+        self.assertIn("déjà inscrite", receipt.json()["error"])
+        self.assertFalse(AdmissionCashReceipt.objects.exists())
