@@ -88,7 +88,7 @@ class FamilyDiscoveryTests(TestCase):
         self.assertEqual(changed.json()["revision"], 2)
         self.assertEqual(changed.json()["profile"]["gender"], "F")
         # Deliberately tiny JPEG-like fixture: upload route verifies content and MIME, no public URL.
-        encoded = base64.b64encode(b"\\xff\\xd8\\xff" + b"YEM JPG fixture").decode()
+        encoded = base64.b64encode(b"\xff\xd8\xff" + b"YEM JPG fixture").decode()
         photo = self.post("parents/family-children/" + child_id + "/photo",
                           {"photo": "data:image/jpeg;base64," + encoded})
         self.assertEqual(photo.status_code, 200, photo.content)
@@ -97,7 +97,7 @@ class FamilyDiscoveryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Cache-Control"], "private, no-store")
         self.assertEqual(response["X-Content-Type-Options"], "nosniff")
-        self.assertTrue(response.content.startswith(b"\\xff\\xd8\\xff"))
+        self.assertTrue(response.content.startswith(b"\xff\xd8\xff"))
         self.login(self.other_parent)
         self.assertEqual(self.client.get(uri).status_code, 404)
         self.assertEqual(self.client.get(path).status_code, 404)
@@ -140,7 +140,7 @@ class FamilyDiscoveryTests(TestCase):
         self.assertIn("acte_naissance", saved.application.required_documents)
         doc_list_url = f"/api/v1/parents/applications/{item_id}/documents"
         self.assertEqual(self.client.get(doc_list_url).json()["documents"][0]["status"], "missing")
-        file = SimpleUploadedFile("acte.pdf", b"%PDF-1.7\\nYEM test PDF", content_type="application/pdf")
+        file = SimpleUploadedFile("acte.pdf", b"%PDF-1.7\nYEM test PDF", content_type="application/pdf")
         upload = self.client.post(doc_list_url+"/acte_naissance", {"file":file},
                                   HTTP_X_CSRFTOKEN=self.csrf)
         self.assertEqual(upload.status_code, 200, upload.content)
