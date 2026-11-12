@@ -310,7 +310,7 @@ export default function AuthPanel() {
     return <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} accountView={accountCard} onLogout={() => run(logout)}/>;
   }
   if (account?.authenticated && account.login_scope === "parent") {
-    return <FamilyWorkspace accountView={accountCard} onLogout={() => run(logout)} />;
+    return <FamilyWorkspace user={account.user} accountView={accountCard} onLogout={() => run(logout)} />;
   }
   if (account?.authenticated) {
     return <SchoolDashboard user={account.user} initialSchoolId={account.school_id} accountView={accountCard} onLogout={() => run(logout)} />;
