@@ -157,7 +157,7 @@ def confirm_cash(request, school_id, application_id):
                 "application__year", "application__classroom__level",
             ).filter(pk=application_id, application__school=school, payment_choice="cash").first()
             app = (link.application if link else
-                   AdmissionApplication.objects.select_for_update().select_related(
+                   AdmissionApplication.objects.select_for_update(of=("self",)).select_related(
                        "year", "classroom__level",
                    ).filter(pk=application_id, school=school, parent_request__isnull=True).first())
             if app is None:
