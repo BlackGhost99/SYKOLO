@@ -22,7 +22,7 @@ from accounts.views import authorized
 
 from .admission_models import AdmissionEvent, AdmissionApplication
 from .admission_scholarship_amounts import admission_due, admission_gross
-from .admission_finance import current_scholarship, GovernmentScholarship
+from .admission_finance import current_scholarship, full_admission_waiver, GovernmentScholarship
 from .demo_payment_views import demo_amount
 from .finance_cash_policy import cash_closed_for_recorder
 from .models import School
@@ -63,6 +63,8 @@ def cash_position(app, cash):
         status = "inscription_deja_finalisee"
     elif app.status == "rejected":
         status = "candidature_refusee"
+    elif full_admission_waiver(award):
+        status = "dispense_bourse"
     elif not gross:
         status = "tarif_non_configure"
     elif due == 0:
@@ -73,7 +75,7 @@ def cash_position(app, cash):
         status = "a_regler_sur_place"
     return {
         "gross_amount_xaf": gross or None,
-        "amount_xaf": 0 if status == "recu" else due if gross else None,
+        "amount_xaf": 0 if status in ("recu", "dispense_bourse") else due if gross else None,
         "scholarship_covered_xaf": gross - due,
         "scholarship_active": bool(award),
         "can_pay": status == "a_regler_sur_place",
@@ -189,9 +191,10 @@ def confirm_cash(request, school_id, application_id):
             if app.status in ("rejected", "enrolled"):
                 return fail("Candidature refusée ou déjà inscrite : aucun nouveau paiement admis.", 409)
             gross = admission_gross(app)
-            if not gross:
+            award = current_scholarship(app)
+            if not gross and not full_admission_waiver(award):
                 return fail("Tarif d'inscription non configuré. Demandez son activation pour cette année et ce niveau.", 409)
-            due = admission_due(app)
+            due = admission_due(app, award)
             if due == 0:
                 return fail("Bourse gouvernementale couvrant tous les frais d'inscription : rien à encaisser.", 409)
             if due < 100:

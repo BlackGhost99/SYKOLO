@@ -96,7 +96,7 @@ export default function AdmissionCashDesk({schoolId,canReceive=false,application
       <strong>{row.child}</strong> · {row.classroom} · {row.year}
       <p>Responsable : {row.parent} · Dossier : {admissionLabels[row.admission_status]||row.admission_status}</p>
       <p>Frais d'inscription : {row.payment_status==="tarif_non_configure"?
-        "Tarif non configuré":row.gross_amount_xaf==null&&row.amount_xaf==null?
+        "Tarif non configuré":row.gross_amount_xaf===null?
           "Non renseignés":amountLabel(row.gross_amount_xaf??row.amount_xaf)}
         {row.scholarship_covered_xaf>0&&" · Bourse : −"+amountLabel(row.scholarship_covered_xaf)}</p>
       <p><strong>Reste à payer : {row.amount_xaf==null?"Indéterminé":amountLabel(row.amount_xaf)}</strong>

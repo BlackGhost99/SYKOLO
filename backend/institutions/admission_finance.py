@@ -131,6 +131,11 @@ def scholarship_for_enrollment(enrollment):
     ).first()
 
 
+def full_admission_waiver(award):
+    return bool(award and award.coverage in ("all", "admission")
+                and award.calculation == "percent" and award.percentage == 100)
+
+
 def payment_blocker(application):
     """Return None only after verified settlement, or valid government coverage.
 
@@ -145,6 +150,8 @@ def payment_blocker(application):
         return None
     award = current_scholarship(application)
     from .admission_scholarship_amounts import admission_due, admission_gross
+    if full_admission_waiver(award):
+        return None
     if not admission_gross(application):
         return "Configurez d'abord les frais d'inscription de l'année et du niveau."
     # An existing, independently verified award still applies if new awards

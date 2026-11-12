@@ -136,6 +136,17 @@ class EnrollmentFinancialConditionsTests(TestCase):
         }).status_code,422)
         self.assertFalse(Enrollment.objects.exists())
 
+    def test_partial_scholarship_without_tariff_cannot_waive_payment(self):
+        app, _ = self.make_app(with_parent=False)
+        response = self.post(f"schools/{self.school.pk}/admissions/{app.pk}/scholarship", {
+            "action": "approve", "coverage": "admission", "reference": "ETAT-PARTIEL-2026",
+            "revision": 0, "calculation": "percent", "percentage": 50,
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertFalse(response.json()["ready_for_enrollment"])
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 409)
+
     def test_late_tariff_unblocks_direct_and_parent_cash_then_enrollment(self):
         direct, _ = self.make_app(index=51, with_parent=False)
         parent_app, link = self.make_app(index=52, with_fee=False)
