@@ -58,7 +58,7 @@ export function AdmissionPaymentSettings({schoolId}) {
   return <SchoolPaymentSetup schoolId={schoolId} years={data.years} classes={classes}/>;
 }
 
-export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canEnroll=true,canReceive=false,canApproveScholarship=false}){
+export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canPrepare=false,canEnroll=true,canReceive=false,canApproveScholarship=false}){
   const root="schools/"+schoolId+"/";
   const base=root+"admissions";
   const [formError,setFormError]=useState("");
@@ -226,28 +226,28 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
       {current.status!=="enrolled"&&current.status!=="rejected"&&current.finance?.blocker&&
         <p role="status">Avant l’inscription définitive. {current.finance.blocker}</p>}
       {(current.status==="submitted"||current.status==="review")&&!canDecide&&
-        <p>Décision d’admission attendue de la direction.</p>}
+        <p>{canPrepare?"Secrétariat : constituez et étudiez le dossier. La direction conserve seule la décision d’admission.":"Décision d’admission attendue de la direction."}</p>}
       <AdmissionProofPanel key={current.id} api={admissionApi} base={base}
-        application={current} canDecide={canDecide} onUpdated={refresh}/>
+        application={current} canDecide={canDecide} canPrepare={canPrepare} onUpdated={refresh}/>
       <AdmissionDecisionReadiness application={current}/>
       <GovernmentScholarshipPanel schoolId={schoolId} application={current}
         canApprove={canApproveScholarship} onUpdated={refresh}/>
-      {(current.status==="submitted"||current.status==="review")&&canDecide&&<form onSubmit={e=>e.preventDefault()}>
-        <label className="field">Motif de la décision (requis pour accepter ou refuser)
+      {(current.status==="submitted"||current.status==="review")&&(canDecide||canPrepare)&&<form onSubmit={e=>e.preventDefault()}>
+        <label className="field">Motif de traitement / décision (requis pour accepter ou refuser)
           <textarea placeholder="Ex. dossier complet et place disponible" maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/>
         </label>
-        {current.status==="submitted"&&<button disabled={busy} type="button" onClick={()=>run(async()=>{
+        {current.status==="submitted"&&canPrepare&&<button disabled={busy} type="button" onClick={()=>run(async()=>{
           await admissionApi(base+"/"+current.id+"/decide",{revision:current.revision,status:"review",reason});
           setReason("");
-        })}>Passer en étude</button>}
-        <button disabled={busy||reason.trim().length===0||Boolean(current.acceptance_blocker)} type="button" onClick={()=>run(async()=>{
+        })}>Passer en étude (secrétariat)</button>}
+        {canDecide&&<button disabled={busy||reason.trim().length===0||Boolean(current.acceptance_blocker)} type="button" onClick={()=>run(async()=>{
           await admissionApi(base+"/"+current.id+"/decide",{revision:current.revision,status:"accepted",reason});
           setReason("");
-        })}>Accepter la candidature (direction)</button>
-        <button disabled={busy||reason.trim().length===0} type="button" onClick={()=>run(async()=>{
+        })}>Accepter la candidature (direction)</button>}
+        {canDecide&&<button disabled={busy||reason.trim().length===0} type="button" onClick={()=>run(async()=>{
           await admissionApi(base+"/"+current.id+"/decide",{revision:current.revision,status:"rejected",reason});
           setReason("");
-        })}>Refuser la candidature (direction)</button>
+        })}>Refuser la candidature (direction)</button>}
       </form>}
       {current.status==="accepted"&&!canEnroll&&<p>Le secrétariat ou la direction peut finaliser l’inscription.</p>}
       {current.status==="accepted"&&canEnroll&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
