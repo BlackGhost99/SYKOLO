@@ -232,12 +232,15 @@ def family_children(request):
 
 def parent_application_output(link):
     from .parent_payment_models import AdmissionCashReceipt, AdmissionCashReceiptVoid
+    from .admission_scholarship_amounts import grant_summary
     app = link.application
+    amounts = grant_summary(app)
     latest = link.payment_attempts.order_by("-created_at").first() if link.payment_choice == "online" else None
     cash = AdmissionCashReceipt.objects.filter(request=link).first() if link.payment_choice == "cash" else None
     voided = bool(cash and AdmissionCashReceiptVoid.objects.filter(receipt=cash).exists())
     cash_status = ("annule" if voided else "simule" if cash and cash.is_demo else
-                   "recu" if cash else "a_regler_sur_place")
+                   "recu" if cash else "dispense_bourse" if amounts["admission_due_xaf"] == 0 and
+                   amounts["admission_scholarship_xaf"] > 0 else "a_regler_sur_place")
     return {
         "id": str(link.pk), "child": str(link.child_id),
         "child_name": f"{link.child.first_name} {link.child.last_name}",
@@ -246,6 +249,7 @@ def parent_application_output(link):
         "year": app.year.name, "route": app.route,
         "status": app.status, "payment_choice": link.payment_choice,
         "fee_amount_xaf": link.fee_amount_xaf,
+        "amounts": amounts, "admission_due_xaf": amounts["admission_due_xaf"],
         "submitted_at": app.submitted_at.isoformat(),
         "payment_status": cash_status if link.payment_choice == "cash" else latest.state if latest else "non_initie",
         "payment_mode": ("cash_demo" if cash and cash.is_demo else "cash" if cash else
@@ -255,6 +259,9 @@ def parent_application_output(link):
         "is_demo_cash": link.is_demo_cash,
         "scholarship": (
             {"coverage": link.application.government_scholarship.coverage,
+             "calculation": link.application.government_scholarship.calculation,
+             "percentage": link.application.government_scholarship.percentage,
+             "fixed_amount_xaf": link.application.government_scholarship.fixed_amount_xaf,
              "reference": link.application.government_scholarship.official_reference}
             if hasattr(link.application, "government_scholarship")
                 and link.application.government_scholarship.active else None
