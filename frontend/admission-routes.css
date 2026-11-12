@@ -30,6 +30,15 @@
 .ar-message{margin:10px 0 0;padding:9px 12px;background:#eff6f1;border-radius:7px;color:#215d34;font-size:12px}
 @media(max-width:750px){.ar-proof{padding:10px}.ar-document{align-items:flex-start}.ar-policy-grids{grid-template-columns:1fr}.ar-custom{display:block}}
 
+.ar-options{border:1px solid #dfe6df;background:#fff;border-radius:9px;margin:13px 0;padding:10px 13px}
+.ar-options summary{cursor:pointer;font-size:13px;font-weight:700;color:#28533b;padding:4px 0}
+.ar-options[open] summary{margin-bottom:12px}
+.ar-options .card{margin:8px 0;border:0;box-shadow:none}
+.ar-help{color:#665739;font-size:12px;margin:8px 0 1px}
+.ar-finance-step{border-top:1px solid #e0e8e1;margin-top:17px;padding-top:10px}
+.ar-policy button.ar-secondary{margin:8px 0;background:#fff;color:#245b37;border-color:#a6c8ae}
+.ar-proof .field textarea{width:100%;max-width:100%;box-sizing:border-box;min-height:55px}
+
 
 .ar-parent-dossier{border:1px solid #cde8d7;background:#f5fcf7;padding:13px 15px;border-radius:13px;margin:14px 0}
 .ar-parent-dossier h4{margin:0 0 5px;color:#155f3e}
