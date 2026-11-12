@@ -21,6 +21,11 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.AddField(
+            model_name="admissionapplication",
+            name="admission_fee_snapshot_xaf",
+            field=models.PositiveIntegerField(blank=True, null=True),
+        ),
+        migrations.AddField(
             model_name="governmentscholarship",
             name="calculation",
             field=models.CharField(max_length=10, default="percent",
