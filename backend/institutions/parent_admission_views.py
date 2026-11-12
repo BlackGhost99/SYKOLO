@@ -387,7 +387,7 @@ def family_applications(request):
             app = AdmissionApplication(
                 school=classroom.school, year=classroom.year, classroom=classroom,
                 first_name=child.first_name, last_name=child.last_name,
-                date_of_birth=child.date_of_birth, guardian_name=guardian_name,
+                date_of_birth=clean_date(student_values.get("date_of_birth")), guardian_name=guardian_name,
                 guardian_relationship=relation, guardian_phone=phone,
                 guardian_email=request.user.email or "", source="parent_mobile",
                 submitted_by=request.user, route=route, origin_school=origin,
