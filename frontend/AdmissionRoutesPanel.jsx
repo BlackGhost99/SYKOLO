@@ -18,6 +18,17 @@ export const DOCUMENTS = {
 const basicDocs = Object.keys(DOCUMENTS);
 const emptyDocs = ()=>({direct:[],concours:[],orientation:[]});
 
+/** Readiness is informative: the server independently validates every decision. */
+export function AdmissionDecisionReadiness({application}){
+  if(!["submitted","review"].includes(application.status))return null;
+  if(application.acceptance_blocker)return <p role="status" className="ar-missing">
+    Admission non prête : {application.acceptance_blocker}
+  </p>;
+  return <p role="status" className="ar-message">
+    Pièces et critères d’admission vérifiés. La direction peut statuer ; les frais ou la bourse restent distincts de cette décision.
+  </p>;
+}
+
 export function AdmissionPolicyEditor({api,base,year,level,canDecide,onSaved}){
   const [policy,setPolicy]=useState(null);
   const [busy,setBusy]=useState(false),[message,setMessage]=useState("");
