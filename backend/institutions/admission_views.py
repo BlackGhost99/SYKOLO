@@ -79,6 +79,7 @@ def gate(request, school_id, permission):
 
 
 def render(row):
+    parent_link = getattr(row, "parent_request", None)
     return {
         "id": str(row.pk), "year": str(row.year_id),
         "classroom": str(row.classroom_id),
@@ -86,6 +87,13 @@ def render(row):
         "enrollment": str(row.enrollment_id) if row.enrollment_id else None,
         "first_name": row.first_name, "last_name": row.last_name,
         "date_of_birth": row.date_of_birth.isoformat() if row.date_of_birth else None,
+        "parent_submission": {
+            "form_data": parent_link.form_data,
+            "document_requirements": parent_link.document_requirements,
+            "form_revision": parent_link.form_revision,
+            "photo_url": f"/api/v1/parents/family-children/{parent_link.child_id}/photo"
+                if hasattr(parent_link.child, "portrait") else None,
+        } if parent_link else None,
         "guardian_name": row.guardian_name,
         "guardian_relationship": row.guardian_relationship,
         "guardian_phone": row.guardian_phone,
@@ -372,6 +380,13 @@ def convert(request, school_id, application_id):
                 return fail("Le dossier local sélectionné ne correspond pas au matricule YEM vérifié.", 409)
             if student is None and identity is not None:
                 student = Student.objects.filter(school=school, identity_id=identity).first()
+            parent_link = getattr(row, "parent_request", None)
+            parent_fields = (parent_link.form_data.get("fields", {})
+                             if parent_link and isinstance(parent_link.form_data, dict) else {})
+            parent_custom = (parent_link.form_data.get("custom_fields", {})
+                             if parent_link and isinstance(parent_link.form_data, dict) else {})
+            verified_documents = dict.fromkeys(AdmissionDocument.objects.filter(
+                application=row, school=school, status="verified").values_list("code", flat=True), True)
             new_student = student is None
             if new_student:
                 if quota_reached(school, "students"):
@@ -380,6 +395,12 @@ def convert(request, school_id, application_id):
                     school=school, identity_id=identity,
                     first_name=row.first_name, last_name=row.last_name,
                     date_of_birth=row.date_of_birth, admission_date=enrolled_on,
+                    gender=parent_fields.get("gender", ""),
+                    place_of_birth=parent_fields.get("place_of_birth", ""),
+                    nationality=parent_fields.get("nationality", ""),
+                    address=parent_fields.get("address", ""),
+                    previous_school=parent_fields.get("previous_school", ""),
+                    extra_fields=parent_custom, documents=verified_documents,
                 )
                 student.full_clean()
             elif not student.active:
@@ -401,7 +422,10 @@ def convert(request, school_id, application_id):
                 guardian = StudentGuardian(
                     school=school, student=student, full_name=row.guardian_name,
                     relationship=row.guardian_relationship, phone=row.guardian_phone,
-                    email=row.guardian_email, is_primary=True,
+                    email=parent_fields.get("guardian_email") or row.guardian_email,
+                    profession=parent_fields.get("guardian_profession", ""),
+                    address=parent_fields.get("guardian_address", ""),
+                    is_primary=True,
                 )
                 guardian.full_clean()
                 guardian.save()

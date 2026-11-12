@@ -8,6 +8,7 @@ from . import annual_views
 from . import calendar_views
 from . import secondary_views
 from . import demo_payment_views, admission_cash_views, admission_finance_views
+from . import parent_dossier_views
 from . import staff_onboarding_views
 from . import owner_overview_views
 from . import cycle_access_views
@@ -57,6 +58,13 @@ urlpatterns = [
     path("schools/<uuid:school_id>/admission-fees", parent_payment_views.school_admission_fees),
     path("schools/<uuid:school_id>/admission-payments", parent_payment_views.staff_admission_payments),
     path("parents/catalog", parent_admission_views.directory),
+    path("parents/admission-form", parent_dossier_views.school_form),
+    path("parents/family-children/<uuid:child_id>", parent_dossier_views.family_profile),
+    path("parents/family-children/<uuid:child_id>/photo", parent_dossier_views.family_photo),
+    path("parents/applications/<uuid:request_id>/documents", parent_dossier_views.parent_documents),
+    path("parents/applications/<uuid:request_id>/documents/<str:code>", parent_dossier_views.upload_parent_document),
+    path("parents/applications/<uuid:request_id>/documents/<str:code>/file", parent_dossier_views.parent_document_file),
+    path("schools/<uuid:school_id>/admissions/<uuid:application_id>/documents/<str:code>/file", parent_dossier_views.school_document_file),
     path("parents/family-children", parent_admission_views.family_children),
     path("parents/applications", parent_admission_views.family_applications),
     path("schools/<uuid:school_id>/parent-listing", parent_admission_views.listing_settings),

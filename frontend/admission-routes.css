@@ -38,3 +38,15 @@
 .ar-finance-step{border-top:1px solid #e0e8e1;margin-top:17px;padding-top:10px}
 .ar-policy button.ar-secondary{margin:8px 0;background:#fff;color:#245b37;border-color:#a6c8ae}
 .ar-proof .field textarea{width:100%;max-width:100%;box-sizing:border-box;min-height:55px}
+
+
+.ar-parent-dossier{border:1px solid #cde8d7;background:#f5fcf7;padding:13px 15px;border-radius:13px;margin:14px 0}
+.ar-parent-dossier h4{margin:0 0 5px;color:#155f3e}
+.ar-parent-answer{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-top:1px solid #dcefe2;padding:7px 0;font-size:13px}
+.ar-parent-answer strong{color:#28553c;font-size:12px}
+.ar-parent-answer span{color:#1f362a;overflow-wrap:anywhere;text-align:right;max-width:55%}
+.ar-parent-portrait{display:flex;align-items:center;gap:12px;margin:12px 0}
+.ar-parent-portrait img{width:65px;height:65px;border-radius:13px;object-fit:cover}
+.ar-parent-portrait small{font-size:12px;color:#617a69}
+.ar-document-download{display:inline-block;margin-top:7px;font-size:12px;font-weight:700;color:#0c714a;text-decoration:underline}
+@media(max-width:600px){.ar-parent-answer{display:block}.ar-parent-answer span{text-align:left;display:block;max-width:100%;margin-top:3px}}
