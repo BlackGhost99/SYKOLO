@@ -144,3 +144,6 @@
  .yfm-stats>div{padding:0 4px}
  .yfm-stats strong{font-size:16px}
 }
+
+.yd-parent-standalone.yfm-standalone{max-width:none;margin:0;padding:0}
+.yfm-standalone>.yd-brand-footer{max-width:1020px;margin:auto;padding:14px 24px 100px}
