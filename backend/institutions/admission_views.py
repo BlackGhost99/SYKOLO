@@ -78,12 +78,35 @@ def gate(request, school_id, permission):
     return school, None
 
 
+def official_enrollment_details(row):
+    """Return the canonical references only after an official enrollment exists.
+
+    Admission acceptance and fee settlement alone must not expose a matricule
+    for a new applicant. Existing learners retain their original identifiers.
+    """
+    if row.status != "enrolled" or not row.enrollment_id:
+        return None
+    enrollment = row.enrollment
+    student = enrollment.student
+    return {
+        "id": str(enrollment.pk),
+        "student": str(student.pk),
+        "matricule_yem": student.matricule_yem,
+        "student_code": student.student_code,
+        "year": str(enrollment.year_id),
+        "classroom": str(enrollment.classroom_id),
+        "enrolled_on": enrollment.enrolled_on.isoformat(),
+        "status": enrollment.status,
+    }
+
+
 def render(row):
     return {
         "id": str(row.pk), "year": str(row.year_id),
         "classroom": str(row.classroom_id),
         "existing_student": str(row.existing_student_id) if row.existing_student_id else None,
         "enrollment": str(row.enrollment_id) if row.enrollment_id else None,
+        "official_enrollment": official_enrollment_details(row),
         "first_name": row.first_name, "last_name": row.last_name,
         "date_of_birth": row.date_of_birth.isoformat() if row.date_of_birth else None,
         "guardian_name": row.guardian_name,
@@ -130,7 +153,9 @@ def applications(request, school_id):
     if error is not None:
         return error
     if request.method == "GET":
-        rows = AdmissionApplication.objects.filter(school=school)
+        rows = AdmissionApplication.objects.filter(school=school).select_related(
+            "school", "classroom", "enrollment__student"
+        )
         if "year" in request.GET:
             year_id = uid(request.GET.get("year"))
             if year_id is None:
@@ -233,7 +258,9 @@ def application_detail(request, school_id, application_id):
     school, error = gate(request, school_id, "school.admissions.read")
     if error is not None:
         return error
-    row = AdmissionApplication.objects.filter(school=school, pk=application_id).first()
+    row = AdmissionApplication.objects.filter(school=school, pk=application_id).select_related(
+        "school", "classroom", "enrollment__student"
+    ).first()
     return JsonResponse(render(row)) if row else fail("Candidature introuvable.", 404)
 
 
