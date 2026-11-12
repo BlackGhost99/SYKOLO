@@ -150,12 +150,13 @@ function Head({m}) {
           <><h1>Suivi scolaire{ name?" – "+name:""}</h1><p>Vie scolaire, emploi du temps et documents officiels.</p></>}</div></div> :
         <div className="yfx-greeting"><div><span>Bonjour,</span><h1>{firstName} <span className="yfx-wave" aria-hidden="true">👋</span></h1>
           <p>{sub}</p></div></div>}
-      <label className="yfx-switcher"><Icon name="users" size={21}/><span>Mes enfants</span><Icon name="down" size={18}/>
-        <select aria-label="Mes enfants" value={selected} onChange={e=>setSelected(e.target.value)} disabled={!children.length}>
-          {!children.length&&<option value="">Aucun enfant rattaché</option>}
+      {children.length ? <label className="yfx-switcher"><Icon name="users" size={21}/><span>Mes enfants</span><Icon name="down" size={18}/>
+        <select aria-label="Mes enfants" value={selected} onChange={e=>setSelected(e.target.value)}>
           {children.map(c=><option value={c.student} key={c.student}>{c.first_name} {c.last_name}</option>)}
         </select>
-      </label>
+      </label> : <button type="button" className="yfx-switcher yfx-switcher-empty" onClick={()=>goDiscovery("children")}>
+        <Icon name="users" size={21}/><span>Mes enfants</span><Icon name="right" size={17}/>
+      </button>}
     </div>
    </div>
  </header>;
@@ -198,9 +199,39 @@ function SummaryFinance({m}) {
    <button type="button" className="yfx-primary" onClick={()=>navTo("payments")}><Icon name="card" size={21}/> Payer en ligne</button>
  </Section>;
 }
+function OnboardingHome({m}) {
+ return <>
+  <section className="yfx-card yfx-onboarding" aria-label="Premiers pas avec YEM Familles">
+    <div className="yfx-onboarding-intro">
+      <span className="yfx-onboarding-icon"><Icon name="users" size={33}/></span>
+      <div><span className="yfx-onboarding-eyebrow">BIENVENUE SUR YEM FAMILLES</span>
+        <h2>Commençons le suivi de votre enfant</h2>
+        <p>Créez son profil et retrouvez son établissement. Ses notes et ses paiements apparaîtront dès que l'école aura validé le rattachement.</p></div>
+    </div>
+    <div className="yfx-onboarding-steps" aria-label="Étapes du rattachement">
+      <div><span>1</span><strong>Ajouter un enfant</strong><small>Créez son profil familial</small></div>
+      <div><span>2</span><strong>Choisir son école</strong><small>Consultez les établissements</small></div>
+      <div><span>3</span><strong>Valider le lien</strong><small>Vérification par l'établissement</small></div>
+    </div>
+    <div className="yfx-onboarding-actions">
+      <button type="button" className="yfx-primary" onClick={()=>m.goDiscovery("children")}><Icon name="users" size={20}/> Ajouter un enfant</button>
+      <button type="button" className="yfx-outline" onClick={m.refreshChildren}><Icon name="check" size={18}/> Actualiser mes enfants</button>
+    </div>
+    <p className="yfx-onboarding-id">Identifiant à communiquer au secrétariat : <strong>{m.family?.parent_username||m.user?.username||"—"}</strong></p>
+  </section>
+  <div className="yfx-onboarding-more">
+    <button type="button" onClick={()=>m.goDiscovery("schools")}><Icon name="school" size={23}/>
+      <span><strong>Découvrir les écoles</strong><small>Établissements et classes ouvertes</small></span><Icon name="right" size={19}/></button>
+    <button type="button" onClick={()=>m.goDiscovery("requests")}><Icon name="file" size={23}/>
+      <span><strong>Mes demandes</strong><small>Admissions et paiements de dossier</small></span><Icon name="right" size={19}/></button>
+  </div>
+  <Notifications m={m}/>
+ </>;
+}
 function Home({m}) {
+ if(!m.child) return <OnboardingHome m={m}/>;
  return <><ActionTiles goSchool={m.goSchool} navTo={m.navTo}/>
-  {m.child&&<SummaryFinance m={m}/>}
+  <SummaryFinance m={m}/>
   <div className="yfx-grid-two"><Notifications m={m}/><RecentGrades m={m}/></div>
   <div className="yfx-bottom-links"><button onClick={()=>m.goDiscovery("schools")}>Découvrir les établissements</button>
     <button onClick={()=>m.goDiscovery("requests")}>Suivre mes demandes</button></div>
@@ -365,19 +396,22 @@ function School({m}) {
 }
 function Children({m}) {
  return <>
- <Section title="Mes enfants" icon="users">
-  {m.children.length?m.children.map(c=><button className="yfx-child-choice" type="button" key={c.student}
+  <div className="yfx-page-intro"><h2>Mes enfants</h2><p>Profils familiaux, dossiers scolaires et inscriptions au même endroit.</p></div>
+  {m.children.length ? <Section title="Dossiers scolaires rattachés" icon="users">
+    {m.children.map(c=><button className="yfx-child-choice" type="button" key={c.student}
       onClick={()=>m.setSelected(c.student)} aria-pressed={c.student===m.selected}>
       <span className="yfx-small-face"><Icon name="user" size={22}/></span><span><strong>{c.first_name} {c.last_name}</strong>
-      <small>{c.school_name}</small></span><span>{c.student===m.selected?"Sélectionné":"Afficher"}</span></button>):
-      <Empty>Aucun dossier scolaire encore rattaché.</Empty>}
-  <button className="yfx-outline" onClick={m.refreshChildren}>Actualiser mes enfants</button>
- </Section>
- <nav className="yfx-school-tabs" aria-label="Démarches des familles">
-  {[["schools","Établissements"],["children","Profils enfants"],["requests","Mes demandes"],["notifications","Actualités"]].map(([key,label])=>
-   <button key={key} aria-pressed={m.discoveryTab===key} onClick={()=>m.setDiscoveryTab(key)}>{label}</button>)}
- </nav>
- <ParentDiscovery embedded key={m.discoveryTab} activeSection={m.discoveryTab}/>
+      <small>{c.school_name}</small></span><span>{c.student===m.selected?"Sélectionné":"Afficher"}</span></button>)}
+    <button className="yfx-outline" onClick={m.refreshChildren}>Actualiser mes enfants</button>
+  </Section> : <div className="yfx-link-status" role="status">
+    <Icon name="shield" size={21}/><span>Aucun dossier scolaire encore rattaché. Créez un profil puis demandez sa validation à l'établissement.</span>
+    <button onClick={m.refreshChildren} type="button">Vérifier</button>
+  </div>}
+  <nav className="yfx-school-tabs yfx-family-tabs" aria-label="Démarches des familles">
+   {[["children","Profils enfants"],["schools","Établissements"],["requests","Mes demandes"],["notifications","Actualités"]].map(([key,label])=>
+    <button key={key} type="button" aria-pressed={m.discoveryTab===key} onClick={()=>m.setDiscoveryTab(key)}>{label}</button>)}
+  </nav>
+  <ParentDiscovery embedded key={m.discoveryTab} activeSection={m.discoveryTab}/>
  </>;
 }
 export default function YemFamillesFidele({m}) {
@@ -390,12 +424,6 @@ export default function YemFamillesFidele({m}) {
     {familyLoading&&<p role="status" className="yfx-card">Chargement de la famille…</p>}
     {child&&<ChildCard m={m} detailMode={screen==="school"&&m.schoolTab!=="grades"}
       showStats={screen==="home"} gradeStats={screen==="school"&&m.schoolTab==="grades"}/>}
-    {!child&&!familyLoading&&!familyError&&screen!=="profile"&&<Section title="Rattacher un enfant à mon compte" icon="users">
-      <p>Pour suivre sa scolarité, l'établissement doit vérifier votre qualité de responsable légal et associer le dossier de l'enfant à votre compte.</p>
-      <p>Identifiant à communiquer au secrétariat : <strong>{family?.parent_username||user?.username||"—"}</strong></p>
-      <div className="yfx-bottom-links"><button onClick={refreshChildren}>Actualiser mes enfants</button>
-        <button onClick={()=>goDiscovery("children")}>Ajouter un enfant</button></div>
-     </Section>}
     {m.enrollmentError&&<p className="yfx-alert" role="alert">{m.enrollmentError}</p>}
     {screen==="home"&&<Home m={m}/>}
     {screen==="payments"&&<Payments m={m}/>}
