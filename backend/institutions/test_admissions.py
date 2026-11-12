@@ -309,6 +309,63 @@ class AdmissionWorkflowTests(TestCase):
         self.login(self.stranger)
         self.assertEqual(self.client.get(self.base + f"/{row['id']}/documents").status_code, 404)
 
+
+    def test_readiness_explains_concours_blockers_until_evidence_is_verified(self):
+        row = self.create({**self.data(), "route": "concours"})
+        self.assertIn("concours", row["acceptance_blocker"])
+        update = self.post(f"/{row['id']}/eligibility", {
+            "revision": 1, "result": "eligible",
+            "route_reference": "CONC-RECETTE-2026",
+            "orientation_authority": "",
+            "reason": "Résultat externe déclaré",
+        })
+        self.assertEqual(update.status_code, 200, update.content)
+        self.assertIn("concours_result", update.json()["acceptance_blocker"])
+        proof = self.post(f"/{row['id']}/documents", {
+            "revision": 2, "code": "concours_result",
+            "reference": "Procès-verbal de concours de test",
+        })
+        self.assertEqual(proof.status_code, 201, proof.content)
+        self.assertIn("concours_result", self.client.get(
+            self.base + f"/{row['id']}"
+        ).json()["acceptance_blocker"])
+        document_id = proof.json()["documents"][0]["id"]
+        checked = self.post(f"/{row['id']}/documents/{document_id}/review", {
+            "revision": 3, "status": "verified", "reason": "Référence vérifiée",
+        })
+        self.assertEqual(checked.status_code, 200, checked.content)
+        response = self.client.get(self.base + f"/{row['id']}")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(response.json()["acceptance_blocker"])
+
+    def test_direct_readiness_respects_required_documents_without_payment(self):
+        configured = self.post("/policy", {
+            "year": str(self.year.pk), "level": str(self.classroom.level_id),
+            "revision": 0, "enabled_routes": ["direct", "concours"],
+            "required_documents": {"direct": ["birth_certificate"]},
+        })
+        self.assertEqual(configured.status_code, 200, configured.content)
+        row = self.create()
+        self.assertIn("birth_certificate", row["acceptance_blocker"])
+        self.assertEqual(self.decide(row).status_code, 409)
+        proof = self.post(f"/{row['id']}/documents", {
+            "revision": 1, "code": "birth_certificate",
+            "reference": "Copie acte de naissance fictif",
+        })
+        self.assertEqual(proof.status_code, 201, proof.content)
+        document_id = proof.json()["documents"][0]["id"]
+        validated = self.post(f"/{row['id']}/documents/{document_id}/review", {
+            "revision": 2, "status": "verified",
+            "reason": "Identité vérifiée par la direction",
+        })
+        self.assertEqual(validated.status_code, 200, validated.content)
+        self.assertIsNone(self.client.get(
+            self.base + f"/{row['id']}"
+        ).json()["acceptance_blocker"])
+        accepted = self.decide(row, revision=3)
+        self.assertEqual(accepted.status_code, 200, accepted.content)
+        self.assertFalse(Enrollment.objects.exists())
+
     def test_rejected_or_unverified_proof_never_grants_concours_admission(self):
         row = self.create({**self.data(), "route": "concours"})
         self.assertEqual(self.post(f"/{row['id']}/eligibility", {
