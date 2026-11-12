@@ -242,15 +242,22 @@ def parent_pay(request, application_id):
     if not re.fullmatch(r"\+241\d{8,9}", phone):
         return fail("Numéro gabonais au format international +241 requis.")
     with transaction.atomic():
+        # Shared lock order with scholarships, SingPay and cash: school first,
+        # then the family request. This prevents reversed-lock deadlocks when
+        # two payment channels are initiated at the same time.
+        school_id = ParentAdmissionRequest.objects.filter(
+            pk=application_id, owner=request.user,
+        ).values_list("application__school_id", flat=True).first()
+        if school_id is None:
+            return fail("Demande introuvable.", 404)
+        from .models import School
+        School.objects.select_for_update().get(pk=school_id)
         link = ParentAdmissionRequest.objects.select_for_update().select_related(
             "application__school", "child",
-        ).filter(pk=application_id, owner=request.user).first()
+        ).filter(pk=application_id, owner=request.user,
+                 application__school_id=school_id).first()
         if link is None:
             return fail("Demande introuvable.", 404)
-        # Serialize new payment initiation with scholarship approval (school lock first
-        # on the scholarship path). A confirmed award must never be billed twice.
-        from .models import School
-        School.objects.select_for_update().get(pk=link.application.school_id)
         if current_scholarship(link.application):
             return fail("Bourse gouvernementale déjà validée : aucun paiement supplémentaire autorisé.", 409)
         from .singpay_models import SingPayIntent
