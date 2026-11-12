@@ -47,12 +47,13 @@ test("la fiche affiche la classe, les notes et la vie scolaire de l’année cho
     [child+"/attendance?year=year-2"]:{totals:{absent:0,late:0,present:0}, attendance:[], conduct:[]},
   });
   const user = userEvent.setup();
-  expect(await screen.findByRole("heading", {name:"Nkomo Lina"})).toBeTruthy();
+  expect(await screen.findByRole("heading", {name:"Lina Nkomo"})).toBeTruthy();
   expect(await screen.findByText("24 élèves inscrits")).toBeTruthy();
+  await user.click(screen.getByRole("button", {name:"Scolarité", exact:true}));
   expect(await screen.findByText("0 / 15")).toBeTruthy();
   await user.click(screen.getByRole("button", {name:"Vie scolaire"}));
   expect(await screen.findByText("Travail de rattrapage mercredi.")).toBeTruthy();
-  expect(screen.getByText(/1 retard\(s\)/)).toBeTruthy();
+  expect(screen.getByText("1")).toBeTruthy();
   await user.selectOptions(screen.getByLabelText("Année scolaire"), "year-2");
   expect(screen.getByText("18 élèves inscrits")).toBeTruthy();
   expect(await screen.findByText(/Aucune observation ni sanction communiquée/)).toBeTruthy();
