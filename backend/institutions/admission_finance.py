@@ -48,12 +48,17 @@ class GovernmentScholarship(models.Model):
     'admission' exempts only the application/admission fee.
     A school administrator must verify the award's official reference.
     """
-    COVERAGES = (("all", "Tous les frais"), ("admission", "Frais d'inscription seulement"))
+    COVERAGES = (("all", "Tous les frais"), ("admission", "Frais d'inscription seulement"),
+                 ("tuition", "Frais de scolarité uniquement"))
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="government_scholarships")
     application = models.OneToOneField(AdmissionApplication, on_delete=models.PROTECT,
                                       related_name="government_scholarship")
     coverage = models.CharField(max_length=16, choices=COVERAGES, default="all")
+    calculation = models.CharField(max_length=10, choices=[("percent", "Pourcentage"), ("fixed", "Montant FCFA")], default="percent")
+    percentage = models.PositiveSmallIntegerField(default=100)
+    fixed_amount_xaf = models.PositiveIntegerField(null=True, blank=True)
+    allocations = models.JSONField(default=dict, blank=True)
     official_reference = models.CharField(max_length=180)
     active = models.BooleanField(default=True)
     verified_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
@@ -71,8 +76,16 @@ class GovernmentScholarship(models.Model):
                 raise ValidationError("La décision de bourse doit précéder l'inscription.")
         if not self.official_reference or len(self.official_reference.strip()) < 5:
             raise ValidationError("Référence officielle du document de bourse requise.")
-        if self.coverage not in {"all", "admission"}:
+        if self.coverage not in {"all", "admission", "tuition"}:
             raise ValidationError("Type de prise en charge invalide.")
+        if self.calculation == "percent":
+            if type(self.percentage) is not int or not 1 <= self.percentage <= 100 or self.fixed_amount_xaf is not None:
+                raise ValidationError("Pourcentage de bourse compris entre 1 et 100, sans montant fixe.")
+        elif self.calculation == "fixed":
+            if type(self.fixed_amount_xaf) is not int or not 1 <= self.fixed_amount_xaf <= 100000000:
+                raise ValidationError("Montant de bourse invalide.")
+        else:
+            raise ValidationError("Mode de calcul de bourse invalide.")
 
 
 def policy_scope(year_id, level_id=None):
