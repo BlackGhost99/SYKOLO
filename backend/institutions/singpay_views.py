@@ -14,6 +14,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from accounts.views import authorized
 from .finance_models import FeeCharge
 from .admission_finance import current_scholarship
+from .admission_scholarship_amounts import admission_due
 from .finance_views import cleared_total
 from .models import School, SchoolAudit
 from .parent_admission_models import ParentAdmissionRequest
@@ -142,7 +143,7 @@ def quote(request, kind, object_id):
     school_id = obligation_school(row, kind)
     merchant = SingPayMerchant.objects.filter(school_id=school_id).first()
     intents = SingPayIntent.objects.filter(**{kind: row}, payer=request.user).order_by("-created_at")[:20]
-    balance = row.amount-cleared_total(row) if kind == "charge" else row.fee_amount_xaf
+    balance = (row.amount-row.scholarship_discount-cleared_total(row)) if kind == "charge" else admission_due(row.application)
     return JsonResponse({"merchant": merchant_view(merchant), "balance_xaf": str(balance),
                          "payments": [intent_view(i) for i in intents]})
 
@@ -180,8 +181,8 @@ def pay(request, kind, object_id):
                         else fail("Clé déjà utilisée avec une demande différente.", 409))
             # Check financial eligibility before merchant readiness: a verified
             # government award forbids another charge regardless of PSP state.
-            if kind == "admission" and current_scholarship(row.application):
-                return fail("Bourse gouvernementale déjà validée : paiement SingPay interdit.", 409)
+            if kind == "admission" and admission_due(row.application) == 0:
+                return fail("Bourse couvrant entièrement les frais d'inscription : aucun paiement SingPay requis.", 409)
             if SingPayIntent.objects.filter(**{kind: row}, state__in=OPEN_STATES).exists():
                 return fail("Un paiement est ouvert : vérifiez-le avant un nouvel essai.", 409)
             merchant = SingPayMerchant.objects.filter(school=school).first()
@@ -190,10 +191,10 @@ def pay(request, kind, object_id):
             if merchant.revision != data["merchant_revision"]:
                 return fail("Les conditions marchandes ont changé, actualisez.", 409)
             if kind == "charge":
-                if row.currency != "XAF" or Decimal(data["amount_xaf"]) > row.amount-cleared_total(row):
+                if row.currency != "XAF" or Decimal(data["amount_xaf"]) > row.amount-row.scholarship_discount-cleared_total(row):
                     return fail("Montant supérieur au solde XAF.", 409)
             else:
-                if (row.payment_choice != "online" or data["amount_xaf"] != row.fee_amount_xaf
+                if (row.payment_choice != "online" or data["amount_xaf"] != admission_due(row.application)
                         or row.application.status in ("rejected", "enrolled")):
                     return fail("Frais de dossier non payable.", 409)
                 if ParentPaymentAttempt.objects.filter(request=row).exclude(state__in=("failed", "cancelled")).exists() or SingPayIntent.objects.filter(admission=row, state__in=("success", "test_success")).exists():
