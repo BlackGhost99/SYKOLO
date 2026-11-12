@@ -1,8 +1,9 @@
 import React, {useEffect, useRef, useState} from "react";
 
-export default function SingPayPayment({kind, objectId, api, partial=false}) {
+export default function SingPayPayment({kind, objectId, api, partial=false, defaultChannel="airtel"}) {
   const [quote,setQuote]=useState(null), [amount,setAmount]=useState("");
-  const [channel,setChannel]=useState("airtel"), [phone,setPhone]=useState("");
+  const [channel,setChannel]=useState(defaultChannel), [phone,setPhone]=useState("");
+  useEffect(()=>setChannel(defaultChannel),[defaultChannel]);
   const [busy,setBusy]=useState(false), [message,setMessage]=useState("");
   const operation=useRef(null);
   const base="parents/singpay/"+kind+"/"+objectId;
