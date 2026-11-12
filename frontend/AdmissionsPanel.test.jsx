@@ -70,7 +70,7 @@ function renderAdmissions({canPrepare=false, canDecide=false, canCreate=true}={}
 async function selectFile() {
   const user = userEvent.setup();
   await user.selectOptions(await screen.findByLabelText("Candidature"), "app-1");
-  expect(await screen.findByText(/Fictive Aïcha/)).toBeTruthy();
+  expect(await screen.findByText("Fictive Aïcha")).toBeTruthy();
   return user;
 }
 
@@ -86,7 +86,7 @@ test("le secrétariat ouvre l'étude sans voir accepter ou refuser", async () =>
     url.endsWith("/app-1/decide") && options?.method === "POST" &&
     JSON.parse(options.body).status === "review"
   )).toBe(true));
-  expect(await screen.findByText(/En étude/)).toBeTruthy();
+  expect(await screen.findByRole("option", {name:/En étude/})).toBeTruthy();
   expect(screen.queryByRole("button", {name:"Passer en étude (secrétariat)"})).toBeNull();
 });
 
