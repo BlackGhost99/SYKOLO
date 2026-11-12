@@ -84,7 +84,7 @@ export default function AdmissionCashDesk({schoolId,canReceive=false,application
         {row.is_demo&&" · SIMULATION — 0 FCFA reçu"}</p>
       {row.scholarship_active&&<p role="status">{row.amount_xaf>0?
         "Bourse partielle : la caisse ne reçoit que le solde affiché.":
-        "Bourse totale sur l'inscription : aucun règlement nécessaire."}</p>
+        "Bourse totale sur l'inscription : aucun règlement nécessaire."}</p>}
       <p>État caisse : <strong>{({
         a_regler_sur_place:"En attente de réception",
         recu:"Espèces reçues",
