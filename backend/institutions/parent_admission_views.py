@@ -19,6 +19,8 @@ from .academic_models import AcademicClass
 from .admission_models import AdmissionApplication, AdmissionEvent, AdmissionPolicy
 from .admission_policy import ROUTES, effective_policy, required_for_route
 from .parent_admission_models import FamilyChild, ParentAdmissionRequest, SchoolPublicListing
+from .parent_dossier_views import child_output, public_form_payload, clean_date
+from .enrollment_form import load_config, check_base, clean_answers
 from .parent_payment_views import public_payment_availability
 from .parent_payment_models import SchoolAdmissionFee, SchoolPaymentGateway
 from .parent_payment_service import gateway_configured
@@ -209,10 +211,7 @@ def listing_settings(request, school_id):
 def family_children(request):
     if request.method == "GET":
         rows = FamilyChild.objects.filter(owner=request.user, active=True).order_by("created_at")
-        return JsonResponse({"children": [{
-            "id": str(c.pk), "first_name": c.first_name, "last_name": c.last_name,
-            "date_of_birth": c.date_of_birth.isoformat() if c.date_of_birth else None,
-        } for c in rows[:100]]})
+        return JsonResponse({"children": [child_output(c) for c in rows[:100]]})
     data, failure = parse_body(request)
     if failure is not None:
         return failure
@@ -227,7 +226,7 @@ def family_children(request):
     child = FamilyChild(owner=request.user, first_name=first, last_name=last, date_of_birth=birth)
     child.full_clean()
     child.save()
-    return JsonResponse({"id": str(child.pk), "first_name": first, "last_name": last}, status=201)
+    return JsonResponse(child_output(child), status=201)
 
 
 def parent_application_output(link):
@@ -244,6 +243,10 @@ def parent_application_output(link):
     return {
         "id": str(link.pk), "child": str(link.child_id),
         "child_name": f"{link.child.first_name} {link.child.last_name}",
+        "form_revision": link.form_revision, "form_data": link.form_data,
+        "document_requirements": link.document_requirements,
+        "child_photo_url": f"/api/v1/parents/family-children/{link.child_id}/photo"
+            if hasattr(link.child, "portrait") else None,
         "school": str(app.school_id), "school_name": app.school.name,
         "classroom": str(app.classroom_id), "classroom_name": app.classroom.name,
         "year": app.year.name, "route": app.route,
@@ -287,7 +290,7 @@ def family_applications(request):
     if failure is not None:
         return failure
     required = {"child", "classroom", "route", "payment_choice", "guardian_relationship", "guardian_phone"}
-    optional = {"origin_school", "route_reference"}
+    optional = {"origin_school", "route_reference", "form_revision", "form_fields", "custom_answers"}
     if not required <= set(data) or set(data) - (required | optional):
         return error("Champs de candidature invalides.")
     try:
@@ -305,6 +308,10 @@ def family_applications(request):
         phone = clean_text(data["guardian_phone"], 45, required=True)
         origin = clean_text(data.get("origin_school", ""), 180)
         reference = clean_text(data.get("route_reference", ""), 140)
+        raw_fields = data.get("form_fields", {})
+        raw_custom = data.get("custom_answers", {})
+        if not isinstance(raw_fields, dict) or not isinstance(raw_custom, dict):
+            return error("Réponses du formulaire invalides.")
         child = FamilyChild.objects.filter(owner=request.user, active=True, pk=child_id).first()
         if child is None:
             return error("Enfant introuvable.", 404)
@@ -329,6 +336,45 @@ def family_applications(request):
             policy = effective_policy(classroom.school, classroom.year, classroom.level)
             if route not in (policy.enabled_routes if policy else ROUTES):
                 return error("Cette voie d'admission est fermée.", 409)
+            form_schema = public_form_payload(classroom.school, classroom.year, classroom.level, route)
+            if "form_revision" in data and (
+                type(data["form_revision"]) is not int
+                or data["form_revision"] != form_schema["revision"]
+            ):
+                return error("Le formulaire de cette école a changé. Rechargez-le.", 409)
+            allowed_fields = {item["key"]: item for item in form_schema["fields"]}
+            if set(raw_fields) - allowed_fields.keys():
+                return error("Un champ n'est pas autorisé par cet établissement.")
+            school_config, _ = load_config(classroom.school)
+            student_values = dict(child.profile or {})
+            student_values["date_of_birth"] = child.date_of_birth.isoformat() if child.date_of_birth else ""
+            guardian_values = {"phone": phone, "email": request.user.email or ""}
+            for key, value in raw_fields.items():
+                if not isinstance(value, str):
+                    return error("Réponse de formulaire invalide.")
+                cleaned = clean_text(value, allowed_fields[key]["max_length"])
+                if key == "date_of_birth" and cleaned:
+                    verified_date = clean_date(cleaned)
+                    cleaned = verified_date.isoformat() if verified_date else ""
+                if key == "gender" and cleaned not in ("M", "F", ""):
+                    return error("Sexe invalide.")
+                if key.startswith("guardian_"):
+                    guardian_values[key[len("guardian_"):]] = cleaned
+                else:
+                    student_values[key] = cleaned
+            if set(raw_custom) - {item["key"] for item in form_schema["custom_fields"]}:
+                return error("Question personnalisée non autorisée.")
+            cleaned_answers, _ = clean_answers(school_config, raw_custom, {})
+            # Historical schools without an explicitly published enrollment form must
+            # retain the original optional child details (e.g. date of birth).
+            if form_schema["configured"]:
+                check_base(school_config, student_values, guardian_values)
+            school_answers = {key: (
+                guardian_values.get(key[len("guardian_"):], "") if key.startswith("guardian_")
+                else student_values.get(key, "")
+            ) for key in allowed_fields}
+            document_snapshot = form_schema["documents"]
+            required_documents = [item["key"] for item in document_snapshot if item["required"]]
             if classroom.capacity is not None:
                 occupied = Enrollment.objects.filter(
                     school=classroom.school, classroom=classroom, active=True,
@@ -344,12 +390,12 @@ def family_applications(request):
             app = AdmissionApplication(
                 school=classroom.school, year=classroom.year, classroom=classroom,
                 first_name=child.first_name, last_name=child.last_name,
-                date_of_birth=child.date_of_birth, guardian_name=guardian_name,
+                date_of_birth=clean_date(student_values.get("date_of_birth")), guardian_name=guardian_name,
                 guardian_relationship=relation, guardian_phone=phone,
                 guardian_email=request.user.email or "", source="parent_mobile",
                 submitted_by=request.user, route=route, origin_school=origin,
                 route_reference=reference if route != "direct" else "",
-                required_documents=required_for_route(route, policy),
+                required_documents=required_documents,
             )
             app.full_clean()
             app.save()
@@ -357,6 +403,13 @@ def family_applications(request):
             link = ParentAdmissionRequest(owner=request.user, child=child,
                                           application=app, payment_choice=payment_choice,
                                           is_demo_cash=is_demo_cash,
+                                          form_revision=form_schema["revision"],
+                                          form_data={"fields": school_answers, "custom_fields": cleaned_answers,
+                                                     "labels": {
+                                                         **{item["key"]: item["label"] for item in form_schema["fields"]},
+                                                         **{item["key"]: item["label"] for item in form_schema["custom_fields"]},
+                                                     }},
+                                          document_requirements=document_snapshot,
                                           fee_amount_xaf=demo_price if is_demo_cash else fee.amount_xaf if fee else None)
             link.full_clean()
             link.save()
