@@ -18,6 +18,7 @@ from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEven
 from .student_views import validate_enrollment_slot
 from .services import has_permission, quota_reached
 from .views import access, refuse, parse_body, log_event
+from .admission_scholarship_amounts import grant_summary
 from .admission_policy import (ROUTES, DOCUMENT_CODE, effective_policy, policy_view,
                                policy_key, validate_policy, required_for_route,
                                admission_blocker)
@@ -102,8 +103,13 @@ def render(row):
         "converted_at": row.converted_at.isoformat() if row.converted_at else None,
         "finance": {"require_payment": finance_policy(row.school, row.year_id, row.classroom.level_id)["require_payment"],
                     "blocker": None if row.status=="enrolled" else payment_blocker(row),
+                    "amounts": grant_summary(row),
                     "scholarship": ({"coverage": current_scholarship(row).coverage,
-                                      "reference": current_scholarship(row).official_reference}
+                                      "reference": current_scholarship(row).official_reference,
+                                      "calculation": current_scholarship(row).calculation,
+                                      "percentage": current_scholarship(row).percentage,
+                                      "fixed_amount_xaf": current_scholarship(row).fixed_amount_xaf,
+                                      "revision": current_scholarship(row).revision}
                                      if current_scholarship(row) else None)},
     }
 
