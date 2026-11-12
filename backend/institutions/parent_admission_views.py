@@ -401,7 +401,11 @@ def family_applications(request):
                                           application=app, payment_choice=payment_choice,
                                           is_demo_cash=is_demo_cash,
                                           form_revision=form_schema["revision"],
-                                          form_data={"fields": school_answers, "custom_fields": cleaned_answers},
+                                          form_data={"fields": school_answers, "custom_fields": cleaned_answers,
+                                                     "labels": {
+                                                         **{item["key"]: item["label"] for item in form_schema["fields"]},
+                                                         **{item["key"]: item["label"] for item in form_schema["custom_fields"]},
+                                                     }},
                                           document_requirements=document_snapshot,
                                           fee_amount_xaf=demo_price if is_demo_cash else fee.amount_xaf if fee else None)
             link.full_clean()
