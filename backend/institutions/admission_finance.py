@@ -144,9 +144,10 @@ def payment_blocker(application):
     if not rule["require_payment"]:
         return None
     award = current_scholarship(application)
-    # A policy change may disable NEW government awards, but must never
-    # retroactively invalidate an already verified award or force double billing.
-    if award:
+    from .admission_scholarship_amounts import admission_due, admission_gross
+    # An existing, independently verified award still applies if new awards
+    # were disabled later. Partial grants do NOT bypass the remaining balance.
+    if award and award.coverage in ("all", "admission") and admission_due(application, award) == 0:
         return None
     from .parent_admission_models import ParentAdmissionRequest
     from .parent_payment_models import AdmissionCashReceipt, ParentPaymentAttempt, SchoolDemoPaymentConfig
@@ -156,9 +157,12 @@ def payment_blocker(application):
                 "caisse ou faites vérifier une bourse gouvernementale.")
     if not link.fee_amount_xaf:
         return "Configurez d'abord les frais d'inscription de l'année et du niveau."
+    due = admission_due(application, award)
+    if due < 100:
+        return "Solde d'inscription inférieur au minimum encaissable : ajustez la bourse."
     if link.payment_choice == "cash":
         receipt = AdmissionCashReceipt.objects.filter(
-            request=link, school=application.school, amount_xaf=link.fee_amount_xaf,
+            request=link, school=application.school, amount_xaf=due,
             void__isnull=True,
         ).first()
         if receipt:
@@ -170,13 +174,13 @@ def payment_blocker(application):
                     return None
         return "Le paiement en espèces doit être validé par la caisse avant l'inscription."
     if ParentPaymentAttempt.objects.filter(
-        request=link, school=application.school, amount_xaf=link.fee_amount_xaf,
+        request=link, school=application.school, amount_xaf=due,
         state="success", provider_mode="live", currency="XAF",
     ).exists():
         return None
     from .singpay_models import SingPayIntent
     if SingPayIntent.objects.filter(
-        admission=link, school=application.school, amount_xaf=link.fee_amount_xaf,
+        admission=link, school=application.school, amount_xaf=due,
         state="success", mode="live", confirmed_at__isnull=False,
     ).exists():
         return None
