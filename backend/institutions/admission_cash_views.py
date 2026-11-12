@@ -20,7 +20,8 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from accounts.views import authorized
 
-from .admission_models import AdmissionEvent
+from .admission_models import AdmissionEvent, AdmissionApplication
+from .admission_scholarship_amounts import admission_due, admission_gross
 from .admission_finance import current_scholarship, GovernmentScholarship
 from .demo_payment_views import demo_amount
 from .finance_cash_policy import cash_closed_for_recorder
@@ -58,48 +59,72 @@ def cashier_queue(request, school_id):
     school, error = access(request, school_id)
     if error is not None:
         return error
-    if not (has_permission(request.user, school, "school.finance.read")
-            or has_permission(request.user, school, "school.finance.receive")
-            or has_permission(request.user, school, "school.admissions.read")):
+    if not any(has_permission(request.user, school, permission) for permission in (
+        "school.finance.read", "school.finance.receive", "school.admissions.read",
+    )):
         return refuse()
+    key = request.GET.get("application")
+    app_id = None
+    if key is not None:
+        try:
+            app_id = UUID(key)
+        except (TypeError, ValueError):
+            return fail("Candidature invalide.")
     links = ParentAdmissionRequest.objects.select_related(
         "application__classroom", "application__year", "child", "owner",
     ).filter(application__school=school, payment_choice="cash")
-    application = request.GET.get("application")
-    if application is not None:
-        try:
-            links = links.filter(application_id=UUID(application))
-        except ValueError:
-            return fail("Candidature invalide.")
-    links = list(links.order_by("-created_at")[:250])
-    covered_applications = set(GovernmentScholarship.objects.filter(
-        school=school, application_id__in=[link.application_id for link in links],
-        active=True,
-    ).values_list("application_id", flat=True))
+    direct = AdmissionApplication.objects.select_related(
+        "classroom", "year",
+    ).filter(school=school, parent_request__isnull=True)
+    if app_id is not None:
+        links = links.filter(application_id=app_id)
+        direct = direct.filter(pk=app_id)
     rows = []
-    for link in links:
+    for link in links.order_by("-created_at")[:250]:
+        app = link.application
+        gross, due = admission_gross(app), admission_due(app)
         cash = AdmissionCashReceipt.objects.filter(request=link).first()
+        award = current_scholarship(app)
         rows.append({
-            "request": str(link.pk), "application": str(link.application_id),
+            "request": str(link.pk), "application": str(app.pk),
             "parent": link.owner.get_full_name() or link.owner.username,
             "child": f"{link.child.last_name} {link.child.first_name}",
-            "classroom": link.application.classroom.name,
-            "year": link.application.year.name,
-            "amount_xaf": link.fee_amount_xaf,
-            "is_demo": link.is_demo_cash,
-            "admission_status": link.application.status,
-            "scholarship_active": link.application_id in covered_applications,
-            "can_pay": link.application_id not in covered_applications
-                and link.application.status not in ("enrolled", "rejected"),
+            "classroom": app.classroom.name, "year": app.year.name,
+            "amount_xaf": due, "gross_amount_xaf": gross,
+            "scholarship_covered_xaf": gross - due, "scholarship_active": bool(award),
+            "is_demo": link.is_demo_cash, "admission_status": app.status,
+            "can_pay": bool(due >= 100 and not cash and app.status not in ("enrolled", "rejected")),
             "payment_status": (receipt_payload(cash)["status"] if cash else
-                               "dispense_bourse" if link.application_id in covered_applications else
-                               "inscription_deja_finalisee" if link.application.status == "enrolled" else
+                               "dispense_bourse" if award and due == 0 else
+                               "inscription_deja_finalisee" if app.status == "enrolled" else
                                "a_regler_sur_place"),
-            "receipt_url": f"/api/v1/schools/{school.pk}/admission-cash/{link.pk}/receipt"
-                if cash else None,
+            "receipt_url": f"/api/v1/schools/{school.pk}/admission-cash/{link.pk}/receipt" if cash else None,
         })
-    return JsonResponse({"payments": rows, "can_receive": has_permission(request.user, school, "school.finance.receive")})
-
+    # Guichet applications must NEVER require creating a false parent account.
+    # The same cashier view and school admission tariff provide the handoff.
+    for app in direct.order_by("-created_at")[:250]:
+        gross, due = admission_gross(app), admission_due(app)
+        cash = AdmissionCashReceipt.objects.filter(application=app).first()
+        award = current_scholarship(app)
+        rows.append({
+            "request": str(app.pk), "application": str(app.pk),
+            "parent": app.guardian_name, "child": f"{app.last_name} {app.first_name}",
+            "classroom": app.classroom.name, "year": app.year.name,
+            "amount_xaf": due, "gross_amount_xaf": gross,
+            "scholarship_covered_xaf": gross - due, "scholarship_active": bool(award),
+            "is_demo": False, "admission_status": app.status,
+            "direct_cash": True,
+            "can_pay": bool(due >= 100 and not cash and app.status not in ("enrolled", "rejected")),
+            "payment_status": (receipt_payload(cash)["status"] if cash else
+                               "dispense_bourse" if award and due == 0 else
+                               "inscription_deja_finalisee" if app.status == "enrolled" else
+                               "a_regler_sur_place"),
+            "receipt_url": f"/api/v1/schools/{school.pk}/admission-cash/{app.pk}/receipt" if cash else None,
+        })
+    return JsonResponse({
+        "payments": rows,
+        "can_receive": has_permission(request.user, school, "school.finance.receive"),
+    })
 
 @never_cache
 @require_POST
