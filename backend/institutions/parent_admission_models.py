@@ -31,8 +31,17 @@ class FamilyChild(models.Model):
     first_name = models.CharField(max_length=120)
     last_name = models.CharField(max_length=120)
     date_of_birth = models.DateField(null=True, blank=True)
+    profile = models.JSONField(default=dict, blank=True)
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class FamilyChildPhoto(models.Model):
+    """Tiny compressed portrait in private PostgreSQL storage, not Render's ephemeral disk."""
+    child = models.OneToOneField(FamilyChild, on_delete=models.CASCADE, primary_key=True, related_name="portrait")
+    data = models.BinaryField()
+    content_type = models.CharField(max_length=30, default="image/jpeg")
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class ParentAdmissionRequest(models.Model):
@@ -47,6 +56,10 @@ class ParentAdmissionRequest(models.Model):
     application = models.OneToOneField(AdmissionApplication, on_delete=models.PROTECT, related_name="parent_request")
     payment_choice = models.CharField(max_length=16, choices=[("cash", "Espèces sur place"), ("online", "Mobile Money en ligne")], default="cash")
     fee_amount_xaf = models.PositiveIntegerField(null=True, blank=True)
+    # Snapshot of the school's questions and requirements at submission time.
+    form_revision = models.PositiveIntegerField(default=0)
+    form_data = models.JSONField(default=dict, blank=True)
+    document_requirements = models.JSONField(default=list, blank=True)
     is_demo_cash = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -55,3 +68,16 @@ class ParentAdmissionRequest(models.Model):
             raise ValidationError("Ce profil enfant appartient à un autre compte.")
         if self.application_id and self.owner_id and self.application.submitted_by_id != self.owner_id:
             raise ValidationError("Cette candidature appartient à un autre compte.")
+
+
+class ParentDocumentUpload(models.Model):
+    """Private parent-supplied evidence attached to a document awaiting staff review."""
+    document = models.OneToOneField("institutions.AdmissionDocument",
+        on_delete=models.CASCADE, primary_key=True, related_name="parent_upload")
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT, related_name="+")
+    filename = models.CharField(max_length=120)
+    content_type = models.CharField(max_length=50)
+    content = models.BinaryField()
+    size = models.PositiveIntegerField()
+    uploaded_at = models.DateTimeField(auto_now=True)
