@@ -177,6 +177,10 @@ def confirm_cash(request, school_id, application_id):
                 return fail("Bourse couvrant tous les frais d'inscription : rien à encaisser.", 409)
             if due < 100:
                 return fail("Aucun solde encaissable : configurez les frais ou ajustez la bourse.", 409)
+            if not link and app.admission_fee_snapshot_xaf is None:
+                # Old, non-parent dossiers receive an immutable quote on first cash collection.
+                app.admission_fee_snapshot_xaf = admission_gross(app)
+                app.save(update_fields=["admission_fee_snapshot_xaf"])
             if not app.year.start_date <= paid_on <= app.year.end_date:
                 return fail("Date hors de l'année scolaire.")
             is_demo = bool(link and link.is_demo_cash)
