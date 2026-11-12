@@ -234,6 +234,7 @@ class EnrollmentFinancialConditionsTests(TestCase):
         self.assertEqual(len(queue.json()["payments"]), 1)
         self.assertTrue(queue.json()["payments"][0]["scholarship_active"])
         self.assertFalse(queue.json()["payments"][0]["can_pay"])
+        self.assertEqual(queue.json()["payments"][0]["payment_status"], "dispense_bourse")
         received = self.post(f"schools/{self.school.pk}/admission-cash/{link.pk}/confirm", {
             "reference": "CAISSE-INTERDITE-2026",
             "received_on": "2026-11-10", "received_cash": True,
