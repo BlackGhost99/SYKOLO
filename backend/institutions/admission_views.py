@@ -334,6 +334,9 @@ def convert(request, school_id, application_id):
         return fail(str(exc))
     try:
         with transaction.atomic():
+            # Lock order is shared with scholarship approvals and the cashier.
+            from .models import School
+            School.objects.select_for_update().get(pk=school.pk)
             row = AdmissionApplication.objects.select_for_update().filter(
                 school=school, pk=application_id
             ).first()
@@ -348,8 +351,6 @@ def convert(request, school_id, application_id):
             blocker = payment_blocker(row)
             if blocker:
                 return fail(blocker, 409)
-            from .models import School
-            School.objects.select_for_update().get(pk=school.pk)
             identity = verified_family_identity(row)
             classroom = AcademicClass.objects.select_for_update().get(pk=row.classroom_id, school=school)
             student = row.existing_student
@@ -382,11 +383,6 @@ def convert(request, school_id, application_id):
             )
             enrolled.full_clean()
             enrolled.save()
-            # Once officially enrolled, create tuition obligations immediately in
-            # the finance ledger with any verified scholarship discounts applied.
-            # No charge is generated for fully covered schedules.
-            from .registration_views import apply_fees
-            apply_fees(school, enrolled, request.user)
             if new_student:
                 guardian = StudentGuardian(
                     school=school, student=student, full_name=row.guardian_name,
@@ -405,6 +401,10 @@ def convert(request, school_id, application_id):
             row.revision += 1
             row.full_clean()
             row.save()
+            # The scholarship lookup depends on an enrolled application link.
+            # Apply fees only AFTER saving that link, inside the same transaction.
+            from .registration_views import apply_fees
+            apply_fees(school, enrolled, request.user)
             AdmissionEvent.objects.create(school=school, application=row, previous_status="accepted",
                                           new_status="enrolled", actor=request.user)
             log_event(school, request, "admission_enrolled", row.pk)
