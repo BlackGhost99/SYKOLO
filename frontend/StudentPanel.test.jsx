@@ -29,7 +29,8 @@ test("M2.6 : la fiche élève distingue les matricules YEM et établissement", a
   }));
 
   render(<StudentPanel schoolId="school-1"/>);
-  await userEvent.setup().selectOptions(await screen.findByLabelText("Élève sélectionné"), "student-1");
+  await screen.findByRole("option", {name: /Fictive Aïcha/});
+  await userEvent.setup().selectOptions(screen.getByLabelText("Élève sélectionné"), "student-1");
 
   const card = screen.getByRole("region", {name: "Matricules de l'élève"});
   expect(card.textContent).toContain("YEM-0123456789ABCDEF0123456789ABCDEF");
