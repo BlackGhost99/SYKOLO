@@ -231,12 +231,16 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
         <p>{a.classroom_name} · {a.year} · {ROUTES[a.route]||a.route}</p>
         <strong>{STATES[a.status]||a.status}</strong>
         {a.status==="enrolled"&&<p role="status">Inscription confirmée. Si l’enfant n’apparaît pas dans « Suivi scolaire de mes enfants », communiquez votre identifiant YEM Parents à l’établissement pour faire vérifier le rattachement au dossier scolaire.</p>}
-        {a.scholarship&&<p role="status"><strong>Boursier de l'État</strong> ·
-          {a.scholarship.coverage==="all"?"tous les frais pris en charge":"frais d'inscription pris en charge"}.
-          Aucun règlement à verser pour les frais couverts.</p>}
-        {a.payment_choice==="cash"&&!a.scholarship&&<div className="yp-muted">
+        {a.scholarship&&<p role="status"><strong>Élève boursier</strong> ·
+          {a.scholarship.coverage==="all"?"inscription et scolarité":a.scholarship.coverage==="admission"?
+            "frais d'inscription":"scolarité"} ·
+          {a.scholarship.calculation==="fixed"?
+            Number(a.scholarship.fixed_amount_xaf).toLocaleString("fr-FR")+" FCFA":
+            (a.scholarship.percentage||100)+" %"} pris en charge.
+          Reste à régler pour l'inscription : <strong>{Number(a.admission_due_xaf||0).toLocaleString("fr-FR")} FCFA</strong>.</p>}
+        {a.payment_choice==="cash"&&<div className="yp-muted">
           <p><strong>Espèces au guichet</strong> · {a.fee_amount_xaf?
-            Number(a.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA":"Tarif à définir par l'établissement"}
+            Number(a.admission_due_xaf||0).toLocaleString("fr-FR")+" FCFA à régler":"Tarif à définir par l'établissement"}
             {a.is_demo_cash&&" · DOSSIER DE TEST, aucun argent à verser"}</p>
           <p role="status">{({
             recu:"Paiement reçu et enregistré par la caisse de l'école.",
@@ -248,14 +252,14 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
             {a.is_demo_cash?"Télécharger le document de simulation PDF":"Télécharger mon reçu de paiement PDF"}
           </a>}
         </div>}
-        {a.payment_choice==="online"&&a.fee_amount_xaf&&!a.scholarship&&<SingPayPayment kind="admission" objectId={a.id} api={api}/>}
-        <small>{a.scholarship?"Bourse gouvernementale vérifiée par l’établissement.":a.payment_choice==="cash"?"Suivi du paiement en espèces ci-dessus.":
-          "Mobile Money · "+(a.fee_amount_xaf?Number(a.fee_amount_xaf).toLocaleString("fr-FR")+" FCFA · ":"")+
+        {a.payment_choice==="online"&&a.admission_due_xaf>0&&<SingPayPayment kind="admission" objectId={a.id} api={api}/>}
+        <small>{a.payment_choice==="cash"?"Suivi du paiement en espèces ci-dessus.":
+          "Mobile Money · "+(a.admission_due_xaf?Number(a.admission_due_xaf).toLocaleString("fr-FR")+" FCFA · ":"")+
           ({non_initie:"non initié",initiating:"initiation en cours",pending:"en attente de confirmation",
             unknown:"à rapprocher avec l'école",success:"confirmé par le prestataire",
             failed:"échec",cancelled:"annulé",refunded:"remboursé"}[a.payment_status]||a.payment_status)}
           {a.payment_mode==="sandbox"&&" · SIMULATION sans argent réel"}</small>
-        {a.payment_choice==="online"&&a.fee_amount_xaf&&!a.scholarship&&
+        {a.payment_choice==="online"&&a.admission_due_xaf>0&&
           !["success","refunded","pending","initiating","unknown"].includes(a.payment_status)&&
           a.status!=="rejected"&&a.status!=="enrolled"&&<>
           <button type="button" className="yp-button" onClick={()=>setActivePay(activePay===a.id?"":a.id)}>
@@ -276,7 +280,7 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
             </label>
             <button className="yp-button yp-primary" disabled={busy}>Demander le paiement sécurisé</button>
           </form>}</>}
-        {a.payment_choice==="online"&&!a.scholarship&&["pending","unknown","initiating"].includes(a.payment_status)&&
+        {a.payment_choice==="online"&&["pending","unknown","initiating"].includes(a.payment_status)&&
           <button type="button" className="yp-button" disabled={busy} onClick={()=>run(async()=>{
             const result=await api("parents/applications/"+a.id+"/payment-refresh",{});
             setMessage(result.notice);
