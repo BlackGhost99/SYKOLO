@@ -71,7 +71,9 @@ def admission_due(application, award=None):
     gross = admission_gross(application)
     if not award or award.coverage not in ("all", "admission"):
         return gross
-    covered = (award.allocations or {}).get("admission", 0)
+    covered = (xaf(Decimal(gross) * Decimal(award.percentage) / 100)
+               if award.calculation == "percent" else
+               int((award.allocations or {}).get("admission", 0)))
     return max(0, gross - min(gross, int(covered)))
 
 
@@ -101,7 +103,7 @@ def grant_summary(application, award=None):
     gross_admission = admission_gross(application)
     schedules = tuition_schedules(application)
     gross_tuition = sum(xaf(s.amount) for s in schedules)
-    admission_covered = min(gross_admission, int((award.allocations or {}).get("admission", 0))) if award else 0
+    admission_covered = gross_admission - admission_due(application, award) if award else 0
     tuition_covered = sum(
         xaf(tuition_discount_for_application(award, s)) for s in schedules
     ) if award else 0
