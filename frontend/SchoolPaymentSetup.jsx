@@ -1,4 +1,4 @@
-import React,{useEffect,useMemo,useState} from "react";
+import React,{useEffect,useState} from "react";
 import {TableScroll} from "./yem-ui.jsx";
 import DemoPaymentSetup from "./DemoPaymentSetup.jsx";
 
@@ -15,69 +15,86 @@ async function api(path,body) {
   return json;
 }
 
-export default function SchoolPaymentSetup({schoolId,years=[],classes=[]}) {
-  const root="schools/"+schoolId+"/";
-  const [gateway,setGateway]=useState(null);
-  const [fees,setFees]=useState([]);
-  const [payments,setPayments]=useState([]);
-  const [key,setKey]=useState("");
-  const [secret,setSecret]=useState("");
+export function AdmissionTariffSettings({schoolId}) {
+  const path="schools/"+schoolId+"/admission-fees";
+  const [catalog,setCatalog]=useState(null);
   const [year,setYear]=useState("");
   const [level,setLevel]=useState("");
-  const [amount,setAmount]=useState("1000");
+  const [amount,setAmount]=useState("");
   const [active,setActive]=useState(true);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState("");
-  const levels=useMemo(()=>{
-    const seen=new Set();
-    return classes.filter(c=>{
-      if(c.year!==year||seen.has(c.level))return false;
-      seen.add(c.level);return true;
-    }).map(c=>({id:c.level,label:c.level_name||c.name}));
-  },[classes,year]);
+  const {fees=[],years=[],levels=[]}=catalog||{};
   const current=fees.find(f=>f.year===year&&f.level===level);
-  useEffect(()=>{if(!year&&years.length)setYear(String(years.find(y=>y.active)?.id||years[0].id));},[years,year]);
-  useEffect(()=>{if(!level||!levels.some(l=>l.id===level))setLevel(levels[0]?.id||"");},[levels,level]);
-  useEffect(()=>{setAmount(String(current?.amount_xaf??1000));setActive(current?.active??true);},[current?.id,current?.revision,year,level]);
-  useEffect(()=>{let live=true;
-    Promise.all([api(root+"admission-gateway"),api(root+"admission-fees"),api(root+"admission-payments")])
-    .then(([g,f,p])=>{if(live){setGateway(g);setFees(f.fees||[]);setPayments(p.payments||[]);}})
-    .catch(e=>{if(live)setNotice(e.message)});
-    return()=>{live=false};
-  },[schoolId]);
+  useEffect(()=>{
+    let live=true;
+    api(path).then(data=>{if(live)setCatalog(data);})
+      .catch(e=>{if(live)setNotice(e.message);});
+    return()=>{live=false;};
+  },[path]);
+  useEffect(()=>{
+    setAmount(String(current?.amount_xaf??""));
+    setActive(current?.active??true);
+  },[year,level,current]);
   async function run(fn){
     setBusy(true);setNotice("");
     try{await fn()}catch(e){setNotice(e.message)}finally{setBusy(false)}
   }
-  if(!gateway)return <p role="status">{notice||"Chargement des frais et du prestataire…"}</p>;
-  return <section className="yp-settings" aria-label="Tarifs et paiement des candidatures">
-    <h3>Frais d'admission · Libreville / Gabon</h3>
+  if(!catalog)return <p role="status">{notice||"Chargement des tarifs d’inscription…"}</p>;
+  return <section className="yp-settings" aria-label="Tarifs d’inscription">
+    <h3>Tarifs d’inscription</h3>
     <p>Ce sont des <strong>frais de dossier d'admission</strong>, indépendants des frais de scolarité.
        Ils sont configurables par année et niveau : maternelle, primaire, collège, lycée ou groupe scolaire.</p>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       if(!year||!level)throw Error("Année et niveau obligatoires.");
-      const item=await api(root+"admission-fees",{
+      const item=await api(path,{
         year,level,revision:current?.revision??0,amount_xaf:Number(amount),active,
       });
-      setFees(old=>[...old.filter(f=>f.id!==item.id),item]);
-      setNotice("Tarif d'admission enregistré. Les demandes antérieures conservent leur montant.");
+      setCatalog(old=>({...old,fees:[...old.fees.filter(f=>f.id!==item.id),item]}));
+      setNotice("Tarif d'admission enregistré. Les dossiers qui ont déjà un montant le conservent.");
     });}}>
       <div className="yp-two">
         <label className="yp-field">Année<select value={year} onChange={e=>setYear(e.target.value)}>
-          {years.filter(y=>y.active).map(y=><option key={y.id} value={y.id}>{y.name}</option>)}
+          <option value="">Choisir l’année</option>
+          {years.map(y=><option key={y.id} value={y.id}>{y.name}</option>)}
         </select></label>
         <label className="yp-field">Niveau<select value={level} onChange={e=>setLevel(e.target.value)}>
-          {levels.map(l=><option key={l.id} value={l.id}>{l.label}</option>)}
+          <option value="">Choisir le niveau</option>
+          {levels.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
         </select></label>
-        <label className="yp-field">Montant du dossier (FCFA/XAF)
+        <label className="yp-field">Montant d’inscription (FCFA/XAF)
           <input type="number" required min="100" max="10000000" step="1" value={amount} onChange={e=>setAmount(e.target.value)}/>
         </label>
       </div>
       <label className="yp-toggle"><input type="checkbox" checked={active} onChange={e=>setActive(e.target.checked)}/>
         Activer le tarif pour cette année et ce niveau</label>
-      <button type="submit" className="yp-button yp-primary" disabled={busy||!year||!level}>Enregistrer les frais d'admission</button>
+      <button type="submit" className="yp-button yp-primary" disabled={busy||!year||!level}>Enregistrer le tarif</button>
     </form>
-    <h3 style={{marginTop:22}}>Encaissement Mobile Money propre à votre école</h3>
+    {notice&&<p role="status">{notice}</p>}
+  </section>;
+}
+
+export default function SchoolPaymentSetup({schoolId,years=[],classes=[]}) {
+  const root="schools/"+schoolId+"/";
+  const [gateway,setGateway]=useState(null);
+  const [payments,setPayments]=useState([]);
+  const [key,setKey]=useState("");
+  const [secret,setSecret]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [notice,setNotice]=useState("");
+  useEffect(()=>{let live=true;
+    Promise.all([api(root+"admission-gateway"),api(root+"admission-payments")])
+      .then(([g,p])=>{if(live){setGateway(g);setPayments(p.payments||[]);}})
+      .catch(e=>{if(live)setNotice(e.message);});
+    return()=>{live=false;};
+  },[root]);
+  async function run(fn){
+    setBusy(true);setNotice("");
+    try{await fn()}catch(e){setNotice(e.message)}finally{setBusy(false)}
+  }
+  if(!gateway)return <p role="status">{notice||"Chargement du prestataire…"}</p>;
+  return <section className="yp-settings" aria-label="Paiement en ligne des candidatures">
+    <h3>Encaissement Mobile Money propre à votre école</h3>
     <p>Les paiements vont vers <strong>votre compte marchand PayCentral</strong>, pas celui d'une autre école.
        Ne communiquez jamais les clés API aux parents. <strong>La simulation ne collecte pas d'argent.</strong></p>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{

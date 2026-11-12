@@ -19,23 +19,36 @@ export function librevilleToday(){
   }).format(new Date());
 }
 
+function amountLabel(amount){
+  return Number(amount).toLocaleString("fr-FR")+" FCFA";
+}
+
+const admissionLabels={
+  submitted:"Déposée",review:"En étude",accepted:"Admise",rejected:"Refusée",enrolled:"Inscrite",
+};
+
 export default function AdmissionCashDesk({schoolId,canReceive=false,applicationId,onUpdated}){
   const base="schools/"+schoolId+"/admission-cash";
   const queue=applicationId ? base+"?application="+encodeURIComponent(applicationId) : base;
   const [items,setItems]=useState(null);
+  const [receiveAllowed,setReceiveAllowed]=useState(false);
+  function applyQueue(data){
+    setItems(data.payments||[]);
+    setReceiveAllowed(data.can_receive ?? canReceive);
+  }
   const [reference,setReference]=useState({});
   const [acknowledged,setAcknowledged]=useState({});
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
   useEffect(()=>{
     let live=true;
-    cashApi(queue).then(data=>{if(live)setItems(data.payments||[]);})
+    cashApi(queue).then(data=>{if(live)applyQueue(data);})
       .catch(e=>{if(live)setMessage(e.message);});
     return()=>{live=false;};
-  },[queue]);
+  },[queue,canReceive]);
   async function refresh(){
     const data=await cashApi(queue);
-    setItems(data.payments||[]);
+    applyQueue(data);
   }
   async function confirm(row){
     setBusy(true);setMessage("");
@@ -48,17 +61,21 @@ export default function AdmissionCashDesk({schoolId,canReceive=false,application
       const receipt=await cashApi(base+"/"+row.request+"/confirm",{
         reference:ref,
         received_on:librevilleToday(),
+        expected_amount_xaf:row.amount_xaf,
         received_cash:!row.is_demo,
         acknowledge_demo:row.is_demo,
       });
       setAcknowledged(v=>({...v,[row.request]:false}));
       setItems(current=>current.map(item=>item.request===row.request ? {
-        ...item,payment_status:receipt.status,
+        ...item,payment_status:receipt.status,can_pay:false,
+        amount_xaf:receipt.status==="recu"?0:item.amount_xaf,
         receipt_url:"/api/v1/"+base+"/"+row.request+"/receipt",
       } : item));
       setMessage(row.is_demo?
         "Simulation validée par le caissier : aucun argent encaissé. Notification et document accessibles au parent.":
-        "Espèces reçues et enregistrées. Notification et reçu PDF accessibles au parent.");
+        row.direct_cash?
+          "Espèces reçues et enregistrées. Le reçu PDF est disponible dans la caisse.":
+          "Espèces reçues et enregistrées. Notification et reçu PDF accessibles au parent.");
       try { await onUpdated?.(); }
       catch(e) { setMessage("Paiement enregistré. Actualisez la candidature pour mettre à jour son état. "+e.message); }
     }catch(e){setMessage(e.message)}finally{setBusy(false)}
@@ -77,15 +94,25 @@ export default function AdmissionCashDesk({schoolId,canReceive=false,application
     {items?.length===0&&<p>{applicationId ? "Cette candidature ne prévoit pas de règlement en espèces." : "Aucune candidature avec règlement en espèces."}</p>}
     {items?.map(row=><article key={row.request} style={{borderTop:"1px solid #ddd",padding:"12px 0"}}>
       <strong>{row.child}</strong> · {row.classroom} · {row.year}
-      <p>Responsable : {row.parent} · Dossier : {row.admission_status}</p>
-      <p>Frais d'inscription : {Number(row.gross_amount_xaf??row.amount_xaf??0).toLocaleString("fr-FR")} FCFA
-        {row.scholarship_covered_xaf>0&&" · Bourse : -"+Number(row.scholarship_covered_xaf).toLocaleString("fr-FR")+" FCFA"}</p>
-      <p><strong>Reste à payer : {Number(row.amount_xaf||0).toLocaleString("fr-FR")} FCFA</strong>
+      <p>Responsable : {row.parent} · Dossier : {admissionLabels[row.admission_status]||row.admission_status}</p>
+      <p>Frais d'inscription : {row.payment_status==="tarif_non_configure"?
+        "Tarif non configuré":row.gross_amount_xaf==null&&row.amount_xaf==null?
+          "Non renseignés":amountLabel(row.gross_amount_xaf??row.amount_xaf)}
+        {row.scholarship_covered_xaf>0&&" · Bourse : −"+amountLabel(row.scholarship_covered_xaf)}</p>
+      <p><strong>Reste à payer : {row.amount_xaf==null?"Indéterminé":amountLabel(row.amount_xaf)}</strong>
         {row.is_demo&&" · SIMULATION — 0 FCFA reçu"}</p>
-      {row.scholarship_active&&<p role="status">{row.amount_xaf>0?
-        "Bourse partielle : la caisse ne reçoit que le solde affiché.":
-        "Bourse totale sur l'inscription : aucun règlement nécessaire."}</p>}
+      {row.payment_status==="tarif_non_configure"&&<p>
+        Demandez au responsable des tarifs d’activer le tarif pour ce niveau et cette année dans
+        Réglages → Paiements → Tarifs d’inscription, puis actualisez la caisse.
+      </p>}
+      {row.payment_status==="a_regler_sur_place"&&row.scholarship_covered_xaf>0&&
+        <p>Bourse partielle : la caisse ne reçoit que le solde affiché.</p>}
+      {row.payment_status==="dispense_bourse"&&
+        <p>Bourse totale sur l'inscription : aucun règlement nécessaire.</p>}
       <p>État caisse : <strong>{({
+        tarif_non_configure:"En attente du tarif",
+        solde_sous_minimum:"Solde inférieur au minimum encaissable (100 FCFA)",
+        candidature_refusee:"Candidature refusée",
         a_regler_sur_place:"En attente de réception",
         recu:"Espèces reçues",
         simule:"Simulation confirmée",
@@ -96,7 +123,7 @@ export default function AdmissionCashDesk({schoolId,canReceive=false,application
       {row.receipt_url&&<a href={row.receipt_url} target="_blank" rel="noreferrer">
         {row.is_demo?"Document de simulation PDF":"Reçu de caisse PDF"}
       </a>}
-      {canReceive&&row.can_pay!==false&&row.admission_status!=="rejected"&&row.admission_status!=="enrolled"&&row.payment_status==="a_regler_sur_place"&&Boolean(row.amount_xaf)&&<>
+      {receiveAllowed&&row.can_pay!==false&&row.admission_status!=="rejected"&&row.admission_status!=="enrolled"&&row.payment_status==="a_regler_sur_place"&&Boolean(row.amount_xaf)&&<>
         <label className="yp-field">Référence de caisse
           <input maxLength={100} value={reference[row.request]||""}
             onChange={e=>setReference(v=>({...v,[row.request]:e.target.value}))}

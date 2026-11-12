@@ -248,7 +248,7 @@ def parent_application_output(link):
         "classroom": str(app.classroom_id), "classroom_name": app.classroom.name,
         "year": app.year.name, "route": app.route,
         "status": app.status, "payment_choice": link.payment_choice,
-        "fee_amount_xaf": link.fee_amount_xaf,
+        "fee_amount_xaf": amounts["admission_gross_xaf"] or None,
         "amounts": amounts, "admission_due_xaf": amounts["admission_due_xaf"],
         "submitted_at": app.submitted_at.isoformat(),
         "payment_status": cash_status if link.payment_choice == "cash" else latest.state if latest else "non_initie",

@@ -15,6 +15,7 @@ import CouncilPanel from "./CouncilPanel.jsx";
 import FinancePanel from "./FinancePanel.jsx";
 import AttendancePanel from "./AttendancePanel.jsx";
 import TimetablePanel from "./TimetablePanel.jsx";
+import {AdmissionTariffSettings} from "./SchoolPaymentSetup.jsx";
 import AdmissionsPanel, {AdmissionSettings, AdmissionPaymentSettings} from "./AdmissionsPanel.jsx";
 import {SchoolSettings, TeachingSettings} from "./SchoolSettings.jsx";
 import {FamilyDirectory, StaffDirectory} from "./SchoolDirectories.jsx";
@@ -90,7 +91,8 @@ const settingsSections = [
   ]},
   {id:"payments", title:"Paiements", icon:"card", items:[
     {id:"fees", label:"Tarifs et échéances", need:["school.finance.manage","school.finance.read"]},
-    {id:"gateway", label:"Paiement des dossiers et Mobile Money", need:["school.admissions.manage","school.finance.manage","school.academic.read"]},
+    {id:"admission-fees", label:"Tarifs d’inscription", need:["school.finance.manage"]},
+    {id:"gateway", label:"Paiement des dossiers par Mobile Money", need:["school.admissions.manage","school.finance.manage","school.academic.read"]},
   ]},
   {id:"attendance", title:"Absences et retards", icon:"calendar", items:[
     {id:"attendance-policy", label:"Statuts de présence", need:["school.settings.read"]},
@@ -104,7 +106,7 @@ const settingsSections = [
   ]},
 ];
 const advancedSettingsTargets = {
-  students:["form"], classes:["classes"], admissions:["admission-policy"], payments:["fees","gateway"],
+  students:["form"], classes:["classes"], admissions:["admission-policy"], payments:["admission-fees","fees","gateway"],
   bulletins:["report-policy"], absences:["attendance-policy"], parents:["parent-access"],
   staff:["staff-setup","organization"],
 };
@@ -327,6 +329,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       form:<FormSettings key={chosen} {...common} canEdit={can("school.students.manage")}/>,
       "admission-policy":<AdmissionSettings key={chosen} {...panelProps} canConfigureCatalog={can("school.admissions.manage")}/>,
       fees:<FinancePanel key={chosen} schoolId={chosen} mode="settings" workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
+      "admission-fees":<AdmissionTariffSettings key={chosen} schoolId={chosen}/>,
       gateway:<AdmissionPaymentSettings key={chosen} schoolId={chosen}/>,
       amendments:<CouncilPanel key={chosen} schoolId={chosen} mode="amendments"/>,
       "parent-access":<SchoolParentAccess key={chosen} schoolId={chosen} canAssignRole={canUsers} canReadStudents={can("school.students.profile.read")}/>,

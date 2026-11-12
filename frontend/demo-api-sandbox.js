@@ -756,7 +756,11 @@ export function createOfflineDemoBackend(){
         has_keys:Boolean(body.api_key||current.has_keys),revision:current.revision+1};
     }
     if(schoolRoute==="admission-fees"){
-      if(method==="GET")return {fees:admissionFees.filter(row=>row.school===id)};
+      if(method==="GET")return {
+        fees:admissionFees.filter(row=>row.school===id),
+        years:years().filter(row=>row.active),
+        levels:classOverview(id,yr).levels.filter(row=>row.active!==false),
+      };
       if(!Number.isInteger(body.amount_xaf)||body.amount_xaf<100)throw Error("Montant fictif invalide.");
       const existing=admissionFees.find(row=>row.school===id&&row.year===body.year&&row.level===body.level);
       if(existing){Object.assign(existing,body,{revision:existing.revision+1});return existing;}

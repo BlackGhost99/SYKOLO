@@ -19,6 +19,7 @@ test("le caissier valide l'espèce réelle uniquement après confirmation de rem
       expect(body.received_cash).toBe(true);
       expect(body.acknowledge_demo).toBe(false);
       expect(body.reference).toBe("GUICHET-0001");
+      expect(body.expected_amount_xaf).toBe(2500);
       received=true;return Response.json({status:"recu"},{status:201});
     }
     if(url===root+"?application=dossier1")return Response.json({payments:[{
@@ -40,9 +41,27 @@ test("le caissier valide l'espèce réelle uniquement après confirmation de rem
   await user.click(screen.getByRole("checkbox"));
   await user.click(confirm);
   expect(await screen.findByText("Espèces reçues")).toBeTruthy();
+  expect(screen.getByText("Reste à payer : 0 FCFA")).toBeTruthy();
   expect(onUpdated).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("link",{name:"Reçu de caisse PDF"}).getAttribute("href"))
     .toBe(root+"/request1/receipt");
+});
+
+test("un tarif absent affiche un solde indéterminé puis l’action apparaît après actualisation",async()=>{
+  let configured=false;
+  vi.stubGlobal("fetch",vi.fn(async()=>Response.json({can_receive:true,payments:[{
+    request:"dossier-direct",child:"TEST GUICHET",classroom:"Seconde S",year:"2026-2027",
+    admission_status:"accepted",can_pay:configured,
+    gross_amount_xaf:configured?2500:null,amount_xaf:configured?2500:null,
+    payment_status:configured?"a_regler_sur_place":"tarif_non_configure",
+  }]})));
+  render(<AdmissionCashDesk schoolId="lycee2"/>);
+  expect(await screen.findByText("Frais d'inscription : Tarif non configuré")).toBeTruthy();
+  expect(screen.getByText("Reste à payer : Indéterminé")).toBeTruthy();
+  expect(screen.queryByRole("button",{name:"Confirmer les espèces reçues"})).toBeNull();
+  configured=true;
+  await userEvent.setup().click(screen.getByRole("button",{name:"Actualiser la caisse des admissions"}));
+  expect(await screen.findByRole("button",{name:"Confirmer les espèces reçues"})).toBeTruthy();
 });
 
 test("le secrétariat ne peut pas encaisser ; la simulation n'est pas un reçu réel",async()=>{

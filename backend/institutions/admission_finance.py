@@ -145,6 +145,8 @@ def payment_blocker(application):
         return None
     award = current_scholarship(application)
     from .admission_scholarship_amounts import admission_due, admission_gross
+    if not admission_gross(application):
+        return "Configurez d'abord les frais d'inscription de l'année et du niveau."
     # An existing, independently verified award still applies if new awards
     # were disabled later. Partial grants do NOT bypass the remaining balance.
     if award and award.coverage in ("all", "admission") and admission_due(application, award) == 0:
@@ -155,9 +157,6 @@ def payment_blocker(application):
     if link is None:
         # Direct reception at the school is a first-class workflow. It must use
         # the same cashier ledger without manufacturing a parent account.
-        gross = admission_gross(application)
-        if not gross:
-            return "Configurez d'abord les frais d'inscription de l'année et du niveau."
         due = admission_due(application, award)
         if due < 100:
             return "Solde d'inscription inférieur au minimum encaissable : ajustez la bourse."
@@ -167,8 +166,6 @@ def payment_blocker(application):
         ).exists():
             return None
         return "Le paiement en espèces doit être validé dans le module Finances avant l'inscription."
-    if not link.fee_amount_xaf:
-        return "Configurez d'abord les frais d'inscription de l'année et du niveau."
     due = admission_due(application, award)
     if due < 100:
         return "Solde d'inscription inférieur au minimum encaissable : ajustez la bourse."
