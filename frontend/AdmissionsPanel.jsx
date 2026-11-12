@@ -2,7 +2,7 @@ import React, {useEffect, useState} from "react";
 import {AdmissionPolicyEditor,AdmissionProofPanel,AdmissionDecisionReadiness,ROUTES} from "./AdmissionRoutesPanel.jsx";
 import {SchoolCatalogSettings} from "./ParentDiscovery.jsx";
 import SchoolPaymentSetup from "./SchoolPaymentSetup.jsx";
-import AdmissionCashDesk, {librevilleToday} from "./AdmissionCashDesk.jsx";
+import {librevilleToday} from "./AdmissionCashDesk.jsx";
 import {FinancePolicyEditor,GovernmentScholarshipPanel} from "./AdmissionFinance.jsx";
 import {useSchoolData} from "./SchoolSettings.jsx";
 
@@ -58,7 +58,7 @@ export function AdmissionPaymentSettings({schoolId}) {
   return <SchoolPaymentSetup schoolId={schoolId} years={data.years} classes={classes}/>;
 }
 
-export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canPrepare=false,canEnroll=true,canReceive=false,canApproveScholarship=false}){
+export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true,canPrepare=false,canEnroll=true,canReceive=false,canApproveScholarship=false,onNavigate}){
   const root="schools/"+schoolId+"/";
   const base=root+"admissions";
   const [formError,setFormError]=useState("");
@@ -221,8 +221,11 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
       <p className="hint">Responsable : {current.guardian_name} · Dépôt : {new Date(current.submitted_at).toLocaleDateString("fr-FR")}.
         {current.decision_reason?" Décision : "+current.decision_reason:""}
       </p>
-      {current.source==="parent_mobile" && <AdmissionCashDesk key={current.id} schoolId={schoolId}
-        applicationId={current.id} canReceive={canReceive} onUpdated={refresh}/>}
+      {current.status==="accepted"&&<div role="status" className="yp-settings">
+        <strong>Admission acceptée — inscription en attente de finalisation</strong>
+        <p>La classe est demandée, mais l’élève ne fait pas encore partie des effectifs inscrits. Le dossier financier (bourse, espèces ou Mobile Money) prend le relais avant création du matricule.</p>
+        {onNavigate&&<button type="button" onClick={()=>onNavigate("payments","finance")}>Ouvrir Paiements et la caisse des admissions</button>}
+      </div>}
       {current.status!=="enrolled"&&current.status!=="rejected"&&current.finance?.blocker&&
         <p role="status">Avant l’inscription définitive. {current.finance.blocker}</p>}
       {(current.status==="submitted"||current.status==="review")&&!canDecide&&
@@ -256,7 +259,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
         });
         setMessage("Inscription officielle créée ; vous pouvez gérer les frais dans la caisse scolaire.");
       })}}>
-        <p className="hint">L'établissement vérifie à nouveau la capacité lors de l'inscription officielle.</p>
+        <p className="hint">Le bouton devient disponible une fois les frais exigibles payés ou couverts par une bourse. La capacité est revérifiée avant la finalisation.</p>
         <div className="two">
           <label className="field">Date de l'inscription
             <input type="date" required value={enrollDate} onChange={e=>setEnrollDate(e.target.value)}/>
