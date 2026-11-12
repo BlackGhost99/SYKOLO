@@ -311,3 +311,169 @@
  .yfx-figures strong{font-size:11px}
  .yfx-grade-row .yfx-row-icon{display:none}
 }
+
+
+/* V2 : vraies largeurs mobiles et état initial sans enfant rattaché.
+   La page parent doit occuper la largeur de l'écran, pas la colonne desktop globale. */
+.yd-parent-standalone.yfm-standalone{
+  max-width:none;width:100%;margin:0;padding:0;min-width:0;overflow-x:clip;
+}
+.yd-parent-standalone.yfm-standalone>.yd-brand-footer{
+  max-width:1020px;margin:0 auto;padding:12px 20px 110px;
+}
+.yfx-app{width:100%;max-width:100%;overflow-x:clip;min-height:100dvh;}
+.yfx-card-head h3{overflow-wrap:normal;word-break:normal;hyphens:none;}
+.yfx-card-head>.yfx-link{flex-shrink:0;}
+.yfx-main{padding-bottom:40px;}
+.yfx-onboarding{
+  border-color:#d4e9dd;background:linear-gradient(135deg,#fff 0%,#fff 54%,#f1fcf5 100%);
+  padding:22px 24px 18px;
+}
+.yfx-onboarding-intro{display:flex;align-items:flex-start;gap:17px;}
+.yfx-onboarding-icon{width:68px;height:68px;border-radius:20px;background:linear-gradient(140deg,#d6f6e4,#a7e2c1);
+  color:#086d43;display:grid;place-items:center;flex:0 0 68px;}
+.yfx-onboarding-eyebrow{display:block;font-size:10px;font-weight:850;letter-spacing:.1em;color:#21784f;margin:3px 0 7px;}
+.yfx-onboarding h2{font-size:clamp(21px,3vw,27px);color:#0d3c29;line-height:1.2;margin:0 0 8px;letter-spacing:-.4px;}
+.yfx-onboarding p{font-size:14px;color:#52675b;line-height:1.55;margin:0;}
+.yfx-onboarding-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:25px 0 20px;}
+.yfx-onboarding-steps>div{border:1px solid #dcece2;background:#f8fcfa;border-radius:13px;padding:12px;min-width:0;}
+.yfx-onboarding-steps>div>span{width:29px;height:29px;display:grid;place-items:center;border-radius:50%;background:#d9f7e4;color:#04633a;font-size:13px;font-weight:850;margin-bottom:10px;}
+.yfx-onboarding-steps strong{display:block;font-size:13px;color:#18372a;line-height:1.2;}
+.yfx-onboarding-steps small{display:block;color:#668174;font-size:11px;margin-top:5px;line-height:1.35;}
+.yfx-onboarding-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:11px;}
+.yfx-onboarding-actions .yfx-primary,.yfx-onboarding-actions .yfx-outline{min-height:47px;width:100%;font-size:13px!important;}
+.yfx-onboarding-id{margin-top:16px!important;border-top:1px solid #dce9df;padding-top:12px;font-size:12px!important;color:#53685c;}
+.yfx-onboarding-id strong{color:#005f3b;}
+.yfx-onboarding-more{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px;}
+.yfx-onboarding-more>button{
+  background:#fff;border:1px solid #e3ebe6;border-radius:17px;box-shadow:0 3px 11px #1b51300e;
+  display:flex;align-items:center;text-align:left;gap:10px;padding:15px;color:#08663f;
+}
+.yfx-onboarding-more>button>span{flex:1;min-width:0;}
+.yfx-onboarding-more strong{display:block;font-size:14px;color:#18362a;line-height:1.2;}
+.yfx-onboarding-more small{display:block;font-size:11px;color:#687d6d;margin-top:4px;line-height:1.3;}
+.yfx-onboarding-more>button:hover{background:#effbf4;border-color:#a9d7bc;}
+.yfx-page-intro{margin:10px 0 18px;}
+.yfx-page-intro h2{font-size:24px;color:#104c35;letter-spacing:-.4px;margin:0 0 4px;}
+.yfx-page-intro p{font-size:13px;color:#62766b;margin:0;}
+.yfx-link-status{
+  display:flex;align-items:center;gap:12px;border:1px solid #c9e7d3;background:#eefaf2;
+  border-radius:15px;padding:13px 15px;margin-bottom:15px;font-size:12px;color:#24573c;line-height:1.45;
+}
+.yfx-link-status>.yfx-icon{flex-shrink:0;color:#13764b;}
+.yfx-link-status span{flex:1;}
+.yfx-link-status button{border:1px solid #a5d6b8;background:#fff;color:#116c43;border-radius:9px;padding:8px 11px;font-size:12px;font-weight:800;}
+.yfx-family-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible;gap:9px;margin-top:18px;}
+.yfx-family-tabs button{white-space:normal;font-weight:750;min-height:43px;line-height:1.2;padding:8px 9px;text-align:center;}
+.yfx-bottom-nav{padding-bottom:max(8px,env(safe-area-inset-bottom));}
+@media(max-width:620px){
+  .yd-parent-standalone.yfm-standalone>.yd-brand-footer{padding:12px 17px 110px;}
+  .yfx-app{padding-bottom:calc(115px + env(safe-area-inset-bottom));}
+  .yfx-hero{padding:19px 17px 115px;min-height:235px;border-radius:0 0 27px 27px;}
+  .yfx-topbar{gap:10px;}
+  .yfx-hero-body{flex-direction:column;align-items:stretch;gap:13px;margin-top:18px;}
+  .yfx-greeting{width:100%;max-width:none;align-items:flex-start;}
+  .yfx-greeting>div{flex:1;}
+  .yfx-greeting h1{font-size:23px;line-height:1.1;}
+  .yfx-greeting p{max-width:100%;font-size:12.5px;line-height:1.44;}
+  .yfx-switcher{align-self:flex-end;min-width:158px;max-width:100%;padding:10px 14px;margin-top:-2px;font-size:12px;flex-shrink:0;}
+  .yfx-main{margin-top:-84px;padding:0 15px 50px;}
+  .yfx-card{padding:17px;border-radius:19px;margin-bottom:14px;}
+  .yfx-card-head{gap:9px;margin-bottom:12px;align-items:center;}
+  .yfx-card-head h3{font-size:16px;line-height:1.24;flex:1;}
+  .yfx-icon-tile{width:36px;height:36px;flex-shrink:0;}
+  .yfx-card-head>.yfx-link{font-size:12px;padding:6px;flex-shrink:0;}
+  .yfx-card .yfx-empty{font-size:13px;line-height:1.5;}
+  .yfx-onboarding{padding:18px 17px;}
+  .yfx-onboarding-intro{gap:12px;}
+  .yfx-onboarding-icon{width:52px;height:52px;flex-basis:52px;border-radius:14px;}
+  .yfx-onboarding-icon .yfx-icon{width:29px;height:29px;}
+  .yfx-onboarding h2{font-size:20px;margin-bottom:7px;}
+  .yfx-onboarding p{font-size:13px;line-height:1.5;}
+  .yfx-onboarding-eyebrow{font-size:9px;letter-spacing:.08em;}
+  .yfx-onboarding-steps{grid-template-columns:minmax(0,1fr);margin:20px 0 18px;gap:8px;}
+  .yfx-onboarding-steps>div{padding:11px;display:grid;grid-template-columns:34px 1fr;grid-template-rows:auto auto;gap:0 10px;align-items:center;}
+  .yfx-onboarding-steps>div>span{grid-column:1;grid-row:1/3;margin:0;}
+  .yfx-onboarding-steps strong{grid-column:2;font-size:13px;}
+  .yfx-onboarding-steps small{grid-column:2;font-size:11px;margin:1px 0 0;}
+  .yfx-onboarding-actions{grid-template-columns:minmax(0,1fr);gap:9px;}
+  .yfx-onboarding-actions .yfx-primary,.yfx-onboarding-actions .yfx-outline{min-height:44px;font-size:13px!important;}
+  .yfx-onboarding-more{grid-template-columns:minmax(0,1fr);gap:10px;}
+  .yfx-onboarding-more>button{padding:14px;border-radius:14px;}
+  .yfx-action-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:15px 0 16px;}
+  .yfx-action{min-height:103px;padding:13px 7px;border-radius:17px;gap:10px;}
+  .yfx-action .yfx-icon{width:32px;height:32px;}
+  .yfx-action strong{font-size:13px;line-height:1.24;word-break:normal;}
+  .yfx-grid-two{grid-template-columns:minmax(0,1fr);gap:0;}
+  .yfx-grid-two>.yfx-card{padding:16px;height:auto;margin-bottom:14px;}
+  .yfx-grid-two .yfx-card-head h3{font-size:16px;line-height:1.2;}
+  .yfx-grid-two .yfx-icon-tile{width:36px;height:36px;background:linear-gradient(135deg,#ebfaef,#cef4d8);}
+  .yfx-grid-two .yfx-icon-tile .yfx-icon{width:23px;height:23px;}
+  .yfx-grid-two .yfx-link{font-size:12px;}
+  .yfx-grid-two .yfx-notification{grid-template-columns:35px 1fr auto;gap:10px;}
+  .yfx-grid-two .yfx-notification>.yfx-row-icon{width:33px;height:33px;}
+  .yfx-grid-two .yfx-notification>.yfx-row-icon .yfx-icon{width:21px;height:21px;}
+  .yfx-grid-two .yfx-notification>small{display:block;}
+  .yfx-grid-two .yfx-notification strong,.yfx-grid-two .yfx-last-grade{font-size:13px;}
+  .yfx-grid-two .yfx-notification small{font-size:11px;}
+  .yfx-grid-two .yfx-last-grade .yfx-badge{font-size:12px;}
+  .yfx-summary .yfx-finance-caption{font-size:12px;margin-left:45px;}
+  .yfx-figures{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:13px;margin:15px 0;}
+  .yfx-figures>div{padding:0 9px;}
+  .yfx-figures>div:nth-child(odd){padding-left:0;}
+  .yfx-figures>div:nth-child(even){border-right:0;}
+  .yfx-figures small{font-size:12px;}
+  .yfx-figures strong{font-size:15px;}
+  .yfx-four>div{padding:0 9px;}
+  .yfx-child-card{padding:14px;}
+  .yfx-face{width:64px;height:77px;flex-basis:64px;}
+  .yfx-child-info h2{font-size:19px;}
+  .yfx-child-info p{font-size:11px;}
+  .yfx-grade-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+  .yfx-grade-stats>div{border:0;text-align:center;}
+  .yfx-grade-stats small{font-size:11px;}
+  .yfx-grade-stats strong{font-size:17px;}
+  .yfx-grade-stats .yfx-icon{display:none;}
+  .yfx-family-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;overflow:visible;margin:13px 0 15px;}
+  .yfx-family-tabs button{font-size:13px;white-space:normal;min-height:45px;padding:9px 8px;line-height:1.25;}
+  .yfx-link-status{padding:12px;align-items:flex-start;flex-wrap:wrap;}
+  .yfx-link-status span{flex:1 1 calc(100% - 45px);}
+  .yfx-link-status button{margin-left:31px;}
+  .yfx-page-intro h2{font-size:22px;}
+  .yfx-page-intro p{font-size:13px;}
+  .yfx-fee{grid-template-columns:30px minmax(0,1fr) auto;gap:8px;}
+  .yfx-fee .yfx-row-icon{width:29px;height:29px;}
+  .yfx-fee-name strong{font-size:12px;}
+  .yfx-fee-name small{font-size:10px;}
+  .yfx-fee-value{font-size:12px;text-align:right;}
+  .yfx-fee-status{grid-column:2/4;align-items:center;flex-direction:row;gap:8px;justify-content:flex-end;}
+  .yfx-fee-status .yfx-badge{font-size:11px;}
+  .yfx-fee-status .yfx-link{font-size:12px;}
+  .yfx-methods{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+  .yfx-methods button{min-height:78px;}
+  .yfx-methods strong{font-size:12px;}
+  .yfx-grade-table-head{display:none;}
+  .yfx-grade-row{grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:11px 0;}
+  .yfx-grade-row>div strong{font-size:12px;}
+  .yfx-grade-row>.yfx-badge{min-width:60px;}
+  .yfx-grade-remark{grid-column:1/-1;padding-left:34px;font-size:11px;}
+  .yfx-three-links{grid-template-columns:minmax(0,1fr);gap:9px;}
+  .yfx-three-links button{padding:13px;min-height:64px;gap:11px;}
+  .yfx-three-links strong{font-size:13px;}
+  .yfx-three-links small{font-size:11px;}
+  .yfx-school-stats .yfx-card{min-height:unset;}
+  .yfx-bottom-nav{min-height:66px;border-radius:20px 20px 0 0;padding:6px 5px max(8px,env(safe-area-inset-bottom));}
+  .yfx-bottom-nav button{min-height:57px;border-radius:14px;padding:6px 2px;}
+  .yfx-bottom-nav button .yfx-icon{height:23px;width:23px;}
+  .yfx-bottom-nav button>span{font-size:10.5px;font-weight:650;}
+}
+@media(max-width:375px){
+  .yfx-main{padding-left:11px;padding-right:11px;}
+  .yfx-hero{padding-left:13px;padding-right:13px;}
+  .yfx-card{padding:15px;}
+  .yfx-onboarding-intro{gap:10px;}
+  .yfx-onboarding h2{font-size:18px;}
+  .yfx-onboarding-icon{width:45px;height:45px;flex-basis:45px;}
+  .yfx-hero-body{gap:9px;}
+  .yfx-brand strong{font-size:18px;}
+}

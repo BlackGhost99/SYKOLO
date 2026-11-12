@@ -68,7 +68,7 @@ function ParentHelp({username, refreshChildren}) {
 export default function YemFamilles({api, accountView, onLogout, onSchoolWorkspace, user, family, children, selected, setSelected, refreshChildren, familyError, familyLoading}) {
   const [screen, setScreen] = useState("home");
   const [schoolTab, setSchoolTab] = useState("grades");
-  const [discoveryTab, setDiscoveryTab] = useState("schools");
+  const [discoveryTab, setDiscoveryTab] = useState("children");
   const [enrollments, setEnrollments] = useState(null);
   const [enrollmentError, setEnrollmentError] = useState("");
   const [year, setYear] = useState("");
