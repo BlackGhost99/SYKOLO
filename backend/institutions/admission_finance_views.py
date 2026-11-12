@@ -19,6 +19,7 @@ from .admission_finance import (
     finance_policy, payment_blocker, policy_scope,
 )
 from .models import School
+from .admission_scholarship_amounts import calculate_award, grant_summary
 from .parent_admission_models import ParentAdmissionRequest
 from .parent_payment_models import AdmissionCashReceipt, ParentPaymentAttempt
 from .services import has_permission
@@ -46,7 +47,11 @@ def result(application):
             "official_reference": award.official_reference,
             "verified_at": award.verified_at.isoformat(),
             "revision": award.revision,
+            "calculation": award.calculation,
+            "percentage": award.percentage,
+            "fixed_amount_xaf": award.fixed_amount_xaf,
         } if award else None),
+        "amounts": grant_summary(application, award),
         "ready_for_enrollment": payment_blocker(application) is None,
         "blocker": payment_blocker(application),
     }
@@ -147,15 +152,27 @@ def scholarship(request, school_id, application_id):
     data, error = parse_body(request)
     if error is not None:
         return error
-    if not isinstance(data, dict) or set(data) != {"action", "reference", "coverage", "revision"}:
+    if not isinstance(data, dict) or not {"action", "reference", "coverage", "revision"} <= set(data) \
+            or set(data) - {"action", "reference", "coverage", "revision", "calculation", "percentage", "fixed_amount_xaf"}:
         return reject("Décision de bourse incomplète.")
     if data["action"] not in ("approve", "revoke") or type(data["revision"]) is not int or data["revision"] < 0:
         return reject("Décision ou révision invalide.")
     reference = data["reference"]
     if not isinstance(reference, str) or len(reference.strip()) < 5 or len(reference) > 180:
         return reject("Référence justificative obligatoire (minimum cinq caractères).")
-    if data["coverage"] not in ("all", "admission"):
-        return reject("Choisissez une prise en charge totale ou des frais d'inscription seuls.")
+    if data["coverage"] not in ("all", "admission", "tuition"):
+        return reject("Périmètre de prise en charge invalide.")
+    calculation = data.get("calculation", "percent")
+    percentage = data.get("percentage", 100)
+    fixed_amount = data.get("fixed_amount_xaf")
+    if calculation == "percent":
+        if type(percentage) is not int or not 1 <= percentage <= 100 or fixed_amount is not None:
+            return reject("Pourcentage de prise en charge invalide.")
+    elif calculation == "fixed":
+        if type(fixed_amount) is not int or not 1 <= fixed_amount <= 100000000:
+            return reject("Montant de prise en charge en FCFA invalide.")
+    else:
+        return reject("Mode de calcul de bourse invalide.")
     try:
         with transaction.atomic():
             School.objects.select_for_update().get(pk=school.pk)
@@ -200,6 +217,16 @@ def scholarship(request, school_id, application_id):
                     )
                 award.active = True
                 award.coverage = data["coverage"]
+                award.calculation = calculation
+                award.percentage = percentage
+                award.fixed_amount_xaf = fixed_amount
+                try:
+                    award.allocations = calculate_award(
+                        application, coverage=award.coverage, calculation=calculation,
+                        percentage=percentage, fixed_amount_xaf=fixed_amount,
+                    )
+                except ValueError as exc:
+                    return reject(str(exc), 409)
                 award.official_reference = reference.strip()
                 award.verified_by = request.user
                 award.revision += (0 if award._state.adding else 1)
