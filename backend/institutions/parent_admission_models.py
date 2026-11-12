@@ -32,6 +32,7 @@ class FamilyChild(models.Model):
     last_name = models.CharField(max_length=120)
     date_of_birth = models.DateField(null=True, blank=True)
     profile = models.JSONField(default=dict, blank=True)
+    revision = models.PositiveIntegerField(default=1)
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
