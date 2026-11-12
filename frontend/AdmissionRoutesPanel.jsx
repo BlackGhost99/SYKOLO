@@ -139,6 +139,9 @@ export function AdmissionProofPanel({api,base,application,canDecide=false,canPre
   const canRecord=canDecide||canPrepare;
   const editable=active&&canRecord;
   const docs=record?.documents||[];
+  const parentSubmission=application.parent_submission;
+  const docLabel=key=>parentSubmission?.document_requirements?.find(d=>d.key===key)?.label
+    ||DOCUMENTS[key]||key.replaceAll("_"," ");
   const missing=(application.required_documents||[]).filter(k=>!docs.some(d=>d.code===k&&d.status==="verified"));
   async function perform(fn){
     setBusy(true);setMessage("");
@@ -174,14 +177,30 @@ export function AdmissionProofPanel({api,base,application,canDecide=false,canPre
         Enregistrer l'éligibilité
       </button>}
     </div>}
+    {parentSubmission&&<section className="ar-parent-dossier" aria-label="Fiche familiale transmise">
+      <h4>Fiche renseignée par la famille</h4>
+      <p className="hint">Données proposées par le parent, à contrôler avant intégration au dossier scolaire officiel.</p>
+      {parentSubmission.photo_url&&<div className="ar-parent-portrait">
+        <img src={parentSubmission.photo_url} alt="Photo fournie par la famille" loading="lazy"/>
+        <small>Photo proposée par la famille</small>
+      </div>}
+      {Object.entries({...parentSubmission.form_data?.fields,...parentSubmission.form_data?.custom_fields})
+        .filter(([,value])=>value!==""&&value!=null).map(([key,value])=>
+          <div className="ar-parent-answer" key={key}>
+            <strong>{parentSubmission.form_data?.labels?.[key]||key.replaceAll("_"," ")}</strong>
+            <span>{typeof value==="boolean"?(value?"Oui":"Non"):String(value)}</span>
+          </div>)}
+    </section>}
     <h4>Pièces justificatives et vérification humaine</h4>
-    <p className="hint">Phase initiale : enregistrement des références et des vérifications. Aucun fichier sensible d'enfant n'est téléchargé ici.</p>
+    <p className="hint">Les documents transmis par les parents restent privés et doivent être vérifiés par un responsable habilité.</p>
     {application.required_documents?.length>0&&<p className="ar-required">
-      À valider : {application.required_documents.map(k=>DOCUMENTS[k]||k).join(" · ")}
+      À valider : {application.required_documents.map(docLabel).join(" · ")}
     </p>}
-    {!!missing.length&&<p className="ar-missing">Justificatifs non vérifiés : {missing.map(k=>DOCUMENTS[k]||k).join(" · ")}</p>}
+    {!!missing.length&&<p className="ar-missing">Justificatifs non vérifiés : {missing.map(docLabel).join(" · ")}</p>}
     {docs.length>0&&<div className="ar-document-list">{docs.map(d=><div key={d.id} className="ar-document">
-      <div><strong>{DOCUMENTS[d.code]||d.code}</strong><small>Référence : {d.reference}</small>
+      <div><strong>{docLabel(d.code)}</strong><small>Référence : {d.reference}</small>
+        {d.file_url&&<a className="ar-document-download" href={d.file_url} download>
+          Télécharger la pièce transmise par le parent</a>}
         <small>Contrôle : {d.status==="verified"?"Vérifié":d.status==="rejected"?"Refusé":"À contrôler"}
           {d.review_reason?" — "+d.review_reason:""}</small></div>
       {active&&canDecide&&<div className="ar-review-actions">
