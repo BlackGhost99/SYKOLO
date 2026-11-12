@@ -185,6 +185,9 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
   const [draft, setDraft] = useState({});
   const [newGuardian, setNewGuardian] = useState(null);
   const [target, setTarget] = useState("");
+  const [assignmentMode, setAssignmentMode] = useState("manual");
+  const [assignmentReason, setAssignmentReason] = useState("");
+  const [showAssignmentHistory, setShowAssignmentHistory] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState({ text: params?.notice || "", error: false });
   const [destination, setDestination] = useState("");
@@ -192,7 +195,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
   const d = dossier.data;
   async function run(fn, ok) {
     setBusy(true); setMessage({ text: "" });
-    try { await fn(); setMessage({ text: ok }); dossier.reload(); classes.reload?.(); }
+    try { await fn(); setMessage({ text: ok }); dossier.reload(); classes.reload?.(); assignment.reload?.(); history.reload?.(); }
     catch (e) { setMessage({ text: e.status === 409 ? "La fiche a été modifiée entre-temps : rechargée, recommencez." : e.message, error: true }); dossier.reload(); }
     finally { setBusy(false); }
   }
@@ -201,6 +204,9 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
   const curYear = classes.data?.year;
   const current = curYear ? d?.enrollments.find(e => e.year === curYear.id) : d?.enrollments[0];
   const enrolledThisYear = d?.enrollments.some(e => e.year === curYear?.id);
+  const assignment = useLoad(canManage && current ? `schools/${schoolId}/enrollments/${current.id}/assignment` : "");
+  const history = useLoad(canManage && current && showAssignmentHistory
+    ? `schools/${schoolId}/enrollments/${current.id}/history` : "");
   function startEdit() {
     const base = {first_name:s.first_name,last_name:s.last_name};
     setDraft(d.sensitive_visible ? {...base, date_of_birth:s.date_of_birth||"",
@@ -300,8 +306,49 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
             <Table className="xs" headers={["Année", "Classe", "Inscrit le", "Statut"]} rows={d.enrollments.map(e => [e.year_name, <b>{e.classroom_name}</b>, fmtDate(e.enrolled_on), <Status tone={e.active ? "green" : "gray"}>{e.active ? "Inscrit" : "Clôturé"}</Status>])}/>}
           {canManage && classes.data && curYear && <div className="yf-inline-form">
             {enrolledThisYear ? (() => { const e = d.enrollments.find(x => x.year === curYear.id); return <>
-              <select aria-label="Nouvelle classe" value={target} onChange={ev => setTarget(ev.target.value)}><option value="">Changer de classe…</option>{classes.data.classes.filter(c => c.active && c.id !== e.classroom).map(c => <option key={c.id} value={c.id} disabled={c.remaining === 0}>{c.name}{c.remaining === 0 ? " (complète)" : ""}</option>)}</select>
-              <Button className="small" icon="transfer" disabled={!target || busy} onClick={() => run(async () => { await req(`schools/${schoolId}/enrollments/${e.id}`, { revision: e.revision, classroom: target }, "PATCH"); setTarget(""); }, "Changement de classe enregistré (historisé).")}>Transférer</Button>
+              <div className="yd-stack">
+                <Field label="Mode d'affectation">
+                  <select aria-label="Mode d'affectation" value={assignmentMode} onChange={ev => {setAssignmentMode(ev.target.value); setTarget("");}}>
+                    <option value="manual">Choisir une division</option>
+                    <option value="automatic">Répartition automatique (division la moins chargée)</option>
+                  </select>
+                </Field>
+                {assignmentMode === "manual" && <Field label="Nouvelle division">
+                  <select aria-label="Nouvelle division" value={target} onChange={ev => setTarget(ev.target.value)}>
+                    <option value="">Sélectionner une autre division…</option>
+                    {(assignment.data?.divisions || []).map(room => <option key={room.id} value={room.id}
+                      disabled={room.remaining === 0}>{room.name}{room.remaining === 0 ? " (complète)" : room.remaining === null ? " (places non limitées)" : ` — ${room.remaining} place(s)`}</option>)}
+                  </select>
+                </Field>}
+                <Field label="Motif du changement de classe" required>
+                  <input aria-label="Motif du changement de classe" maxLength={300} value={assignmentReason} disabled={busy}
+                    placeholder="Ex. répartition pédagogique des divisions"
+                    onChange={ev => setAssignmentReason(ev.target.value)}/>
+                </Field>
+                {assignment.error && <Msg text={assignment.error} error/>}
+                {assignment.data?.read_only && <p className="hint">Année clôturée ou inscription inactive : affectation en lecture seule.</p>}
+                <Button className="small" icon="transfer"
+                  disabled={busy || assignment.loading || !assignment.data || assignment.data.read_only
+                    || assignmentReason.trim().length < 5 || (assignmentMode === "manual" && !target)}
+                  onClick={() => run(async () => {
+                    const result = await req(`schools/${schoolId}/enrollments/${e.id}/assignment`, {
+                      revision: e.revision, mode: assignmentMode, reason: assignmentReason.trim(),
+                      ...(assignmentMode === "manual" ? {classroom: target} : {}),
+                    });
+                    setTarget(""); setAssignmentReason("");
+                    setMessage({text: `Affectation validée : ${result.assignment.class_name}.`, error: false});
+                  }, "Affectation enregistrée et historisée.")}>Confirmer l'affectation</Button>
+                <button className="yf-link" type="button" onClick={() => setShowAssignmentHistory(value => !value)}>
+                  {showAssignmentHistory ? "Masquer l'historique des affectations" : "Voir l'historique des affectations"}
+                </button>
+                {showAssignmentHistory && history.data?.history?.filter(x => x.assignment_mode).map((event, index) =>
+                  <p className="hint" key={event.at + index}>{new Date(event.at).toLocaleString("fr-FR")} ·
+                    {event.assignment_mode === "automatic" ? " Répartition automatique" : " Changement manuel"} :
+                    {" "}{classes.data.classes.find(room => room.id === event.previous_class)?.name || "Classe précédente"}
+                    {" → "}{classes.data.classes.find(room => room.id === event.new_class)?.name || "Nouvelle classe"}
+                    {event.reason ? ` — ${event.reason}` : ""}
+                  </p>)}
+              </div>
             </>; })() : <>
               <select aria-label="Classe" value={target} onChange={ev => setTarget(ev.target.value)}><option value="">Inscrire en {curYear.name} dans…</option>{classes.data.classes.filter(c => c.active).map(c => <option key={c.id} value={c.id} disabled={c.remaining === 0}>{c.name}{c.remaining == null ? "" : ` — ${c.remaining} place(s)`}</option>)}</select>
               <Button className="small" primary icon="adduser" disabled={!target || busy} onClick={() => run(async () => { const r = await req(`schools/${schoolId}/classes/${target}/enroll`, { students: [s.id] }); if (r.failed?.length) throw Error(r.failed[0].error); setTarget(""); }, "Élève inscrit.")}>Inscrire</Button>
