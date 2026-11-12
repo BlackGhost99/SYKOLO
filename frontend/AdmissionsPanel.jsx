@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from "react";
-import {AdmissionPolicyEditor,AdmissionProofPanel,ROUTES} from "./AdmissionRoutesPanel.jsx";
+import {AdmissionPolicyEditor,AdmissionProofPanel,AdmissionDecisionReadiness,ROUTES} from "./AdmissionRoutesPanel.jsx";
 import {SchoolCatalogSettings} from "./ParentDiscovery.jsx";
 import SchoolPaymentSetup from "./SchoolPaymentSetup.jsx";
 import AdmissionCashDesk, {librevilleToday} from "./AdmissionCashDesk.jsx";
@@ -229,6 +229,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
         <p>Décision d’admission attendue de la direction.</p>}
       <AdmissionProofPanel key={current.id} api={admissionApi} base={base}
         application={current} canDecide={canDecide} onUpdated={refresh}/>
+      <AdmissionDecisionReadiness application={current}/>
       <GovernmentScholarshipPanel schoolId={schoolId} application={current}
         canApprove={canApproveScholarship} onUpdated={refresh}/>
       {(current.status==="submitted"||current.status==="review")&&canDecide&&<form onSubmit={e=>e.preventDefault()}>
@@ -239,7 +240,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
           await admissionApi(base+"/"+current.id+"/decide",{revision:current.revision,status:"review",reason});
           setReason("");
         })}>Passer en étude</button>}
-        <button disabled={busy||reason.trim().length===0} type="button" onClick={()=>run(async()=>{
+        <button disabled={busy||reason.trim().length===0||Boolean(current.acceptance_blocker)} type="button" onClick={()=>run(async()=>{
           await admissionApi(base+"/"+current.id+"/decide",{revision:current.revision,status:"accepted",reason});
           setReason("");
         })}>Accepter la candidature (direction)</button>
