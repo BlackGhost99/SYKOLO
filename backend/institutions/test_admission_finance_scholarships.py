@@ -332,3 +332,149 @@ class EnrollmentFinancialConditionsTests(TestCase):
         self.assertEqual(denied.status_code, 409, denied.content)
         self.assertIn("espèces", denied.json()["error"])
         self.assertFalse(AdmissionCashReceipt.objects.exists())
+
+
+    def test_partial_percentage_makes_cash_due_and_tuition_net_without_fake_payment(self):
+        app, link = self.make_app(index=40)
+        fee = FeeSchedule.objects.create(
+            school=self.school, year=self.year, scope_key="", code="scolarite-40",
+            label="Scolarité - 1", amount=Decimal("60000.00"), currency="XAF",
+        )
+        grant = self.post(f"schools/{self.school.pk}/admissions/{app.pk}/scholarship", {
+            "action": "approve", "coverage": "all", "reference": "BOURSE-PARTIELLE-40",
+            "revision": 0, "calculation": "percent", "percentage": 40,
+            "fixed_amount_xaf": None,
+        })
+        self.assertEqual(grant.status_code, 201, grant.content)
+        amounts = grant.json()["amounts"]
+        self.assertEqual(amounts["admission_gross_xaf"], 2500)
+        self.assertEqual(amounts["admission_scholarship_xaf"], 1000)
+        self.assertEqual(amounts["admission_due_xaf"], 1500)
+        self.assertEqual(amounts["tuition_scholarship_xaf"], 24000)
+        self.assertEqual(amounts["tuition_due_xaf"], 36000)
+        self.assertFalse(grant.json()["ready_for_enrollment"])
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 409)
+        self.assertFalse(Enrollment.objects.exists())
+        self.login("econome")
+        queue = self.client.get(f"/api/v1/schools/{self.school.pk}/admission-cash?application={app.pk}")
+        self.assertEqual(queue.status_code, 200, queue.content)
+        self.assertEqual(queue.json()["payments"][0]["amount_xaf"], 1500)
+        self.assertTrue(queue.json()["payments"][0]["can_pay"])
+        paid = self.post(f"schools/{self.school.pk}/admission-cash/{link.pk}/confirm", {
+            "reference": "CAISSE-PARTIELLE-2026", "received_on": "2026-11-10",
+            "received_cash": True, "acknowledge_demo": False,
+        })
+        self.assertEqual(paid.status_code, 201, paid.content)
+        self.assertEqual(paid.json()["amount_xaf"], 1500)
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 201)
+        enrollment = Enrollment.objects.get()
+        self.assertEqual(apply_fees(self.school, enrollment, self.users["secretariat"]), 1)
+        charge = FeeCharge.objects.get()
+        self.assertEqual(charge.amount, Decimal("60000.00"))
+        self.assertEqual(charge.scholarship_discount, Decimal("24000.00"))
+        charges = self.client.get(f"/api/v1/schools/{self.school.pk}/finance/charges?enrollment={enrollment.pk}")
+        self.assertEqual(charges.status_code, 200)
+        self.assertEqual(charges.json()["charges"][0]["balance"], "36000.00")
+
+    def test_fixed_grant_allocates_admission_first_then_tuition(self):
+        FeeSchedule.objects.create(
+            school=self.school, year=self.year, scope_key="", code="scolarite-fixe",
+            label="Scolarité fixe", amount=Decimal("60000.00"), currency="XAF",
+        )
+        app, link = self.make_app(index=41)
+        response = self.post(f"schools/{self.school.pk}/admissions/{app.pk}/scholarship", {
+            "action": "approve", "coverage": "all", "reference": "ETAT-5000-2026",
+            "revision": 0, "calculation": "fixed", "percentage": 100,
+            "fixed_amount_xaf": 5000,
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["amounts"]["admission_due_xaf"], 0)
+        self.assertEqual(response.json()["amounts"]["tuition_scholarship_xaf"], 2500)
+        self.assertTrue(response.json()["ready_for_enrollment"])
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 201)
+        enrollment = Enrollment.objects.get()
+        self.assertEqual(apply_fees(self.school, enrollment, self.users["secretariat"]), 1)
+        self.assertEqual(FeeCharge.objects.get().scholarship_discount, Decimal("2500.00"))
+
+    def test_guichet_direct_receipt_flows_through_finances_without_parent_account(self):
+        from .parent_payment_models import SchoolAdmissionFee
+        SchoolAdmissionFee.objects.create(
+            school=self.school, year=self.year, level=self.room.level,
+            amount_xaf=2500, active=True,
+        )
+        app, parent_link = self.make_app(index=42, with_parent=False)
+        self.assertIsNone(parent_link)
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 409)
+        self.login("econome")
+        queue = self.client.get(f"/api/v1/schools/{self.school.pk}/admission-cash?application={app.pk}")
+        self.assertEqual(queue.status_code, 200, queue.content)
+        self.assertEqual(len(queue.json()["payments"]), 1)
+        self.assertTrue(queue.json()["payments"][0]["direct_cash"])
+        cash = self.post(f"schools/{self.school.pk}/admission-cash/{app.pk}/confirm", {
+            "reference": "GUICHET-DIRECT-42", "received_on": "2026-11-10",
+            "received_cash": True, "acknowledge_demo": False,
+        })
+        self.assertEqual(cash.status_code, 201, cash.content)
+        receipt = AdmissionCashReceipt.objects.get()
+        self.assertIsNone(receipt.request_id)
+        self.assertEqual(receipt.application_id, app.pk)
+        self.assertEqual(receipt.amount_xaf, 2500)
+        pdf = self.client.get(f"/api/v1/schools/{self.school.pk}/admission-cash/{app.pk}/receipt")
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
+        self.login("direction")
+        self.assertEqual(self.award(app).status_code, 409)
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 201)
+        self.assertEqual(Enrollment.objects.count(), 1)
+
+    def test_tuition_only_grant_still_requires_admission_fee(self):
+        app, link = self.make_app(index=43)
+        self.login("direction")
+        grant = self.post(f"schools/{self.school.pk}/admissions/{app.pk}/scholarship", {
+            "action": "approve", "coverage": "tuition",
+            "reference": "ETAT-SCOLARITE-2026", "revision": 0,
+        })
+        self.assertEqual(grant.status_code, 201, grant.content)
+        self.assertEqual(grant.json()["amounts"]["admission_due_xaf"], 2500)
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 409)
+        self.login("econome")
+        self.assertEqual(self.post(f"schools/{self.school.pk}/admission-cash/{link.pk}/confirm", {
+            "reference": "CASH-TUITION-2026", "received_on": "2026-11-10",
+            "received_cash": True, "acknowledge_demo": False,
+        }).status_code, 201)
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 201)
+        enrollment = Enrollment.objects.get()
+        FeeSchedule.objects.create(
+            school=self.school, year=self.year, scope_key="", code="scolarite-totale",
+            label="Scolarité", amount=Decimal("60000.00"), currency="XAF",
+        )
+        self.assertEqual(apply_fees(self.school, enrollment, self.users["secretariat"]), 0)
+        self.assertFalse(FeeCharge.objects.exists())
+
+    def test_partial_admission_fixed_grant_cannot_be_settled_without_remainder(self):
+        app, link = self.make_app(index=44)
+        resp = self.post(f"schools/{self.school.pk}/admissions/{app.pk}/scholarship", {
+            "action": "approve", "coverage": "admission",
+            "reference": "PARTIELLE-FIXE-2026", "revision": 0,
+            "calculation": "fixed", "percentage": 100, "fixed_amount_xaf": 1000,
+        })
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()["amounts"]["admission_due_xaf"], 1500)
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 409)
+        self.login("econome")
+        paid = self.post(f"schools/{self.school.pk}/admission-cash/{link.pk}/confirm", {
+            "reference": "CASH-FIXE-44", "received_on": "2026-11-10",
+            "received_cash": True, "acknowledge_demo": False,
+        })
+        self.assertEqual(paid.status_code, 201, paid.content)
+        self.assertEqual(paid.json()["amount_xaf"], 1500)
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 201)
