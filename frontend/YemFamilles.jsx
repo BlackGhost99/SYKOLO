@@ -162,7 +162,7 @@ export default function YemFamilles({api, accountView, onLogout, onSchoolWorkspa
         {enrollments.map(row=><option key={row.id} value={row.year_id}>{row.year}</option>)}
       </select>
     </label>}
-    {enrollment && <p className="yfm-class-size">Classe : <strong>{enrollment.classroom}</strong> · <strong>{enrollment.class_size} élèves inscrits</strong></p>}
+    {enrollment && <p className="yfm-class-size">Classe : <strong>{enrollment.classroom}</strong> · <strong>{enrollment.class_size} {enrollment.class_size === 1 ? "élève inscrit" : "élèves inscrits"}</strong></p>}
     <div className="yfm-stats">
       <div><small>Assiduité</small><strong>{attendancePercent}</strong><span>{totalCalls ? totalCalls+" appels clôturés" : "Sans données"}</span></div>
       <div><small>Moyenne publiée</small><strong>{reportMean || "—"}</strong><span>{publishedReport ? publishedReport.period || "Bulletin disponible" : "Non publiée"}</span></div>
