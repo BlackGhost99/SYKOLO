@@ -262,7 +262,7 @@ def parent_pay(request, application_id):
             return fail("Demande introuvable.", 404)
         amount_due = admission_due(link.application)
         if amount_due == 0:
-            return fail("Frais d'inscription intégralement pris en charge : aucun paiement requis.", 409)
+            return fail("Bourse gouvernementale : frais d'inscription intégralement pris en charge, aucun paiement requis.", 409)
         if amount_due < 100:
             return fail("Solde inférieur au minimum encaissable : l'école doit ajuster la bourse.", 409)
         from .singpay_models import SingPayIntent
