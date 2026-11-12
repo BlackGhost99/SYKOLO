@@ -46,6 +46,14 @@ export function AdmissionPolicyEditor({api,base,year,level,canDecide,onSaved}){
   if(!year)return <p className="hint">Sélectionnez une année scolaire pour les paramètres d'admission.</p>;
   if(!policy)return <p className="hint">{message||"Chargement des règles d'admission…"}</p>;
   const update=(part,value)=>setPolicy(old=>({...old,[part]:value}));
+  function suggestTypicalDocuments(){
+    const updated={...policy.required_documents};
+    for(const route of policy.enabled_routes){
+      const common=route==="direct"?["birth_certificate"]:["birth_certificate","previous_reports"];
+      updated[route]=[...new Set([...(updated[route]||[]),...common])];
+    }
+    update("required_documents",updated);
+  }
   function toggleRoute(route){
     update("enabled_routes",policy.enabled_routes.includes(route)?
       policy.enabled_routes.filter(x=>x!==route):[...policy.enabled_routes,route]);
@@ -80,7 +88,7 @@ export function AdmissionPolicyEditor({api,base,year,level,canDecide,onSaved}){
       )}</div>
       <h4>Pièces obligatoires selon la voie</h4>
       <p className="hint">Cochez uniquement les pièces que l'établissement exige réellement (par exemple acte de naissance ou derniers bulletins). Les autres pièces restent facultatives. La preuve d'un concours ou d'une affectation reste obligatoire, même si elle n'est pas cochée ci-dessous.</p>
-      {canDecide&&<button type="button" className="ar-secondary" onClick={()=>setPolicy(old=>({...old,required_documents:{...old.required_documents,...Object.fromEntries(old.enabled_routes.map(route=>[route,[...new Set([...(old.required_documents[route]||[]),"birth_certificate",...(route==="direct"?[]:["previous_reports"])])]]))}}))}>Préremplir les pièces habituelles (modifiable avant enregistrement)</button>}
+      {canDecide&&<button type="button" className="ar-secondary" onClick={suggestTypicalDocuments}>Préremplir les pièces habituelles (modifiable avant enregistrement)</button>}
       <div className="ar-policy-grids">{Object.keys(ROUTES).filter(k=>policy.enabled_routes.includes(k)).map(route=>
         <fieldset key={route}><legend>{ROUTES[route]}</legend>
           {[...new Set([...basicDocs,...(policy.required_documents[route]||[])])].map(code=>
@@ -191,7 +199,7 @@ export function AdmissionProofPanel({api,base,application,canDecide=false,canPre
     <p className="hint">Parcours : <strong>{ROUTES[application.route]||application.route}</strong>
       {application.origin_school?" · Établissement d'origine : "+application.origin_school:""}</p>
     {application.route!=="direct"?<div className="ar-outcome">
-      <p className="hint">Renseignez le résultat vérifié, sa référence et le motif du contrôle. Cela ne constitue pas encore une admission.</p>
+      <p className="hint">Renseignez le résultat vérifié, sa référence et le motif du contrôle. Une déclaration d'éligibilité ne vaut pas admission : la direction doit encore accepter le dossier.</p>
       <div className="two">
         <label className="field">Éligibilité déclarée
           <select disabled={!editable||busy} value={result} onChange={e=>setResult(e.target.value)}>
