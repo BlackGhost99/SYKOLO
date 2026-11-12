@@ -60,8 +60,8 @@ def summary(request, school_id):
     for charge in charges.only("id", "currency", "amount", "due_date").iterator():
         section = totals[charge.currency]
         paid = paid_by_charge.get(charge.pk, ZERO)
-        balance = charge.amount - paid
-        section["billed"] += charge.amount
+        balance = charge.amount - charge.scholarship_discount - paid
+        section["billed"] += charge.amount - charge.scholarship_discount
         section["paid"] += paid
         section["balance"] += balance
         section["charges"] += 1
