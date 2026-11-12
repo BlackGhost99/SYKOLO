@@ -233,7 +233,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
       <GovernmentScholarshipPanel schoolId={schoolId} application={current}
         canApprove={canApproveScholarship} onUpdated={refresh}/>
       {(current.status==="submitted"||current.status==="review")&&(canDecide||canPrepare)&&<form onSubmit={e=>e.preventDefault()}>
-        <label className="field">Motif de traitement / décision (requis pour accepter ou refuser)
+        <label className="field">Motif de la décision ou du traitement (requis pour accepter ou refuser)
           <textarea placeholder="Ex. dossier complet et place disponible" maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/>
         </label>
         {current.status==="submitted"&&canPrepare&&<button disabled={busy} type="button" onClick={()=>run(async()=>{
