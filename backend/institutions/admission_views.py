@@ -199,6 +199,11 @@ def applications(request, school_id):
         if route not in (policy.enabled_routes if policy else ROUTES):
             raise ValueError("Cette voie d'admission est désactivée pour le niveau.")
         required_docs = required_for_route(route, policy)
+        from .parent_payment_models import SchoolAdmissionFee
+        school_fee = SchoolAdmissionFee.objects.filter(
+            school=school, year_id=year_id, level_id=target_class.level_id,
+            active=True,
+        ).first()
         with transaction.atomic():
             row = AdmissionApplication(
                 school=school, year_id=year_id, classroom_id=class_id, existing_student_id=existing_id,
@@ -208,6 +213,7 @@ def applications(request, school_id):
                 origin_school=origin_school, route_reference=route_reference,
                 orientation_authority=orientation_authority,
                 required_documents=required_docs,
+                admission_fee_snapshot_xaf=school_fee.amount_xaf if school_fee else None,
             )
             row.full_clean()
             row.save()
@@ -268,6 +274,14 @@ def decide(request, school_id, application_id):
             blocker = admission_blocker(row)
             if blocker:
                 return fail(blocker, 409)
+            if row.admission_fee_snapshot_xaf is None:
+                from .parent_payment_models import SchoolAdmissionFee
+                fee = SchoolAdmissionFee.objects.filter(
+                    school=school, year=row.year, level_id=row.classroom.level_id,
+                    active=True,
+                ).first()
+                if fee:
+                    row.admission_fee_snapshot_xaf = fee.amount_xaf
         previous = row.status
         row.status = status
         row.revision += 1
