@@ -139,6 +139,8 @@ scolaire et capacité de la classe. Les paiements et bourses restent sous M2.5.
   conversion exposent `official_enrollment`, **null** avant inscription, puis
   `{id,student,matricule_yem,student_code,year,classroom,enrolled_on,status}`.
   L'interface Admissions montre ces références après la confirmation.
+  La fiche Élèves affiche également les deux références du dossier, en
+  distinguant l'identification de la preuve d'inscription pour l'année.
 
 La classe présente dans l'inscription est celle qui a été sélectionnée et
 vérifiée dans le parcours actuel d'admission ; M2.6 ne crée pas un second
