@@ -138,11 +138,10 @@ def confirm_cash(request, school_id, application_id):
     body, error = parse_body(request)
     if error is not None:
         return error
-    if set(body) != {"reference", "received_on", "received_cash", "acknowledge_demo"}:
+    if not isinstance(body, dict) or set(body) != {"reference", "received_on", "received_cash", "acknowledge_demo"}:
         return fail("Référence, date et confirmation explicite requises.")
     if (type(body["received_cash"]) is not bool or type(body["acknowledge_demo"]) is not bool
-        or not isinstance(body["reference"], str) or len(body["reference"].strip()) < 3
-        or len(body["reference"].strip()) > 100):
+        or not isinstance(body["reference"], str) or not 3 <= len(body["reference"].strip()) <= 100):
         return fail("Référence ou confirmation invalide.")
     try:
         paid_on = date.fromisoformat(body["received_on"])
@@ -156,9 +155,13 @@ def confirm_cash(request, school_id, application_id):
             link = ParentAdmissionRequest.objects.select_for_update().select_related(
                 "application__year", "application__classroom__level",
             ).filter(pk=application_id, application__school=school, payment_choice="cash").first()
-            if link is None:
-                return fail("Demande de paiement en espèces introuvable.", 404)
-            previous = AdmissionCashReceipt.objects.filter(request=link).first()
+            app = (link.application if link else
+                   AdmissionApplication.objects.select_for_update().select_related(
+                       "year", "classroom__level",
+                   ).filter(pk=application_id, school=school, parent_request__isnull=True).first())
+            if app is None:
+                return fail("Dossier de paiement introuvable.", 404)
+            previous = AdmissionCashReceipt.objects.filter(application=app).first()
             if previous:
                 same = (previous.received_on == paid_on and previous.reference == body["reference"].strip()
                     and previous.is_demo == body["acknowledge_demo"] and
@@ -166,18 +169,20 @@ def confirm_cash(request, school_id, application_id):
                 if same:
                     return JsonResponse(receipt_payload(previous), status=200)
                 return fail("Le règlement de ce dossier est déjà enregistré.", 409)
-            if link.application.status in ("rejected", "enrolled"):
+            if app.status in ("rejected", "enrolled"):
                 return fail("Candidature refusée ou déjà inscrite : aucun nouveau paiement admis.", 409)
-            if current_scholarship(link.application):
-                return fail("Bourse gouvernementale déjà validée : aucun encaissement supplémentaire autorisé.", 409)
-            if not link.fee_amount_xaf:
-                return fail("Aucun tarif d'admission enregistré pour ce dossier.", 409)
-            if not link.application.year.start_date <= paid_on <= link.application.year.end_date:
-                return fail("Date hors de l'année scolaire.", 422)
-            if link.is_demo_cash:
+            due = admission_due(app)
+            if due == 0 and current_scholarship(app):
+                return fail("Bourse couvrant tous les frais d'inscription : rien à encaisser.", 409)
+            if due < 100:
+                return fail("Aucun solde encaissable : configurez les frais ou ajustez la bourse.", 409)
+            if not app.year.start_date <= paid_on <= app.year.end_date:
+                return fail("Date hors de l'année scolaire.")
+            is_demo = bool(link and link.is_demo_cash)
+            if is_demo:
                 if body["received_cash"] or not body["acknowledge_demo"]:
-                    return fail("Dossier de simulation : déclarez explicitement 0 FCFA reçu.", 409)
-                if demo_amount(school, link.application.year_id, link.application.classroom.level_id, link.owner) is None:
+                    return fail("Simulation : déclarez explicitement 0 FCFA reçu.", 409)
+                if demo_amount(school, app.year_id, app.classroom.level_id, link.owner) is None:
                     return fail("La simulation n'est plus autorisée par l'établissement.", 403)
             else:
                 if not body["received_cash"] or body["acknowledge_demo"]:
@@ -186,15 +191,15 @@ def confirm_cash(request, school_id, application_id):
                         currency="XAF", user=request.user):
                     return fail("Caisse du jour déjà clôturée pour cet agent.", 409)
             row = AdmissionCashReceipt(
-                request=link, school=school, amount_xaf=link.fee_amount_xaf,
-                is_demo=link.is_demo_cash, reference=body["reference"].strip(),
+                request=link, application=app, school=school, amount_xaf=due,
+                is_demo=is_demo, reference=body["reference"].strip(),
                 received_on=paid_on, recorded_by=request.user,
             )
             row.full_clean()
             row.save()
             AdmissionEvent.objects.create(
-                school=school, application=link.application,
-                previous_status=link.application.status,
+                school=school, application=app,
+                previous_status=app.status,
                 new_status="cash_simulated" if row.is_demo else "cash_received",
                 reason="Simulation sans mouvement de fonds." if row.is_demo
                        else "Espèces déclarées reçues par le caissier.",
@@ -207,7 +212,6 @@ def confirm_cash(request, school_id, application_id):
     except IntegrityError:
         return fail("Ce reçu existe déjà, actualisez le dossier.", 409)
     return JsonResponse(receipt_payload(row), status=201)
-
 
 @never_cache
 @require_POST
