@@ -112,3 +112,5 @@ Pour PayCentral, la création d'une nouvelle tentative verrouille d'abord l'éta
 Une **révocation de bourse avant inscription**, documentée par la direction, réactive l'obligation de paiement lorsque la politique de l'établissement le prévoit ; après inscription définitive, aucune modification de bourse ni nouvel encaissement d'admission ne sont possibles par ce parcours.
 
 La règle d'inscription demeure indépendante : seul un paiement réellement confirmé par le caissier ou prestataire, une simulation explicitement limitée aux comptes de démonstration autorisés, une exonération configurable, ou une bourse validée satisfait le blocage financier ; cela ne décide pas automatiquement de l'admission, qui exige une décision de direction.
+
+Une désactivation des **nouvelles** bourses pour une année ou un niveau ne retire **pas** les prises en charge déjà approuvées : elles continuent à exonérer le dossier tant qu'elles sont actives. La direction peut encore révoquer une bourse antérieure avec justificatif, même si les nouvelles attributions sont désactivées ; une fois révoquée, la règle ordinaire de paiement redevient applicable.
