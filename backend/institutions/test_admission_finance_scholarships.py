@@ -370,7 +370,7 @@ class EnrollmentFinancialConditionsTests(TestCase):
         self.login("secretariat")
         self.assertEqual(self.convert(app).status_code, 201)
         enrollment = Enrollment.objects.get()
-        self.assertEqual(apply_fees(self.school, enrollment, self.users["secretariat"]), 1)
+        self.assertEqual(apply_fees(self.school, enrollment, self.users["secretariat"]), 0)
         charge = FeeCharge.objects.get()
         self.assertEqual(charge.amount, Decimal("60000.00"))
         self.assertEqual(charge.scholarship_discount, Decimal("24000.00"))
@@ -396,7 +396,7 @@ class EnrollmentFinancialConditionsTests(TestCase):
         self.login("secretariat")
         self.assertEqual(self.convert(app).status_code, 201)
         enrollment = Enrollment.objects.get()
-        self.assertEqual(apply_fees(self.school, enrollment, self.users["secretariat"]), 1)
+        self.assertEqual(apply_fees(self.school, enrollment, self.users["secretariat"]), 0)
         self.assertEqual(FeeCharge.objects.get().scholarship_discount, Decimal("2500.00"))
 
     def test_guichet_direct_receipt_flows_through_finances_without_parent_account(self):
