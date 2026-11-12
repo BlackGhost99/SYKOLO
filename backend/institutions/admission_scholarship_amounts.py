@@ -42,10 +42,12 @@ def calculate_award(application, *, coverage, calculation, percentage=100, fixed
     grant_admission = coverage in ("all", "admission")
     grant_tuition = coverage in ("all", "tuition")
     if calculation == "fixed":
-        budget = min(int(fixed_amount_xaf), (gross if grant_admission else 0) +
-                     sum(xaf(s.amount) for s in schedules if grant_tuition))
-        if budget == 0:
+        eligible = (gross if grant_admission else 0) + sum(xaf(s.amount) for s in schedules if grant_tuition)
+        if not eligible:
             raise ValueError("Configurez les frais concernés avant d'attribuer un montant fixe.")
+        if int(fixed_amount_xaf) > eligible:
+            raise ValueError("La prise en charge fixe dépasse le montant des frais concernés.")
+        budget = int(fixed_amount_xaf)
         admission_covered = min(budget, gross) if grant_admission else 0
         budget -= admission_covered
         tuition = {}
@@ -78,8 +80,19 @@ def tuition_discount(enrollment, schedule):
     award = scholarship_for_enrollment(enrollment)
     if not award or award.coverage not in ("all", "tuition") or schedule.currency != "XAF":
         return Decimal("0.00")
-    covered = (award.allocations or {}).get("tuition", {}).get(str(schedule.pk), 0)
+    if award.calculation == "percent":
+        covered = xaf(schedule.amount * Decimal(award.percentage) / 100)
+    else:
+        covered = (award.allocations or {}).get("tuition", {}).get(str(schedule.pk), 0)
     return min(schedule.amount, Decimal(covered).quantize(Decimal("0.01")))
+
+
+def tuition_discount_for_application(award, schedule):
+    if award.coverage not in ("all", "tuition") or schedule.currency != "XAF":
+        return Decimal("0.00")
+    if award.calculation == "percent":
+        return min(schedule.amount, Decimal(xaf(schedule.amount * Decimal(award.percentage) / 100)))
+    return min(schedule.amount, Decimal((award.allocations or {}).get("tuition", {}).get(str(schedule.pk), 0)))
 
 
 def grant_summary(application, award=None):
@@ -89,7 +102,9 @@ def grant_summary(application, award=None):
     schedules = tuition_schedules(application)
     gross_tuition = sum(xaf(s.amount) for s in schedules)
     admission_covered = min(gross_admission, int((award.allocations or {}).get("admission", 0))) if award else 0
-    tuition_covered = sum(min(xaf(s.amount), int((award.allocations or {}).get("tuition", {}).get(str(s.pk), 0))) for s in schedules) if award else 0
+    tuition_covered = sum(
+        xaf(tuition_discount_for_application(award, s)) for s in schedules
+    ) if award else 0
     return {
         "admission_gross_xaf": gross_admission,
         "admission_scholarship_xaf": admission_covered,
