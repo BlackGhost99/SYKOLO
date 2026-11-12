@@ -19,6 +19,8 @@ def admission_gross(application):
     parent = ParentAdmissionRequest.objects.filter(application=application).first()
     if parent:
         return parent.fee_amount_xaf or 0
+    if application.admission_fee_snapshot_xaf is not None:
+        return application.admission_fee_snapshot_xaf
     fee = SchoolAdmissionFee.objects.filter(
         school_id=application.school_id, year_id=application.year_id,
         level_id=application.classroom.level_id, active=True,
