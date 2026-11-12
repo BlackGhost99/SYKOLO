@@ -174,7 +174,7 @@ def confirm_cash(request, school_id, application_id):
                 return fail("Candidature refusée ou déjà inscrite : aucun nouveau paiement admis.", 409)
             due = admission_due(app)
             if due == 0 and current_scholarship(app):
-                return fail("Bourse couvrant tous les frais d'inscription : rien à encaisser.", 409)
+                return fail("Bourse gouvernementale couvrant tous les frais d'inscription : rien à encaisser.", 409)
             if due < 100:
                 return fail("Aucun solde encaissable : configurez les frais ou ajustez la bourse.", 409)
             if not link and app.admission_fee_snapshot_xaf is None:
