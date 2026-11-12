@@ -79,6 +79,7 @@ def gate(request, school_id, permission):
 
 
 def render(row):
+    parent_link = getattr(row, "parent_request", None)
     return {
         "id": str(row.pk), "year": str(row.year_id),
         "classroom": str(row.classroom_id),
@@ -86,6 +87,13 @@ def render(row):
         "enrollment": str(row.enrollment_id) if row.enrollment_id else None,
         "first_name": row.first_name, "last_name": row.last_name,
         "date_of_birth": row.date_of_birth.isoformat() if row.date_of_birth else None,
+        "parent_submission": {
+            "form_data": parent_link.form_data,
+            "document_requirements": parent_link.document_requirements,
+            "form_revision": parent_link.form_revision,
+            "photo_url": f"/api/v1/parents/family-children/{parent_link.child_id}/photo"
+                if hasattr(parent_link.child, "portrait") else None,
+        } if parent_link else None,
         "guardian_name": row.guardian_name,
         "guardian_relationship": row.guardian_relationship,
         "guardian_phone": row.guardian_phone,
