@@ -1,12 +1,13 @@
 import React, {useEffect, useMemo, useRef, useState} from "react";
 import "./parent-discovery.css";
 import SingPayPayment from "./SingPayPayment.jsx";
+import {SchoolRequirements, FamilyProfileEditor, ParentAdmissionDocuments} from "./ParentSchoolForms.jsx";
 
-async function api(path, body) {
+async function api(path, body, updateMethod="POST") {
   if (body !== undefined) await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
   const csrf=document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1]||"";
   const response=await fetch("/api/v1/"+path, {
-    method:body===undefined?"GET":"POST", credentials:"same-origin",
+    method:body===undefined?"GET":updateMethod, credentials:"same-origin",
     headers:body===undefined?{}:{"Content-Type":"application/json","X-CSRFToken":csrf},
     body:body===undefined?undefined:JSON.stringify(body),
   });
@@ -39,6 +40,12 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
   const [paymentPhone,setPaymentPhone]=useState("");
   const [activePay,setActivePay]=useState("");
   const [newChild,setNewChild]=useState({first_name:"",last_name:"",date_of_birth:""});
+  const [schoolForm,setSchoolForm]=useState(null);
+  const [formFields,setFormFields]=useState({});
+  const [customAnswers,setCustomAnswers]=useState({});
+  const [formLoading,setFormLoading]=useState(false);
+  const [formError,setFormError]=useState("");
+
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
   const [error,setError]=useState("");
@@ -78,6 +85,18 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
   },[notifications]);
   const selectedSchool=schools.find(s=>s.id===chosenSchool);
   const selectedClass=selectedSchool?.classes.find(c=>c.id===classroom);
+  const selectedChild=family.find(c=>c.id===child);
+  useEffect(()=>{setFormFields({});setCustomAnswers({});},[child,classroom,route]);
+  useEffect(()=>{
+    if(!classroom){setSchoolForm(null);setFormError("");setFormLoading(false);return;}
+    let live=true;setSchoolForm(null);setFormError("");setFormLoading(true);
+    api("parents/admission-form?classroom="+encodeURIComponent(classroom)+"&route="+encodeURIComponent(route))
+      .then(result=>{if(live)setSchoolForm(result);})
+      .catch(err=>{if(live)setFormError(err.message)})
+      .finally(()=>{if(live)setFormLoading(false)});
+    return()=>{live=false};
+  },[classroom,route]);
+
   const visible=useMemo(()=>schools.filter(s=>
     [s.name,s.city,s.district,s.school_type_label].join(" ").toLowerCase().includes(search.toLowerCase())
   ),[schools,search]);
@@ -124,6 +143,8 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
                 child,classroom,route,payment_choice:paymentChoice,
                 guardian_relationship:relation,guardian_phone:phone,
                 origin_school:origin,route_reference:reference,
+                form_revision:schoolForm?.revision??0,
+                form_fields:formFields,custom_answers:customAnswers,
               });
               setClassroom("");setView("requests");
               setMessage("Demande déposée. L'école examinera votre dossier.");
@@ -156,6 +177,10 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
                   <input required type="tel" maxLength={45} value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+241..."/>
                 </label>
               </div>
+              <SchoolRequirements schema={schoolForm} child={selectedChild}
+                fields={formFields} onFields={setFormFields}
+                answers={customAnswers} onAnswers={setCustomAnswers}
+                loading={formLoading} error={formError}/>
               {route!=="direct"&&<>
                 <label className="yp-field">Établissement précédent (facultatif)
                   <input maxLength={180} value={origin} onChange={e=>setOrigin(e.target.value)}/>
@@ -181,7 +206,7 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
                 <small>En espèces : seul le caissier habilité confirme la réception et délivre le reçu. En ligne : confirmation par le prestataire.</small>
               </fieldset>
               <button className="yp-button yp-primary" type="submit"
-                disabled={busy||!family.length||!classroom||(paymentChoice==="cash"&&!s.cash_at_school)||(paymentChoice==="online"&&!selectedClass?.online_payment_available)}>
+                disabled={busy||!family.length||!classroom||!schoolForm||formLoading||!!formError||(paymentChoice==="cash"&&!s.cash_at_school)||(paymentChoice==="online"&&!selectedClass?.online_payment_available)}>
                 {busy?"Enregistrement...":"Déposer ma demande"}
               </button>
               {!s.cash_at_school&&<p>Le paiement en espèces n'est pas proposé par cette école.</p>}
@@ -193,12 +218,15 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
     {view==="children"&&<div className="yp-pane">
       <h3>Profils de mes enfants</h3>
       <p>Les profils de préparation restent privés. Ils ne remplacent pas le dossier officiel créé par l'école.</p>
-      {family.map(c=><div className="yp-child" key={c.id}><b>{c.first_name} {c.last_name}</b>
-        <small>{c.date_of_birth?"Né(e) le "+c.date_of_birth:"Date de naissance non renseignée"}</small>
+      {family.map(c=><div className="yp-child" key={c.id}>
+        <div className="yp-child-heading"><div><b>{c.first_name} {c.last_name}</b>
+          <small>{c.date_of_birth?"Né(e) le "+c.date_of_birth:"Date de naissance non renseignée"}</small></div></div>
+        <FamilyProfileEditor child={c} api={api} onUpdated={refresh}/>
         <button type="button" className="yp-button" onClick={()=>{
           setChild(c.id);setView("schools");setChosenSchool("");setClassroom("");
           setError("");setMessage("Choisissez un établissement pour "+c.first_name+" "+c.last_name+".");
-        }}>Chercher une école pour {c.first_name}</button></div>)}
+        }}>Chercher une école pour {c.first_name}</button>
+      </div>)}
       <form onSubmit={e=>{e.preventDefault();run(async()=>{
         const saved=await api("parents/family-children",newChild);
         setChild(saved.id);
@@ -252,6 +280,7 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
             {a.is_demo_cash?"Télécharger le document de simulation PDF":"Télécharger mon reçu de paiement PDF"}
           </a>}
         </div>}
+        <ParentAdmissionDocuments application={a} api={api}/>
         {a.payment_choice==="online"&&a.admission_due_xaf>0&&<SingPayPayment kind="admission" objectId={a.id} api={api}/>}
         <small>{a.payment_choice==="cash"?"Suivi du paiement en espèces ci-dessus.":
           "Mobile Money · "+(a.admission_due_xaf?Number(a.admission_due_xaf).toLocaleString("fr-FR")+" FCFA · ":"")+
