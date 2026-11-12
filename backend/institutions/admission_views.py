@@ -94,6 +94,9 @@ def render(row):
         "route_reference": row.route_reference, "orientation_authority": row.orientation_authority,
         "external_result": row.external_result, "required_documents": row.required_documents,
         "decision_reason": row.decision_reason, "revision": row.revision,
+        # Advisory only: the decide endpoint independently rechecks the gate
+        # under the row lock. Payments are a distinct enrollment prerequisite.
+        "acceptance_blocker": admission_blocker(row) if row.status in ("submitted", "review") else None,
         "submitted_at": row.submitted_at.isoformat(),
         "decided_at": row.decided_at.isoformat() if row.decided_at else None,
         "converted_at": row.converted_at.isoformat() if row.converted_at else None,
