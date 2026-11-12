@@ -153,8 +153,20 @@ def payment_blocker(application):
     from .parent_payment_models import AdmissionCashReceipt, ParentPaymentAttempt, SchoolDemoPaymentConfig
     link = ParentAdmissionRequest.objects.filter(application=application).first()
     if link is None:
-        return ("Frais d'inscription obligatoires : créez une candidature parent avec paiement en "
-                "caisse ou faites vérifier une bourse gouvernementale.")
+        # Direct reception at the school is a first-class workflow. It must use
+        # the same cashier ledger without manufacturing a parent account.
+        gross = admission_gross(application)
+        if not gross:
+            return "Configurez d'abord les frais d'inscription de l'année et du niveau."
+        due = admission_due(application, award)
+        if due < 100:
+            return "Solde d'inscription inférieur au minimum encaissable : ajustez la bourse."
+        if AdmissionCashReceipt.objects.filter(
+            application=application, school=application.school, amount_xaf=due,
+            is_demo=False, void__isnull=True,
+        ).exists():
+            return None
+        return "Le paiement en espèces doit être validé dans le module Finances avant l'inscription."
     if not link.fee_amount_xaf:
         return "Configurez d'abord les frais d'inscription de l'année et du niveau."
     due = admission_due(application, award)
