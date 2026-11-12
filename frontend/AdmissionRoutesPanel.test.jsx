@@ -83,6 +83,7 @@ test("le secrétariat peut ajouter un justificatif mais pas le certifier",async(
     application={app} canDecide={false} canPrepare onUpdated={async()=>{}}/>);
   await screen.findByText(/Référence : PV-2026/);
   expect(screen.getByRole("button",{name:"Enregistrer l'éligibilité"})).toBeTruthy();
+  await userEvent.setup().click(screen.getByText(/Options avancées — ajouter une pièce complémentaire/));
   expect(screen.getByRole("button",{name:"Ajouter cette référence"})).toBeTruthy();
   expect(screen.queryByRole("button",{name:"Vérifier"})).toBeNull();
   expect(screen.queryByRole("button",{name:"Non conforme"})).toBeNull();
@@ -99,4 +100,61 @@ test("le lecteur sans habilitation administrative ne peut pas saisir ni valider 
   expect(screen.getByLabelText("Éligibilité déclarée").disabled).toBe(true);
   expect(screen.queryByRole("button",{name:"Enregistrer l'éligibilité"})).toBeNull();
   expect(screen.queryByRole("button",{name:"Ajouter cette référence"})).toBeNull();
+});
+
+test("la pièce obligatoire est proposée d'abord, sans rendre obligatoires les autres documents",async()=>{
+  const app={id:"33333333-3333-3333-3333-333333333333",status:"submitted",revision:1,
+    route:"direct",external_result:"pending",required_documents:["birth_certificate"],origin_school:""};
+  const api=vi.fn(async(path,body)=>body?{revision:2,documents:[]}:{revision:1,documents:[]});
+  render(<AdmissionProofPanel api={api} base="schools/test/admissions" application={app}
+    canPrepare onUpdated={async()=>{}}/>);
+  await screen.findByText(/Justificatifs non vérifiés/);
+  expect(screen.getByRole("combobox",{name:"Type de justificatif"}).value).toBe("birth_certificate");
+  const user=userEvent.setup();
+  await user.type(screen.getByLabelText("Référence du justificatif"),"Acte 2026 / 123");
+  await user.click(screen.getByRole("button",{name:"Ajouter cette référence"}));
+  await waitFor(()=>expect(api).toHaveBeenCalledWith(
+    "schools/test/admissions/"+app.id+"/documents",
+    expect.objectContaining({code:"birth_certificate",reference:"Acte 2026 / 123"})
+  ));
+  expect(screen.getByText(/Options avancées — ajouter une pièce complémentaire/)).toBeTruthy();
+});
+
+test("le motif et la référence activent clairement l'enregistrement d'un résultat de concours",async()=>{
+  const app={id:"33333333-3333-3333-3333-333333333333",status:"submitted",revision:1,
+    route:"concours",external_result:"pending",required_documents:["concours_result"],origin_school:""};
+  const api=vi.fn(async(path,body)=>body?{revision:2}:{revision:1,documents:[]});
+  render(<AdmissionProofPanel api={api} base="schools/test/admissions" application={app}
+    canDecide onUpdated={async()=>{}}/>);
+  await screen.findByText(/Justificatifs non vérifiés/);
+  const user=userEvent.setup();
+  await user.selectOptions(screen.getByLabelText("Éligibilité déclarée"),"eligible");
+  await user.type(screen.getByLabelText(/Motif de validation du résultat/),"Procès-verbal du concours contrôlé");
+  expect(screen.getByRole("button",{name:"Enregistrer l'éligibilité"}).disabled).toBe(true);
+  await user.type(screen.getByLabelText(/Référence du concours/),"PV-C-2026-01");
+  expect(screen.getByRole("button",{name:"Enregistrer l'éligibilité"}).disabled).toBe(false);
+  await user.click(screen.getByRole("button",{name:"Enregistrer l'éligibilité"}));
+  await waitFor(()=>expect(api).toHaveBeenCalledWith(
+    "schools/test/admissions/"+app.id+"/eligibility",
+    expect.objectContaining({result:"eligible",route_reference:"PV-C-2026-01",reason:"Procès-verbal du concours contrôlé"})
+  ));
+});
+
+test("les pièces usuelles sont un préréglage modifiable et non une obligation globale",async()=>{
+  const api=vi.fn(async(path,body)=>body?{...body,scope_revision:1,scope:"year"}:
+    {year:YEAR,level:null,scope:"default",scope_revision:0,
+      enabled_routes:["direct","concours","orientation"],
+      required_documents:{direct:[],concours:[],orientation:[]}});
+  render(<AdmissionPolicyEditor api={api} base="schools/test/admissions" year={YEAR} level={null}
+    canDecide/>);
+  const user=userEvent.setup();
+  await screen.findByText(/Pièces obligatoires selon la voie/);
+  await user.click(screen.getByRole("button",{name:/Préremplir les pièces habituelles/}));
+  await user.click(screen.getByRole("button",{name:"Enregistrer les règles d'admission"}));
+  await waitFor(()=>expect(api).toHaveBeenCalledWith("schools/test/admissions/policy",
+    expect.objectContaining({required_documents:expect.objectContaining({
+      direct:["birth_certificate"],
+      concours:["birth_certificate","previous_reports"],
+      orientation:["birth_certificate","previous_reports"]
+    })})));
 });
