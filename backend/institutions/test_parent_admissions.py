@@ -1,4 +1,5 @@
 """Regression and authorization coverage for YEM parent self-service admissions."""
+import base64
 import json
 
 from django.contrib.auth import get_user_model
@@ -69,6 +70,104 @@ class FamilyDiscoveryTests(TestCase):
         }
         body.update(changes)
         return self.post("parents/applications", body)
+
+    def test_parent_profile_photo_is_private_and_editable(self):
+        self.setup_listing()
+        self.login(self.parent)
+        child_id = self.create_child()
+        path = "/api/v1/parents/family-children/" + child_id
+        payload = {
+            "revision": 1, "first_name": "Aïcha", "last_name": "Mavoungou",
+            "date_of_birth": "2018-01-17",
+            "profile": {"gender": "F", "nationality": "Gabonaise",
+                        "address": "Libreville, Nombakélé"},
+        }
+        changed = self.client.put(path, data=json.dumps(payload), content_type="application/json",
+                                  HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(changed.status_code, 200, changed.content)
+        self.assertEqual(changed.json()["revision"], 2)
+        self.assertEqual(changed.json()["profile"]["gender"], "F")
+        # Deliberately tiny JPEG-like fixture: upload route verifies content and MIME, no public URL.
+        encoded = base64.b64encode(b"\\xff\\xd8\\xff" + b"YEM JPG fixture").decode()
+        photo = self.post("parents/family-children/" + child_id + "/photo",
+                          {"photo": "data:image/jpeg;base64," + encoded})
+        self.assertEqual(photo.status_code, 200, photo.content)
+        uri = photo.json()["photo_url"]
+        response = self.client.get(uri)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        self.assertTrue(response.content.startswith(b"\\xff\\xd8\\xff"))
+        self.login(self.other_parent)
+        self.assertEqual(self.client.get(uri).status_code, 404)
+        self.assertEqual(self.client.get(path).status_code, 404)
+        self.assertEqual(self.client.put(path, data=json.dumps(payload),
+                    content_type="application/json", HTTP_X_CSRFTOKEN=self.csrf).status_code, 404)
+
+    def test_school_defined_questions_and_document_upload_need_staff_verification(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .enrollment_form import default_config
+        from .student_models import EnrollmentFormConfig
+        from .admission_models import AdmissionDocument
+
+        self.setup_listing()
+        config = default_config()
+        config["custom_fields"] = [{"key": "transport", "label": "Transport scolaire",
+            "type": "select", "options": ["Oui", "Non"], "required": True, "section": "eleve"}]
+        config["documents"] = [
+            {"key": "acte_naissance", "label": "Acte de naissance", "required": True},
+            {"key": "photo_identite", "label": "Photo d'identité", "required": False},
+        ]
+        EnrollmentFormConfig.objects.create(school=self.school, config=config)
+        self.login(self.parent)
+        child_id = self.create_child()
+        path = f"/api/v1/parents/admission-form?classroom={self.classroom.pk}&route=direct"
+        result = self.client.get(path)
+        self.assertEqual(result.status_code, 200, result.content)
+        form = result.json()
+        self.assertTrue(form["configured"])
+        self.assertIn("acte_naissance", [d["key"] for d in form["documents"] if d["required"]])
+        self.assertEqual(form["custom_fields"][0]["label"], "Transport scolaire")
+        missing = self.application(child_id, form_revision=form["revision"])
+        self.assertEqual(missing.status_code, 422, missing.content)
+        request = self.application(child_id, form_revision=form["revision"],
+                                   custom_answers={"transport": "Oui"},
+                                   form_fields={"nationality": "Gabonaise"})
+        self.assertEqual(request.status_code, 201, request.content)
+        item_id = request.json()["id"]
+        saved = ParentAdmissionRequest.objects.get(pk=item_id)
+        self.assertEqual(saved.form_data["custom_fields"]["transport"], "Oui")
+        self.assertIn("acte_naissance", saved.application.required_documents)
+        doc_list_url = f"/api/v1/parents/applications/{item_id}/documents"
+        self.assertEqual(self.client.get(doc_list_url).json()["documents"][0]["status"], "missing")
+        file = SimpleUploadedFile("acte.pdf", b"%PDF-1.7\\nYEM test PDF", content_type="application/pdf")
+        upload = self.client.post(doc_list_url+"/acte_naissance", {"file":file},
+                                  HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(upload.status_code, 200, upload.content)
+        document = AdmissionDocument.objects.get(application=saved.application, code="acte_naissance")
+        self.assertEqual(document.status, "pending")
+        self.assertTrue(self.client.get(doc_list_url+"/acte_naissance/file").content.startswith(b"%PDF-"))
+        self.assertEqual(self.client.get(doc_list_url).json()["documents"][0]["status"], "pending")
+        self.login(self.other_parent)
+        self.assertEqual(self.client.get(doc_list_url).status_code, 404)
+        self.assertEqual(self.client.get(doc_list_url+"/acte_naissance/file").status_code, 404)
+        self.login(self.director)
+        school_doc_url = f"/api/v1/schools/{self.school.pk}/admissions/{saved.application_id}/documents/acte_naissance/file"
+        self.assertEqual(self.client.get(school_doc_url).status_code, 200)
+        detail = self.client.get(f"/api/v1/schools/{self.school.pk}/admissions/{saved.application_id}")
+        self.assertEqual(detail.status_code, 200, detail.content)
+        self.assertEqual(detail.json()["parent_submission"]["form_data"]["custom_fields"]["transport"], "Oui")
+
+    def test_school_form_revision_stale_submission_is_rejected(self):
+        from .student_models import EnrollmentFormConfig
+        from .enrollment_form import default_config
+        self.setup_listing()
+        EnrollmentFormConfig.objects.create(school=self.school, config=default_config(), revision=2)
+        self.login(self.parent)
+        child_id = self.create_child()
+        old = self.application(child_id, form_revision=1)
+        self.assertEqual(old.status_code, 409, old.content)
+        self.assertFalse(ParentAdmissionRequest.objects.exists())
 
     def test_directory_is_opt_in_and_public_only(self):
         anon = Client()
