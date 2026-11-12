@@ -182,7 +182,7 @@ def pay(request, kind, object_id):
             # Check financial eligibility before merchant readiness: a verified
             # government award forbids another charge regardless of PSP state.
             if kind == "admission" and admission_due(row.application) == 0:
-                return fail("Bourse couvrant entièrement les frais d'inscription : aucun paiement SingPay requis.", 409)
+                return fail("Bourse gouvernementale couvrant entièrement les frais d'inscription : aucun paiement SingPay requis.", 409)
             if SingPayIntent.objects.filter(**{kind: row}, state__in=OPEN_STATES).exists():
                 return fail("Un paiement est ouvert : vérifiez-le avant un nouvel essai.", 409)
             merchant = SingPayMerchant.objects.filter(school=school).first()
