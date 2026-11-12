@@ -27,13 +27,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderAdmissions({canPrepare=false, canDecide=false, canCreate=true}={}) {
+function renderAdmissions({canPrepare=false, canDecide=false, canCreate=true, canEnroll=false, initialStatus="submitted", financeBlocker=null}={}) {
   let application = {
     id: "app-1", revision: 1, first_name: "Aïcha", last_name: "Fictive",
-    status: "submitted", route: "direct", year: "year-1",
+    status: initialStatus, route: "direct", year: "year-1",
     classroom: "class-1", source: "guichet", guardian_name: "Parent fictif",
     submitted_at: "2026-11-12T09:00:00Z", decision_reason: "",
-    finance: {blocker: null}, acceptance_blocker: null,
+    finance: {blocker: financeBlocker}, acceptance_blocker: null,
   };
   const base = "/api/v1/schools/school-1/";
   const fetchMock = vi.fn(async (url, options={}) => {
@@ -45,6 +45,19 @@ function renderAdmissions({canPrepare=false, canDecide=false, canCreate=true}={}
       const data = JSON.parse(options.body);
       application = {...application, status: data.status, revision: application.revision + 1};
       return Response.json(application);
+    }
+    if (url === base + "admissions/app-1/convert" && options.method === "POST") {
+      application = {...application, status: "enrolled", revision: application.revision + 1,
+        enrollment: "enrollment-1",
+        official_enrollment: {
+          id: "enrollment-1", student: "student-1",
+          matricule_yem: "YEM-0123456789ABCDEF0123456789ABCDEF",
+          student_code: "ECOLE-00021",
+          year: "year-1", classroom: "class-1",
+          enrolled_on: "2026-11-12", status: "inscrit",
+        },
+      };
+      return Response.json(application, {status: 201});
     }
     if (url === base + "admissions") return Response.json({applications: [application]});
     if (url === base + "academic/years") return Response.json({years: [
@@ -62,7 +75,7 @@ function renderAdmissions({canPrepare=false, canDecide=false, canCreate=true}={}
   vi.stubGlobal("fetch", fetchMock);
   render(<AdmissionsPanel
     schoolId="school-1" canPrepare={canPrepare} canDecide={canDecide}
-    canCreate={canCreate} canEnroll={false} canReceive={false}
+    canCreate={canCreate} canEnroll={canEnroll} canReceive={false}
   />);
   return fetchMock;
 }
@@ -104,4 +117,30 @@ test("un lecteur des admissions ne voit aucune action d'étude ou décision", as
   expect(screen.queryByRole("button", {name:"Passer en étude (secrétariat)"})).toBeNull();
   expect(screen.queryByRole("button", {name:/Accepter la candidature/})).toBeNull();
   expect(screen.queryByRole("button", {name:/Refuser la candidature/})).toBeNull();
+});
+
+test("M2.6 : la confirmation montre les deux matricules officiels sans les anticiper", async () => {
+  const fetchMock = renderAdmissions({initialStatus: "accepted", canEnroll: true, canCreate: false});
+  const user = await selectFile();
+  expect(screen.queryByText("ECOLE-00021")).toBeNull();
+  await user.click(screen.getByRole("button", {name: "Confirmer l’inscription définitive"}));
+  expect(await screen.findByText("ECOLE-00021")).toBeTruthy();
+  expect(screen.getByText("YEM-0123456789ABCDEF0123456789ABCDEF")).toBeTruthy();
+  expect(screen.getByRole("region", {name: "Inscription définitive confirmée"})).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Confirmer l’inscription définitive"})).toBeNull();
+  expect(fetchMock.mock.calls.filter(([url, options]) =>
+    url.endsWith("/app-1/convert") && options?.method === "POST"
+  )).toHaveLength(1);
+});
+
+test("M2.6 : le paiement manquant désactive la finalisation", async () => {
+  const fetchMock = renderAdmissions({
+    initialStatus: "accepted", canEnroll: true, canCreate: false,
+    financeBlocker: "Paiement requis à la caisse.",
+  });
+  await selectFile();
+  const button = screen.getByRole("button", {name: "Confirmer l’inscription définitive"});
+  expect(button.disabled).toBe(true);
+  expect(screen.getByText(/Paiement requis à la caisse/)).toBeTruthy();
+  expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/app-1/convert"))).toBe(false);
 });
