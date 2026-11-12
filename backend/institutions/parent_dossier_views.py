@@ -96,9 +96,10 @@ def public_form_payload(school, year, level, route):
             "max_length": PROFILE_LIMITS.get(key, 254 if key == "guardian_email" else 120),
         })
     policy = effective_policy(school, year, level)
+    explicitly_configured = bool(school.enrollment_form) if hasattr(school, "enrollment_form") else False
     configured = config.get("documents", [])
     documents = [{
-        "key": d["key"], "label": d["label"], "required": bool(d["required"]),
+        "key": d["key"], "label": d["label"], "required": bool(d["required"]) and explicitly_configured,
     } for d in configured]
     known = {item["key"] for item in documents}
     route_docs = required_for_route(route, policy)
@@ -111,6 +112,7 @@ def public_form_payload(school, year, level, route):
             next(d for d in documents if d["key"] == key)["required"] = True
     return {
         "revision": revision,
+        "configured": explicitly_configured,
         "fields": fields, "custom_fields": config.get("custom_fields", []),
         "documents": documents,
     }
