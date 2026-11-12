@@ -99,3 +99,16 @@ Tests : `institutions.test_admissions` (voie directe et concours) et `AdmissionR
 Le point d'entrée de transition ne change pas : `POST /api/v1/schools/{school_id}/admissions/{id}/decide` avec `{revision,status,reason}`. Le droit nécessaire dépend **strictement du nouveau statut** : `review` exige `school.admissions.manage`, `accepted` et `rejected` exigent `school.admissions.decide`. Les changements sont soumis à une révision optimiste et à la machine à états, sans possibilité de rouvrir une décision finale. Les événements de suivi sont append-only ; `admission_review_started` distingue l'ouverture de l'étude d'une décision.
 
 La séparation ne change pas les conditions de finalisation : **admission favorable ne signifie pas inscription officielle**, laquelle attend paiement confirmé ou bourse validée, capacité et année scolaire adaptées. Les essais réalisés avec les rôles réels en interface resteront à effectuer après déploiement.
+
+
+## M2.5 — Paiement et bourse : protéger les deux sens de la décision
+
+Une bourse gouvernementale active, validée indépendamment de la caisse, **remplace les frais concernés** : il est alors interdit d'enregistrer un nouveau règlement de dossier par espèces ou d'initier un paiement PayCentral/SingPay. La validation d'une bourse après encaissement confirmé était déjà interdite ; M2.5 ferme le chemin inverse.
+
+Dans la caisse des admissions, les candidatures bénéficiant d'une bourse vérifiée affichent « Bourse gouvernementale validée » et ne proposent plus d'action d'encaissement. Il en va de même pour une candidature déjà **inscrite définitivement**, même si elle n'a jamais eu de reçu (par exemple, parce qu'une bourse dispensait du règlement). Les anciens reçus demeurent consultables, et leur correction suit le circuit de rapprochement ou d'annulation déjà prévu.
+
+Pour PayCentral, la création d'une nouvelle tentative verrouille d'abord l'établissement, comme le font la caisse et l'approbation de bourse, avant de verrouiller la demande parent et de vérifier qu'aucune bourse n'est active. SingPay effectue le même contrôle à l'intérieur de sa transaction ; son activation de production demeure désactivée tant que l'intégration prestataire n'est pas certifiée.
+
+Une **révocation de bourse avant inscription**, documentée par la direction, réactive l'obligation de paiement lorsque la politique de l'établissement le prévoit ; après inscription définitive, aucune modification de bourse ni nouvel encaissement d'admission ne sont possibles par ce parcours.
+
+La règle d'inscription demeure indépendante : seul un paiement réellement confirmé par le caissier ou prestataire, une simulation explicitement limitée aux comptes de démonstration autorisés, une exonération configurable, ou une bourse validée satisfait le blocage financier ; cela ne décide pas automatiquement de l'admission, qui exige une décision de direction.
