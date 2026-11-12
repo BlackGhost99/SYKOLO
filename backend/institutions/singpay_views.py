@@ -178,6 +178,10 @@ def pay(request, kind, object_id):
             if previous:
                 return (JsonResponse(intent_view(previous)) if previous.request_hash == request_hash
                         else fail("Clé déjà utilisée avec une demande différente.", 409))
+            # Check financial eligibility before merchant readiness: a verified
+            # government award forbids another charge regardless of PSP state.
+            if kind == "admission" and current_scholarship(row.application):
+                return fail("Bourse gouvernementale déjà validée : paiement SingPay interdit.", 409)
             if SingPayIntent.objects.filter(**{kind: row}, state__in=OPEN_STATES).exists():
                 return fail("Un paiement est ouvert : vérifiez-le avant un nouvel essai.", 409)
             merchant = SingPayMerchant.objects.filter(school=school).first()
@@ -192,8 +196,6 @@ def pay(request, kind, object_id):
                 if (row.payment_choice != "online" or data["amount_xaf"] != row.fee_amount_xaf
                         or row.application.status in ("rejected", "enrolled")):
                     return fail("Frais de dossier non payable.", 409)
-                if current_scholarship(row.application):
-                    return fail("Bourse gouvernementale déjà validée : paiement SingPay interdit.", 409)
                 if ParentPaymentAttempt.objects.filter(request=row).exclude(state__in=("failed", "cancelled")).exists() or SingPayIntent.objects.filter(admission=row, state__in=("success", "test_success")).exists():
                     return fail("Paiement PayCentral ou SingPay existant : rapprochez le dossier.", 409)
             quoted = fee_quote(merchant, data["amount_xaf"])
