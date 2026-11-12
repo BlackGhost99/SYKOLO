@@ -42,6 +42,7 @@ test("la vue parent reprend le vrai composant parent et aucun appel de productio
   expect(screen.getByText("YEM Familles")).toBeTruthy();
   expect(await screen.findByText("1 élève inscrit")).toBeTruthy();
   expect(await screen.findByText("14,5 / 20")).toBeTruthy();
+  await user.click(within(screen.getByRole("navigation",{name:"Navigation YEM Familles"})).getByRole("button",{name:"Scolarité"}));
   await user.click(screen.getByRole("button",{name:"Vie scolaire"}));
   expect(await screen.findByText("Bonne participation aux activités de la classe.")).toBeTruthy();
   expect(network).not.toHaveBeenCalled();
