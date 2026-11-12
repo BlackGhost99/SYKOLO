@@ -114,3 +114,39 @@ La prise en charge des échéances de scolarité est représentée séparément 
 **Sécurité :** aucun paiement fictif n'est créé par une bourse. Une bourse ne peut pas remplacer une recette réelle non remboursée ni des opérations en ligne ouvertes ; inversement, une bourse couvrant totalement l'inscription interdit toute nouvelle demande de paiement. Un montant restant peut être payé en espèces ou en ligne avec le même numéro de candidature. Un dossier définitivement inscrit ne peut plus recevoir d'encaissement d'admission. La désactivation de nouvelles bourses ne révoque pas celles déjà validées.
 
 **Tests requis :** guichet direct → caisse → reçu → inscription ; parent avec bourse partielle → calcul exact du reste → espèces ; bourse totale → zéro paiement ; scolarité avec charges nettes et plafonds ; règles de rôle secrétariat/direction/caissier ; non-régression du paiement en ligne ; migrations et Docker. Les opérations en ligne sont soumises à la confirmation signée du prestataire ; SingPay reste inactif jusqu'à certification de son contrat.
+
+## M2.6 — Inscription définitive et attribution des matricules
+
+Le passage de `accepted` à `enrolled` reste exclusivement effectué par
+`POST /api/v1/schools/{school_id}/admissions/{id}/convert` avec
+`{revision, enrolled_on}`. Le serveur exige simultanément les droits
+`school.admissions.enroll` et `school.students.manage`. Les contrôles sont
+réexécutés **dans la transaction** : dossier accepté, situation des frais
+d'admission (règlement réel confirmé ou prise en charge approuvée), année
+scolaire et capacité de la classe. Les paiements et bourses restent sous M2.5.
+
+- **Nouvel élève :** aucun matricule ni `Student` avant la conversion ; création
+  du dossier, d'une identité YEM permanente, du matricule local automatique
+  selon la règle de l'établissement, d'une inscription par année et d'un
+  événement d'historique dans une seule transaction.
+- **Ancien élève :** le dossier et les deux matricules existants sont réutilisés ;
+  une nouvelle inscription est possible pour une autre année, mais un doublon
+  sur la même année est refusé.
+- **Réexécution :** une requête pour un dossier déjà converti renvoie la même
+  inscription et les mêmes matricules sans créer de nouvel élève, de nouvelle
+  créance, ni de deuxième événement d'inscription.
+- **Lecture :** `GET /admissions`, `GET /admissions/{id}` et la réponse de
+  conversion exposent `official_enrollment`, **null** avant inscription, puis
+  `{id,student,matricule_yem,student_code,year,classroom,enrolled_on,status}`.
+  L'interface Admissions montre ces références après la confirmation.
+
+La classe présente dans l'inscription est celle qui a été sélectionnée et
+vérifiée dans le parcours actuel d'admission ; M2.6 ne crée pas un second
+mécanisme d'affectation. Les changements de classe et l'organisation pédagogique
+restent distincts. Aucune migration de base n'est requise par ce lot.
+
+Tests : `institutions.test_admissions` et `AdmissionsPanel.test.jsx` couvrent
+la réponse officielle, l'allocation une seule fois, la conservation des
+matricules des anciens élèves, l'idempotence, les droits et le blocage de
+l'action sans règlement. La recette avec les véritables sessions et données
+pilotes reste nécessaire avant fusion/déploiement.
