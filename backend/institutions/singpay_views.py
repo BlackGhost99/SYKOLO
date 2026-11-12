@@ -13,6 +13,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 
 from accounts.views import authorized
 from .finance_models import FeeCharge
+from .admission_finance import current_scholarship
 from .finance_views import cleared_total
 from .models import School, SchoolAudit
 from .parent_admission_models import ParentAdmissionRequest
@@ -191,6 +192,8 @@ def pay(request, kind, object_id):
                 if (row.payment_choice != "online" or data["amount_xaf"] != row.fee_amount_xaf
                         or row.application.status in ("rejected", "enrolled")):
                     return fail("Frais de dossier non payable.", 409)
+                if current_scholarship(row.application):
+                    return fail("Bourse gouvernementale déjà validée : paiement SingPay interdit.", 409)
                 if ParentPaymentAttempt.objects.filter(request=row).exclude(state__in=("failed", "cancelled")).exists() or SingPayIntent.objects.filter(admission=row, state__in=("success", "test_success")).exists():
                     return fail("Paiement PayCentral ou SingPay existant : rapprochez le dossier.", 409)
             quoted = fee_quote(merchant, data["amount_xaf"])
