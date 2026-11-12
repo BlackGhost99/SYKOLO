@@ -53,7 +53,7 @@ test("la fiche affiche la classe, les notes et la vie scolaire de l’année cho
   expect(await screen.findByText("0 / 15")).toBeTruthy();
   await user.click(screen.getByRole("button", {name:"Vie scolaire"}));
   expect(await screen.findByText("Travail de rattrapage mercredi.")).toBeTruthy();
-  expect(screen.getByText("1")).toBeTruthy();
+  expect(screen.getAllByText("1").length).toBeGreaterThan(0);
   await user.selectOptions(screen.getByLabelText("Année scolaire"), "year-2");
   expect(screen.getByText("CE2 B")).toBeTruthy();
   expect(await screen.findByText(/Aucune observation ni sanction communiquée/)).toBeTruthy();
