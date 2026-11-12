@@ -7,6 +7,15 @@ from django.db import migrations, models
 from django.db.models import Q
 
 
+def backfill_cash_applications(apps, schema_editor):
+    Cash = apps.get_model('institutions', 'AdmissionCashReceipt')
+    for receipt in Cash.objects.using(schema_editor.connection.alias).filter(
+        request__isnull=False, application__isnull=True,
+    ).select_related('request').iterator():
+        receipt.application_id = receipt.request.application_id
+        receipt.save(update_fields=['application'])
+
+
 class Migration(migrations.Migration):
     dependencies = [("institutions", "0045_student_access_separation")]
 
@@ -41,6 +50,23 @@ class Migration(migrations.Migration):
                 ("tuition", "Frais de scolarité uniquement"),
             ]),
         ),
+        migrations.AlterField(
+            model_name="admissioncashreceipt",
+            name="request",
+            field=models.OneToOneField(
+                to="institutions.parentadmissionrequest", on_delete=models.PROTECT,
+                null=True, blank=True, related_name="cash_receipt",
+            ),
+        ),
+        migrations.AddField(
+            model_name="admissioncashreceipt",
+            name="application",
+            field=models.OneToOneField(
+                to="institutions.admissionapplication", on_delete=models.PROTECT,
+                null=True, blank=True, related_name="admission_cash_receipt",
+            ),
+        ),
+        migrations.RunPython(backfill_cash_applications, migrations.RunPython.noop),
         migrations.AddField(
             model_name="feecharge",
             name="scholarship_discount",
