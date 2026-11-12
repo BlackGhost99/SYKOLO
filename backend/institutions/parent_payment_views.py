@@ -149,12 +149,20 @@ def school_gateway(request, school_id):
 @require_http_methods(["GET", "POST"])
 @authorized
 def school_admission_fees(request, school_id):
-    school, error = staff_access(request, school_id)
+    school, error = access(request, school_id)
     if error is not None:
         return error
+    if not has_permission(request.user, school, "school.finance.manage"):
+        return refuse()
     if request.method == "GET":
         rows = SchoolAdmissionFee.objects.filter(school=school).order_by("year_id", "level_id")
-        return JsonResponse({"fees": [fee_view(row) for row in rows[:200]]})
+        return JsonResponse({
+            "fees": [fee_view(row) for row in rows],
+            "years": list(AcademicYear.objects.filter(school=school, active=True)
+                          .order_by("-start_date").values("id", "name")),
+            "levels": list(AcademicLevel.objects.filter(school=school, active=True)
+                           .order_by("name").values("id", "name")),
+        })
     data, error = parse_body(request)
     if error is not None:
         return error

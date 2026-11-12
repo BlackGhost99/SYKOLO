@@ -230,7 +230,8 @@ class FamilyDiscoveryTests(TestCase):
         response = self.application(child_id)
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(response.json()["child_name"], "Aïcha Mavoungou")
-        self.assertEqual(response.json()["payment_status"], "a_regler_sur_place")
+        self.assertEqual(response.json()["payment_status"], "tarif_non_configure")
+        self.assertIsNone(response.json()["admission_due_xaf"])
         self.assertEqual(AdmissionApplication.objects.count(), 1)
         app = AdmissionApplication.objects.first()
         self.assertEqual(app.source, "parent_mobile")
@@ -247,6 +248,32 @@ class FamilyDiscoveryTests(TestCase):
         self.login(self.director)
         staff = self.client.get(f"/api/v1/schools/{self.school.pk}/admissions")
         self.assertEqual(len(staff.json()["applications"]), 1)
+
+    def test_parent_cash_dossier_without_tariff_is_not_an_exemption(self):
+        from .parent_payment_models import SchoolAdmissionFee
+        self.setup_listing()
+        self.login(self.parent)
+        child_id = self.create_child()
+        submitted = self.application(child_id)
+        self.assertEqual(submitted.status_code, 201, submitted.content)
+        self.assertEqual(submitted.json()["payment_status"], "tarif_non_configure")
+        self.assertIsNone(submitted.json()["admission_due_xaf"])
+        self.assertIsNone(submitted.json()["fee_amount_xaf"])
+        app = AdmissionApplication.objects.get(pk=ParentAdmissionRequest.objects.get(
+            pk=submitted.json()["id"]).application_id)
+        self.assertIsNone(app.enrollment_id)
+        SchoolAdmissionFee.objects.create(
+            school=self.school, year=self.year, level=self.classroom.level,
+            amount_xaf=2500, active=True,
+        )
+        refreshed = self.client.get("/api/v1/parents/applications")
+        self.assertEqual(refreshed.status_code, 200)
+        data = refreshed.json()["applications"][0]
+        self.assertEqual(data["fee_amount_xaf"], 2500)
+        self.assertEqual(data["admission_due_xaf"], 2500)
+        self.assertEqual(data["payment_status"], "a_regler_sur_place")
+        self.assertFalse(data["paid_confirmed"])
+        self.assertIsNone(app.enrollment_id)
 
     def test_verified_transfer_keeps_matricule_without_granting_school_access(self):
         self.setup_listing()

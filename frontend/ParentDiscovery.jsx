@@ -265,7 +265,8 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
           {a.scholarship.calculation==="fixed"?
             Number(a.scholarship.fixed_amount_xaf).toLocaleString("fr-FR")+" FCFA":
             (a.scholarship.percentage||100)+" %"} pris en charge.
-          Reste à régler pour l'inscription : <strong>{Number(a.admission_due_xaf||0).toLocaleString("fr-FR")} FCFA</strong>.</p>}
+          Reste à régler pour l'inscription : <strong>{a.admission_due_xaf==null?
+            "Tarif non configuré":Number(a.admission_due_xaf).toLocaleString("fr-FR")+" FCFA"}</strong>.</p>}
         {a.payment_choice==="cash"&&<div className="yp-muted">
           <p><strong>Espèces au guichet</strong> · {a.fee_amount_xaf?
             Number(a.admission_due_xaf||0).toLocaleString("fr-FR")+" FCFA à régler":"Tarif à définir par l'établissement"}
@@ -275,6 +276,8 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
             simule:"Simulation validée par la caisse, 0 FCFA reçu.",
             annule:"Reçu annulé : adressez-vous à l'établissement.",
             a_regler_sur_place:"En attente de validation au guichet de l'établissement.",
+            tarif_non_configure:"Aucune exonération : l'établissement doit définir les frais d'admission pour cette année et ce niveau.",
+            aucun_paiement_exige:"L'établissement ne demande pas de frais d'admission pour ce dossier.",
           })[a.payment_status]||"Règlement à vérifier auprès de l'école."}</p>
           {a.cash_receipt_url&&<a href={a.cash_receipt_url} target="_blank" rel="noreferrer">
             {a.is_demo_cash?"Télécharger le document de simulation PDF":"Télécharger mon reçu de paiement PDF"}

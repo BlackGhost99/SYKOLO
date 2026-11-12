@@ -22,7 +22,7 @@ from accounts.views import authorized
 
 from .admission_models import AdmissionEvent, AdmissionApplication
 from .admission_scholarship_amounts import admission_due, admission_gross
-from .admission_finance import current_scholarship, GovernmentScholarship
+from .admission_finance import current_scholarship, full_admission_waiver, GovernmentScholarship
 from .demo_payment_views import demo_amount
 from .finance_cash_policy import cash_closed_for_recorder
 from .models import School
@@ -50,6 +50,36 @@ def receipt_payload(receipt):
           if receipt.is_demo else "Paiement en espèces reçu et déclaré par la caisse de l'établissement.",
         "receipt_url": (f"/api/v1/parents/applications/{receipt.request_id}/cash-receipt" if receipt.request_id else
                         f"/api/v1/schools/{receipt.school_id}/admission-cash/{receipt.application_id}/receipt"),
+    }
+
+
+def cash_position(app, cash):
+    gross = admission_gross(app)
+    award = current_scholarship(app)
+    due = admission_due(app, award)
+    if cash:
+        status = receipt_payload(cash)["status"]
+    elif app.status == "enrolled":
+        status = "inscription_deja_finalisee"
+    elif app.status == "rejected":
+        status = "candidature_refusee"
+    elif full_admission_waiver(award):
+        status = "dispense_bourse"
+    elif not gross:
+        status = "tarif_non_configure"
+    elif due == 0:
+        status = "dispense_bourse"
+    elif due < 100:
+        status = "solde_sous_minimum"
+    else:
+        status = "a_regler_sur_place"
+    return {
+        "gross_amount_xaf": gross or None,
+        "amount_xaf": 0 if status in ("recu", "dispense_bourse") else due if gross else None,
+        "scholarship_covered_xaf": gross - due,
+        "scholarship_active": bool(award),
+        "can_pay": status == "a_regler_sur_place",
+        "payment_status": status,
     }
 
 
@@ -83,43 +113,27 @@ def cashier_queue(request, school_id):
     rows = []
     for link in links.order_by("-created_at")[:250]:
         app = link.application
-        gross, due = admission_gross(app), admission_due(app)
         cash = AdmissionCashReceipt.objects.filter(request=link).first()
-        award = current_scholarship(app)
         rows.append({
             "request": str(link.pk), "application": str(app.pk),
             "parent": link.owner.get_full_name() or link.owner.username,
             "child": f"{link.child.last_name} {link.child.first_name}",
             "classroom": app.classroom.name, "year": app.year.name,
-            "amount_xaf": due, "gross_amount_xaf": gross,
-            "scholarship_covered_xaf": gross - due, "scholarship_active": bool(award),
+            **cash_position(app, cash),
             "is_demo": link.is_demo_cash, "admission_status": app.status,
-            "can_pay": bool(due >= 100 and not cash and app.status not in ("enrolled", "rejected")),
-            "payment_status": (receipt_payload(cash)["status"] if cash else
-                               "dispense_bourse" if award and due == 0 else
-                               "inscription_deja_finalisee" if app.status == "enrolled" else
-                               "a_regler_sur_place"),
             "receipt_url": f"/api/v1/schools/{school.pk}/admission-cash/{link.pk}/receipt" if cash else None,
         })
     # Guichet applications must NEVER require creating a false parent account.
     # The same cashier view and school admission tariff provide the handoff.
     for app in direct.order_by("-submitted_at")[:250]:
-        gross, due = admission_gross(app), admission_due(app)
         cash = AdmissionCashReceipt.objects.filter(application=app).first()
-        award = current_scholarship(app)
         rows.append({
             "request": str(app.pk), "application": str(app.pk),
             "parent": app.guardian_name, "child": f"{app.last_name} {app.first_name}",
             "classroom": app.classroom.name, "year": app.year.name,
-            "amount_xaf": due, "gross_amount_xaf": gross,
-            "scholarship_covered_xaf": gross - due, "scholarship_active": bool(award),
+            **cash_position(app, cash),
             "is_demo": False, "admission_status": app.status,
             "direct_cash": True,
-            "can_pay": bool(due >= 100 and not cash and app.status not in ("enrolled", "rejected")),
-            "payment_status": (receipt_payload(cash)["status"] if cash else
-                               "dispense_bourse" if award and due == 0 else
-                               "inscription_deja_finalisee" if app.status == "enrolled" else
-                               "a_regler_sur_place"),
             "receipt_url": f"/api/v1/schools/{school.pk}/admission-cash/{app.pk}/receipt" if cash else None,
         })
     return JsonResponse({
@@ -139,11 +153,14 @@ def confirm_cash(request, school_id, application_id):
     body, error = parse_body(request)
     if error is not None:
         return error
-    if not isinstance(body, dict) or set(body) != {"reference", "received_on", "received_cash", "acknowledge_demo"}:
+    required = {"reference", "received_on", "received_cash", "acknowledge_demo"}
+    if not isinstance(body, dict) or not required <= set(body) or set(body) - required - {"expected_amount_xaf"}:
         return fail("Référence, date et confirmation explicite requises.")
     if (type(body["received_cash"]) is not bool or type(body["acknowledge_demo"]) is not bool
         or not isinstance(body["reference"], str) or not 3 <= len(body["reference"].strip()) <= 100):
         return fail("Référence ou confirmation invalide.")
+    if "expected_amount_xaf" in body and type(body["expected_amount_xaf"]) is not int:
+        return fail("Montant affiché invalide.")
     try:
         paid_on = date.fromisoformat(body["received_on"])
     except (ValueError, TypeError):
@@ -165,6 +182,7 @@ def confirm_cash(request, school_id, application_id):
             previous = AdmissionCashReceipt.objects.filter(application=app).first()
             if previous:
                 same = (previous.received_on == paid_on and previous.reference == body["reference"].strip()
+                    and previous.amount_xaf == body.get("expected_amount_xaf", previous.amount_xaf)
                     and previous.is_demo == body["acknowledge_demo"] and
                     body["received_cash"] == (not previous.is_demo))
                 if same:
@@ -172,15 +190,17 @@ def confirm_cash(request, school_id, application_id):
                 return fail("Le règlement de ce dossier est déjà enregistré.", 409)
             if app.status in ("rejected", "enrolled"):
                 return fail("Candidature refusée ou déjà inscrite : aucun nouveau paiement admis.", 409)
-            due = admission_due(app)
-            if due == 0 and current_scholarship(app):
+            gross = admission_gross(app)
+            award = current_scholarship(app)
+            if not gross and not full_admission_waiver(award):
+                return fail("Tarif d'inscription non configuré. Demandez son activation pour cette année et ce niveau.", 409)
+            due = admission_due(app, award)
+            if due == 0:
                 return fail("Bourse gouvernementale couvrant tous les frais d'inscription : rien à encaisser.", 409)
             if due < 100:
                 return fail("Aucun solde encaissable : configurez les frais ou ajustez la bourse.", 409)
-            if not link and app.admission_fee_snapshot_xaf is None:
-                # Old, non-parent dossiers receive an immutable quote on first cash collection.
-                app.admission_fee_snapshot_xaf = admission_gross(app)
-                app.save(update_fields=["admission_fee_snapshot_xaf"])
+            if body.get("expected_amount_xaf", due) != due:
+                return fail("Le montant a changé. Actualisez la caisse avant de confirmer.", 409)
             if not app.year.start_date <= paid_on <= app.year.end_date:
                 return fail("Date hors de l'année scolaire.")
             is_demo = bool(link and link.is_demo_cash)
@@ -195,6 +215,12 @@ def confirm_cash(request, school_id, application_id):
                 if cash_closed_for_recorder(school=school, day=paid_on,
                         currency="XAF", user=request.user):
                     return fail("Caisse du jour déjà clôturée pour cet agent.", 409)
+            if link and not link.fee_amount_xaf:
+                link.fee_amount_xaf = gross
+                link.save(update_fields=["fee_amount_xaf"])
+            elif not link and app.admission_fee_snapshot_xaf is None:
+                app.admission_fee_snapshot_xaf = gross
+                app.save(update_fields=["admission_fee_snapshot_xaf"])
             row = AdmissionCashReceipt(
                 request=link, application=app, school=school, amount_xaf=due,
                 is_demo=is_demo, reference=body["reference"].strip(),

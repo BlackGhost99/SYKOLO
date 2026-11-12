@@ -35,7 +35,7 @@ class EnrollmentFinancialConditionsTests(TestCase):
         for code,label,perms in ROLE_TEMPLATES:
             SchoolRole.objects.create(school=self.school,code=code,label=label,permissions=perms)
         self.users={}
-        for code in ("direction","secretariat","econome","comptabilite","parent"):
+        for code in ("direction","secretariat","econome","comptabilite","tarification","parent"):
             user=User.objects.create_user(
                 username="admission-"+code,password="Tests-conditions-scolaires-2026!",
                 email="admission-"+code+"@example.test",
@@ -135,6 +135,89 @@ class EnrollmentFinancialConditionsTests(TestCase):
             "students":[str(student.pk)],"enrolled_on":"2026-11-10",
         }).status_code,422)
         self.assertFalse(Enrollment.objects.exists())
+
+    def test_partial_scholarship_without_tariff_cannot_waive_payment(self):
+        app, _ = self.make_app(with_parent=False)
+        response = self.post(f"schools/{self.school.pk}/admissions/{app.pk}/scholarship", {
+            "action": "approve", "coverage": "admission", "reference": "ETAT-PARTIEL-2026",
+            "revision": 0, "calculation": "percent", "percentage": 50,
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertFalse(response.json()["ready_for_enrollment"])
+        self.login("secretariat")
+        self.assertEqual(self.convert(app).status_code, 409)
+
+    def test_late_tariff_unblocks_direct_and_parent_cash_then_enrollment(self):
+        direct, _ = self.make_app(index=51, with_parent=False)
+        parent_app, link = self.make_app(index=52, with_fee=False)
+        submitted, _ = self.make_app(index=53, with_parent=False)
+        submitted.status = "submitted"
+        submitted.save(update_fields=["status"])
+        self.login("econome")
+        queue_path = self.root + "admission-cash"
+        fee_path = f"schools/{self.school.pk}/admission-fees"
+        cash_path = f"schools/{self.school.pk}/admission-cash"
+        fee = {"year": str(self.year.pk), "level": str(self.room.level_id),
+               "amount_xaf": 2500, "active": True, "revision": 0}
+        payment = {"reference": "GUICHET-TEST", "received_on": "2026-11-10",
+                   "received_cash": True, "acknowledge_demo": False,
+                   "expected_amount_xaf": 2500}
+
+        def queue():
+            result = self.client.get(queue_path)
+            self.assertEqual(result.status_code, 200, result.content)
+            self.assertTrue(result.json()["can_receive"])
+            return {row["application"]: row for row in result.json()["payments"]}
+
+        rows = queue()
+        for app in (direct, parent_app, submitted):
+            row = rows[str(app.pk)]
+            self.assertIsNone(row["amount_xaf"])
+            self.assertIsNone(row["gross_amount_xaf"])
+            self.assertEqual(row["payment_status"], "tarif_non_configure")
+            self.assertFalse(row["can_pay"])
+        self.assertEqual(self.post(f"{cash_path}/{direct.pk}/confirm", payment).status_code, 409)
+        self.assertEqual(self.post(fee_path, fee).status_code, 403)
+
+        self.login("tarification")
+        catalog = self.client.get(self.root + "admission-fees").json()
+        self.assertIn(str(self.room.level_id), {level["id"] for level in catalog["levels"]})
+        response = self.post(fee_path, fee)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.post(f"{cash_path}/{direct.pk}/confirm", payment).status_code, 403)
+        self.login("secretariat")
+        self.assertEqual(self.convert(direct).status_code, 409)
+        self.assertEqual(self.convert(parent_app).status_code, 409)
+
+        self.login("econome")
+        rows = queue()
+        for app in (direct, parent_app, submitted):
+            self.assertEqual(rows[str(app.pk)]["amount_xaf"], 2500)
+            self.assertTrue(rows[str(app.pk)]["can_pay"])
+        stale = self.post(f"{cash_path}/{link.pk}/confirm", {**payment, "expected_amount_xaf": 1500})
+        self.assertEqual(stale.status_code, 409, stale.content)
+        link.refresh_from_db()
+        self.assertIsNone(link.fee_amount_xaf)
+        for key in (direct.pk, link.pk):
+            response = self.post(f"{cash_path}/{key}/confirm", payment)
+            self.assertEqual(response.status_code, 201, response.content)
+            self.assertEqual(response.json()["amount_xaf"], 2500)
+            self.assertEqual(self.post(f"{cash_path}/{key}/confirm", payment).status_code, 200)
+        self.assertEqual(queue()[str(direct.pk)]["amount_xaf"], 0)
+
+        self.login("tarification")
+        response = self.post(fee_path, {**fee, "amount_xaf": 4000, "revision": 1})
+        self.assertEqual(response.status_code, 200, response.content)
+        direct.refresh_from_db()
+        link.refresh_from_db()
+        self.assertEqual(direct.admission_fee_snapshot_xaf, 2500)
+        self.assertEqual(link.fee_amount_xaf, 2500)
+        self.login("secretariat")
+        for app in (direct, parent_app):
+            result = self.convert(app)
+            self.assertEqual(result.status_code, 201, result.content)
+        self.assertEqual(Enrollment.objects.count(), 2)
+        self.assertEqual(AdmissionCashReceipt.objects.count(), 2)
 
     def test_full_scholarship_waives_admission_and_future_tuition_without_fake_payment(self):
         app,link=self.make_app()

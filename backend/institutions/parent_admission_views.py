@@ -19,6 +19,7 @@ from .academic_models import AcademicClass
 from .admission_models import AdmissionApplication, AdmissionEvent, AdmissionPolicy
 from .admission_policy import ROUTES, effective_policy, required_for_route
 from .parent_admission_models import FamilyChild, ParentAdmissionRequest, SchoolPublicListing
+from .admission_finance import finance_policy, current_scholarship, full_admission_waiver
 from .parent_dossier_views import child_output, public_form_payload, clean_date
 from .enrollment_form import load_config, check_base, clean_answers
 from .parent_payment_views import public_payment_availability
@@ -237,9 +238,19 @@ def parent_application_output(link):
     latest = link.payment_attempts.order_by("-created_at").first() if link.payment_choice == "online" else None
     cash = AdmissionCashReceipt.objects.filter(request=link).first() if link.payment_choice == "cash" else None
     voided = bool(cash and AdmissionCashReceiptVoid.objects.filter(receipt=cash).exists())
+    rule = finance_policy(app.school, app.year_id, app.classroom.level_id)
+    waived = full_admission_waiver(current_scholarship(app))
+    missing_tariff = bool(
+        rule["require_payment"] and link.payment_choice == "cash"
+        and not link.is_demo_cash and not amounts["admission_gross_xaf"]
+        and not waived and not cash
+    )
     cash_status = ("annule" if voided else "simule" if cash and cash.is_demo else
-                   "recu" if cash else "dispense_bourse" if amounts["admission_due_xaf"] == 0 and
-                   amounts["admission_scholarship_xaf"] > 0 else "a_regler_sur_place")
+                   "recu" if cash else "dispense_bourse" if waived or
+                   (amounts["admission_due_xaf"] == 0 and amounts["admission_scholarship_xaf"] > 0) else
+                   "tarif_non_configure" if missing_tariff else
+                   "aucun_paiement_exige" if not rule["require_payment"] and
+                   not amounts["admission_gross_xaf"] else "a_regler_sur_place")
     return {
         "id": str(link.pk), "child": str(link.child_id),
         "child_name": f"{link.child.first_name} {link.child.last_name}",
@@ -251,8 +262,8 @@ def parent_application_output(link):
         "classroom": str(app.classroom_id), "classroom_name": app.classroom.name,
         "year": app.year.name, "route": app.route,
         "status": app.status, "payment_choice": link.payment_choice,
-        "fee_amount_xaf": link.fee_amount_xaf,
-        "amounts": amounts, "admission_due_xaf": amounts["admission_due_xaf"],
+        "fee_amount_xaf": amounts["admission_gross_xaf"] or None,
+        "amounts": amounts, "admission_due_xaf": None if missing_tariff else amounts["admission_due_xaf"],
         "submitted_at": app.submitted_at.isoformat(),
         "payment_status": cash_status if link.payment_choice == "cash" else latest.state if latest else "non_initie",
         "payment_mode": ("cash_demo" if cash and cash.is_demo else "cash" if cash else

@@ -174,14 +174,15 @@ class AdmissionCashReceipt(models.Model):
                 raise ValidationError("Paiement rattaché à un autre établissement.")
             if self.application_id and self.request.application_id != self.application_id:
                 raise ValidationError("Le reçu ne correspond pas au dossier parent.")
-        if self.application_id and self.school_id and self.application.school_id != self.school_id:
-            raise ValidationError("Paiement rattaché à un autre établissement.")
             if self.request.payment_choice != "cash":
                 raise ValidationError("Le parent n'a pas choisi les espèces.")
-            if self.request.fee_amount_xaf != self.amount_xaf:
-                raise ValidationError("Montant différent du tarif accepté lors de la candidature.")
+            from .admission_scholarship_amounts import admission_due
+            if admission_due(self.request.application) != self.amount_xaf:
+                raise ValidationError("Montant différent du solde de la candidature.")
             if self.request.is_demo_cash != self.is_demo:
                 raise ValidationError("La simulation ne peut pas être convertie en argent réel.")
+        if self.application_id and self.school_id and self.application.school_id != self.school_id:
+            raise ValidationError("Paiement rattaché à un autre établissement.")
 
 
 class AdmissionCashReceiptVoid(models.Model):

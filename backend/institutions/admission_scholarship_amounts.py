@@ -18,8 +18,11 @@ def admission_gross(application):
     from .parent_payment_models import SchoolAdmissionFee
     parent = ParentAdmissionRequest.objects.filter(application=application).first()
     if parent:
-        return parent.fee_amount_xaf or 0
-    if application.admission_fee_snapshot_xaf is not None:
+        if parent.fee_amount_xaf:
+            return parent.fee_amount_xaf
+        if parent.payment_choice != "cash" or parent.is_demo_cash:
+            return 0
+    elif application.admission_fee_snapshot_xaf is not None:
         return application.admission_fee_snapshot_xaf
     fee = SchoolAdmissionFee.objects.filter(
         school_id=application.school_id, year_id=application.year_id,
