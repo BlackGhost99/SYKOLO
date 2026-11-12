@@ -66,3 +66,48 @@ test("le suivi indique l'enfant et le rattachement scolaire après inscription",
   expect(screen.getByText("Inscription confirmée")).toBeTruthy();
   expect(screen.getByText(/faire vérifier le rattachement au dossier scolaire/)).toBeTruthy();
 });
+
+test("la candidature affiche les exigences propres à l'établissement et transmet les réponses", async () => {
+  const user=userEvent.setup();
+  const schema={
+    school_name:school.name,revision:3,configured:true,
+    fields:[{key:"date_of_birth",label:"Date de naissance",type:"date",required:true,max_length:10}],
+    custom_fields:[{key:"transport",label:"Transport scolaire",type:"select",options:["Oui","Non"],required:true,section:"eleve"}],
+    documents:[{key:"acte_naissance",label:"Acte de naissance",required:true}],
+  };
+  const fetch=showParent({
+    "/api/v1/parents/catalog":{schools:[school]},
+    "/api/v1/parents/family-children":{children:[child]},
+    "/api/v1/parents/applications":{applications:[]},
+    "/api/v1/parents/notifications":{notifications:[]},
+    "/api/v1/parents/admission-form?classroom=class-1&route=direct":schema,
+  });
+  await user.click(await screen.findByRole("button",{name:"Voir les classes et candidater"}));
+  await user.selectOptions(screen.getByLabelText("Enfant"),"child-1");
+  await user.selectOptions(screen.getByLabelText("Classe souhaitée"),"class-1");
+  expect(await screen.findByRole("heading",{name:"Fiche demandée par École de recette"})).toBeTruthy();
+  expect(screen.getByText("Acte de naissance")).toBeTruthy();
+  await user.selectOptions(screen.getByLabelText(/Transport scolaire/),"Oui");
+  await user.type(screen.getByLabelText("Votre téléphone"),"+241066667777");
+  await user.click(screen.getByRole("button",{name:"Déposer ma demande"}));
+  const call=fetch.mock.calls.find(([url,opts])=>url==="/api/v1/parents/applications"&&opts?.method==="POST");
+  expect(call).toBeTruthy();
+  const posted=JSON.parse(call[1].body);
+  expect(posted.form_revision).toBe(3);
+  expect(posted.custom_answers.transport).toBe("Oui");
+});
+
+test("un profil enfant permet l'ajout d'une photo privée et la personnalisation",async()=>{
+  const user=userEvent.setup();
+  showParent({
+    "/api/v1/parents/catalog":{schools:[]},
+    "/api/v1/parents/family-children":{children:[{...child,revision:1,profile:{gender:"F"}}]},
+    "/api/v1/parents/applications":{applications:[]},
+    "/api/v1/parents/notifications":{notifications:[]},
+  });
+  await user.click(screen.getByRole("button",{name:"Mes enfants"}));
+  expect(await screen.findByText("Photo de profil")).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"Personnaliser le profil"}));
+  expect(screen.getByLabelText("Nationalité")).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Enregistrer les modifications"})).toBeTruthy();
+});
