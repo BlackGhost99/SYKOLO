@@ -48,12 +48,17 @@ class GovernmentScholarship(models.Model):
     'admission' exempts only the application/admission fee.
     A school administrator must verify the award's official reference.
     """
-    COVERAGES = (("all", "Tous les frais"), ("admission", "Frais d'inscription seulement"))
+    COVERAGES = (("all", "Tous les frais"), ("admission", "Frais d'inscription seulement"),
+                 ("tuition", "Frais de scolarité uniquement"))
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="government_scholarships")
     application = models.OneToOneField(AdmissionApplication, on_delete=models.PROTECT,
                                       related_name="government_scholarship")
     coverage = models.CharField(max_length=16, choices=COVERAGES, default="all")
+    calculation = models.CharField(max_length=10, choices=[("percent", "Pourcentage"), ("fixed", "Montant FCFA")], default="percent")
+    percentage = models.PositiveSmallIntegerField(default=100)
+    fixed_amount_xaf = models.PositiveIntegerField(null=True, blank=True)
+    allocations = models.JSONField(default=dict, blank=True)
     official_reference = models.CharField(max_length=180)
     active = models.BooleanField(default=True)
     verified_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
@@ -71,8 +76,16 @@ class GovernmentScholarship(models.Model):
                 raise ValidationError("La décision de bourse doit précéder l'inscription.")
         if not self.official_reference or len(self.official_reference.strip()) < 5:
             raise ValidationError("Référence officielle du document de bourse requise.")
-        if self.coverage not in {"all", "admission"}:
+        if self.coverage not in {"all", "admission", "tuition"}:
             raise ValidationError("Type de prise en charge invalide.")
+        if self.calculation == "percent":
+            if type(self.percentage) is not int or not 1 <= self.percentage <= 100 or self.fixed_amount_xaf is not None:
+                raise ValidationError("Pourcentage de bourse compris entre 1 et 100, sans montant fixe.")
+        elif self.calculation == "fixed":
+            if type(self.fixed_amount_xaf) is not int or not 1 <= self.fixed_amount_xaf <= 100000000:
+                raise ValidationError("Montant de bourse invalide.")
+        else:
+            raise ValidationError("Mode de calcul de bourse invalide.")
 
 
 def policy_scope(year_id, level_id=None):
@@ -131,21 +144,37 @@ def payment_blocker(application):
     if not rule["require_payment"]:
         return None
     award = current_scholarship(application)
-    # A policy change may disable NEW government awards, but must never
-    # retroactively invalidate an already verified award or force double billing.
-    if award:
+    from .admission_scholarship_amounts import admission_due, admission_gross
+    # An existing, independently verified award still applies if new awards
+    # were disabled later. Partial grants do NOT bypass the remaining balance.
+    if award and award.coverage in ("all", "admission") and admission_due(application, award) == 0:
         return None
     from .parent_admission_models import ParentAdmissionRequest
     from .parent_payment_models import AdmissionCashReceipt, ParentPaymentAttempt, SchoolDemoPaymentConfig
     link = ParentAdmissionRequest.objects.filter(application=application).first()
     if link is None:
-        return ("Frais d'inscription obligatoires : créez une candidature parent avec paiement en "
-                "caisse ou faites vérifier une bourse gouvernementale.")
+        # Direct reception at the school is a first-class workflow. It must use
+        # the same cashier ledger without manufacturing a parent account.
+        gross = admission_gross(application)
+        if not gross:
+            return "Configurez d'abord les frais d'inscription de l'année et du niveau."
+        due = admission_due(application, award)
+        if due < 100:
+            return "Solde d'inscription inférieur au minimum encaissable : ajustez la bourse."
+        if AdmissionCashReceipt.objects.filter(
+            application=application, school=application.school, amount_xaf=due,
+            is_demo=False, void__isnull=True,
+        ).exists():
+            return None
+        return "Le paiement en espèces doit être validé dans le module Finances avant l'inscription."
     if not link.fee_amount_xaf:
         return "Configurez d'abord les frais d'inscription de l'année et du niveau."
+    due = admission_due(application, award)
+    if due < 100:
+        return "Solde d'inscription inférieur au minimum encaissable : ajustez la bourse."
     if link.payment_choice == "cash":
         receipt = AdmissionCashReceipt.objects.filter(
-            request=link, school=application.school, amount_xaf=link.fee_amount_xaf,
+            request=link, school=application.school, amount_xaf=due,
             void__isnull=True,
         ).first()
         if receipt:
@@ -157,13 +186,13 @@ def payment_blocker(application):
                     return None
         return "Le paiement en espèces doit être validé par la caisse avant l'inscription."
     if ParentPaymentAttempt.objects.filter(
-        request=link, school=application.school, amount_xaf=link.fee_amount_xaf,
+        request=link, school=application.school, amount_xaf=due,
         state="success", provider_mode="live", currency="XAF",
     ).exists():
         return None
     from .singpay_models import SingPayIntent
     if SingPayIntent.objects.filter(
-        admission=link, school=application.school, amount_xaf=link.fee_amount_xaf,
+        admission=link, school=application.school, amount_xaf=due,
         state="success", mode="live", confirmed_at__isnull=False,
     ).exists():
         return None

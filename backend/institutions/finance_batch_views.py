@@ -122,7 +122,7 @@ def create_batch(request, school_id):
             ):
                 return JsonResponse({"error": "Caisse du jour déjà déclarée par ce caissier."}, status=409)
             for charge in charges:
-                if cleared_total(charge) + entries[charge.pk] > charge.amount:
+                if cleared_total(charge) + entries[charge.pk] > charge.amount - charge.scholarship_discount:
                     return JsonResponse({"error": "Solde insuffisant pour " + charge.label}, status=422)
 
             batch = FeePaymentBatch(

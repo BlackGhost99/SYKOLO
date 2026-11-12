@@ -59,6 +59,7 @@ class FeeCharge(models.Model):
     schedule = models.ForeignKey(FeeSchedule, on_delete=models.PROTECT, related_name="charges")
     label = models.CharField(max_length=160)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    scholarship_discount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     currency = models.CharField(max_length=3)
     due_date = models.DateField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
@@ -68,6 +69,7 @@ class FeeCharge(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["school", "enrollment", "schedule"], name="unique_enrollment_fee_charge"),
             models.CheckConstraint(condition=Q(amount__gt=0), name="fee_charge_amount_positive"),
+            models.CheckConstraint(condition=Q(scholarship_discount__gte=0), name="fee_charge_scholarship_nonnegative"),
         ]
 
     def clean(self):
@@ -81,11 +83,15 @@ class FeeCharge(models.Model):
             raise ValidationError("Tarif incompatible avec l'inscription.")
         if self.schedule_id and (self.currency != self.schedule.currency or self.amount != self.schedule.amount):
             raise ValidationError("Le montant doit être celui du barème enregistré.")
-        if self.enrollment_id:
-            from .admission_finance import scholarship_for_enrollment
-            award = scholarship_for_enrollment(self.enrollment)
-            if award and award.coverage == "all":
-                raise ValidationError("Élève boursier de l’État : la totalité des frais est prise en charge.")
+        if self.enrollment_id and self.schedule_id:
+            from .admission_scholarship_amounts import tuition_discount
+            expected = tuition_discount(self.enrollment, self.schedule)
+            if self.scholarship_discount < 0 or self.scholarship_discount > self.amount:
+                raise ValidationError("La prise en charge ne peut dépasser les frais.")
+            if self.scholarship_discount != expected:
+                raise ValidationError("La remise de bourse ne correspond pas à la décision vérifiée.")
+            if expected >= self.amount:
+                raise ValidationError("Frais entièrement couverts : aucune dette à créer.")
 
 
 class FeePaymentBatch(models.Model):

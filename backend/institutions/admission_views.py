@@ -18,6 +18,7 @@ from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEven
 from .student_views import validate_enrollment_slot
 from .services import has_permission, quota_reached
 from .views import access, refuse, parse_body, log_event
+from .admission_scholarship_amounts import grant_summary
 from .admission_policy import (ROUTES, DOCUMENT_CODE, effective_policy, policy_view,
                                policy_key, validate_policy, required_for_route,
                                admission_blocker)
@@ -102,8 +103,13 @@ def render(row):
         "converted_at": row.converted_at.isoformat() if row.converted_at else None,
         "finance": {"require_payment": finance_policy(row.school, row.year_id, row.classroom.level_id)["require_payment"],
                     "blocker": None if row.status=="enrolled" else payment_blocker(row),
+                    "amounts": grant_summary(row),
                     "scholarship": ({"coverage": current_scholarship(row).coverage,
-                                      "reference": current_scholarship(row).official_reference}
+                                      "reference": current_scholarship(row).official_reference,
+                                      "calculation": current_scholarship(row).calculation,
+                                      "percentage": current_scholarship(row).percentage,
+                                      "fixed_amount_xaf": current_scholarship(row).fixed_amount_xaf,
+                                      "revision": current_scholarship(row).revision}
                                      if current_scholarship(row) else None)},
     }
 
@@ -193,6 +199,11 @@ def applications(request, school_id):
         if route not in (policy.enabled_routes if policy else ROUTES):
             raise ValueError("Cette voie d'admission est désactivée pour le niveau.")
         required_docs = required_for_route(route, policy)
+        from .parent_payment_models import SchoolAdmissionFee
+        school_fee = SchoolAdmissionFee.objects.filter(
+            school=school, year_id=year_id, level_id=target_class.level_id,
+            active=True,
+        ).first()
         with transaction.atomic():
             row = AdmissionApplication(
                 school=school, year_id=year_id, classroom_id=class_id, existing_student_id=existing_id,
@@ -202,6 +213,7 @@ def applications(request, school_id):
                 origin_school=origin_school, route_reference=route_reference,
                 orientation_authority=orientation_authority,
                 required_documents=required_docs,
+                admission_fee_snapshot_xaf=school_fee.amount_xaf if school_fee else None,
             )
             row.full_clean()
             row.save()
@@ -262,6 +274,14 @@ def decide(request, school_id, application_id):
             blocker = admission_blocker(row)
             if blocker:
                 return fail(blocker, 409)
+            if row.admission_fee_snapshot_xaf is None:
+                from .parent_payment_models import SchoolAdmissionFee
+                fee = SchoolAdmissionFee.objects.filter(
+                    school=school, year=row.year, level_id=row.classroom.level_id,
+                    active=True,
+                ).first()
+                if fee:
+                    row.admission_fee_snapshot_xaf = fee.amount_xaf
         previous = row.status
         row.status = status
         row.revision += 1
@@ -328,6 +348,9 @@ def convert(request, school_id, application_id):
         return fail(str(exc))
     try:
         with transaction.atomic():
+            # Lock order is shared with scholarship approvals and the cashier.
+            from .models import School
+            School.objects.select_for_update().get(pk=school.pk)
             row = AdmissionApplication.objects.select_for_update().filter(
                 school=school, pk=application_id
             ).first()
@@ -342,8 +365,6 @@ def convert(request, school_id, application_id):
             blocker = payment_blocker(row)
             if blocker:
                 return fail(blocker, 409)
-            from .models import School
-            School.objects.select_for_update().get(pk=school.pk)
             identity = verified_family_identity(row)
             classroom = AcademicClass.objects.select_for_update().get(pk=row.classroom_id, school=school)
             student = row.existing_student
@@ -394,6 +415,10 @@ def convert(request, school_id, application_id):
             row.revision += 1
             row.full_clean()
             row.save()
+            # The scholarship lookup depends on an enrolled application link.
+            # Apply fees only AFTER saving that link, inside the same transaction.
+            from .registration_views import apply_fees
+            apply_fees(school, enrolled, request.user)
             AdmissionEvent.objects.create(school=school, application=row, previous_status="accepted",
                                           new_status="enrolled", actor=request.user)
             log_event(school, request, "admission_enrolled", row.pk)

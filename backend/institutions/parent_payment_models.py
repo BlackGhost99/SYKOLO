@@ -12,6 +12,7 @@ from django.db.models import Q
 from .models import School
 from .academic_models import AcademicYear, AcademicLevel
 from .parent_admission_models import ParentAdmissionRequest
+from .admission_models import AdmissionApplication
 
 
 class SchoolAdmissionFee(models.Model):
@@ -141,6 +142,11 @@ class AdmissionCashReceipt(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     request = models.OneToOneField(
         ParentAdmissionRequest, on_delete=models.PROTECT, related_name="cash_receipt",
+        null=True, blank=True,
+    )
+    application = models.OneToOneField(
+        AdmissionApplication, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="admission_cash_receipt",
     )
     school = models.ForeignKey(
         School, on_delete=models.PROTECT, related_name="admission_cash_receipts",
@@ -161,9 +167,15 @@ class AdmissionCashReceipt(models.Model):
         ]
 
     def clean(self):
-        if self.request_id and self.school_id:
-            if self.request.application.school_id != self.school_id:
+        if not self.request_id and not self.application_id:
+            raise ValidationError("Un reçu doit référencer une candidature.")
+        if self.request_id:
+            if self.school_id and self.request.application.school_id != self.school_id:
                 raise ValidationError("Paiement rattaché à un autre établissement.")
+            if self.application_id and self.request.application_id != self.application_id:
+                raise ValidationError("Le reçu ne correspond pas au dossier parent.")
+        if self.application_id and self.school_id and self.application.school_id != self.school_id:
+            raise ValidationError("Paiement rattaché à un autre établissement.")
             if self.request.payment_choice != "cash":
                 raise ValidationError("Le parent n'a pas choisi les espèces.")
             if self.request.fee_amount_xaf != self.amount_xaf:

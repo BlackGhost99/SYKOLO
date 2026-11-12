@@ -69,9 +69,9 @@ def unique_code(base, taken, limit=40):
 
 def apply_fees(school, enrollment, user):
     """Affecte à une inscription les barèmes actifs de son année (école entière ou sa classe)."""
-    award = scholarship_for_enrollment(enrollment)
-    if award and award.coverage == "all":
-        return 0  # Budget pris en charge : aucune dette parent, aucun encaissement simulé.
+    from .admission_scholarship_amounts import tuition_discount
+    # The fee is always created at its gross schedule value, while the verified
+    # scholarship is recorded separately so a parent sees the real balance.
     schedules = FeeSchedule.objects.filter(school=school, year_id=enrollment.year_id, active=True).filter(
         Q(classroom__isnull=True) | Q(classroom_id=enrollment.classroom_id))
     existing = set(FeeCharge.objects.filter(school=school, enrollment=enrollment).values_list("schedule_id", flat=True))
@@ -79,8 +79,11 @@ def apply_fees(school, enrollment, user):
     for s in schedules:
         if s.pk in existing:
             continue
+        covered = tuition_discount(enrollment, s)
+        if covered >= s.amount:
+            continue
         row = FeeCharge(school=school, enrollment=enrollment, schedule=s, label=s.label, amount=s.amount,
-                        currency=s.currency, due_date=s.due_date, created_by=user)
+                        scholarship_discount=covered, currency=s.currency, due_date=s.due_date, created_by=user)
         row.full_clean()
         row.save()
         created += 1
@@ -252,7 +255,7 @@ def student_dossier(request, school_id, student_id):
             for p in payments:
                 if p.pk not in voided:
                     paid[p.charge_id] += p.amount
-            billed_total = sum((c.amount for c in charges), ZERO)
+            billed_total = sum((c.amount-c.scholarship_discount for c in charges), ZERO)
             paid_total = sum(paid.values(), ZERO)
             item["finance"] = {
                 "currency": charges[0].currency if charges else None,
@@ -260,7 +263,8 @@ def student_dossier(request, school_id, student_id):
                 "status": finance_status({"billed": billed_total, "paid": paid_total}),
                 "charges": [{"id": str(c.pk), "label": c.label, "amount": money(c.amount), "currency": c.currency,
                              "due_date": c.due_date.isoformat() if c.due_date else None,
-                             "paid": money(paid[c.pk]), "balance": money(c.amount - paid[c.pk])} for c in charges],
+                             "scholarship_discount":money(c.scholarship_discount),
+                              "paid": money(paid[c.pk]), "balance": money(c.amount-c.scholarship_discount - paid[c.pk])} for c in charges],
                 "payments": [{"id": str(p.pk), "label": p.charge.label, "amount": money(p.amount), "currency": p.currency,
                               "method": p.method, "reference": p.reference, "paid_on": p.paid_on.isoformat(),
                               "voided": p.pk in voided} for p in payments],

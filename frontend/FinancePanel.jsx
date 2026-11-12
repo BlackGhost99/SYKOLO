@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from "react";
+import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
 
 async function financeApi(url, body, method) {
   if (body !== undefined) await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
@@ -27,6 +28,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const [charges, setCharges] = useState([]);
   const [payments, setPayments] = useState([]);
   const [statement, setStatement] = useState(null);
+  const [onlineAdmissions,setOnlineAdmissions] = useState([]);
   const [selectedYear, setSelectedYear] = useState(workingYearId);
   useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");setSelectedSchedule("");setSelectedCharge("");},[workingYearId,schoolId]);
   const [selectedClass, setSelectedClass] = useState("");
@@ -52,6 +54,13 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const canManage = permissions.includes("school.finance.manage");
   const canReceive = permissions.includes("school.finance.receive");
   const canReverse = permissions.includes("school.finance.reverse");
+  useEffect(()=>{
+    if(settings)return;
+    let live=true;
+    financeApi(root+"admission-payments").then(r=>{if(live)setOnlineAdmissions(r.payments||[]);})
+      .catch(()=>{if(live)setOnlineAdmissions([]);});
+    return()=>{live=false};
+  },[root,settings]);
   useEffect(() => {
     let active = true;
     setPermissions([]);
@@ -181,6 +190,16 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
         years.find(year => year.id === item.year)?.name
       } · {classes.find(room => room.id === item.classroom)?.name || "Toutes les classes"}</p>)}
     </div> : <>
+    <h3>1. Admissions acceptées — relais de paiement</h3>
+    <p className="hint">La candidature est examinée dans Admissions ; ici, la caisse confirme les espèces nettes après bourse. Une inscription officielle ne sera possible qu’après validation des conditions financières.</p>
+    <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive} onUpdated={refresh}/>
+    <h4>Paiements Mobile Money des dossiers parents</h4>
+    {onlineAdmissions.length===0?<p className="hint">Aucune tentative de paiement en ligne à rapprocher.</p>:
+      onlineAdmissions.slice(0,20).map(p=><p key={p.id}>
+        <strong>{p.amount_xaf} FCFA</strong> · {p.channel} · {p.state==="success"&&p.paid_confirmed?"Confirmé par le prestataire":p.state}
+        <small> · Candidature {p.application.slice(0,8)}</small>
+      </p>)}
+    <h3>2. Frais scolaires après inscription définitive</h3>
     <h3>Consulter les frais d’un élève</h3>
     <label className="field">Inscription de l'élève
       <select value={selectedStudent} onChange={e=>{setSelectedStudent(e.target.value);setSelectedSchedule("");setSelectedCharge("");}}>

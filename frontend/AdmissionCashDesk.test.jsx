@@ -63,14 +63,15 @@ test("une bourse validée masque l'encaissement même pour un caissier habilité
   const root="/api/v1/schools/lycee2/admission-cash";
   const fetchMock=vi.fn(async()=>Response.json({payments:[{
     request:"request-bourse",child:"TEST BOURSIER",classroom:"Seconde C",
-    year:"2026-2027",parent:"Mme TEST",amount_xaf:2500,is_demo:false,
+    year:"2026-2027",parent:"Mme TEST",amount_xaf:0,gross_amount_xaf:2500,
+    scholarship_covered_xaf:2500,is_demo:false,
     payment_status:"dispense_bourse",admission_status:"accepted",
     scholarship_active:true,can_pay:false,receipt_url:null,
   }]}));
   vi.stubGlobal("fetch",fetchMock);
   render(<AdmissionCashDesk schoolId="lycee2" canReceive/>);
   expect(await screen.findByText("TEST BOURSIER")).toBeTruthy();
-  expect(screen.getByText(/Bourse gouvernementale validée : aucun nouvel encaissement/)).toBeTruthy();
+  expect(screen.getByText(/Bourse totale sur l'inscription : aucun règlement nécessaire/)).toBeTruthy();
   expect(screen.getByText("Frais pris en charge par bourse")).toBeTruthy();
   expect(screen.queryByRole("button",{name:"Confirmer les espèces reçues"})).toBeNull();
   expect(screen.queryByPlaceholderText("Référence du guichet")).toBeNull();
@@ -88,4 +89,20 @@ test("une inscription déjà définitive ne propose pas de nouvel encaissement",
   expect(await screen.findByText("TEST INSCRIT")).toBeTruthy();
   expect(screen.getByText("Inscription déjà définitive — pas de nouveau règlement")).toBeTruthy();
   expect(screen.queryByRole("button",{name:"Confirmer les espèces reçues"})).toBeNull();
+});
+
+test("une bourse partielle garde le guichet ouvert uniquement pour le reste à payer",async()=>{
+  const root="/api/v1/schools/lycee2/admission-cash";
+  vi.stubGlobal("fetch",vi.fn(async()=>Response.json({payments:[{
+    request:"request-partial",child:"TEST PARTIEL",classroom:"Sixième A",
+    year:"2026-2027",parent:"Responsable TEST",
+    amount_xaf:1500,gross_amount_xaf:2500,scholarship_covered_xaf:1000,
+    scholarship_active:true,is_demo:false,can_pay:true,
+    payment_status:"a_regler_sur_place",admission_status:"accepted",receipt_url:null,
+  }]})));
+  render(<AdmissionCashDesk schoolId="lycee2" canReceive/>);
+  expect(await screen.findByText("TEST PARTIEL")).toBeTruthy();
+  expect(screen.getByText(/Bourse partielle : la caisse ne reçoit que le solde/)).toBeTruthy();
+  expect(screen.getByText(/Reste à payer : 1[^0-9]*500 FCFA/)).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Confirmer les espèces reçues"})).toBeTruthy();
 });

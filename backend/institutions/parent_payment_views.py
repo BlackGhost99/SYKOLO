@@ -21,6 +21,7 @@ from accounts.views import authorized
 from .academic_models import AcademicLevel, AcademicYear
 from .admission_models import AdmissionEvent
 from .admission_finance import current_scholarship
+from .admission_scholarship_amounts import admission_due, grant_summary
 from .parent_admission_models import ParentAdmissionRequest
 from .parent_payment_models import ParentPaymentAttempt, SchoolAdmissionFee, SchoolPaymentGateway
 from .parent_payment_service import (
@@ -223,7 +224,8 @@ def parent_payment_status(request, application_id):
     attempts = ParentPaymentAttempt.objects.filter(
         request=row, payer=request.user,
     ).order_by("-created_at")
-    return JsonResponse({"payments": [attempt_view(p) for p in attempts[:15]]})
+    return JsonResponse({"payments": [attempt_view(p) for p in attempts[:15]],
+                         "amounts": grant_summary(row.application)})
 
 
 @never_cache
@@ -258,8 +260,11 @@ def parent_pay(request, application_id):
                  application__school_id=school_id).first()
         if link is None:
             return fail("Demande introuvable.", 404)
-        if current_scholarship(link.application):
-            return fail("Bourse gouvernementale déjà validée : aucun paiement supplémentaire autorisé.", 409)
+        amount_due = admission_due(link.application)
+        if amount_due == 0:
+            return fail("Bourse gouvernementale : frais d'inscription intégralement pris en charge, aucun paiement requis.", 409)
+        if amount_due < 100:
+            return fail("Solde inférieur au minimum encaissable : l'école doit ajuster la bourse.", 409)
         from .singpay_models import SingPayIntent
         if SingPayIntent.objects.filter(admission=link).exclude(state="failed").exists():
             return fail("Paiement SingPay existant : rapprochez-le avant un paiement PayCentral.", 409)
@@ -278,7 +283,7 @@ def parent_pay(request, application_id):
             return fail("Paiement en ligne indisponible pour cet établissement.", 503)
         attempt = ParentPaymentAttempt(
             request=link, payer=request.user, school=school,
-            amount_xaf=link.fee_amount_xaf, channel=channel, payer_phone=phone,
+            amount_xaf=amount_due, channel=channel, payer_phone=phone,
             provider_mode=gateway.mode, merchant_reference="YEM-"+uuid.uuid4().hex,
         )
         attempt.full_clean()

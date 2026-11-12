@@ -68,6 +68,7 @@ test.each([390,1366])("écran %ipx : seule la direction approuve la bourse",asyn
   expect(screen.queryByRole("button",{name:"Valider la bourse d'État"})).toBeNull();
   rerender(<GovernmentScholarshipPanel schoolId="lycee2"
     application={app} canApprove={true} onUpdated={changed}/>);
+  await user.click(screen.getByLabelText("Élève boursier"));
   const ref=screen.getByLabelText(/Référence de la décision officielle/);
   await user.type(ref,"ÉTAT-GABON-2026");
   await user.click(screen.getByRole("button",{name:"Valider la bourse d'État"}));
@@ -77,5 +78,38 @@ test.each([390,1366])("écran %ipx : seule la direction approuve la bourse",asyn
   expect(approvals).toHaveLength(1);
   expect(JSON.parse(approvals[0][1].body)).toEqual({
     action:"approve",coverage:"all",reference:"ÉTAT-GABON-2026",revision:0,
+    calculation:"percent",percentage:100,fixed_amount_xaf:null,
   });
+});
+
+
+test("une bourse partielle affiche le solde restant avant approbation",async()=>{
+  const user=userEvent.setup();
+  const api="/api/v1/schools/test/admissions/dossier/scholarship";
+  let posted=null;
+  vi.stubGlobal("fetch",vi.fn(async(url,options={})=>{
+    if(url==="/api/v1/auth/csrf")return Response.json({});
+    if(url===api&&options.method==="POST"){
+      posted=JSON.parse(options.body);
+      return Response.json({amounts:{admission_due_xaf:15000},ready_for_enrollment:false,
+        scholarship:{coverage:"all",calculation:"percent",percentage:25,revision:1}});
+    }
+    throw Error("Route inattendue: "+url);
+  }));
+  const onUpdated=vi.fn(async()=>{});
+  render(<GovernmentScholarshipPanel schoolId="test" application={{
+    id:"dossier",status:"accepted",finance:{require_payment:true,blocker:"Paiement attendu",
+      scholarship:null,amounts:{admission_gross_xaf:20000,tuition_gross_xaf:180000}},
+  }} canApprove onUpdated={onUpdated}/>);
+  await user.click(screen.getByLabelText("Élève boursier"));
+  await user.selectOptions(screen.getByLabelText("Type de bourse"),"partial");
+  await user.clear(screen.getByLabelText("Pourcentage couvert"));
+  await user.type(screen.getByLabelText("Pourcentage couvert"),"25");
+  expect(screen.getByText(/Reste à payer à l'inscription : 15[^0-9]*000 FCFA/)).toBeTruthy();
+  await user.type(screen.getByLabelText(/Référence de la décision officielle/),"BOURSE-PART-2026");
+  await user.click(screen.getByRole("button",{name:"Valider la bourse d'État"}));
+  await waitFor(()=>expect(posted).not.toBeNull());
+  expect(posted).toMatchObject({coverage:"all",calculation:"percent",
+    percentage:25,fixed_amount_xaf:null});
+  expect(onUpdated).toHaveBeenCalledTimes(1);
 });

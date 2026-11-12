@@ -113,10 +113,12 @@ def charge_data(row):
         "id": str(row.pk), "enrollment": str(row.enrollment_id),
         "schedule": str(row.schedule_id),
         "label": row.label, "amount": str(row.amount),
+        "scholarship_discount": str(row.scholarship_discount),
+        "net_amount": str((row.amount - row.scholarship_discount).quantize(Decimal("0.01"))),
         "currency": row.currency,
         "due_date": row.due_date.isoformat() if row.due_date else None,
         "paid": str(paid.quantize(Decimal("0.01"))),
-        "balance": str((row.amount - paid).quantize(Decimal("0.01"))),
+        "balance": str((row.amount - row.scholarship_discount - paid).quantize(Decimal("0.01"))),
     }
 
 
@@ -284,9 +286,13 @@ def charges(request, school_id):
             schedule = FeeSchedule.objects.filter(school=school, pk=uid(data["schedule"]), active=True).first()
             if schedule is None:
                 return JsonResponse({"error": "Tarif introuvable."}, status=404)
+            from .admission_scholarship_amounts import tuition_discount
+            covered = tuition_discount(enrollment, schedule)
+            if covered >= schedule.amount:
+                return JsonResponse({"error": "Ce frais est intégralement pris en charge par la bourse."}, status=409)
             row = FeeCharge(
                 school=school, enrollment=enrollment, schedule=schedule,
-                label=schedule.label, amount=schedule.amount, currency=schedule.currency,
+                label=schedule.label, amount=schedule.amount, scholarship_discount=covered, currency=schedule.currency,
                 due_date=schedule.due_date, created_by=request.user,
             )
             row.full_clean()
@@ -366,7 +372,7 @@ def payments(request, school_id):
                 school=school, day=paid_on, currency=charge.currency, user=request.user,
             ):
                 return JsonResponse({"error": "Caisse du jour déjà déclarée par ce caissier."}, status=409)
-            if cleared_total(charge) + amount > charge.amount:
+            if cleared_total(charge) + amount > charge.amount - charge.scholarship_discount:
                 return JsonResponse({"error": "Montant supérieur au solde restant dû."}, status=422)
             row = FeePayment(
                 school=school, charge=charge, idempotency_key=idem,

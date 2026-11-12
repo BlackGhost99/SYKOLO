@@ -43,6 +43,8 @@ class AdmissionApplication(models.Model):
     orientation_authority = models.CharField(max_length=120, blank=True)
     external_result = models.CharField(max_length=16, choices=OUTCOMES, default="pending")
     required_documents = models.JSONField(default=list, blank=True)
+    # Fixed at application intake or acceptance; avoids re-pricing old admissions.
+    admission_fee_snapshot_xaf = models.PositiveIntegerField(null=True, blank=True)
     status = models.CharField(max_length=16, choices=APPLICATION_STATES, default="submitted")
     decision_reason = models.CharField(max_length=1000, blank=True)
     revision = models.PositiveIntegerField(default=1)
