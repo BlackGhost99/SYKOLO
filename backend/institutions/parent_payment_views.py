@@ -20,6 +20,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from accounts.views import authorized
 from .academic_models import AcademicLevel, AcademicYear
 from .admission_models import AdmissionEvent
+from .admission_finance import current_scholarship
 from .parent_admission_models import ParentAdmissionRequest
 from .parent_payment_models import ParentPaymentAttempt, SchoolAdmissionFee, SchoolPaymentGateway
 from .parent_payment_service import (
@@ -246,6 +247,12 @@ def parent_pay(request, application_id):
         ).filter(pk=application_id, owner=request.user).first()
         if link is None:
             return fail("Demande introuvable.", 404)
+        # Serialize new payment initiation with scholarship approval (school lock first
+        # on the scholarship path). A confirmed award must never be billed twice.
+        from .models import School
+        School.objects.select_for_update().get(pk=link.application.school_id)
+        if current_scholarship(link.application):
+            return fail("Bourse gouvernementale déjà validée : aucun paiement supplémentaire autorisé.", 409)
         from .singpay_models import SingPayIntent
         if SingPayIntent.objects.filter(admission=link).exclude(state="failed").exists():
             return fail("Paiement SingPay existant : rapprochez-le avant un paiement PayCentral.", 409)
