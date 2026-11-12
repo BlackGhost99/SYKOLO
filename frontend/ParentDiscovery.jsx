@@ -19,7 +19,7 @@ async function api(path, body) {
 const ROUTES={direct:"Inscription ou préinscription",concours:"Concours / test",orientation:"Affectation / orientation"};
 const STATES={submitted:"Dossier déposé",review:"En cours d'étude",accepted:"Admission accordée",rejected:"Demande refusée",enrolled:"Inscription confirmée"};
 
-export default function ParentDiscovery() {
+export default function ParentDiscovery({embedded=false, activeSection}) {
   const [schools,setSchools]=useState([]);
   const [family,setFamily]=useState([]);
   const [applications,setApplications]=useState([]);
@@ -42,7 +42,8 @@ export default function ParentDiscovery() {
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
   const [error,setError]=useState("");
-  const [view,setView]=useState("schools");
+  const [view,setView]=useState(activeSection || "schools");
+  useEffect(()=>{if(embedded && activeSection)setView(activeSection);},[embedded,activeSection]);
 
   async function refresh() {
     const [list,children,requests,alerts]=await Promise.all([
@@ -86,17 +87,17 @@ export default function ParentDiscovery() {
     catch(e){setError(e.message);}
     finally{setBusy(false);}
   }
-  return <section className="yp-app" aria-label="Rechercher une école et inscrire un enfant">
-    <header className="yp-head">
+  return <section className={"yp-app"+(embedded?" yp-embedded":"")} aria-label="Rechercher une école et inscrire un enfant">
+    {!embedded && <header className="yp-head">
       <div><span className="yp-eyebrow">YEM · Familles</span><h2>Votre parcours scolaire, au même endroit.</h2>
         <p>Découvrez une école, déposez un dossier et suivez chaque étape sans déplacement inutile.</p></div>
       <div className="yp-stat">{family.length}<small>profils enfant</small></div>
-    </header>
-    <nav className="yp-tabs" aria-label="Espace familles">
+    </header>}
+    {!embedded && <nav className="yp-tabs" aria-label="Espace familles">
       {[["schools","Établissements"],["children","Mes enfants"],["requests","Mes demandes"],["notifications","Actualités"]].map(([key,label])=>
         <button type="button" key={key} aria-current={view===key?"page":undefined}
           onClick={()=>{setView(key);setMessage("");setError("");}}>{label}</button>)}
-    </nav>
+    </nav>}
     {error&&<p className="yp-error" role="alert">{error}</p>}
     {message&&<p className="yp-success" role="status">{message}</p>}
     {view==="schools"&&<>

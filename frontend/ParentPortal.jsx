@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import ParentDiscovery from "./ParentDiscovery.jsx";
 import PWAInstall from "./PWAInstall.jsx";
 import SingPayPayment from "./SingPayPayment.jsx";
+import YemFamilles from "./YemFamilles.jsx";
 import {Button, Card as SchoolCard, Status, Table} from "./yem-ui.jsx";
 
 async function portalApi(path, body, method) {
@@ -29,19 +30,12 @@ function Card({title, children}) {
 }
 function Message({children}) {return children?<p role="status" aria-live="polite">{children}</p>:null;}
 
-export function FamilyWorkspace({accountView, onLogout, onSchoolWorkspace}) {
-  const [showAccount, setShowAccount] = useState(false);
-  return <div className="yd-parent-standalone">
-    <nav aria-label="Navigation du compte parent">
-      <strong>YEM Parents</strong>
-      <div>
-        {onSchoolWorkspace&&<Button onClick={onSchoolWorkspace}>Espace établissement</Button>}
-        <Button onClick={()=>setShowAccount(open=>!open)}>{showAccount?"Retour à l’espace parents":"Mon compte"}</Button>
-        <Button onClick={onLogout}>Se déconnecter</Button>
-      </div>
-    </nav>
-    {showAccount?accountView:<ParentPortal/>}
-    <footer className="yd-brand-footer"><span>YEM · Espace familles</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
+export function FamilyWorkspace({accountView, onLogout, onSchoolWorkspace, user}) {
+  return <div className="yd-parent-standalone yfm-standalone">
+    <ParentPortal accountView={accountView} onLogout={onLogout}
+      onSchoolWorkspace={onSchoolWorkspace} user={user}/>
+    <footer className="yd-brand-footer"><span>YEM · Espace familles</span>
+      <span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
   </div>;
 }
 
@@ -201,7 +195,7 @@ function ChildSchoolRecord({child, relatedSchools, onSelectChild}) {
   </Card>;
 }
 
-export default function ParentPortal() {
+export default function ParentPortal({accountView, onLogout, onSchoolWorkspace, user}) {
   const [family, setFamily] = useState(null);
   const [selected, setSelected] = useState("");
   const [error, setError] = useState("");
@@ -219,46 +213,18 @@ export default function ParentPortal() {
     return () => { active = false; };
   }, [refresh]);
 
-  const children = family?.children || [];
-  const current = children.find(child => child.student === selected);
-  const relatedSchools = current?.matricule_yem
-    ? children.filter(child => child.matricule_yem === current.matricule_yem) : [];
   function refreshChildren() {
     setFamily(null);
     setError("");
     setRefresh(previous => previous + 1);
   }
 
-  return <div className="yd-parent-real">
-    <div className="yd-hero">
-      <div><h1>Espace parents</h1>
-      <p>Suivez la scolarité de vos enfants et vos démarches d’inscription.</p></div>
-    </div>
-    <Card title="Suivi scolaire de mes enfants">
-      {error ? <><p role="alert">{error}</p><Button onClick={refreshChildren}>Réessayer</Button></> :
-        !family ? <p role="status">Chargement des dossiers scolaires liés…</p> :
-        <>
-          {children.length > 0 ? <label className="field">Enfant
-            <select value={selected} onChange={event => setSelected(event.target.value)}>
-              {children.map(child => <option key={child.student} value={child.student}>
-                {child.last_name} {child.first_name} · {child.school_name}
-              </option>)}
-            </select>
-          </label> : <p>Votre compte attend le rattachement d’un enfant par son établissement.</p>}
-          <details open={children.length === 0 || undefined}>
-            <summary>Rattacher un enfant</summary>
-            <p>Communiquez votre identifiant YEM Parents et le nom de l’enfant au secrétariat.
-              L’établissement vérifie votre qualité de responsable légal et active l’accès à la fiche.</p>
-            {family.parent_username && <p>Identifiant à communiquer <strong>{family.parent_username}</strong></p>}
-            <Button onClick={refreshChildren}>Actualiser mes enfants</Button>
-          </details>
-        </>}
-    </Card>
-    {current && <ChildSchoolRecord key={current.student} child={current} relatedSchools={relatedSchools}
-      onSelectChild={setSelected}/>}
-    <ParentDiscovery />
-    <PWAInstall />
-  </div>;
+  return <YemFamilles
+    api={portalApi} accountView={accountView} onLogout={onLogout}
+    onSchoolWorkspace={onSchoolWorkspace} user={user}
+    family={family} children={family?.children || []} selected={selected}
+    setSelected={setSelected} refreshChildren={refreshChildren}
+    familyError={error} familyLoading={!family && !error}/>;
 }
 
 export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {

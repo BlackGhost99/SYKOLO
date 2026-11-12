@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import {cleanup, render, screen} from "@testing-library/react";
+import {cleanup, render, screen, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {afterEach, expect, test, vi} from "vitest";
 import ParentPortal from "./ParentPortal.jsx";
@@ -24,7 +24,7 @@ test("le parent retrouve l’identifiant à donner à l’école pendant le ratt
   const path = "/api/v1/parents/children";
   const fetch = renderPortal({[path]:{children:[], parent_username:"compte-test"}});
   await screen.findByText(/Communiquez votre identifiant YEM Parents/);
-  expect(screen.getByText("compte-test")).toBeTruthy();
+  expect(screen.getAllByText("compte-test").length).toBeGreaterThan(0);
   await userEvent.setup().click(screen.getByRole("button", {name:"Actualiser mes enfants"}));
   await screen.findByText(/Communiquez votre identifiant YEM Parents/);
   expect(fetch.mock.calls.filter(([url]) => url === path)).toHaveLength(2);
@@ -47,12 +47,13 @@ test("la fiche affiche la classe, les notes et la vie scolaire de l’année cho
     [child+"/attendance?year=year-2"]:{totals:{absent:0,late:0,present:0}, attendance:[], conduct:[]},
   });
   const user = userEvent.setup();
-  expect(await screen.findByRole("heading", {name:"Nkomo Lina"})).toBeTruthy();
+  expect(await screen.findByRole("heading", {name:"Lina Nkomo"})).toBeTruthy();
   expect(await screen.findByText("24 élèves inscrits")).toBeTruthy();
+  await user.click(within(screen.getByRole("navigation", {name:"Navigation YEM Familles"})).getByRole("button", {name:"Scolarité"}));
   expect(await screen.findByText("0 / 15")).toBeTruthy();
   await user.click(screen.getByRole("button", {name:"Vie scolaire"}));
   expect(await screen.findByText("Travail de rattrapage mercredi.")).toBeTruthy();
-  expect(screen.getByText(/1 retard\(s\)/)).toBeTruthy();
+  expect(screen.getByText("1")).toBeTruthy();
   await user.selectOptions(screen.getByLabelText("Année scolaire"), "year-2");
   expect(screen.getByText("18 élèves inscrits")).toBeTruthy();
   expect(await screen.findByText(/Aucune observation ni sanction communiquée/)).toBeTruthy();
