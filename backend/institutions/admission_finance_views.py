@@ -192,6 +192,12 @@ def scholarship(request, school_id, application_id):
             if (award.revision if award else 0) != data["revision"]:
                 return reject("Cette bourse a déjà été modifiée.", 409)
             if data["action"] == "approve":
+                # Cash recorded directly at school has no parent request. It is
+                # nevertheless real money and cannot be overwritten by a grant.
+                if AdmissionCashReceipt.objects.filter(
+                    school=school, application=application, is_demo=False, void__isnull=True,
+                ).exists():
+                    return reject("Des frais ont déjà été encaissés : traitez le remboursement avant la bourse.", 409)
                 link = ParentAdmissionRequest.objects.filter(application=application).first()
                 if link:
                     from .singpay_models import SingPayIntent
