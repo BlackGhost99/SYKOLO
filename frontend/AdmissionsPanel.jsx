@@ -280,7 +280,7 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
         <button disabled={busy||!enrollDate||Boolean(current.finance?.blocker)} type="submit">Confirmer l’inscription définitive</button>
       </form>}
       {current.status==="enrolled"&&<section className="yp-settings" aria-label="Inscription définitive confirmée">
-        <strong>Inscription définitive confirmée</strong>
+        <strong>Inscription confirmée</strong>
         {current.official_enrollment ? <>
           <p>Matricule YEM : <strong>{current.official_enrollment.matricule_yem}</strong></p>
           <p>Matricule établissement : <strong>{current.official_enrollment.student_code}</strong></p>
