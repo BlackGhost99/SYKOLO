@@ -382,6 +382,11 @@ def convert(request, school_id, application_id):
             )
             enrolled.full_clean()
             enrolled.save()
+            # Once officially enrolled, create tuition obligations immediately in
+            # the finance ledger with any verified scholarship discounts applied.
+            # No charge is generated for fully covered schedules.
+            from .registration_views import apply_fees
+            apply_fees(school, enrolled, request.user)
             if new_student:
                 guardian = StudentGuardian(
                     school=school, student=student, full_name=row.guardian_name,
