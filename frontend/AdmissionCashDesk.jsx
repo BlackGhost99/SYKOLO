@@ -86,6 +86,8 @@ export default function AdmissionCashDesk({schoolId,canReceive=false,application
         recu:"Espèces reçues",
         simule:"Simulation confirmée",
         annule:"Reçu annulé",
+        dispense_bourse:"Frais pris en charge par bourse",
+        inscription_deja_finalisee:"Inscription déjà définitive — pas de nouveau règlement",
       })[row.payment_status]||row.payment_status}</strong></p>
       {row.receipt_url&&<a href={row.receipt_url} target="_blank" rel="noreferrer">
         {row.is_demo?"Document de simulation PDF":"Reçu de caisse PDF"}
