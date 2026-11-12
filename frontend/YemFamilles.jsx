@@ -37,7 +37,8 @@ function unpaidCharge(charge) {
 function dueStatus(charge) {
   if (!unpaidCharge(charge)) return ["Payé", "paid"];
   if (!charge.due_date) return ["À régler", "due"];
-  const today = new Date().toLocaleDateString("en-CA");
+  const now = new Date();
+  const today = [now.getFullYear(),String(now.getMonth()+1).padStart(2,"0"),String(now.getDate()).padStart(2,"0")].join("-");
   return charge.due_date < today ? ["En retard", "late"] : ["À venir", "due"];
 }
 function initials(child) {
@@ -170,6 +171,7 @@ export default function YemFamilles({api, accountView, onLogout, onSchoolWorkspa
   </section>;
 
   return <div className="yfm-app">
+    <h2 className="sr-only">Espace parents</h2>
     <div className="yfm-hero">
       <nav className="yfm-topbar" aria-label="Navigation du compte parent">
         <div className="yfm-brand"><span className="yfm-brand-logo" aria-hidden="true">✦</span>
