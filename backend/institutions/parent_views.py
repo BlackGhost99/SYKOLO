@@ -27,6 +27,7 @@ from .finance_models import FeeCharge
 from .finance_views import cleared_total
 from .models import SchoolMember, School
 from .parent_models import GuardianAccountLink
+from .parent_admission_models import ParentAdmissionRequest, FamilyChildPhoto
 from .report_models import SchoolReport
 from .report_views import pdf_bytes
 from .services import has_permission
@@ -215,14 +216,38 @@ def link_detail(request, school_id, link_id):
 def children(request):
     # Multiple verified guardians for one student must not duplicate the card.
     rows = guardian_links(request.user).order_by("school__name", "guardian__student__last_name", "guardian__student_id")
+    linked = list(rows[:500])
+    student_ids = [row.guardian.student_id for row in linked]
+    family_requests = list(ParentAdmissionRequest.objects.select_related(
+        "application", "application__enrollment"
+    ).filter(owner=request.user).filter(
+        Q(application__enrollment__student_id__in=student_ids)
+        | Q(application__existing_student_id__in=student_ids)
+    ))
+    photo_children = set(FamilyChildPhoto.objects.filter(
+        child_id__in=[entry.child_id for entry in family_requests]
+    ).values_list("child_id", flat=True))
+    photo_lookup = {}
+    for entry in family_requests:
+        if entry.child_id not in photo_children:
+            continue
+        student_id = (
+            entry.application.enrollment.student_id if entry.application.enrollment_id
+            else entry.application.existing_student_id
+        )
+        if student_id:
+            photo_lookup[(entry.application.school_id, student_id)] = (
+                f"/api/v1/parents/family-children/{entry.child_id}/photo"
+            )
     result = {}
-    for row in rows[:500]:
+    for row in linked:
         student = row.guardian.student
         result[str(student.pk)] = {
             "student": str(student.pk), "school": str(row.school_id),
             "school_name": row.school.name,
             "first_name": student.first_name, "last_name": student.last_name,
             "student_code": student.student_code, "matricule_yem": student.matricule_yem,
+            "photo_url": photo_lookup.get((row.school_id, student.pk)),
         }
     has_parent_role = SchoolMember.objects.filter(
         user=request.user, active=True, school__is_active=True,
