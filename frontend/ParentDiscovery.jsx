@@ -193,11 +193,16 @@ export default function ParentDiscovery() {
       <h3>Profils de mes enfants</h3>
       <p>Les profils de préparation restent privés. Ils ne remplacent pas le dossier officiel créé par l'école.</p>
       {family.map(c=><div className="yp-child" key={c.id}><b>{c.first_name} {c.last_name}</b>
-        <small>{c.date_of_birth?"Né(e) le "+c.date_of_birth:"Date de naissance non renseignée"}</small></div>)}
+        <small>{c.date_of_birth?"Né(e) le "+c.date_of_birth:"Date de naissance non renseignée"}</small>
+        <button type="button" className="yp-button" onClick={()=>{
+          setChild(c.id);setView("schools");setChosenSchool("");setClassroom("");
+          setError("");setMessage("Choisissez un établissement pour "+c.first_name+" "+c.last_name+".");
+        }}>Chercher une école pour {c.first_name}</button></div>)}
       <form onSubmit={e=>{e.preventDefault();run(async()=>{
-        await api("parents/family-children",newChild);
+        const saved=await api("parents/family-children",newChild);
+        setChild(saved.id);
         setNewChild({first_name:"",last_name:"",date_of_birth:""});
-        setMessage("Profil de l'enfant ajouté.");
+        setMessage("Profil de l'enfant ajouté. Vous pouvez maintenant choisir un établissement.");
       });}}>
         <h4>Ajouter un enfant</h4>
         <div className="yp-two">
@@ -221,8 +226,10 @@ export default function ParentDiscovery() {
       </button>
       {applications.length===0&&<p>Aucune candidature enregistrée.</p>}
       {applications.map(a=><article key={a.id} className="yp-request">
-        <b>{a.school_name}</b><p>{a.classroom_name} · {a.year} · {ROUTES[a.route]||a.route}</p>
+        <b>{a.child_name||"Profil enfant"} · {a.school_name}</b>
+        <p>{a.classroom_name} · {a.year} · {ROUTES[a.route]||a.route}</p>
         <strong>{STATES[a.status]||a.status}</strong>
+        {a.status==="enrolled"&&<p role="status">Inscription confirmée. Si l’enfant n’apparaît pas dans « Suivi scolaire de mes enfants », communiquez votre identifiant YEM Parents à l’établissement pour faire vérifier le rattachement au dossier scolaire.</p>}
         {a.scholarship&&<p role="status"><strong>Boursier de l'État</strong> ·
           {a.scholarship.coverage==="all"?"tous les frais pris en charge":"frais d'inscription pris en charge"}.
           Aucun règlement à verser pour les frais couverts.</p>}

@@ -240,6 +240,7 @@ def parent_application_output(link):
                    "recu" if cash else "a_regler_sur_place")
     return {
         "id": str(link.pk), "child": str(link.child_id),
+        "child_name": f"{link.child.first_name} {link.child.last_name}",
         "school": str(app.school_id), "school_name": app.school.name,
         "classroom": str(app.classroom_id), "classroom_name": app.classroom.name,
         "year": app.year.name, "route": app.route,

@@ -130,6 +130,7 @@ class FamilyDiscoveryTests(TestCase):
         child_id = self.create_child()
         response = self.application(child_id)
         self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["child_name"], "Aïcha Mavoungou")
         self.assertEqual(response.json()["payment_status"], "a_regler_sur_place")
         self.assertEqual(AdmissionApplication.objects.count(), 1)
         app = AdmissionApplication.objects.first()
@@ -143,6 +144,7 @@ class FamilyDiscoveryTests(TestCase):
         result = self.client.get("/api/v1/parents/applications").json()
         self.assertEqual(len(result["applications"]), 1)
         self.assertEqual(result["applications"][0]["school_name"], self.school.name)
+        self.assertEqual(result["applications"][0]["child_name"], "Aïcha Mavoungou")
         self.login(self.director)
         staff = self.client.get(f"/api/v1/schools/{self.school.pk}/admissions")
         self.assertEqual(len(staff.json()["applications"]), 1)
@@ -212,6 +214,8 @@ class FamilyDiscoveryTests(TestCase):
         self.assertEqual(self.application(child_id).status_code, 404)
         self.assertEqual(self.client.get("/api/v1/parents/family-children").json()["children"], [])
         self.assertEqual(self.client.get("/api/v1/parents/applications").json()["applications"], [])
+        # The other parent cannot infer even the name of an applicant's child.
+        self.assertNotIn("Aïcha Mavoungou", self.client.get("/api/v1/parents/applications").content.decode())
         self.assertEqual(self.client.get(f"/api/v1/schools/{self.school.pk}/parent-listing").status_code, 404)
 
     def test_online_payment_cannot_be_faked_and_closed_school_rejects_submission(self):
