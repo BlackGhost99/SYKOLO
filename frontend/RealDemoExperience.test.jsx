@@ -39,7 +39,7 @@ test("la vue parent reprend le vrai composant parent et aucun appel de productio
   render(<RealDemoExperience/>);
   await chooseRole(user,"parent");
   expect(await screen.findByRole("heading",{name:"Espace parents"})).toBeTruthy();
-  expect(screen.getByText("Suivi scolaire de mes enfants")).toBeTruthy();
+  expect(screen.getByText("YEM Familles")).toBeTruthy();
   expect(await screen.findByText("1 élève inscrit")).toBeTruthy();
   expect(await screen.findByText("14,5 / 20")).toBeTruthy();
   await user.click(screen.getByRole("button",{name:"Vie scolaire"}));
