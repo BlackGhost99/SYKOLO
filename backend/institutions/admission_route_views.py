@@ -23,6 +23,10 @@ def documents_response(application):
             "status": doc.status, "review_reason": doc.review_reason,
             "reviewed_at": doc.reviewed_at.isoformat() if doc.reviewed_at else None,
             "created_at": doc.created_at.isoformat(),
+            "file_url": (
+                f"/api/v1/schools/{application.school_id}/admissions/{application.pk}"
+                f"/documents/{doc.code}/file"
+            ) if hasattr(doc, "parent_upload") else None,
         } for doc in application.documents.order_by("created_at", "pk")],
     }
 
