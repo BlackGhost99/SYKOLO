@@ -80,16 +80,19 @@ export default function AdmissionCashDesk({schoolId,canReceive=false,application
       <p>Parent : {row.parent} · Dossier : {row.admission_status}</p>
       <p>Montant : {row.amount_xaf?Number(row.amount_xaf).toLocaleString("fr-FR")+" FCFA":"Tarif non configuré"}
         {row.is_demo&&" · SIMULATION — 0 FCFA reçu"}</p>
+      {row.scholarship_active&&<p role="status">Bourse gouvernementale validée : aucun nouvel encaissement de frais de dossier autorisé.</p>}
       <p>État caisse : <strong>{({
         a_regler_sur_place:"En attente de réception",
         recu:"Espèces reçues",
         simule:"Simulation confirmée",
         annule:"Reçu annulé",
+        dispense_bourse:"Frais pris en charge par bourse",
+        inscription_deja_finalisee:"Inscription déjà définitive — pas de nouveau règlement",
       })[row.payment_status]||row.payment_status}</strong></p>
       {row.receipt_url&&<a href={row.receipt_url} target="_blank" rel="noreferrer">
         {row.is_demo?"Document de simulation PDF":"Reçu de caisse PDF"}
       </a>}
-      {canReceive&&row.admission_status!=="rejected"&&row.payment_status==="a_regler_sur_place"&&Boolean(row.amount_xaf)&&<>
+      {canReceive&&row.can_pay!==false&&row.admission_status!=="rejected"&&row.admission_status!=="enrolled"&&row.payment_status==="a_regler_sur_place"&&Boolean(row.amount_xaf)&&<>
         <label className="yp-field">Référence de caisse
           <input maxLength={100} value={reference[row.request]||""}
             onChange={e=>setReference(v=>({...v,[row.request]:e.target.value}))}

@@ -167,8 +167,8 @@ def scholarship(request, school_id, application_id):
             if application.status in ("enrolled", "rejected"):
                 return reject("Une inscription définitive ou refusée ne peut pas changer de bourse.", 409)
             policy = finance_policy(school, application.year_id, application.classroom.level_id)
-            if not policy["allow_government_scholarship"]:
-                return reject("Les bourses gouvernementales sont désactivées pour ce niveau.", 409)
+            if data["action"] == "approve" and not policy["allow_government_scholarship"]:
+                return reject("Les nouvelles bourses gouvernementales sont désactivées pour ce niveau.", 409)
             award = GovernmentScholarship.objects.select_for_update().filter(
                 school=school, application=application
             ).first()

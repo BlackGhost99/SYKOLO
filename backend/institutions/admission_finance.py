@@ -131,7 +131,9 @@ def payment_blocker(application):
     if not rule["require_payment"]:
         return None
     award = current_scholarship(application)
-    if award and rule["allow_government_scholarship"]:
+    # A policy change may disable NEW government awards, but must never
+    # retroactively invalidate an already verified award or force double billing.
+    if award:
         return None
     from .parent_admission_models import ParentAdmissionRequest
     from .parent_payment_models import AdmissionCashReceipt, ParentPaymentAttempt, SchoolDemoPaymentConfig
