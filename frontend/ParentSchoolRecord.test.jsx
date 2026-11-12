@@ -25,6 +25,10 @@ test("le parent retrouve l’identifiant à donner à l’école pendant le ratt
   const fetch = renderPortal({[path]:{children:[], parent_username:"compte-test"}});
   await screen.findByText(/Pour suivre sa scolarité/);
   expect(screen.getAllByText("compte-test").length).toBeGreaterThan(0);
+  expect(screen.getByRole("heading", {name:"Commençons le suivi de votre enfant"})).toBeTruthy();
+  expect(screen.queryByRole("heading", {name:"Dernières notes"})).toBeNull();
+  expect(screen.queryByRole("heading", {name:"Situation financière"})).toBeNull();
+  expect(screen.queryByRole("button", {name:"Payer en ligne"})).toBeNull();
   await userEvent.setup().click(screen.getByRole("button", {name:"Actualiser mes enfants"}));
   await screen.findByText(/Pour suivre sa scolarité/);
   expect(fetch.mock.calls.filter(([url]) => url === path)).toHaveLength(2);
@@ -58,4 +62,18 @@ test("la fiche affiche la classe, les notes et la vie scolaire de l’année cho
   expect(screen.getByText("CE2 B")).toBeTruthy();
   expect(await screen.findByText(/Aucune observation ni sanction communiquée/)).toBeTruthy();
   expect(screen.queryByText("Travail de rattrapage mercredi.")).toBeNull();
+});
+
+test("un compte sans enfant ouvre directement les profils et garde les démarches accessibles", async () => {
+  const path = "/api/v1/parents/children";
+  renderPortal({[path]:{children:[],parent_username:"parent-pilote"}});
+  const user = userEvent.setup();
+  expect(await screen.findByRole("heading",{name:"Commençons le suivi de votre enfant"})).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"Ajouter un enfant"}));
+  expect(screen.getByRole("navigation",{name:"Démarches des familles"})).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Profils enfants"}).getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByText(/Aucun dossier scolaire encore rattaché/)).toBeTruthy();
+  expect(screen.queryByRole("heading",{name:"Commençons le suivi de votre enfant"})).toBeNull();
+  await user.click(screen.getByRole("button",{name:"Mes demandes"}));
+  expect(screen.getByRole("button",{name:"Mes demandes"}).getAttribute("aria-pressed")).toBe("true");
 });
