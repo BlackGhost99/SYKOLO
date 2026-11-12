@@ -29,6 +29,10 @@ class Migration(migrations.Migration):
             field=models.JSONField(default=dict, blank=True),
         ),
         migrations.AddField(
+            model_name="familychild", name="revision",
+            field=models.PositiveIntegerField(default=1),
+        ),
+        migrations.AddField(
             model_name="parentadmissionrequest", name="form_revision",
             field=models.PositiveIntegerField(default=0),
         ),
