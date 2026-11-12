@@ -91,7 +91,10 @@ def cashier_queue(request, school_id):
             "scholarship_active": link.application_id in covered_applications,
             "can_pay": link.application_id not in covered_applications
                 and link.application.status not in ("enrolled", "rejected"),
-            "payment_status": receipt_payload(cash)["status"] if cash else "a_regler_sur_place",
+            "payment_status": (receipt_payload(cash)["status"] if cash else
+                               "dispense_bourse" if link.application_id in covered_applications else
+                               "inscription_deja_finalisee" if link.application.status == "enrolled" else
+                               "a_regler_sur_place"),
             "receipt_url": f"/api/v1/schools/{school.pk}/admission-cash/{link.pk}/receipt"
                 if cash else None,
         })
