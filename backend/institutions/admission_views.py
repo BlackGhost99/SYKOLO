@@ -228,7 +228,10 @@ def application_detail(request, school_id, application_id):
 @require_POST
 @authorized
 def decide(request, school_id, application_id):
-    school, error = gate(request, school_id, "school.admissions.decide")
+    # Reception and administrative review are NOT admission decisions.
+    # Keep the tenant check first; the requested transition determines the
+    # distinct permission below, before a row can be read or changed.
+    school, error = access(request, school_id)
     if error is not None:
         return error
     data, error = parse_body(request)
@@ -244,6 +247,9 @@ def decide(request, school_id, application_id):
             raise ValueError("Décision invalide.")
     except ValueError as exc:
         return fail(str(exc))
+    needed = "school.admissions.manage" if status == "review" else "school.admissions.decide"
+    if not has_permission(request.user, school, needed):
+        return refuse()
     with transaction.atomic():
         row = AdmissionApplication.objects.select_for_update().filter(school=school, pk=application_id).first()
         if row is None:
@@ -267,7 +273,9 @@ def decide(request, school_id, application_id):
         row.save()
         AdmissionEvent.objects.create(school=school, application=row, previous_status=previous,
                                       new_status=status, reason=reason, actor=request.user)
-        log_event(school, request, "admission_decision", row.pk)
+        log_event(school, request,
+                  "admission_review_started" if status == "review" else "admission_decision",
+                  row.pk)
     return JsonResponse(render(row))
 
 

@@ -88,3 +88,14 @@ L'interface explique le blocage et désactive le bouton **Accepter** lorsque le 
 **Une admission favorable n'est pas une inscription définitive.** Paiement confirmé ou bourse approuvée, capacité de la classe et règles d'inscription sont contrôlés séparément lors de la conversion.
 
 Tests : `institutions.test_admissions` (voie directe et concours) et `AdmissionRoutesPanel.test.jsx` (affichage et distinction inscription/paiement). Les vérifications techniques doivent précéder le déploiement.
+
+## M2.4 — Réception administrative et décision séparées
+
+- **Secrétariat (`school.admissions.manage`) :** crée les dossiers et enregistre les pièces, références et résultats déclaratifs. Peut déplacer une candidature de `submitted` (Déposée) vers `review` (En étude), avec une trace d'audit nominative. Ne peut jamais accepter ni refuser sans le droit de décision.
+- **Direction / décideur (`school.admissions.decide`) :** vérifie ou rejette les justificatifs, puis accepte ou refuse la candidature avec motif. Les conditions de concours, d'orientation et de pièces obligatoires restent validées côté serveur sous verrou transactionnel.
+- **Économe / caisse (`school.finance.receive`) :** confirme le règlement selon les règles financières, mais ne peut pas décider de l'admission.
+- **Lecteur seul (`school.admissions.read`) :** consulte le dossier sans saisir, modifier ni valider les pièces ; les actions sont masquées dans l'interface, et les permissions continuent d'être contrôlées par le serveur.
+
+Le point d'entrée de transition ne change pas : `POST /api/v1/schools/{school_id}/admissions/{id}/decide` avec `{revision,status,reason}`. Le droit nécessaire dépend **strictement du nouveau statut** : `review` exige `school.admissions.manage`, `accepted` et `rejected` exigent `school.admissions.decide`. Les changements sont soumis à une révision optimiste et à la machine à états, sans possibilité de rouvrir une décision finale. Les événements de suivi sont append-only ; `admission_review_started` distingue l'ouverture de l'étude d'une décision.
+
+La séparation ne change pas les conditions de finalisation : **admission favorable ne signifie pas inscription officielle**, laquelle attend paiement confirmé ou bourse validée, capacité et année scolaire adaptées. Les essais réalisés avec les rôles réels en interface resteront à effectuer après déploiement.

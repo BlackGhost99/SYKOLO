@@ -70,3 +70,33 @@ test("une admission directe prête ne signifie pas inscription ni paiement",()=>
   }}/>);
   expect(screen.queryByRole("status")).toBeNull();
 });
+
+
+test("le secrétariat peut ajouter un justificatif mais pas le certifier",async()=>{
+  const app={id:"33333333-3333-3333-3333-333333333333",status:"review",revision:2,
+    route:"concours",external_result:"pending",route_reference:"",
+    orientation_authority:"",required_documents:["concours_result"],origin_school:""};
+  const api=vi.fn(async()=>({revision:2,required_documents:app.required_documents,
+    documents:[{id:"44444444-4444-4444-4444-444444444444",code:"concours_result",
+      reference:"PV-2026",status:"pending",created_at:"2026-11-12T12:00:00Z"}]}));
+  render(<AdmissionProofPanel api={api} base="schools/test/admissions"
+    application={app} canDecide={false} canPrepare onUpdated={async()=>{}}/>);
+  await screen.findByText(/Référence : PV-2026/);
+  expect(screen.getByRole("button",{name:"Enregistrer l'éligibilité"})).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Ajouter cette référence"})).toBeTruthy();
+  expect(screen.queryByRole("button",{name:"Vérifier"})).toBeNull();
+  expect(screen.queryByRole("button",{name:"Non conforme"})).toBeNull();
+});
+
+test("le lecteur sans habilitation administrative ne peut pas saisir ni valider les pièces",async()=>{
+  const app={id:"33333333-3333-3333-3333-333333333333",status:"review",revision:2,
+    route:"concours",external_result:"pending",route_reference:"",
+    orientation_authority:"",required_documents:["concours_result"],origin_school:""};
+  const api=vi.fn(async()=>({revision:2,required_documents:app.required_documents,documents:[]}));
+  render(<AdmissionProofPanel api={api} base="schools/test/admissions"
+    application={app} canDecide={false} canPrepare={false} onUpdated={async()=>{}}/>);
+  await screen.findByText(/Justificatifs non vérifiés/);
+  expect(screen.getByLabelText("Éligibilité déclarée").disabled).toBe(true);
+  expect(screen.queryByRole("button",{name:"Enregistrer l'éligibilité"})).toBeNull();
+  expect(screen.queryByRole("button",{name:"Ajouter cette référence"})).toBeNull();
+});

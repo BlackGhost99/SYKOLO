@@ -289,6 +289,55 @@ class AdmissionWorkflowTests(TestCase):
         self.assertEqual(AdmissionApplication.objects.get(pk=row["id"]).required_documents,
                          ["birth_certificate", "school_report"])
 
+    def test_secretariat_opens_review_but_cannot_accept_or_reject(self):
+        row = self.create()
+        self.login(self.secretary)
+        started = self.decide(
+            row, status="review", revision=1,
+            reason="Dossier reçu au guichet, pièces en vérification",
+        )
+        self.assertEqual(started.status_code, 200, started.content.decode())
+        self.assertEqual(started.json()["status"], "review")
+        application = AdmissionApplication.objects.get(pk=row["id"])
+        self.assertEqual(application.revision, 2)
+        self.assertIsNone(application.decided_by_id)
+        self.assertIsNone(application.decided_at)
+        events = AdmissionEvent.objects.filter(application=application)
+        self.assertEqual(events.count(), 2)
+        self.assertEqual(events.last().actor, self.secretary)
+        self.assertEqual(events.last().previous_status, "submitted")
+        self.assertEqual(events.last().new_status, "review")
+        self.assertIn("guichet", events.last().reason)
+
+        self.assertEqual(self.decide(row, status="accepted", revision=2).status_code, 403)
+        self.assertEqual(self.decide(row, status="rejected", revision=2).status_code, 403)
+        self.assertEqual(self.decide(row, status="review", revision=2).status_code, 409)
+        self.assertEqual(AdmissionApplication.objects.get(pk=row["id"]).status, "review")
+        self.assertEqual(AdmissionEvent.objects.filter(application=application).count(), 2)
+
+        self.login(self.director)
+        accepted = self.decide(row, status="accepted", revision=2)
+        self.assertEqual(accepted.status_code, 200, accepted.content.decode())
+        self.assertEqual(accepted.json()["status"], "accepted")
+        self.assertEqual(AdmissionApplication.objects.get(pk=row["id"]).decided_by, self.director)
+        self.assertFalse(Enrollment.objects.exists())
+
+    def test_staff_without_administrative_right_cannot_start_review(self):
+        row = self.create()
+        self.login(self.teacher)
+        self.assertEqual(self.decide(row, status="review", revision=1).status_code, 403)
+        self.login(self.stranger)
+        self.assertEqual(self.decide(row, status="review", revision=1).status_code, 404)
+        self.assertEqual(AdmissionApplication.objects.get(pk=row["id"]).status, "submitted")
+        self.assertEqual(AdmissionEvent.objects.filter(application_id=row["id"]).count(), 1)
+
+    def test_director_can_still_open_review(self):
+        row = self.create()
+        response = self.decide(row, status="review", revision=1)
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual(response.json()["status"], "review")
+        self.assertEqual(self.decide(row, status="accepted", revision=2).status_code, 200)
+
     def test_secretary_cannot_verify_or_change_policy_but_can_record(self):
         row = self.create({**self.data(), "route": "concours"})
         self.login(self.secretary)

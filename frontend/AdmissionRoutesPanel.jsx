@@ -116,7 +116,7 @@ export function AdmissionPolicyEditor({api,base,year,level,canDecide,onSaved}){
   </div>;
 }
 
-export function AdmissionProofPanel({api,base,application,canDecide,onUpdated}){
+export function AdmissionProofPanel({api,base,application,canDecide=false,canPrepare=false,onUpdated}){
   const [record,setRecord]=useState(null),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
   const [code,setCode]=useState(""),[customCode,setCustomCode]=useState(""),[reference,setReference]=useState("");
   const [result,setResult]=useState("pending"),[resultRef,setResultRef]=useState(""),[authority,setAuthority]=useState("");
@@ -136,6 +136,8 @@ export function AdmissionProofPanel({api,base,application,canDecide,onUpdated}){
     return()=>{active=false};
   },[api,path,application.revision]);
   const active=application.status==="submitted"||application.status==="review";
+  const canRecord=canDecide||canPrepare;
+  const editable=active&&canRecord;
   const docs=record?.documents||[];
   const missing=(application.required_documents||[]).filter(k=>!docs.some(d=>d.code===k&&d.status==="verified"));
   async function perform(fn){
@@ -152,21 +154,21 @@ export function AdmissionProofPanel({api,base,application,canDecide,onUpdated}){
       <p className="hint">Une déclaration d'éligibilité ne vaut pas admission : la direction doit vérifier la preuve puis accepter le dossier.</p>
       <div className="two">
         <label className="field">Éligibilité déclarée
-          <select disabled={!active||busy} value={result} onChange={e=>setResult(e.target.value)}>
+          <select disabled={!editable||busy} value={result} onChange={e=>setResult(e.target.value)}>
             <option value="pending">En attente de vérification</option><option value="eligible">Éligible / admis à l'examen</option>
             <option value="ineligible">Non éligible / non admis</option>
           </select>
         </label>
         <label className="field">Référence du concours / décision
-          <input disabled={!active||busy} maxLength={140} value={resultRef} onChange={e=>setResultRef(e.target.value)}
+          <input disabled={!editable||busy} maxLength={140} value={resultRef} onChange={e=>setResultRef(e.target.value)}
             placeholder="Référence officielle ou interne vérifiable"/>
         </label>
         {application.route==="orientation"&&<label className="field">Autorité qui a affecté l'élève
-          <input disabled={!active||busy} maxLength={120} value={authority} onChange={e=>setAuthority(e.target.value)}
+          <input disabled={!editable||busy} maxLength={120} value={authority} onChange={e=>setAuthority(e.target.value)}
             placeholder="Ex. Commission d'orientation"/>
         </label>}
       </div>
-      {active&&<button disabled={busy||!reason.trim()} type="button" onClick={()=>perform(()=>
+      {editable&&<button disabled={busy||!reason.trim()} type="button" onClick={()=>perform(()=>
         api(path+"/eligibility",{revision:application.revision,result,route_reference:resultRef,
           orientation_authority:application.route==="orientation"?authority:"",reason:reason.trim()}))}>
         Enregistrer l'éligibilité
@@ -193,7 +195,7 @@ export function AdmissionProofPanel({api,base,application,canDecide,onUpdated}){
         </button>
       </div>}
     </div>)}</div>}
-    {active&&<div className="ar-attach">
+    {editable&&<div className="ar-attach">
       <h4>Enregistrer une référence de justificatif</h4>
       <div className="two">
         <label className="field">Type de justificatif
@@ -218,7 +220,7 @@ export function AdmissionProofPanel({api,base,application,canDecide,onUpdated}){
         Ajouter cette référence
       </button>
     </div>}
-    {active&&<label className="field">Motif de contrôle / mise à jour du dossier (obligatoire)
+    {editable&&<label className="field">Motif de contrôle / mise à jour du dossier (obligatoire)
       <textarea maxLength={280} value={reason} onChange={e=>setReason(e.target.value)}
         placeholder="Ex. Attestation contrôlée auprès de la direction"/>
     </label>}
