@@ -81,6 +81,7 @@ def child_output(child):
 
 def public_form_payload(school, year, level, route):
     config, revision = load_config(school)
+    explicitly_configured = hasattr(school, "enrollment_form")
     fields = []
     for key, label, section, visible_default, required_default in BASE_FIELDS:
         if key == "guardian_phone":
@@ -92,11 +93,10 @@ def public_form_payload(school, year, level, route):
             "key": key, "label": label, "section": section,
             "type": "date" if key == "date_of_birth" else "select" if key == "gender" else "text",
             "options": ["F", "M"] if key == "gender" else [],
-            "required": bool(rule.get("required", required_default)),
+            "required": bool(rule.get("required", required_default)) and explicitly_configured,
             "max_length": PROFILE_LIMITS.get(key, 254 if key == "guardian_email" else 120),
         })
     policy = effective_policy(school, year, level)
-    explicitly_configured = bool(school.enrollment_form) if hasattr(school, "enrollment_form") else False
     configured = config.get("documents", [])
     documents = [{
         "key": d["key"], "label": d["label"], "required": bool(d["required"]) and explicitly_configured,
