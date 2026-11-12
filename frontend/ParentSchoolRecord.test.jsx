@@ -23,14 +23,14 @@ function renderPortal(responses) {
 test("le parent retrouve l’identifiant à donner à l’école pendant le rattachement", async () => {
   const path = "/api/v1/parents/children";
   const fetch = renderPortal({[path]:{children:[], parent_username:"compte-test"}});
-  await screen.findByText(/Pour suivre sa scolarité/);
+  await screen.findByRole("heading", {name:"Commençons le suivi de votre enfant"});
   expect(screen.getAllByText("compte-test").length).toBeGreaterThan(0);
   expect(screen.getByRole("heading", {name:"Commençons le suivi de votre enfant"})).toBeTruthy();
   expect(screen.queryByRole("heading", {name:"Dernières notes"})).toBeNull();
   expect(screen.queryByRole("heading", {name:"Situation financière"})).toBeNull();
   expect(screen.queryByRole("button", {name:"Payer en ligne"})).toBeNull();
   await userEvent.setup().click(screen.getByRole("button", {name:"Actualiser mes enfants"}));
-  await screen.findByText(/Pour suivre sa scolarité/);
+  await screen.findByRole("heading", {name:"Commençons le suivi de votre enfant"});
   expect(fetch.mock.calls.filter(([url]) => url === path)).toHaveLength(2);
 });
 
