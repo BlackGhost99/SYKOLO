@@ -2,7 +2,6 @@
 from uuid import UUID
 
 from django.db import transaction
-from django.db.models import Q
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
@@ -18,11 +17,14 @@ from .views import access, log_event, parse_body, refuse
 def eligible_divisions(enrollment):
     """A division change must not silently alter an academic level or track."""
     current = enrollment.classroom
-    return AcademicClass.objects.filter(
+    queryset = AcademicClass.objects.filter(
         school_id=enrollment.school_id, year_id=enrollment.year_id,
         level_id=current.level_id, track_id=current.track_id, active=True,
         level__active=True, level__cycle__active=True,
-    ).filter(Q(track__isnull=True) | Q(track__active=True)).order_by("pk")
+    )
+    if current.track_id is not None:
+        queryset = queryset.filter(track__active=True)
+    return queryset.order_by("pk")
 
 
 def possibilities(enrollment, *, locked=False):
