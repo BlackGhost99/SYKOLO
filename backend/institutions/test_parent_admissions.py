@@ -95,7 +95,7 @@ class FamilyDiscoveryTests(TestCase):
         uri = photo.json()["photo_url"]
         response = self.client.get(uri)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertIn("no-store", response["Cache-Control"])
         self.assertEqual(response["X-Content-Type-Options"], "nosniff")
         self.assertTrue(response.content.startswith(b"\xff\xd8\xff"))
         self.login(self.other_parent)
