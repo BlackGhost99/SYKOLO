@@ -39,7 +39,7 @@ def fail(message, status=422):
 def receipt_payload(receipt):
     voided = AdmissionCashReceiptVoid.objects.filter(receipt=receipt).exists()
     return {
-        "id": str(receipt.pk), "request": str(receipt.request_id),
+        "id": str(receipt.pk), "request": str(receipt.request_id or receipt.application_id),
         "amount_xaf": receipt.amount_xaf, "currency": "XAF",
         "reference": receipt.reference, "received_on": receipt.received_on.isoformat(),
         "recorded_by": str(receipt.recorded_by_id),
@@ -48,7 +48,8 @@ def receipt_payload(receipt):
         "received_confirmed": not (receipt.is_demo or voided),
         "notice": "SIMULATION DE CAISSE — 0 FCFA reçu, sans valeur d'encaissement."
           if receipt.is_demo else "Paiement en espèces reçu et déclaré par la caisse de l'établissement.",
-        "receipt_url": f"/api/v1/parents/applications/{receipt.request_id}/cash-receipt",
+        "receipt_url": (f"/api/v1/parents/applications/{receipt.request_id}/cash-receipt" if receipt.request_id else
+                        f"/api/v1/schools/{receipt.school_id}/admission-cash/{receipt.application_id}/receipt"),
     }
 
 
@@ -230,12 +231,15 @@ def void_cash(request, school_id, application_id):
     try:
         with transaction.atomic():
             School.objects.select_for_update().get(pk=school.pk)
+            from django.db.models import Q
             cash = AdmissionCashReceipt.objects.select_for_update().filter(
-                request_id=application_id, school=school,
+                Q(request_id=application_id) | Q(application_id=application_id),
+                school=school,
             ).first()
             if cash is None:
                 return fail("Reçu introuvable.", 404)
-            if cash.request.application.status == "enrolled":
+            app = cash.application or cash.request.application
+            if app.status == "enrolled":
                 return fail("Inscription déjà définitive : une correction comptable indépendante est requise.", 409)
             if cash.recorded_by_id == request.user.pk:
                 return fail("Un autre responsable doit annuler le reçu.", 403)
@@ -251,8 +255,8 @@ def void_cash(request, school_id, application_id):
             void.full_clean()
             void.save()
             AdmissionEvent.objects.create(
-                school=school, application=cash.request.application,
-                previous_status=cash.request.application.status, new_status="cash_cancelled",
+                school=school, application=app,
+                previous_status=app.status, new_status="cash_cancelled",
                 reason="Reçu annulé par l'administration : " + void.reason[:250],
                 actor=request.user,
             )
@@ -263,7 +267,7 @@ def void_cash(request, school_id, application_id):
 
 
 def render_receipt(cash):
-    app = cash.request.application
+    app = cash.application or cash.request.application
     school = cash.school
     voided = AdmissionCashReceiptVoid.objects.filter(receipt=cash).exists()
     banner = ("DOCUMENT DE SIMULATION — AUCUN ARGENT REÇU — SANS VALEUR FINANCIÈRE"
@@ -317,9 +321,11 @@ def staff_receipt(request, school_id, application_id):
     if not (has_permission(request.user, school, "school.finance.read")
             or has_permission(request.user, school, "school.admissions.read")):
         return refuse()
+    from django.db.models import Q
     cash = AdmissionCashReceipt.objects.select_related(
-        "school", "request__application__year", "request__application__classroom",
-    ).filter(request_id=application_id, school=school).first()
+        "school", "application__year", "application__classroom",
+        "request__application__year", "request__application__classroom",
+    ).filter(Q(request_id=application_id) | Q(application_id=application_id), school=school).first()
     if cash is None:
         return fail("Reçu introuvable.", 404)
     return render_receipt(cash)
