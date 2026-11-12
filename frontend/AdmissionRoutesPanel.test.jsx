@@ -3,7 +3,7 @@ import React from "react";
 import {afterEach,expect,test,vi} from "vitest";
 import {cleanup,render,screen,waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {AdmissionPolicyEditor,AdmissionProofPanel} from "./AdmissionRoutesPanel.jsx";
+import {AdmissionPolicyEditor,AdmissionProofPanel,AdmissionDecisionReadiness} from "./AdmissionRoutesPanel.jsx";
 
 afterEach(cleanup);
 const YEAR="11111111-1111-1111-1111-111111111111";
@@ -49,4 +49,24 @@ test("le secrétariat ne voit pas les boutons de validation des preuves",async()
   await screen.findByText(/Référence : ATTEST-1/);
   expect(screen.queryByRole("button",{name:"Vérifier"})).toBeNull();
   expect(screen.queryByRole("button",{name:"Non conforme"})).toBeNull();
+});
+
+test("le concours en attente explique la preuve manquante avant la décision",()=>{
+  render(<AdmissionDecisionReadiness application={{
+    id:"dossier-1",status:"review",route:"concours",
+    acceptance_blocker:"Pièces justificatives à vérifier : concours_result",
+  }}/>);
+  expect(screen.getByRole("status").textContent).toContain("concours_result");
+  expect(screen.getByRole("status").textContent).toContain("Admission non prête");
+});
+
+test("une admission directe prête ne signifie pas inscription ni paiement",()=>{
+  const {rerender}=render(<AdmissionDecisionReadiness application={{
+    status:"submitted",route:"direct",acceptance_blocker:null,
+  }}/>);
+  expect(screen.getByRole("status").textContent).toContain("les frais ou la bourse restent distincts");
+  rerender(<AdmissionDecisionReadiness application={{
+    status:"accepted",route:"direct",acceptance_blocker:null,
+  }}/>);
+  expect(screen.queryByRole("status")).toBeNull();
 });
