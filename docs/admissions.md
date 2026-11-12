@@ -1,6 +1,6 @@
 # YEM — Module 14 : admissions et préinscriptions internes
 
-Ce module prépare une inscription avant de créer le dossier officiel de l'élève (module 05). Une candidature peut provenir d'un guichet, d'une demande saisie par le personnel à la suite d'un contact en ligne, ou d'un autre canal librement codé. **Aucun formulaire de collecte publique n'est exposé** à ce stade : la création nécessite une session d'un membre autorisé, avec contrôle CSRF. La collecte en libre-service exigera sa propre authentification, anti-abus et politique de confidentialité.
+Ce module prépare une inscription avant de créer le dossier officiel de l'élève (module 05). Une candidature peut provenir d'un guichet, d'une demande saisie par le personnel ou du **portail parent authentifié**. Les routes internes de création exigent les permissions du personnel et CSRF ; l'espace parent dispose de routes distinctes et n'autorise que la candidature d'un enfant appartenant au compte familial. La candidature ne donne ni accès à une fiche scolaire officielle ni droit automatique à une place.
 
 ## Cycle de vie
 
@@ -76,3 +76,15 @@ Références contextuelles Gabon :
 - AGP, résultats publiés le 8 août 2026 via KEWA : https://agpgabon.ga/gabon-orientation-en-6e-resultats-de-la-commission-disponibles/
 
 La configuration est une capacité métier et ne remplace pas une décision publique officielle. Les formulaires ouverts aux familles, le téléversement des originaux et les imports vérifiés par API nationale restent des chantiers séparés, nécessitant des garanties de confidentialité et une validation administrative.
+
+## M2.3 — Préparation explicite de la décision d'admission
+
+Les réponses des candidatures (`GET /admissions`, `GET /admissions/{id}`) incluent désormais le champ `acceptance_blocker` : chaîne décrivant le blocage ou `null` lorsque les contrôles préalables sont satisfaits.
+
+Pour l'admission directe, les pièces exigées sont définies par établissement, année et niveau. Pour un concours, un résultat éligible, une référence et le justificatif **vérifié par une personne habilitée** restent obligatoires. L'orientation exige également la référence et l'autorité compétente. Le secrétariat peut enregistrer les éléments sans se substituer au décideur.
+
+L'interface explique le blocage et désactive le bouton **Accepter** lorsque le dossier n'est pas prêt. Il ne s'agit que d'une aide : **le serveur revérifie la condition dans la transaction de décision** ; aucune protection n'est déléguée à l'interface.
+
+**Une admission favorable n'est pas une inscription définitive.** Paiement confirmé ou bourse approuvée, capacité de la classe et règles d'inscription sont contrôlés séparément lors de la conversion.
+
+Tests : `institutions.test_admissions` (voie directe et concours) et `AdmissionRoutesPanel.test.jsx` (affichage et distinction inscription/paiement). Les vérifications techniques doivent précéder le déploiement.
