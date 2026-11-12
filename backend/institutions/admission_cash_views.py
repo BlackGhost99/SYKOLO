@@ -103,7 +103,7 @@ def cashier_queue(request, school_id):
         })
     # Guichet applications must NEVER require creating a false parent account.
     # The same cashier view and school admission tariff provide the handoff.
-    for app in direct.order_by("-created_at")[:250]:
+    for app in direct.order_by("-submitted_at")[:250]:
         gross, due = admission_gross(app), admission_due(app)
         cash = AdmissionCashReceipt.objects.filter(application=app).first()
         award = current_scholarship(app)
