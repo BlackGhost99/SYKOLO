@@ -56,7 +56,7 @@ test("le concours en attente explique la preuve manquante avant la décision",()
     id:"dossier-1",status:"review",route:"concours",
     acceptance_blocker:"Pièces justificatives à vérifier : concours_result",
   }}/>);
-  expect(screen.getByRole("status").textContent).toContain("concours_result");
+  expect(screen.getByRole("status").textContent).toContain("Justificatif du résultat au concours");
   expect(screen.getByRole("status").textContent).toContain("Admission non prête");
 });
 
@@ -109,10 +109,10 @@ test("la pièce obligatoire est proposée d'abord, sans rendre obligatoires les 
   render(<AdmissionProofPanel api={api} base="schools/test/admissions" application={app}
     canPrepare onUpdated={async()=>{}}/>);
   await screen.findByText(/Justificatifs non vérifiés/);
-  expect(screen.getByRole("combobox",{name:"Type de justificatif"}).value).toBe("birth_certificate");
+  expect(screen.getAllByRole("combobox",{name:"Type de justificatif"})[0].value).toBe("birth_certificate");
   const user=userEvent.setup();
-  await user.type(screen.getByLabelText("Référence du justificatif"),"Acte 2026 / 123");
-  await user.click(screen.getByRole("button",{name:"Ajouter cette référence"}));
+  await user.type(screen.getAllByLabelText("Référence du justificatif")[0],"Acte 2026 / 123");
+  await user.click(screen.getAllByRole("button",{name:"Ajouter cette référence"})[0]);
   await waitFor(()=>expect(api).toHaveBeenCalledWith(
     "schools/test/admissions/"+app.id+"/documents",
     expect.objectContaining({code:"birth_certificate",reference:"Acte 2026 / 123"})
