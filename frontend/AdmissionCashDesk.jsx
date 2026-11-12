@@ -64,10 +64,10 @@ export default function AdmissionCashDesk({schoolId,canReceive=false,application
     }catch(e){setMessage(e.message)}finally{setBusy(false)}
   }
   return <section className="yp-settings" aria-label="Caisse des candidatures en espèces" style={{marginTop:22}}>
-    <h3>Frais de dossier — Paiements en espèces au guichet</h3>
-    <p>Les parents choisissent « Espèces à l'école ». Seul l'économe/caissier habilité
-      peut confirmer la remise d'argent. La direction et le secrétariat peuvent suivre
-      les dossiers sans encaisser à la place du caissier.</p>
+    <h3>Dossiers admis — Encaissement d'inscription</h3>
+    <p>Cette caisse reçoit les candidatures déposées par les parents <strong>et directement au guichet</strong>.
+      La bourse est déduite du montant à recevoir. Seul le caissier habilité valide les espèces ;
+      les paiements en ligne sont confirmés uniquement par leur prestataire.</p>
     <button className="yp-button" type="button" disabled={busy}
       onClick={()=>{setBusy(true);refresh().then(()=>setMessage("Caisse actualisée."))
         .catch(e=>setMessage(e.message)).finally(()=>setBusy(false));}}>
@@ -77,10 +77,14 @@ export default function AdmissionCashDesk({schoolId,canReceive=false,application
     {items?.length===0&&<p>{applicationId ? "Cette candidature ne prévoit pas de règlement en espèces." : "Aucune candidature avec règlement en espèces."}</p>}
     {items?.map(row=><article key={row.request} style={{borderTop:"1px solid #ddd",padding:"12px 0"}}>
       <strong>{row.child}</strong> · {row.classroom} · {row.year}
-      <p>Parent : {row.parent} · Dossier : {row.admission_status}</p>
-      <p>Montant : {row.amount_xaf?Number(row.amount_xaf).toLocaleString("fr-FR")+" FCFA":"Tarif non configuré"}
+      <p>Responsable : {row.parent} · Dossier : {row.admission_status}</p>
+      <p>Frais d'inscription : {Number(row.gross_amount_xaf??row.amount_xaf??0).toLocaleString("fr-FR")} FCFA
+        {row.scholarship_covered_xaf>0&&" · Bourse : -"+Number(row.scholarship_covered_xaf).toLocaleString("fr-FR")+" FCFA"}</p>
+      <p><strong>Reste à payer : {Number(row.amount_xaf||0).toLocaleString("fr-FR")} FCFA</strong>
         {row.is_demo&&" · SIMULATION — 0 FCFA reçu"}</p>
-      {row.scholarship_active&&<p role="status">Bourse gouvernementale validée : aucun nouvel encaissement de frais de dossier autorisé.</p>}
+      {row.scholarship_active&&<p role="status">{row.amount_xaf>0?
+        "Bourse partielle : la caisse ne reçoit que le solde affiché.":
+        "Bourse totale sur l'inscription : aucun règlement nécessaire."}</p>
       <p>État caisse : <strong>{({
         a_regler_sur_place:"En attente de réception",
         recu:"Espèces reçues",
