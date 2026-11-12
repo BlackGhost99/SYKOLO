@@ -365,7 +365,10 @@ def family_applications(request):
             if set(raw_custom) - {item["key"] for item in form_schema["custom_fields"]}:
                 return error("Question personnalisée non autorisée.")
             cleaned_answers, _ = clean_answers(school_config, raw_custom, {})
-            check_base(school_config, student_values, guardian_values)
+            # Historical schools without an explicitly published enrollment form must
+            # retain the original optional child details (e.g. date of birth).
+            if form_schema["configured"]:
+                check_base(school_config, student_values, guardian_values)
             school_answers = {key: (
                 guardian_values.get(key[len("guardian_"):], "") if key.startswith("guardian_")
                 else student_values.get(key, "")
