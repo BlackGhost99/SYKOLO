@@ -374,6 +374,7 @@ class EnrollmentFinancialConditionsTests(TestCase):
         charge = FeeCharge.objects.get()
         self.assertEqual(charge.amount, Decimal("60000.00"))
         self.assertEqual(charge.scholarship_discount, Decimal("24000.00"))
+        self.login("econome")
         charges = self.client.get(f"/api/v1/schools/{self.school.pk}/finance/charges?enrollment={enrollment.pk}")
         self.assertEqual(charges.status_code, 200)
         self.assertEqual(charges.json()["charges"][0]["balance"], "36000.00")
