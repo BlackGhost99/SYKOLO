@@ -64,13 +64,14 @@ test("une bourse validée masque l'encaissement même pour un caissier habilité
   const fetchMock=vi.fn(async()=>Response.json({payments:[{
     request:"request-bourse",child:"TEST BOURSIER",classroom:"Seconde C",
     year:"2026-2027",parent:"Mme TEST",amount_xaf:2500,is_demo:false,
-    payment_status:"a_regler_sur_place",admission_status:"accepted",
+    payment_status:"dispense_bourse",admission_status:"accepted",
     scholarship_active:true,can_pay:false,receipt_url:null,
   }]}));
   vi.stubGlobal("fetch",fetchMock);
   render(<AdmissionCashDesk schoolId="lycee2" canReceive/>);
   expect(await screen.findByText("TEST BOURSIER")).toBeTruthy();
   expect(screen.getByText(/Bourse gouvernementale validée : aucun nouvel encaissement/)).toBeTruthy();
+  expect(screen.getByText("Frais pris en charge par bourse")).toBeTruthy();
   expect(screen.queryByRole("button",{name:"Confirmer les espèces reçues"})).toBeNull();
   expect(screen.queryByPlaceholderText("Référence du guichet")).toBeNull();
   expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -80,10 +81,11 @@ test("une inscription déjà définitive ne propose pas de nouvel encaissement",
   vi.stubGlobal("fetch",vi.fn(async()=>Response.json({payments:[{
     request:"request-inscrit",child:"TEST INSCRIT",classroom:"Seconde C",
     year:"2026-2027",parent:"Mme TEST",amount_xaf:2500,is_demo:false,
-    payment_status:"a_regler_sur_place",admission_status:"enrolled",
+    payment_status:"inscription_deja_finalisee",admission_status:"enrolled",
     scholarship_active:false,can_pay:false,receipt_url:null,
   }]})));
   render(<AdmissionCashDesk schoolId="lycee2" canReceive/>);
   expect(await screen.findByText("TEST INSCRIT")).toBeTruthy();
+  expect(screen.getByText("Inscription déjà définitive — pas de nouveau règlement")).toBeTruthy();
   expect(screen.queryByRole("button",{name:"Confirmer les espèces reçues"})).toBeNull();
 });
