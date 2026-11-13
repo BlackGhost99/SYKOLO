@@ -79,3 +79,18 @@ class StaffProfessionalDossier(models.Model):
     professional_phone = models.CharField(max_length=45, blank=True)
     revision = models.PositiveIntegerField(default=1)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class StaffPhoto(models.Model):
+    """Photo partagée par le compte enseignant et l'annuaire du personnel.
+
+    Image privée en base PostgreSQL : pas de fichier persistant sur disque Render,
+    et jamais de lien public vers un stockage statique.
+    """
+    staff = models.OneToOneField(
+        StaffRecord, on_delete=models.CASCADE, primary_key=True, related_name="photo",
+    )
+    data = models.BinaryField()
+    content_type = models.CharField(max_length=20)
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
