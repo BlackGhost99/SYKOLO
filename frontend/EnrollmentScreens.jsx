@@ -188,6 +188,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
   const [assignmentMode, setAssignmentMode] = useState("manual");
   const [assignmentReason, setAssignmentReason] = useState("");
   const [showAssignmentHistory, setShowAssignmentHistory] = useState(false);
+  const [showClassAssignment, setShowClassAssignment] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState({ text: params?.notice || "", error: false });
   const [destination, setDestination] = useState("");
@@ -235,6 +236,30 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
     {tabs}
     <Msg {...message}/>
     <Loading state={dossier}>{d && <div className="yd-grid yf-file">
+      <section className="yf-student-overview" aria-label="Synthèse de la fiche technique">
+        <Card title="Fiche technique de l’élève" icon="idcard">
+          <div className="yd-info-list">
+            <InfoRow k="Identité" v={`${s.last_name} ${s.first_name}`}/>
+            <InfoRow k="Matricule" v={s.student_code}/>
+            <InfoRow k="Classe actuelle" v={current?.classroom_name || "Non inscrit"}/>
+          </div>
+        </Card>
+        {d.sensitive_visible && <Card title="Parents / responsables légaux" icon="users">
+          {d.guardians.filter(g => g.active).length === 0
+            ? <Empty>Aucun responsable enregistré. Dossier à compléter.</Empty>
+            : <div className="yd-info-list">
+                {d.guardians.filter(g => g.active).map(g => <InfoRow key={g.id} k={g.relationship || "Responsable"} v={g.full_name}/>)}
+              </div>}
+        </Card>}
+        {d.finance_visible && <Card title="Situation financière" icon="wallet">
+          {!f ? <Empty>Aucun frais sans inscription pour cette année.</Empty> : <div className="yd-info-list">
+            <InfoRow k="Total facturé" v={money(f.billed, f.currency)}/>
+            <InfoRow k="Déjà payé" v={money(f.paid, f.currency)}/>
+            <InfoRow k="Reste à payer" v={money(f.balance, f.currency)} highlight/>
+            <InfoRow k="Statut" v={<Status tone={FIN[f.status]?.[0] || "gray"}>{FIN[f.status]?.[1] || f.status}</Status>}/>
+          </div>}
+        </Card>}
+      </section>
       <div className="yd-stack">
         {canIssueTransfer&&<Card title="Transfert vers un autre établissement YEM" icon="transfer">
           <details><summary>Préparer un transfert</summary>
@@ -304,7 +329,14 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
         <Card title="Scolarité" icon="cap">
           {d.enrollments.length === 0 ? <Empty>Pas encore inscrit dans une classe.</Empty> :
             <Table className="xs" headers={["Année", "Classe", "Inscrit le", "Statut"]} rows={d.enrollments.map(e => [e.year_name, <b>{e.classroom_name}</b>, fmtDate(e.enrolled_on), <Status tone={e.active ? "green" : "gray"}>{e.active ? "Inscrit" : "Clôturé"}</Status>])}/>}
-          {canManage && classes.data && curYear && <div className="yf-inline-form">
+          {canManage && classes.data && curYear && <div className="yf-student-class-actions">
+            <Button className="small" icon="transfer" onClick={() => {
+              setShowClassAssignment(value => !value);
+              setTarget("");
+              setAssignmentReason("");
+            }}>{showClassAssignment ? "Fermer le changement de classe" : (enrolledThisYear ? "Changer de classe" : "Inscrire dans une classe")}</Button>
+          </div>}
+          {canManage && showClassAssignment && classes.data && curYear && <div className="yf-inline-form">
             {enrolledThisYear ? (() => { const e = d.enrollments.find(x => x.year === curYear.id); return <>
               <div className="yd-stack">
                 <Field label="Mode d'affectation">
@@ -336,6 +368,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
                       ...(assignmentMode === "manual" ? {classroom: target} : {}),
                     });
                     setTarget(""); setAssignmentReason("");
+                    setShowClassAssignment(false);
                     setMessage({text: `Affectation validée : ${result.assignment.class_name}.`, error: false});
                   }, "Affectation enregistrée et historisée.")}>Confirmer l'affectation</Button>
                 <button className="yf-link" type="button" onClick={() => setShowAssignmentHistory(value => !value)}>
@@ -351,7 +384,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
               </div>
             </>; })() : <>
               <select aria-label="Classe" value={target} onChange={ev => setTarget(ev.target.value)}><option value="">Inscrire en {curYear.name} dans…</option>{classes.data.classes.filter(c => c.active).map(c => <option key={c.id} value={c.id} disabled={c.remaining === 0}>{c.name}{c.remaining == null ? "" : ` — ${c.remaining} place(s)`}</option>)}</select>
-              <Button className="small" primary icon="adduser" disabled={!target || busy} onClick={() => run(async () => { const r = await req(`schools/${schoolId}/classes/${target}/enroll`, { students: [s.id] }); if (r.failed?.length) throw Error(r.failed[0].error); setTarget(""); }, "Élève inscrit.")}>Inscrire</Button>
+              <Button className="small" primary icon="adduser" disabled={!target || busy} onClick={() => run(async () => { const r = await req(`schools/${schoolId}/classes/${target}/enroll`, { students: [s.id] }); if (r.failed?.length) throw Error(r.failed[0].error); setTarget(""); setShowClassAssignment(false); }, "Élève inscrit.")}>Inscrire</Button>
             </>}
           </div>}
         </Card>
