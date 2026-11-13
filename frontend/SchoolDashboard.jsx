@@ -24,6 +24,7 @@ import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens
 import ClassWorkspace from "./ClassWorkspace.jsx";
 import {StudentForm,StudentFile,ClassEnrollments,ClassSetup,FormSettings,PaymentTracking,ImportStudents} from "./EnrollmentScreens.jsx";
 import {Shell,NAV,PageHeader,Card,Icon,Button} from "./yem-ui.jsx";
+import PWAInstall from "./PWAInstall.jsx";
 import "./yem-desktop.css";
 
 /* Espace réel connecté : mêmes cadre, menu et en-têtes que les maquettes (docs/maquettes),
@@ -173,12 +174,12 @@ function ModuleGrid({visibleSections,navigate}) {
     <div className="pc-module-grid">{entries.map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{schoolNav.find(n=>n[0]===id)?.[2]}</b><small>{[...s.lives.map(l=>l.label),...s.modules.map(k=>modules[k].label)].filter(Boolean).join(" · ") || s.subtitle}</small></button>)}</div>}</div>;
 }
 
-function UserMenu({user,roleLabel,onAccount,onFamilyWorkspace,onLogout}) {
+function UserMenu({user,roleLabel,photoUrl,onAccount,onFamilyWorkspace,onLogout}) {
   const [open,setOpen]=useState(false);
   const name=[user?.first_name,user?.last_name].filter(Boolean).join(" ")||user?.username||"Mon compte";
   return <div className="yd-user-wrap">
     <button type="button" className="yd-user-btn" aria-label={`Compte de ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>
-      <span className="yd-avatar"><Icon name="user" size={22} strokeWidth={0} className="filled"/></span>
+      <span className="yd-avatar">{photoUrl?<img src={photoUrl} alt="" className="yp-user-photo"/>:<Icon name="user" size={22} strokeWidth={0} className="filled"/>}</span>
       <span><b>{name}</b>{roleLabel&&<small>{roleLabel}</small>}</span><Icon name="chevron" size={18}/>
     </button>
     {open&&<div className="yd-menu right" role="menu">
@@ -204,6 +205,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [academicYears,setAcademicYears]=useState([]);
   const [workingYearId,setWorkingYearId]=useState("");
   const [yearCatalogVersion,setYearCatalogVersion]=useState(0);
+  const [ownPhoto,setOwnPhoto]=useState(null);
+  const [photoRevision,setPhotoRevision]=useState(0);
   useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
   useEffect(()=>{
     if (!chosen) {setAccess(null);return;}
@@ -231,9 +234,21 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       .catch(()=>{});
     return()=>{live=false};
   },[chosen,workingYearId,access,yearCatalogVersion]);
+  useEffect(()=>{
+    if(!chosen||!access){setOwnPhoto(null);return;}
+    let live=true;
+    get("schools/"+chosen+"/staff/me/dossier").then(d=>{if(live)setOwnPhoto(d.staff?.photo_url||null);}).catch(()=>{if(live)setOwnPhoto(null);});
+    return()=>{live=false};
+  },[chosen,access,photoRevision]);
+  useEffect(()=>{
+    const refresh=()=>setPhotoRevision(n=>n+1);
+    window.addEventListener("yem:staff-photo-updated",refresh);
+    return()=>window.removeEventListener("yem:staff-photo-updated",refresh);
+  },[]);
   const perms=access?.permissions||[];
   const can = permission => perms.includes(permission);
   const isOwner = Boolean(access?.is_owner);
+  const teacherExperience=can("school.attendance.assigned") || ["enseignant","professeur","educateur","maitre"].includes(access?.role);
   // A teacher can grade assigned courses without a school-wide grade permission.
   // The API still checks the course instructor assignment for each operation.
   const ownCourseAssessment = can("school.academic.read") && can("school.curriculum.read") && !can("school.assessments.read");
@@ -386,6 +401,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else if (perms.includes("school.finance.read")) content=<>
     <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>
     <MySchoolFunctions schoolId={chosen}/>
+    {teacherExperience&&<div className="yd-real-body"><Card title="YEM sur votre téléphone" icon="school" subtitle="Retrouvez vos cours, notes et appels depuis votre écran d’accueil."><PWAInstall/><div className="actions"><Button onClick={()=>navigate("bulletins","assessments")}>Saisir mes notes</Button><Button onClick={()=>navigate("absences","attendance")}>Faire l’appel</Button><Button onClick={()=>navigate("account")}>Mon profil et ma photo</Button></div></Card></div>}
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   else content=<>
@@ -396,7 +412,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   </>;
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
-    userMenu={<UserMenu user={user} roleLabel={roleLabel} onAccount={()=>navigate("account")}
+    userMenu={<UserMenu user={user} roleLabel={roleLabel} photoUrl={ownPhoto} onAccount={()=>navigate("account")}
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
     {message&&<p role="status" className="pc-alert">{message}</p>}
     {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school">
