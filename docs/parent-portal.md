@@ -4,7 +4,7 @@ L'espace parents est une **interface de lecture seule** sur les informations du 
 
 ## Vérification des liens
 
-Un nom, téléphone ou e-mail identique à une fiche responsable légal **ne vaut pas autorisation**. L'établissement vérifie le lien familial hors système, nomme un compte utilisateur existant avec rôle « parent » actif dans son école, puis confirme l'association via \`school.parents.manage\` (direction par défaut). L'API ne constitue pas une preuve d'identité automatique et ne stocke aucun justificatif sensible. La liaison possède l'acteur de vérification, sa date, une révision et un historique d'audit ; révocation explicite possible à tout moment. L'accès est immédiatement interrompu en cas de révocation, rôle parent retiré, membre désactivé, compte désactivé, établissement fermé ou fiche responsable/élève archivée.
+Un nom, téléphone ou e-mail identique à une fiche responsable légal **ne vaut pas autorisation**. L'établissement vérifie le lien familial hors système, nomme un compte utilisateur existant avec rôle « parent » actif dans son école, puis confirme l'association via \`school.parents.manage\` (direction par défaut). La direction confirme explicitement que le compte appartient au responsable légal sélectionné. Le POST exige le booléen `identity_verified: true`, et l’audit enregistre cette confirmation avec la révision du lien. L'API ne constitue pas une preuve d'identité automatique et ne stocke aucun justificatif sensible. La liaison possède l'acteur de vérification, sa date, une révision et un historique d'audit ; révocation explicite possible à tout moment. L'accès est immédiatement interrompu en cas de révocation, rôle parent retiré, membre désactivé, compte désactivé, établissement fermé ou fiche responsable/élève archivée.
 
 Une personne peut accéder à plusieurs enfants si **chacun** possède une liaison vérifiée. Un même enfant peut avoir plusieurs responsables si les liens sont vérifiés individuellement. Aucun accès transversal entre établissements ou familles, même si l'identifiant UUID est connu.
 
@@ -23,6 +23,7 @@ Tous les résultats utilisent des réponses privées non mises en cache, des con
 Préfixe \`/api/v1\` :
 - \`GET /parents/children\` : enfants vérifiés, toutes écoles autorisées
 - \`GET /parents/children/{student_id}/enrollments\`
+- \`GET /parents/children/{student_id}/grades\` : évaluations publiées
 - \`GET /parents/children/{student_id}/reports\`
 - \`GET /parents/children/{student_id}/reports/{report_id}\`
 - \`GET /parents/children/{student_id}/reports/{report_id}/pdf\`

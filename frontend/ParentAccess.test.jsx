@@ -77,7 +77,20 @@ test("une directrice consulte les parents par classe puis gère les accès dans 
   expect(fetch).toHaveBeenCalledWith("/api/v1/schools/mbele/members", expect.objectContaining({
     method:"POST", body:JSON.stringify({username:"famille", role:"parent", create_only:true}),
   }));
-  await user.click(screen.getByRole("button", {name:"Vérifier et activer l’accès"}));
+  const activate = screen.getByRole("button", {name:"Vérifier et activer l’accès"});
+  const verification = screen.getByRole("checkbox", {name:/J’ai vérifié que ce compte appartient/});
+  expect(activate.disabled).toBe(true);
+  await user.click(verification);
+  const account = screen.getByLabelText("Identifiant du compte parent existant");
+  await user.type(account, "-autre");
+  expect(activate.disabled).toBe(true);
+  await user.clear(account);
+  await user.type(account, "famille");
+  await user.click(verification);
+  await user.click(activate);
+  expect(fetch).toHaveBeenCalledWith("/api/v1/schools/mbele/parent-links", expect.objectContaining({
+    method:"POST", body:JSON.stringify({guardian:"guardian-1", username:"famille", identity_verified:true}),
+  }));
   const row = await screen.findByRole("row", {name:/Test Élève Responsable Test famille Actif/});
   await user.click(within(row).getByRole("button", {name:/Révoquer l’accès/}));
   expect(await screen.findByText("Révoqué")).toBeTruthy();

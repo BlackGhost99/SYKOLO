@@ -16,7 +16,7 @@ from .attendance_models import AttendanceSession, AttendanceMark
 from .curriculum_models import CourseOffering, Subject
 from .council_models import ReportAmendment
 from .finance_models import FeeCharge, FeeSchedule, FeePayment
-from .models import Organization, School, SchoolLogin, SchoolMember, SchoolRole
+from .models import SchoolAudit, Organization, School, SchoolLogin, SchoolMember, SchoolRole
 from .parent_models import GuardianAccountLink
 from .report_models import SchoolReport
 from .services import ROLE_TEMPLATES
@@ -92,7 +92,7 @@ class ParentPortalTests(TestCase):
 
     def link(self, index=0, user=None):
         u = user or self.parent_a
-        r = self.write(self.root, {"guardian": str(self.guardians[index].pk), "username": u.username})
+        r = self.write(self.root, {"guardian": str(self.guardians[index].pk), "username": u.username, "identity_verified": True})
         self.assertEqual(r.status_code, 201, r.content.decode())
         return r.json()
 
@@ -158,16 +158,23 @@ class ParentPortalTests(TestCase):
         self.assertIn("no-store", empty["Cache-Control"])
         self.login(self.secretary)
         self.assertEqual(self.write(self.root, {
-            "guardian": str(self.guardians[0].pk), "username": self.parent_a.username,
+            "guardian": str(self.guardians[0].pk), "username": self.parent_a.username, "identity_verified": True,
         }).status_code, 403)
         self.login(self.director)
         self.assertEqual(self.write(self.root, {
-            "guardian": str(self.guardians[0].pk), "username": self.outsider.username,
+            "guardian": str(self.guardians[0].pk), "username": self.outsider.username, "identity_verified": True,
         }).status_code, 422)
+        data = {"guardian": str(self.guardians[0].pk), "username": self.parent_a.username}
+        for verification in ({}, {"identity_verified": False}, {"identity_verified": "true"}):
+            self.assertEqual(self.write(self.root, {**data, **verification}).status_code, 422)
+        self.assertFalse(GuardianAccountLink.objects.exists())
         link = self.link()
         self.assertEqual(link["revision"], 1)
+        audit = SchoolAudit.objects.get(school=self.school, event="parent_link_verified", subject=link["id"])
+        self.assertEqual(audit.actor, self.director)
+        self.assertEqual(audit.details, {"revision": 1, "identity_verified": True})
         self.assertEqual(self.write(self.root, {
-            "guardian": str(self.guardians[0].pk), "username": self.parent_a.username,
+            "guardian": str(self.guardians[0].pk), "username": self.parent_a.username, "identity_verified": True,
         }).status_code, 409)
         self.login(self.parent_a)
         cards = self.client.get(self.portal).json()["children"]
@@ -409,7 +416,7 @@ class ParentPortalTests(TestCase):
 
     def test_csrf_404_anonymous_and_no_delete(self):
         self.assertEqual(self.client.post(
-            self.root, json.dumps({"username": self.parent_a.username,
+            self.root, json.dumps({"username": self.parent_a.username, "identity_verified": True,
                                    "guardian": str(self.guardians[0].pk)}),
             content_type="application/json",
         ).status_code, 403)
