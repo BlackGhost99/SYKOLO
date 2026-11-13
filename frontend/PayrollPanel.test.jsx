@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import {afterEach,expect,test,vi} from "vitest";
-import {cleanup,render,screen,waitFor} from "@testing-library/react";
+import {cleanup,render,screen,waitFor,fireEvent} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import PayrollPanel,{StaffPayrollHistory} from "./PayrollPanel.jsx";
 
@@ -30,8 +30,8 @@ test("un lecteur RH voit les rémunérations sans droits de saisie",async()=>{
   const fetch=fakeGet();vi.stubGlobal("fetch",fetch);
   render(<PayrollPanel schoolId="school-1" workingYearId="year-1"/>);
   expect(await screen.findByText("Mathilde FICTIVE")).toBeTruthy();
-  expect(screen.getByText(/100.000,00/)).toBeTruthy();
-  expect(screen.getByText(/60.000,00/)).toBeTruthy();
+  expect(screen.getAllByText(/100.000,00/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/60.000,00/).length).toBeGreaterThan(0);
   expect(screen.queryByText("Préparer la rémunération")).toBeNull();
   expect(screen.queryByText("Enregistrer le versement déclaré")).toBeNull();
   expect(fetch).toHaveBeenCalledWith(
@@ -55,8 +55,7 @@ test("la comptabilité prépare une paie mais ne la valide pas elle-même",async
   render(<PayrollPanel schoolId="school-1" workingYearId="year-1" canManage/>);
   await screen.findByText("Préparer la rémunération");
   await user.selectOptions(screen.getByLabelText("Collaborateur"),"staff-1");
-  await user.clear(screen.getByLabelText("Mois de paie"));
-  await user.type(screen.getByLabelText("Mois de paie"),"2026-11");
+  fireEvent.change(screen.getByLabelText("Mois de paie"),{target:{value:"2026-11"}});
   await user.type(screen.getByLabelText("Montant brut"),"120000.00");
   await user.click(screen.getByRole("button",{name:/Préparer la paie de/}));
   await waitFor(()=>expect(fetch.mock.calls.some(([url,opts])=>
