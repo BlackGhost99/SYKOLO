@@ -1,0 +1,95 @@
+/* Espace professeur mobile YEM : mêmes tokens que le produit, sans thème parallèle. */
+.ym-prof-app{--ym-green:var(--yd-green,#2f6b37);--ym-line:var(--yd-line,#e3e6e3);
+  min-height:100dvh;background:var(--yd-bg,#f8f9f8);color:var(--yd-ink,#161a17);font-family:var(--yd-font,system-ui)}
+.ym-prof-app *{box-sizing:border-box}
+.ym-prof-header{background:#fff;border-bottom:1px solid var(--ym-line);padding:12px 16px 14px;
+  position:sticky;top:0;z-index:20}
+.ym-prof-header-top{display:flex;align-items:center;justify-content:space-between}
+.ym-prof-header .yd-logo.compact b{font-size:28px}.ym-prof-header .yd-logo.compact span{font-size:10px}
+.ym-prof-portrait{width:42px;height:42px;border-radius:50%;border:1px solid var(--ym-line);
+  background:var(--yd-green-softer,#eff5ec);display:grid;place-items:center;overflow:hidden;color:var(--ym-green)}
+.ym-prof-portrait img{width:100%;height:100%;object-fit:cover}
+.ym-prof-school{display:flex;align-items:baseline;gap:8px;justify-content:space-between;margin-top:8px}
+.ym-prof-school>span{font-size:10px;color:var(--ym-green);font-weight:700;letter-spacing:.09em}
+.ym-prof-school>strong,.ym-prof-school select{font-size:13px;font-weight:600;max-width:60%;text-overflow:ellipsis;overflow:hidden}
+.ym-prof-school select{border:1px solid var(--ym-line);border-radius:6px;background:#fff;padding:4px}
+.ym-prof-year{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;
+  font-size:12px;color:var(--yd-muted,#6b7175)}
+.ym-prof-year select{font-size:12px;background:transparent;border:0;font-weight:600;min-width:0;max-width:60%}
+.ym-prof-body{max-width:800px;margin:auto;padding:16px 12px calc(95px + env(safe-area-inset-bottom))}
+.ym-page{display:flex;flex-direction:column;gap:14px;min-width:0}
+.ym-page h1{font-size:22px;line-height:1.2;margin:0}.ym-prof-greeting{margin:-10px 0 0;color:var(--yd-muted)}
+.ym-prof-app .yd-card{border-radius:var(--yd-radius,10px);min-width:0}
+.ym-prof-app .yd-card-title h2{font-size:18px}.ym-prof-app .yd-card .yd-btn{min-height:42px}
+.ym-prof-app .ym-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.ym-overview>div{background:#fff;border:1px solid var(--ym-line);border-radius:10px;padding:12px;
+  display:grid;grid-template-columns:26px 1fr;align-items:center;gap:5px;color:var(--ym-green)}
+.ym-overview strong{font-size:22px;color:var(--yd-ink)}.ym-overview span{grid-column:1 / -1;font-size:12px;color:var(--yd-muted)}
+.ym-shortcuts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ym-shortcuts button{min-width:0;text-align:left}
+.ym-prof-nav{position:fixed;z-index:25;bottom:0;left:0;right:0;display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));background:#fff;
+  border-top:1px solid var(--ym-line);padding:6px 5px calc(6px + env(safe-area-inset-bottom));
+  box-shadow:0 -2px 12px rgba(20,45,25,.05)}
+.ym-prof-nav button{display:flex;align-items:center;justify-content:center;gap:4px;flex-direction:column;
+  border:0;border-radius:8px;background:transparent;min-height:55px;color:#4e5c53;font-size:10px;font-weight:500}
+.ym-prof-nav button.active{background:var(--yd-green-soft,#e3eedd);color:var(--ym-green);font-weight:700}
+.ym-prof-nav button:focus-visible{outline:2px solid var(--ym-green);outline-offset:2px}
+.ym-prof-footer{text-align:center;color:var(--yd-muted);padding:12px;font-size:11px}
+.ym-label,.ym-select-row label,.ym-stack label,.ym-attendance-actions label,.ym-student label,.ym-inline-label{
+  display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;min-width:0}
+.ym-select-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ym-prof-app :is(select,input,textarea):not([type="file"]){font-family:inherit;max-width:100%;min-width:0;
+  border:1px solid #cdd8ce;border-radius:7px;background:#fff;padding:9px;font-size:14px;color:var(--yd-ink)}
+.ym-prof-app textarea{width:100%;resize:vertical;min-height:68px}
+.ym-stack{display:grid;gap:12px;margin:12px 0}
+.ym-details{border:1px solid var(--ym-line);padding:12px;border-radius:9px;margin-top:12px}
+.ym-details summary{cursor:pointer;font-weight:600;color:var(--ym-green)}
+.ym-hint,.ym-progress{font-size:12px;color:var(--yd-muted);line-height:1.5}
+.ym-alert,.ym-notice{padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.5}
+.ym-alert{background:var(--yd-red-bg,#f7dcda);color:var(--yd-red-ink,#8e2a22)}
+.ym-notice{background:var(--yd-green-softer,#eff5ec);color:var(--ym-green)}
+.ym-student-list{display:grid;gap:0;margin:12px 0}
+.ym-student,.ym-attendance-student,.ym-average-row{display:flex;align-items:center;gap:10px;
+  justify-content:space-between;border-bottom:1px solid var(--ym-line);padding:12px 0;min-width:0}
+.ym-student-name{display:flex;gap:9px;align-items:center;min-width:0}
+.ym-student-name span:last-child,.ym-average-row>span{min-width:0}
+.ym-student-name strong,.ym-average-row strong{display:block;font-size:13px;line-height:1.3;overflow-wrap:anywhere}
+.ym-student-name small,.ym-average-row small{display:block;font-size:11px;color:var(--yd-muted);margin-top:2px}
+.ym-num{display:inline-grid;place-items:center;min-width:26px;height:26px;border-radius:6px;
+  background:var(--yd-green-softer);color:var(--ym-green);font-weight:700;font-size:12px}
+.ym-student>label{width:110px;flex:0 0 110px}
+.ym-student>label :is(input,select){width:100%}
+.ym-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ym-summary-grid>div{padding:12px 9px;background:var(--yd-green-softer);border-radius:8px}
+.ym-summary-grid strong{display:block;font-size:20px;white-space:nowrap;color:var(--ym-green)}
+.ym-summary-grid small{display:block;margin-top:3px;font-size:11px;color:var(--yd-muted)}
+.ym-average-row .ym-score{white-space:nowrap;color:var(--ym-green);font-size:14px}
+.ym-attendance-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.ym-attendance-stats>div{display:grid;text-align:center;padding:10px 3px;border-radius:7px;background:var(--yd-green-softer)}
+.ym-attendance-stats>div:nth-child(2){background:var(--yd-red-bg)}
+.ym-attendance-stats>div:nth-child(3){background:var(--yd-yellow-bg)}
+.ym-attendance-stats strong{font-size:20px}.ym-attendance-stats span{font-size:11px}
+.ym-attendance-actions{display:flex;align-items:end;justify-content:space-between;gap:8px;margin:12px 0;flex-wrap:wrap}
+.ym-attendance-student{align-items:stretch;flex-direction:column;gap:10px}
+.ym-status-buttons{display:flex;gap:5px;flex-wrap:wrap}
+.ym-status{border:1px solid var(--ym-line);border-radius:8px;background:#fff;
+  padding:8px 10px;font-size:12px;min-height:40px;flex:1;color:var(--yd-text)}
+.ym-status.selected.present{background:var(--yd-green-soft);border-color:var(--ym-green);color:var(--ym-green);font-weight:700}
+.ym-status.selected.absent{background:var(--yd-red-bg);border-color:var(--yd-red-ink);color:var(--yd-red-ink);font-weight:700}
+.ym-status.selected.late{background:var(--yd-yellow-bg);border-color:var(--yd-yellow-ink);font-weight:700}
+.ym-status:disabled{opacity:.6}.ym-prof-app .teacher-profile{width:100%}
+@media(min-width:760px){.ym-prof-body{padding:24px 24px 100px}}
+@media(max-width:360px){.ym-prof-header{padding:10px 12px}.ym-prof-body{padding-inline:8px}
+  .ym-select-row{grid-template-columns:1fr}.ym-shortcuts{grid-template-columns:1fr}
+  .ym-status{padding-inline:5px;font-size:11px}.ym-prof-nav button{font-size:9px}}
+
+/* Lisibilité sur Android étroit : les actions du design system doivent pouvoir aller à la ligne. */
+.ym-prof-app .yd-btn{white-space:normal;line-height:1.3;font-size:14px;padding:9px 12px;min-height:42px;
+  text-align:center;max-width:100%}
+.ym-prof-app .ym-shortcuts .yd-btn{width:100%;justify-content:flex-start;text-align:left}
+.ym-account-security{margin-top:12px}
+.ym-account-security .pc-account-card{max-width:100%}
+@media(max-width:400px){.ym-prof-app .yd-card{padding:12px}
+  .ym-prof-app .ym-shortcuts{grid-template-columns:1fr 1fr;gap:7px}
+  .ym-prof-app .ym-shortcuts .yd-btn{padding:8px;font-size:12px;gap:6px}
+}

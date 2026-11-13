@@ -10,7 +10,7 @@ from . import calendar_views
 from . import secondary_views
 from . import demo_payment_views, admission_cash_views, admission_finance_views
 from . import parent_dossier_views
-from . import staff_onboarding_views
+from . import staff_onboarding_views, staff_profile_views
 from . import owner_overview_views
 from . import cycle_access_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
@@ -141,6 +141,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>", assessment_views.assessment_detail),
     path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>/roster", assessment_views.roster),
     path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>/grades", assessment_views.grades),
+    path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>/grades/batch", assessment_views.grade_batch),
+    path("schools/<uuid:school_id>/courses/<uuid:course_id>/averages", assessment_views.course_averages),
     path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>/grades/<uuid:grade_id>", assessment_views.grade_detail),
     path("schools/<uuid:school_id>/subjects", curriculum_views.subjects),
     path("schools/<uuid:school_id>/subjects/<uuid:subject_id>", curriculum_views.subject_detail),
@@ -160,6 +162,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/members/<uuid:member_id>/cycle-access", cycle_access_views.member_cycle_access),
     path("schools/<uuid:school_id>/staff", staff_views.staff),
     path("schools/<uuid:school_id>/staff/me/assignments", staff_views.my_assignments),
+    path("schools/<uuid:school_id>/staff/me/profile", staff_profile_views.my_profile),
+    path("schools/<uuid:school_id>/staff/<uuid:staff_id>/photo", staff_profile_views.staff_photo),
     path("schools/<uuid:school_id>/staff/<uuid:staff_id>", staff_views.staff_detail),
     path("schools/<uuid:school_id>/staff-assignments", staff_views.assignments),
     path("schools/<uuid:school_id>/staff-assignments/<uuid:assignment_id>", staff_views.assignment_detail),

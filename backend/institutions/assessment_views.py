@@ -1,7 +1,7 @@
 """Draft assessments with immutable grading policy snapshots and school-specific gradebooks."""
 import re
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from uuid import UUID
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -280,3 +280,161 @@ def grade_detail(request,school_id,assessment_id,grade_id):
             log_event(school,request,"grade_updated",grade.pk)
     except ValidationError as exc:return exception_response(exc)
     return JsonResponse(grade_output(grade))
+
+
+@require_http_methods(["POST"])
+@authorized
+def grade_batch(request, school_id, assessment_id):
+    """Save a mobile gradebook atomically: all valid changes or none."""
+    school, assessment, error = assessment_access(request, school_id, assessment_id, write=True)
+    if error is not None:
+        return error
+    body, error = parse_body(request)
+    if error is not None:
+        return error
+    if (not isinstance(body, dict) or set(body) != {"grades"} or
+            not isinstance(body["grades"], list) or not 1 <= len(body["grades"]) <= 100):
+        return JsonResponse({"error": "Lot invalide : entre 1 et 100 notes."}, status=422)
+
+    try:
+        rows = []
+        seen = set()
+        for entry in body["grades"]:
+            if not isinstance(entry, dict) or set(entry) != {"enrollment", "score", "revision"}:
+                raise ValueError("Champs de note invalides.")
+            try:
+                if not isinstance(entry["enrollment"], str):
+                    raise ValueError()
+                enrollment_id = UUID(entry["enrollment"])
+            except (TypeError, ValueError, AttributeError):
+                raise ValueError("Identifiant d'inscription invalide.") from None
+            if enrollment_id in seen:
+                raise ValueError("Inscription répétée dans le lot.")
+            seen.add(enrollment_id)
+            revision = entry["revision"]
+            if type(revision) is not int or revision < 0:
+                raise ValueError("Révision de note invalide.")
+            result = verify_score(assessment, entry["score"])
+            rows.append((enrollment_id, entry["score"], revision, result))
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+
+    try:
+        with transaction.atomic():
+            locked = Assessment.objects.select_for_update().get(school=school, pk=assessment.pk)
+            if locked.published or not locked.active:
+                return JsonResponse({"error": "Évaluation publiée ou archivée."}, status=409)
+            if not locked.course.active or not locked.course.year.active:
+                return JsonResponse({"error": "Cours ou année inactive."}, status=409)
+            allowed = set(Enrollment.objects.filter(
+                school=school, pk__in=seen, year=locked.course.year,
+                classroom=locked.course.classroom, active=True, student__active=True,
+            ).values_list("pk", flat=True))
+            if allowed != seen:
+                return JsonResponse({"error": "Inscription hors de la classe autorisée."}, status=422)
+            previous = {
+                item.enrollment_id: item for item in AssessmentGrade.objects.select_for_update().filter(
+                    school=school, assessment=locked, enrollment_id__in=seen,
+                )
+            }
+            # Validate every revision before writing anything.
+            for enrollment_id, _score, revision, _result in rows:
+                current = previous.get(enrollment_id)
+                if revision != (current.revision if current else 0):
+                    return JsonResponse({"error": "Conflit de version : rechargez les notes.",
+                                         "enrollment": str(enrollment_id)}, status=409)
+            output = []
+            for enrollment_id, score, _revision, result in rows:
+                grade = previous.get(enrollment_id)
+                if grade is None:
+                    grade = AssessmentGrade(school=school, assessment=locked,
+                                            enrollment_id=enrollment_id, author=request.user)
+                else:
+                    grade.revision += 1
+                    grade.author = request.user
+                grade.score = score
+                grade.status = result["status"]
+                grade.percent = result["percent"]
+                grade.label = result["label"] or ""
+                grade.full_clean()
+                grade.save()
+                output.append(grade_output(grade))
+            log_event(school, request, "grades_batch_saved", locked.pk)
+    except ValidationError as exc:
+        return exception_response(exc)
+    return JsonResponse({"grades": output, "saved": len(output)})
+
+
+@require_GET
+@authorized
+def course_averages(request, school_id, course_id):
+    """Provisional weighted subject averages based on *each saved grading snapshot*.
+
+    Missing entries are excluded, not counted as zeros. Results are normalized from
+    the underlying grading policy percentages (numeric, letters, competencies).
+    They are not a published bulletin or a definitive class ranking.
+    """
+    school, course, error = course_access(request, school_id, course_id)
+    if error is not None:
+        return error
+    period_id = request.GET.get("period", "")
+    if period_id:
+        try:
+            period_key = UUID(period_id)
+        except (ValueError, AttributeError, TypeError):
+            return JsonResponse({"error": "Période invalide."}, status=422)
+        if not AcademicPeriod.objects.filter(
+            school=school, year=course.year, pk=period_key,
+        ).exists():
+            return JsonResponse({"error": "Période hors du cours."}, status=422)
+    else:
+        period_key = None
+    assessments = list(Assessment.objects.filter(
+        school=school, course=course, active=True,
+    ).filter(**({"period_id": period_key} if period_key else {})).order_by(
+        "assessment_date", "pk",
+    )[:300])
+    enrollments = list(Enrollment.objects.select_related("student").filter(
+        school=school, year=course.year, classroom=course.classroom,
+        active=True, student__active=True,
+    ).order_by("student__last_name", "student__first_name", "pk")[:500])
+    assessed = {a.pk: a for a in assessments}
+    points = {}
+    for grade in AssessmentGrade.objects.filter(
+        school=school, assessment_id__in=assessed,
+        enrollment_id__in=[e.pk for e in enrollments],
+        status="calculated", percent__isnull=False,
+    ):
+        weight = assessed[grade.assessment_id].weight
+        item = points.setdefault(grade.enrollment_id, [Decimal("0"), Decimal("0"), 0])
+        item[0] += grade.percent * weight
+        item[1] += weight
+        item[2] += 1
+    output = []
+    for enrollment in enrollments:
+        value = points.get(enrollment.pk)
+        avg = (value[0] / value[1]) if value and value[1] else None
+        on_twenty = (avg / Decimal("5")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if avg is not None else None
+        output.append({
+            "enrollment": str(enrollment.pk),
+            "student_code": enrollment.student.student_code,
+            "first_name": enrollment.student.first_name,
+            "last_name": enrollment.student.last_name,
+            "evaluated": value[2] if value else 0,
+            "expected": len(assessments),
+            "complete": bool(value and len(assessments) and value[2] == len(assessments)),
+            "average_percent": str(avg.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if avg is not None else None,
+            "average_on_20": str(on_twenty) if on_twenty is not None else None,
+        })
+    values = [Decimal(row["average_on_20"]) for row in output if row["average_on_20"] is not None]
+    class_average = (sum(values) / len(values)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP,
+    ) if values else None
+    return JsonResponse({
+        "course": str(course.pk), "period": str(period_key) if period_key else None,
+        "assessment_count": len(assessments), "student_count": len(output),
+        "class_average_on_20": str(class_average) if class_average is not None else None,
+        "calculated_count": len(values),
+        "students": output,
+        "provisional": True,
+    })
