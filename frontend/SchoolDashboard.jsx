@@ -4,6 +4,7 @@ import AcademicPanel from "./AcademicPanel.jsx";
 import PedagogicalCalendar from "./PedagogicalCalendar.jsx";
 import StaffPanel from "./StaffPanel.jsx";
 import TeacherHome from "./TeacherHome.jsx";
+import TeacherMobileWorkspace from "./TeacherMobileWorkspace.jsx";
 import TeacherProfile from "./TeacherProfile.jsx";
 import StaffOnboarding from "./StaffOnboarding.jsx";
 import OwnerDashboard from "./OwnerDashboard.jsx";
@@ -220,6 +221,15 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [myPhotoUrl,setMyPhotoUrl]=useState(null);
   const [hasStaffProfile,setHasStaffProfile]=useState(false);
   const [photoRevision,setPhotoRevision]=useState(0);
+  const [mobileTeacher,setMobileTeacher]=useState(()=>
+    typeof window!=="undefined" && Boolean(window.matchMedia?.("(max-width: 760px)")?.matches));
+  useEffect(()=>{
+    if(typeof window==="undefined"||!window.matchMedia)return;
+    const query=window.matchMedia("(max-width: 760px)");
+    const update=()=>setMobileTeacher(query.matches);
+    update();query.addEventListener?.("change",update);
+    return()=>query.removeEventListener?.("change",update);
+  },[]);
   const [page,setPage]=useState("dashboard");
   const [sub,setSub]=useState("");
   const [params,setParams]=useState(null);
@@ -375,6 +385,11 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     return <FamilyWorkspace accountView={accountView} onLogout={onLogout}
       onSchoolWorkspace={canUseSchoolWorkspace?()=>setShowWorkspace(true):undefined}/>;
   }
+  if (mobileTeacher&&access?.role==="enseignant"&&!user?.is_platform_admin) return <TeacherMobileWorkspace
+    key={chosen} schoolId={chosen} schoolName={schoolName} user={user}
+    permissions={perms} years={academicYears} workingYearId={workingYearId}
+    onYearChange={setWorkingYearId} schools={schools} onSchoolChange={setChosen}
+    onLogout={onLogout}/>;
   let content;
   if (page==="profile") content=<><PageHeader title="Mon profil professionnel" subtitle="Photo et informations synchronisées avec la fiche Personnel"/><div className="yd-real-body"><TeacherProfile schoolId={chosen}/></div></>;
   else if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
