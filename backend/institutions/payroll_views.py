@@ -136,7 +136,7 @@ def salary_payload(data, *, creation):
         out["period"] = iso_day(data["period"])
         if out["period"].day != 1:
             raise ValueError("La période doit commencer le premier du mois.")
-        if data["basis"] not in BASIS:
+        if not isinstance(data["basis"], str) or data["basis"] not in BASIS:
             raise ValueError("Base de rémunération invalide.")
         out["basis"] = data["basis"]
         if not isinstance(data["currency"], str) or not CURRENCY.fullmatch(data["currency"]):
@@ -305,7 +305,7 @@ def pay(request, school_id, run_id):
         return error("Champs de règlement invalides.")
     try:
         amount=money(data["amount"])
-        if data["method"] not in METHOD or not isinstance(data["method"],str):
+        if not isinstance(data["method"],str) or data["method"] not in METHOD:
             raise ValueError("Mode de paiement déclaré invalide.")
         reference=data["reference"]
         if not isinstance(reference,str) or not 2<=len(reference.strip())<=120:
