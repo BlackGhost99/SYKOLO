@@ -58,7 +58,9 @@ def primary_guardians(school, student_ids):
 
 def enrollment_balances(school, enrollment_ids, requested_currency=None):
     """Balances in the explicitly selected currency; other currencies stay selectable."""
-    charges = list(FeeCharge.objects.filter(school=school, enrollment_id__in=enrollment_ids).values("id", "enrollment_id", "amount", "currency", "due_date"))
+    charges = list(FeeCharge.objects.filter(school=school, enrollment_id__in=enrollment_ids).values(
+        "id", "enrollment_id", "amount", "scholarship_discount", "currency", "due_date",
+    ))
     currencies = sorted({c["currency"] for c in charges})
     currency = requested_currency or (currencies[0] if currencies else "XAF")
     paid_by_charge = dict(
@@ -72,8 +74,11 @@ def enrollment_balances(school, enrollment_ids, requested_currency=None):
             continue
         b = balances[c["enrollment_id"]]
         paid = paid_by_charge.get(c["id"]) or ZERO
-        remaining = c["amount"] - paid
-        b["billed"] += c["amount"]
+        # A validated grant reduces the enforceable debt, never the cash received.
+        # Display net tuition consistently with the student's official dossier.
+        net_due = c["amount"] - c["scholarship_discount"]
+        remaining = net_due - paid
+        b["billed"] += net_due
         b["paid"] += paid
         if remaining > 0 and c["due_date"]:
             if c["due_date"] < today:

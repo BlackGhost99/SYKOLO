@@ -462,6 +462,58 @@ class EnrollmentFinancialConditionsTests(TestCase):
         self.assertEqual(charges.status_code, 200)
         self.assertEqual(charges.json()["charges"][0]["balance"], "36000.00")
 
+        # M3.1 — Every authorized financial screen must show the net debt.
+        # This uses an actual approved partial scholarship and its generated
+        # charge, not an artificial write that bypasses scholarship validation.
+        base = f"/api/v1/schools/{self.school.pk}/"
+        statement = self.client.get(base + f"finance/enrollments/{enrollment.pk}/statement")
+        self.assertEqual(statement.status_code, 200, statement.content)
+        self.assertEqual(statement.json()["totals"]["XAF"], {
+            "billed": "36000.00", "paid": "0.00", "balance": "36000.00",
+        })
+        students = self.client.get(base + "overview/students", {"year": str(self.year.pk)})
+        self.assertEqual(students.status_code, 200, students.content)
+        self.assertEqual(students.json()["students"][0]["finance"]["billed"], "36000.00")
+        self.assertEqual(students.json()["students"][0]["finance"]["balance"], "36000.00")
+        school_finances = self.client.get(base + "overview/finance", {
+            "year": str(self.year.pk), "currency": "XAF",
+        })
+        self.assertEqual(school_finances.status_code, 200, school_finances.content)
+        self.assertEqual(school_finances.json()["outstanding"], "36000.00")
+        classes = self.client.get(base + "overview/classes", {"year": str(self.year.pk)})
+        self.assertEqual(classes.status_code, 200, classes.content)
+        self.assertEqual(classes.json()["classes"][0]["finance"]["billed"], "36000.00")
+        self.assertEqual(classes.json()["classes"][0]["finance"]["balance"], "36000.00")
+        summary = self.client.get(base + "finance/summary", {"year": str(self.year.pk)})
+        self.assertEqual(summary.status_code, 200, summary.content)
+        self.assertEqual(summary.json()["currencies"]["XAF"]["billed"], "36000.00")
+        self.assertEqual(summary.json()["currencies"]["XAF"]["balance"], "36000.00")
+
+        # After a partial receipt, no screen may silently restore the grant
+        # to the unpaid amount. The grant itself is never a cash receipt.
+        receipt = self.post(f"schools/{self.school.pk}/finance/payments", {
+            "charge": str(charge.pk), "amount": "10000.00", "method": "especes",
+            "reference": "M3-1-TEST-ONLY", "paid_on": "2026-11-10",
+            "idempotency_key": str(uuid.uuid4()),
+        })
+        self.assertEqual(receipt.status_code, 201, receipt.content)
+        statement_paid = self.client.get(
+            base + f"finance/enrollments/{enrollment.pk}/statement"
+        ).json()["totals"]["XAF"]
+        self.assertEqual(statement_paid, {
+            "billed": "36000.00", "paid": "10000.00", "balance": "26000.00",
+        })
+        self.assertEqual(
+            self.client.get(base + "overview/finance", {
+                "year": str(self.year.pk), "currency": "XAF",
+            }).json()["outstanding"], "26000.00",
+        )
+        self.assertEqual(
+            self.client.get(base + "finance/summary", {
+                "year": str(self.year.pk),
+            }).json()["currencies"]["XAF"]["balance"], "26000.00",
+        )
+
     def test_fixed_grant_allocates_admission_first_then_tuition(self):
         FeeSchedule.objects.create(
             school=self.school, year=self.year, scope_key="", code="scolarite-fixe",

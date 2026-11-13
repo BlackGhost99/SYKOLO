@@ -441,7 +441,9 @@ def statement(request, school_id, enrollment_id):
         total = totals.setdefault(currency, {
             "billed": Decimal("0.00"), "paid": Decimal("0.00"), "balance": Decimal("0.00"),
         })
-        total["billed"] += Decimal(item["amount"])
+        # The statement reports the post-scholarship amount actually owed,
+        # rather than counting the grant as an unpaid school fee.
+        total["billed"] += Decimal(item["net_amount"])
         total["paid"] += Decimal(item["paid"])
         total["balance"] += Decimal(item["balance"])
         result.append(item)
