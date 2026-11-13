@@ -92,7 +92,12 @@ export default function StudentPanel({schoolId}) {
         </select>
       </label>
       {displayed && <>
-        <p><strong>{displayed.last_name} {displayed.first_name}</strong> · {displayed.student_code}</p>
+        <p><strong>{displayed.last_name} {displayed.first_name}</strong></p>
+        <section aria-label="Matricules de l'élève" className="yp-settings">
+          <p>Matricule YEM : <strong>{displayed.matricule_yem}</strong></p>
+          <p>Matricule établissement : <strong>{displayed.student_code}</strong></p>
+          <p className="hint">Ces références identifient le dossier. Seule une inscription officielle valide la scolarité pour une année donnée.</p>
+        </section>
         <form onSubmit={e=>{e.preventDefault();run(async()=>{
           await call(base+"students/"+chosen+"/guardians",{
             full_name:parentName,relationship:parentRelation,phone:parentPhone,email:parentEmail,

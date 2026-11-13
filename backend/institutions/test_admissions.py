@@ -8,7 +8,7 @@ from .admission_models import AdmissionApplication, AdmissionEvent
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
 from .models import Organization, School, SchoolMember, SchoolRole
 from .services import ROLE_TEMPLATES
-from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
+from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent, StudentNumbering
 
 
 class AdmissionWorkflowTests(TestCase):
@@ -112,6 +112,87 @@ class AdmissionWorkflowTests(TestCase):
         self.assertEqual(history.status_code, 200)
         self.assertEqual([x["status"] for x in history.json()["history"]],
                          ["submitted", "review", "accepted", "enrolled"])
+
+    def test_m26_returns_official_identifiers_only_after_finalization(self):
+        row = self.create()
+        self.assertIsNone(row["official_enrollment"])
+        accepted = self.decide(row).json()
+        self.assertIsNone(accepted["official_enrollment"])
+        self.assertEqual(Student.objects.count(), 0)
+
+        finalized = self.convert(row)
+        self.assertEqual(finalized.status_code, 201, finalized.content.decode())
+        payload = finalized.json()
+        official = payload["official_enrollment"]
+        enrollment = Enrollment.objects.select_related("student").get(pk=payload["enrollment"])
+        self.assertEqual(official["id"], str(enrollment.pk))
+        self.assertEqual(official["student"], str(enrollment.student_id))
+        self.assertEqual(official["student_code"], enrollment.student.student_code)
+        self.assertEqual(official["matricule_yem"], enrollment.student.matricule_yem)
+        self.assertEqual(official["year"], str(self.year.pk))
+        self.assertEqual(official["classroom"], str(self.classroom.pk))
+        self.assertEqual(official["enrolled_on"], "2026-10-03")
+
+        replay = self.convert(row)
+        self.assertEqual(replay.status_code, 200, replay.content.decode())
+        self.assertEqual(replay.json()["official_enrollment"], official)
+        self.assertEqual(Enrollment.objects.count(), 1)
+        self.assertEqual(Student.objects.count(), 1)
+        self.assertEqual(EnrollmentEvent.objects.count(), 1)
+
+        listed = self.client.get(self.base).json()["applications"][0]
+        detailed = self.client.get(self.base + "/" + row["id"]).json()
+        self.assertEqual(listed["official_enrollment"], official)
+        self.assertEqual(detailed["official_enrollment"], official)
+
+    def test_m26_school_numbering_allocated_once_at_finalization(self):
+        rule = StudentNumbering.objects.create(
+            school=self.school, enabled=True, template="ECOLE-{n}",
+            digits=5, next_number=21,
+        )
+        row = self.create()
+        self.assertEqual(self.decide(row).status_code, 200)
+        rule.refresh_from_db()
+        self.assertEqual(rule.next_number, 21)
+        self.assertEqual(Student.objects.count(), 0)
+
+        finalized = self.convert(row)
+        self.assertEqual(finalized.status_code, 201, finalized.content.decode())
+        official = finalized.json()["official_enrollment"]
+        self.assertEqual(official["student_code"], "ECOLE-00021")
+        self.assertRegex(official["matricule_yem"], r"^YEM-[0-9A-F]{32}$")
+        self.assertNotEqual(official["student_code"], official["matricule_yem"])
+        rule.refresh_from_db()
+        self.assertEqual(rule.next_number, 22)
+
+        self.assertEqual(self.convert(row).status_code, 200)
+        rule.refresh_from_db()
+        self.assertEqual(rule.next_number, 22)
+
+    def test_m26_existing_student_keeps_both_matricules(self):
+        student = Student.objects.create(
+            school=self.school, student_code="HIST-004",
+            first_name="Léa", last_name="Nzamba",
+        )
+        original_yem = student.matricule_yem
+        row = self.create(self.data(existing=student))
+        self.assertEqual(self.decide(row).status_code, 200)
+        finalized = self.convert(row)
+        self.assertEqual(finalized.status_code, 201, finalized.content.decode())
+        official = finalized.json()["official_enrollment"]
+        self.assertEqual(official["student"], str(student.pk))
+        self.assertEqual(official["student_code"], "HIST-004")
+        self.assertEqual(official["matricule_yem"], original_yem)
+        self.assertEqual(Student.objects.count(), 1)
+
+    def test_m26_teacher_cannot_finalize_even_with_accepted_application(self):
+        row = self.create()
+        self.assertEqual(self.decide(row).status_code, 200)
+        self.login(self.teacher)
+        denied = self.convert(row)
+        self.assertEqual(denied.status_code, 403)
+        self.assertFalse(Enrollment.objects.exists())
+        self.assertFalse(Student.objects.exists())
 
     def test_capacity_checked_at_conversion_not_assumed_reservation(self):
         first = self.create()

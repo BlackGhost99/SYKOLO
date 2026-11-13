@@ -263,10 +263,12 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
         {current.finance?.blocker&&<p role="status" className="ar-missing">Avant l’inscription définitive : {current.finance.blocker}</p>}
       </div>}
       {current.status==="accepted"&&canEnroll&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
-        await admissionApi(base+"/"+current.id+"/convert",{
+        const confirmed=await admissionApi(base+"/"+current.id+"/convert",{
           revision:current.revision,enrolled_on:enrollDate
         });
-        setMessage("Inscription officielle créée ; vous pouvez gérer les frais dans la caisse scolaire.");
+        setMessage(confirmed.official_enrollment
+          ? "Inscription enregistrée. Les matricules officiels figurent dans le récapitulatif."
+          : "Inscription enregistrée. Actualisez pour consulter les références officielles.");
       })}}>
         <h3>Inscription définitive</h3>
         <p className="hint">Le bouton devient disponible une fois les frais exigibles payés ou couverts par une bourse. La capacité est revérifiée avant la finalisation.</p>
@@ -277,7 +279,17 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
         </div>
         <button disabled={busy||!enrollDate||Boolean(current.finance?.blocker)} type="submit">Confirmer l’inscription définitive</button>
       </form>}
-      {current.status==="enrolled"&&<p>Inscription confirmée</p>}
+      {current.status==="enrolled"&&<section className="yp-settings" aria-label="Inscription définitive confirmée">
+        <strong>Inscription confirmée</strong>
+        {current.official_enrollment ? <>
+          <p>Matricule YEM : <strong>{current.official_enrollment.matricule_yem}</strong></p>
+          <p>Matricule établissement : <strong>{current.official_enrollment.student_code}</strong></p>
+          <p>Année scolaire : {years.find(y=>y.id===current.official_enrollment.year)?.name||"Année enregistrée"}
+            {" · "}Classe : {classes.find(c=>c.id===current.official_enrollment.classroom)?.name||"Classe enregistrée"}
+            {" · "}Date : {current.official_enrollment.enrolled_on}</p>
+          <p className="hint">Ces références sont conservées dans la fiche officielle de l'élève. Une réinscription ultérieure ne crée pas un nouveau matricule.</p>
+        </> : <p>Inscription réalisée. Actualisez les candidatures pour consulter les références officielles.</p>}
+      </section>}
       <details className="ar-options">
         <summary>Options avancées — historique des décisions</summary>
         <button type="button" disabled={busy} onClick={()=>run(async()=>{
