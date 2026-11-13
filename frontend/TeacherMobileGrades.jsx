@@ -280,10 +280,10 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
     </section>}
     {mode==="moyennes"&&course&&<section className="ym-averages-view">
       {!means?<p role="status" className="ym-hint">Calcul des moyennes…</p>:<>
-        <p className="ym-hint">Résultats provisoires de la matière · {means.assessment_count} évaluation(s).
+        <p className="ym-hint">Résultats provisoires calculés pour cette matière · {means.assessment_count} évaluation(s).
           Pondérations et barèmes issus de YEM.</p>
         <div className="ym-stats-four">
-          <div><span>Moyenne de la classe</span><strong>{displayNumber(means.class_average_on_20)} <small>/ 20</small></strong></div>
+          <div><span>Moyenne de la classe</span><strong>{displayNumber(means.class_average_on_20)+" / 20"}</strong></div>
           <div><span>Meilleure moyenne</span><strong>{displayNumber(highest)} <small>/ 20</small></strong></div>
           <div><span>Plus faible moyenne</span><strong>{displayNumber(lowest)} <small>/ 20</small></strong></div>
           <div><span>Moyennes calculées</span><strong>{coverage} %</strong><small>({means.calculated_count} sur {means.student_count})</small></div>
