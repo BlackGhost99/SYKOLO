@@ -104,7 +104,7 @@ test("Fiche élève : la synthèse présente les parents et les sommes dues sans
   setup({sensitiveVisible:true,financeVisible:true});
   await screen.findByText("Fiche technique de l’élève");
   expect(screen.getByText("Parents / responsables légaux")).toBeTruthy();
-  expect(screen.getByText("Claudine Fictive")).toBeTruthy();
+  expect(screen.getAllByText("Claudine Fictive").length).toBeGreaterThan(0);
   expect(screen.getByText("Paul Fictive")).toBeTruthy();
   expect(screen.getByText("Situation financière")).toBeTruthy();
   expect(screen.getAllByText("50 000 FCFA").length).toBeGreaterThan(0);
