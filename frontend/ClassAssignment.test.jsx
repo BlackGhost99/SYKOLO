@@ -60,6 +60,7 @@ test("M2.7 : changement manuel sécurisé avec un motif obligatoire", async () =
   const fetchMock = setup();
   const user = userEvent.setup();
   const select = await screen.findByLabelText("Nouvelle division");
+  await screen.findByRole("option", {name: /6e B/});
   await user.selectOptions(select, "class-b");
   const submit = screen.getByRole("button", {name:"Confirmer l'affectation"});
   expect(submit.disabled).toBe(true);
