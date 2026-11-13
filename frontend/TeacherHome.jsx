@@ -1,9 +1,10 @@
 import React from "react";
-import {Button,Card,Icon} from "./yem-ui.jsx";
+import {Button,Card,PageHeader} from "./yem-ui.jsx";
 import PWAInstall from "./PWAInstall.jsx";
 
 export default function TeacherHome({schoolName, onNavigate, canNotes, canAttendance, canClasses}) {
-  return <div className="yd-real-body">
+  return <><PageHeader title="Tableau de bord" subtitle="Espace professeur" />
+    <div className="yd-real-body">
     <Card title="Mon espace professeur" icon="cap" subtitle={"Vos cours et votre suivi pédagogique · "+schoolName}>
       <div className="actions"><PWAInstall buttonClassName="yd-btn primary" label="Installer YEM sur mon téléphone"/></div>
       <p className="hint">La même application YEM fonctionne sur ordinateur et sur téléphone. Les données de l'école restent synchronisées lorsque vous êtes connecté.</p>
@@ -18,5 +19,5 @@ export default function TeacherHome({schoolName, onNavigate, canNotes, canAttend
       </div>
       {!canNotes&&!canAttendance&&!canClasses&&<p className="hint">Vos accès pédagogiques seront disponibles après affectation par la direction.</p>}
     </Card>
-  </div>;
+  </div></>;
 }

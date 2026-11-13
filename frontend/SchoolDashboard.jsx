@@ -218,6 +218,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [chosen,setChosen]=useState("");
   const [access,setAccess]=useState(null);
   const [myPhotoUrl,setMyPhotoUrl]=useState(null);
+  const [hasStaffProfile,setHasStaffProfile]=useState(false);
   const [photoRevision,setPhotoRevision]=useState(0);
   const [page,setPage]=useState("dashboard");
   const [sub,setSub]=useState("");
@@ -257,11 +258,11 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     return()=>{live=false};
   },[chosen,workingYearId,access,yearCatalogVersion]);
   useEffect(()=>{
-    if(!chosen){setMyPhotoUrl(null);return;}
+    if(!chosen){setMyPhotoUrl(null);setHasStaffProfile(false);return;}
     let active=true;
     const load=()=>get("schools/"+chosen+"/staff/me/profile")
-      .then(data=>{if(active)setMyPhotoUrl(data.photo_url);})
-      .catch(()=>{if(active)setMyPhotoUrl(null);});
+      .then(data=>{if(active){setMyPhotoUrl(data.photo_url);setHasStaffProfile(true);}})
+      .catch(()=>{if(active){setMyPhotoUrl(null);setHasStaffProfile(false);}});
     load();
     const refresh=event=>{if(event.detail?.schoolId===chosen){setPhotoRevision(v=>v+1);load();}};
     window.addEventListener("yem:staff-photo-updated",refresh);
@@ -444,7 +445,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
     userMenu={<UserMenu user={user} roleLabel={roleLabel} onAccount={()=>navigate("account")}
-       onProfile={myPhotoUrl!==null||access?.role==="enseignant"?()=>navigate("profile"):undefined}
+       onProfile={hasStaffProfile?()=>navigate("profile"):undefined}
        photoUrl={myPhotoUrl?myPhotoUrl+"?rev="+photoRevision:undefined}
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
     {message&&<p role="status" className="pc-alert">{message}</p>}
