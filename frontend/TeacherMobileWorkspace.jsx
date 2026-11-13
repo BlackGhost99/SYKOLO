@@ -17,7 +17,7 @@ const tabs=[
 
 export default function TeacherMobileWorkspace({
   schoolId,schoolName,user,permissions=[],workingYearId="",years=[],
-  schools=[],onSchoolChange,onYearChange,onLogout,accountView,
+  schools=[],onSchoolChange,onYearChange,onLogout,onExit,accountView,
 }){
   const [tab,setTab]=useState("accueil");
   const [data,setData]=useState({courses:[],classes:[],subjects:[],periods:[],assignments:[]});
@@ -133,6 +133,7 @@ export default function TeacherMobileWorkspace({
             <div className="ym-account-security">{accountView}</div>
           </details>
         </Card>}
+        {onExit&&<Button icon="layers" onClick={onExit}>Retour à l'espace établissement</Button>}
         {onLogout&&<Button icon="logout" onClick={onLogout}>Se déconnecter</Button>}
       </div>}
       <footer className="ym-prof-footer">YEM · Développé par BWETEK Informatyk</footer>

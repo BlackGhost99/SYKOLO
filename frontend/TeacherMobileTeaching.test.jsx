@@ -103,7 +103,7 @@ test("l'accueil mobile conserve les couleurs YEM et la navigation PWA par profes
   apiMock();const user=userEvent.setup();vi.spyOn(window,"scrollTo").mockImplementation(()=>{});
   render(<TeacherMobileWorkspace schoolId="lycee" schoolName="Lycée A"
     user={{first_name:"Paul"}} workingYearId="2026" years={[{id:"2026",name:"2026-2027"}]}
-    accountView={<span>Paramètres du mot de passe</span>}
+    onExit={()=>{}} accountView={<span>Paramètres du mot de passe</span>}
     permissions={["school.curriculum.read","school.academic.read"]}/>);
   expect(await screen.findByRole("heading",{name:"Tableau de bord"})).toBeTruthy();
   expect(screen.getByRole("button",{name:"Ajouter YEM à mon téléphone"})).toBeTruthy();
@@ -114,4 +114,5 @@ test("l'accueil mobile conserve les couleurs YEM et la navigation PWA par profes
   expect(await screen.findByText("Ouvrir les paramètres de sécurité")).toBeTruthy();
   await user.click(screen.getByText("Ouvrir les paramètres de sécurité"));
   expect(screen.getByText("Paramètres du mot de passe")).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Retour à l'espace établissement"})).toBeTruthy();
 });

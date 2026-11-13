@@ -5,6 +5,7 @@ import PedagogicalCalendar from "./PedagogicalCalendar.jsx";
 import StaffPanel from "./StaffPanel.jsx";
 import TeacherHome from "./TeacherHome.jsx";
 import TeacherMobileWorkspace from "./TeacherMobileWorkspace.jsx";
+import {teacherWorkspacePolicy} from "./teacher-access.js";
 import TeacherProfile from "./TeacherProfile.jsx";
 import StaffOnboarding from "./StaffOnboarding.jsx";
 import OwnerDashboard from "./OwnerDashboard.jsx";
@@ -195,7 +196,7 @@ function ModuleGrid({visibleSections,navigate}) {
     <div className="pc-module-grid">{entries.map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{schoolNav.find(n=>n[0]===id)?.[2]}</b><small>{[...s.lives.map(l=>l.label),...s.modules.map(k=>modules[k].label)].filter(Boolean).join(" · ") || s.subtitle}</small></button>)}</div>}</div>;
 }
 
-function UserMenu({user,roleLabel,onAccount,onProfile,onFamilyWorkspace,onLogout,photoUrl}) {
+function UserMenu({user,roleLabel,onAccount,onProfile,onTeacherWorkspace,onFamilyWorkspace,onLogout,photoUrl}) {
   const [open,setOpen]=useState(false);
   const name=[user?.first_name,user?.last_name].filter(Boolean).join(" ")||user?.username||"Mon compte";
   return <div className="yd-user-wrap">
@@ -205,6 +206,7 @@ function UserMenu({user,roleLabel,onAccount,onProfile,onFamilyWorkspace,onLogout
       <span><b>{name}</b>{roleLabel&&<small>{roleLabel}</small>}</span><Icon name="chevron" size={18}/>
     </button>
     {open&&<div className="yd-menu right" role="menu">
+      {onTeacherWorkspace&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onTeacherWorkspace();}}><Icon name="cap" size={18}/>Espace professeur</button>}
       {onProfile&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onProfile();}}><Icon name="user" size={18}/>Mon profil professionnel</button>}
       <button type="button" role="menuitem" onClick={()=>{setOpen(false);onAccount();}}><Icon name="shield" size={18}/>Sécurité du compte</button>
       {onFamilyWorkspace&&<button type="button" role="menuitem" onClick={onFamilyWorkspace}><Icon name="users" size={18}/>YEM Parents</button>}
@@ -220,6 +222,9 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [access,setAccess]=useState(null);
   const [myPhotoUrl,setMyPhotoUrl]=useState(null);
   const [hasStaffProfile,setHasStaffProfile]=useState(false);
+  const [hasTeachingAssignment,setHasTeachingAssignment]=useState(false);
+  // null: initial preference by primary role; true: teacher requested; false: school workspace requested.
+  const [teacherViewRequested,setTeacherViewRequested]=useState(null);
   const [photoRevision,setPhotoRevision]=useState(0);
   const [mobileTeacher,setMobileTeacher]=useState(()=>
     typeof window!=="undefined" && Boolean(window.matchMedia?.("(max-width: 760px)")?.matches));
@@ -245,7 +250,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     if (!chosen) {setAccess(null);return;}
     let alive=true;setAccess(null);
     get("schools/"+chosen+"/my-access").then(x=>{if(alive)setAccess(x);}).catch(e=>{if(alive)setMessage(e.message);});
-    setPage("dashboard");return ()=>{alive=false;};
+    setPage("dashboard");setTeacherViewRequested(null);setHasTeachingAssignment(false);
+    return ()=>{alive=false;};
   },[chosen]);
   useEffect(()=>{
     let live=true;
@@ -278,6 +284,22 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     window.addEventListener("yem:staff-photo-updated",refresh);
     return()=>{active=false;window.removeEventListener("yem:staff-photo-updated",refresh);};
   },[chosen]);
+  useEffect(()=>{
+    if(!chosen||!access){setHasTeachingAssignment(false);return;}
+    let alive=true;
+    const base="schools/"+chosen+"/";
+    // Course assignment, not the display label or a guessed job title, is the source of truth.
+    const checks=[
+      access.permissions?.includes("school.curriculum.read")
+        ? get(base+"curriculum/my-courses").then(v=>(v.courses||[]).some(c=>c.active)).catch(()=>false)
+        : Promise.resolve(false),
+      get(base+"staff/me/assignments").then(v=>(v.assignments||[]).some(a=>
+        a.active&&["enseignant","professeur"].includes(String(a.duty||"").toLowerCase())
+      )).catch(()=>false),
+    ];
+    Promise.all(checks).then(flags=>{if(alive)setHasTeachingAssignment(flags.some(Boolean));});
+    return()=>{alive=false};
+  },[chosen,access]);
   const perms=access?.permissions||[];
   const can = permission => perms.includes(permission) ||
     (permission==="school.students.profile.read" && perms.includes("school.students.read"));
@@ -385,10 +407,15 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     return <FamilyWorkspace accountView={accountView} onLogout={onLogout}
       onSchoolWorkspace={canUseSchoolWorkspace?()=>setShowWorkspace(true):undefined}/>;
   }
-  if (mobileTeacher&&access?.role==="enseignant"&&!user?.is_platform_admin) return <TeacherMobileWorkspace
+  const teacherPolicy=teacherWorkspacePolicy(access,hasTeachingAssignment,
+    mobileTeacher,teacherViewRequested,Boolean(user?.is_platform_admin));
+  const teacherEligible=teacherPolicy.eligible;
+  const showTeacherWorkspace=teacherPolicy.show;
+  if (showTeacherWorkspace) return <TeacherMobileWorkspace
     key={chosen} schoolId={chosen} schoolName={schoolName} user={user}
     permissions={perms} years={academicYears} workingYearId={workingYearId}
     onYearChange={setWorkingYearId} schools={schools} onSchoolChange={setChosen}
+    onExit={()=>setTeacherViewRequested(false)}
     onLogout={onLogout} accountView={accountView}/>;
   let content;
   if (page==="profile") content=<><PageHeader title="Mon profil professionnel" subtitle="Photo et informations synchronisées avec la fiche Personnel"/><div className="yd-real-body"><TeacherProfile schoolId={chosen}/></div></>;
@@ -460,6 +487,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
     userMenu={<UserMenu user={user} roleLabel={roleLabel} onAccount={()=>navigate("account")}
+       onTeacherWorkspace={mobileTeacher&&teacherEligible?()=>setTeacherViewRequested(true):undefined}
        onProfile={hasStaffProfile?()=>navigate("profile"):undefined}
        photoUrl={myPhotoUrl?myPhotoUrl+"?rev="+photoRevision:undefined}
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
