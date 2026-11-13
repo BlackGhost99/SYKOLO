@@ -62,7 +62,8 @@ export function StaffDirectory({schoolId, onAdd, onAssign, canReadDossiers=false
         <input type="search" value={search} onChange={event => setSearch(event.target.value)}/>
       </label>
       {staff.length === 0 ? <p>{query ? "Aucun résultat pour cette recherche." : "Aucun collaborateur enregistré."}</p> :
-        <Table headers={["Nom", "Poste", "Matricule", "Accès YEM", "Fiche professionnelle"]} rows={staff.map(person => [
+        <Table headers={["Photo", "Nom", "Poste", "Matricule", "Accès YEM", "Fiche professionnelle"]} rows={staff.map(person => [
+          <span className="yp-directory-photo" key={person.id}>{person.photo_url?<img src={person.photo_url} alt={`Photo de ${person.first_name} ${person.last_name}`}/>:<span aria-hidden="true">👤</span>}</span>,
           person.first_name + " " + person.last_name, person.position, person.staff_code,
           <Status tone={person.account_id ? "green" : "gray"}>{person.account_id ? "Compte lié" : "Sans compte"}</Status>,
           canReadDossiers ? <Button className="small" onClick={()=>setSelectedStaff(person.id)}>Consulter la fiche</Button> : "Accès réservé",
