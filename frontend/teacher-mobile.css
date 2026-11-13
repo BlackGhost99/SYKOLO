@@ -82,3 +82,14 @@
 @media(max-width:360px){.ym-prof-header{padding:10px 12px}.ym-prof-body{padding-inline:8px}
   .ym-select-row{grid-template-columns:1fr}.ym-shortcuts{grid-template-columns:1fr}
   .ym-status{padding-inline:5px;font-size:11px}.ym-prof-nav button{font-size:9px}}
+
+/* Lisibilité sur Android étroit : les actions du design system doivent pouvoir aller à la ligne. */
+.ym-prof-app .yd-btn{white-space:normal;line-height:1.3;font-size:14px;padding:9px 12px;min-height:42px;
+  text-align:center;max-width:100%}
+.ym-prof-app .ym-shortcuts .yd-btn{width:100%;justify-content:flex-start;text-align:left}
+.ym-account-security{margin-top:12px}
+.ym-account-security .pc-account-card{max-width:100%}
+@media(max-width:400px){.ym-prof-app .yd-card{padding:12px}
+  .ym-prof-app .ym-shortcuts{grid-template-columns:1fr 1fr;gap:7px}
+  .ym-prof-app .ym-shortcuts .yd-btn{padding:8px;font-size:12px;gap:6px}
+}

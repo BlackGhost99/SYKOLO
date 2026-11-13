@@ -17,7 +17,7 @@ const tabs=[
 
 export default function TeacherMobileWorkspace({
   schoolId,schoolName,user,permissions=[],workingYearId="",years=[],
-  schools=[],onSchoolChange,onYearChange,onLogout,
+  schools=[],onSchoolChange,onYearChange,onLogout,accountView,
 }){
   const [tab,setTab]=useState("accueil");
   const [data,setData]=useState({courses:[],classes:[],subjects:[],periods:[],assignments:[]});
@@ -127,6 +127,12 @@ export default function TeacherMobileWorkspace({
       {tab==="profil"&&<div className="ym-page">
         <h1>Mon profil</h1>
         <TeacherProfile schoolId={schoolId}/>
+        {accountView&&<Card title="Sécurité du compte" icon="shield"
+          subtitle="Mot de passe, authentification et sécurité de votre accès YEM.">
+          <details className="ym-details"><summary>Ouvrir les paramètres de sécurité</summary>
+            <div className="ym-account-security">{accountView}</div>
+          </details>
+        </Card>}
         {onLogout&&<Button icon="logout" onClick={onLogout}>Se déconnecter</Button>}
       </div>}
       <footer className="ym-prof-footer">YEM · Développé par BWETEK Informatyk</footer>

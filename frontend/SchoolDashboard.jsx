@@ -389,7 +389,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     key={chosen} schoolId={chosen} schoolName={schoolName} user={user}
     permissions={perms} years={academicYears} workingYearId={workingYearId}
     onYearChange={setWorkingYearId} schools={schools} onSchoolChange={setChosen}
-    onLogout={onLogout}/>;
+    onLogout={onLogout} accountView={accountView}/>;
   let content;
   if (page==="profile") content=<><PageHeader title="Mon profil professionnel" subtitle="Photo et informations synchronisées avec la fiche Personnel"/><div className="yd-real-body"><TeacherProfile schoolId={chosen}/></div></>;
   else if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
