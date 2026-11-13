@@ -13,7 +13,8 @@ from .services import has_permission
 from .cycle_scope import scoped_cycle_ids
 from .models import SchoolMember
 from .academic_models import AcademicYear, AcademicClass
-from .staff_models import StaffRecord, StaffAssignment
+from .staff_models import StaffRecord, StaffAssignment, StaffPhoto
+from .staff_photo_views import portrait_url
 
 
 def scope(request, school_id, action):
@@ -56,12 +57,15 @@ def parse_staff(data, *, editing=False):
     return output
 
 
-def staff_repr(s):
+def staff_repr(s, *, photo=None):
+    if photo is None:
+        photo = StaffPhoto.objects.filter(staff=s).first()
     return {"id":str(s.id),"staff_code":s.staff_code,"first_name":s.first_name,
         "last_name":s.last_name,"position":s.position,
         "hired_on":s.hired_on.isoformat() if s.hired_on else None,
         "account_id":str(s.account_id) if s.account_id else None,
-        "active":s.active,"revision":s.revision}
+        "active":s.active,"revision":s.revision,
+        "photo_url": portrait_url(s.school_id, s.pk, photo)}
 
 
 def assignment_repr(s):
@@ -89,7 +93,9 @@ def staff(request,school_id):
         school,error=scope(request,school_id,"school.staff.manage")
         if error is not None:return error
     if request.method=="GET":
-        return JsonResponse({"staff":[staff_repr(s) for s in StaffRecord.objects.filter(school=school).order_by("last_name","first_name")[:500]]})
+        records = list(StaffRecord.objects.filter(school=school).order_by("last_name","first_name")[:500])
+        photos = {p.staff_id: p for p in StaffPhoto.objects.filter(staff__in=records)}
+        return JsonResponse({"staff":[staff_repr(s, photo=photos.get(s.pk)) for s in records]})
     data,error=parse_body(request)
     if error is not None:return error
     try:
