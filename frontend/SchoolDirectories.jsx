@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from "react";
 import StaffProfessionalDossier from "./StaffProfessionalDossier.jsx";
+import {StaffPayrollHistory} from "./PayrollPanel.jsx";
 import {ClassField, useSchoolData} from "./SchoolSettings.jsx";
 import {Button, Card, Status, Table} from "./yem-ui.jsx";
 import "./school-staff-photos.css";
@@ -42,7 +43,7 @@ function ClassFamilies({root, room, onNavigate}) {
   </Card>;
 }
 
-export function StaffDirectory({schoolId, onAdd, onAssign, canReadDossiers=false, initialStaffId=""}) {
+export function StaffDirectory({schoolId, onAdd, onAssign, canReadDossiers=false, canReadPayroll=false, workingYearId="", initialStaffId=""}) {
   const [selectedStaff,setSelectedStaff]=useState(initialStaffId);
   useEffect(()=>setSelectedStaff(initialStaffId),[schoolId,initialStaffId]);
   const {data, error} = useSchoolData("schools/" + schoolId + "/", "staff");
@@ -76,8 +77,11 @@ export function StaffDirectory({schoolId, onAdd, onAssign, canReadDossiers=false
         ])}/>}
     </>}
   </Card>
-    {canReadDossiers && selectedStaff &&
+    {canReadDossiers && selectedStaff && <>
       <StaffProfessionalDossier key={selectedStaff} schoolId={schoolId} staffId={selectedStaff}
-        onClose={()=>setSelectedStaff("")}/>}
+        onClose={()=>setSelectedStaff("")}/>
+      {canReadPayroll&&<StaffPayrollHistory key={selectedStaff+"-salary"} schoolId={schoolId}
+        staffId={selectedStaff} workingYearId={workingYearId}/>}
+    </>}
   </>;
 }
