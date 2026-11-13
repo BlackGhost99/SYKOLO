@@ -35,3 +35,24 @@ les branches de migrations avant le déploiement.
 ## Contrôles
 Django : propriété du profil, CSRF, droits, école étrangère, compte révoqué, changement de
 photo, contrôle de taille, conflit de révision. Frontend : tests et build de la PR.
+
+## Écrans mobiles intégrés (seconde étape)
+- L'espace professeur sur téléphone (< 761 px) s'ouvre sur une navigation YEM native : Accueil,
+  Notes, Moyennes, Appel, Profil ; l'espace bureau reste inchangé.
+- Notes : choix de classe et matière issus **exclusivement** des cours attribués au professeur,
+  création d'évaluations avec barème configuré, puis sauvegarde groupée des notes.
+- Nouveau `POST .../assessments/{id}/grades/batch` : lot de 1 à 100 notes, validation d'appartenance
+  à la classe, révisions optimistes et transaction atomique (tout ou rien). Aucune publication implicite.
+- Moyennes : nouveau `GET .../courses/{id}/averages?period={uuid}`, protégé comme un cours.
+  Les résultats sont **provisoires**, pondérés par les coefficients des évaluations actives,
+  normalisés via les pourcentages calculés dans YEM à partir des barèmes capturés.
+  Les notes manquantes sont exclues de la moyenne (pas traitées comme zéro).
+  Une note en lettres ou par compétence n'est jamais convertie manuellement côté client.
+  Le résultat sur /20 est une échelle d'affichage du suivi uniquement, pas la note officielle du bulletin.
+- Appel : réutilisation de l'API de présences, affectation vérifiée par établissement/classe,
+  choix des statuts réellement paramétrés, action de marquage des élèves non renseignés,
+  sauvegarde de 1 à 100 présences (transaction atomique existante), historique et motif obligatoire
+  des corrections ; aucun pouvoir de clôture ni de justification RH conféré au professeur.
+- Les données d'élèves restent privées et ne sont jamais mises en cache hors ligne par la PWA.
+- En cas de rôle personnalisé, le contrôle des permissions API reste la source d'autorité.
+- Tests frontend mobile : saisie groupée, moyenne provisoire, catégories d'appel, navigation.
