@@ -10,7 +10,7 @@ from . import calendar_views
 from . import secondary_views
 from . import demo_payment_views, admission_cash_views, admission_finance_views
 from . import parent_dossier_views
-from . import staff_onboarding_views, staff_profile_views
+from . import staff_onboarding_views, staff_profile_views, staff_dossier_views
 from . import owner_overview_views
 from . import cycle_access_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
@@ -163,6 +163,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/staff", staff_views.staff),
     path("schools/<uuid:school_id>/staff/me/assignments", staff_views.my_assignments),
     path("schools/<uuid:school_id>/staff/me/profile", staff_profile_views.my_profile),
+    path("schools/<uuid:school_id>/staff/me/dossier", staff_dossier_views.my_staff_dossier),
+    path("schools/<uuid:school_id>/staff/<uuid:staff_id>/dossier", staff_dossier_views.staff_dossier),
     path("schools/<uuid:school_id>/staff/<uuid:staff_id>/photo", staff_profile_views.staff_photo),
     path("schools/<uuid:school_id>/staff/<uuid:staff_id>", staff_views.staff_detail),
     path("schools/<uuid:school_id>/staff-assignments", staff_views.assignments),
