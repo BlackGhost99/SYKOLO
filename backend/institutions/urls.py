@@ -9,11 +9,13 @@ from . import calendar_views
 from . import secondary_views
 from . import demo_payment_views, admission_cash_views, admission_finance_views
 from . import staff_onboarding_views
-from . import staff_dossier_views
+from . import staff_dossier_views, staff_photo_views
 from . import cycle_access_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
 
 urlpatterns = [
+    path("schools/<uuid:school_id>/staff/me/photo", staff_photo_views.staff_photo),
+    path("schools/<uuid:school_id>/staff/<uuid:staff_id>/photo", staff_photo_views.staff_photo),
     path("schools/<uuid:school_id>/student-numbering", student_numbering_views.numbering),
     path("schools/<uuid:school_id>/imports/students/profiles", import_views.profiles),
     path("schools/<uuid:school_id>/imports/students/export", import_views.export_students),
