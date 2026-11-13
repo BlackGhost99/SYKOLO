@@ -54,7 +54,7 @@ def guardian_links(user):
     return GuardianAccountLink.objects.select_related(
         "school", "guardian__student"
     ).filter(
-        user=user, active=True,
+        user=user, user__is_active=True, active=True,
         school__is_active=True,
         guardian__active=True,
         guardian__student__active=True,
@@ -129,8 +129,10 @@ def links(request, school_id):
     data, error = parse_body(request)
     if error is not None:
         return error
-    if set(data) != {"guardian", "username"}:
-        return reject("Responsable légal et compte utilisateur requis.")
+    if set(data) != {"guardian", "username", "identity_verified"}:
+        return reject("Responsable légal, compte utilisateur et confirmation de vérification requis.")
+    if data["identity_verified"] is not True:
+        return reject("Confirmez que le compte appartient au responsable légal sélectionné.")
     guardian_id = uuid_input(data["guardian"])
     username = data["username"]
     if guardian_id is None or not isinstance(username, str) or not 1 <= len(username.strip()) <= 150:
@@ -171,7 +173,7 @@ def links(request, school_id):
                 row.revoked_by = None
                 row.full_clean()
                 row.save()
-            log_event(school, request, "parent_link_verified", row.pk)
+            log_event(school, request, "parent_link_verified", row.pk, {"revision": row.revision, "identity_verified": True})
     except ValidationError as exc:
         return model_error(exc)
     except IntegrityError:
@@ -206,7 +208,7 @@ def link_detail(request, school_id, link_id):
         row.revoked_by = request.user
         row.revoked_at = timezone.now()
         row.save(update_fields=["active", "revision", "revoked_by", "revoked_at"])
-        log_event(school, request, "parent_link_revoked", row.pk)
+        log_event(school, request, "parent_link_revoked", row.pk, {"revision": row.revision})
     return JsonResponse(link_output(row))
 
 

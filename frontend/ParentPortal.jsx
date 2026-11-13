@@ -235,6 +235,7 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
   const [guardians, setGuardians] = useState(null);
   const [guardian, setGuardian] = useState("");
   const [username, setUsername] = useState("");
+  const [identityVerified, setIdentityVerified] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -273,14 +274,14 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
       <p className="hint">Demandez l’identifiant YEM Parents du responsable légal et vérifiez son identité avant d’activer l’accès à cet élève.</p>
       <label className="field">Élève
         <select value={student} disabled={busy} onChange={e=>{
-          setStudent(e.target.value);setGuardian("");setGuardians(null);setGuardiansError("");setMessage("");
+          setStudent(e.target.value);setGuardian("");setIdentityVerified(false);setGuardians(null);setGuardiansError("");setMessage("");
         }}>
           <option value="">Choisir un élève…</option>
           {students.map(s=><option key={s.id} value={s.id}>{s.last_name} {s.first_name} · {s.student_code}</option>)}
         </select>
       </label>
       <label className="field">Responsable légal
-        <select value={guardian} disabled={busy||!guardians?.length} onChange={e=>setGuardian(e.target.value)}>
+        <select value={guardian} disabled={busy||!guardians?.length} onChange={e=>{setGuardian(e.target.value);setIdentityVerified(false);}}>
           <option value="">Choisir le responsable…</option>
           {guardians?.map(g=><option key={g.id} value={g.id}>{g.full_name} ({g.relationship||"Lien enregistré"})</option>)}
         </select>
@@ -289,15 +290,20 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
       {student&&!guardiansError&&!guardians&&<p role="status">Chargement des responsables légaux…</p>}
       {student&&guardians?.length===0&&<p className="hint">Ajoutez d’abord le responsable légal dans la fiche de l’élève.</p>}
       <label className="field">Identifiant du compte parent existant
-        <input value={username} onChange={e=>setUsername(e.target.value)} disabled={busy} maxLength={150} autoComplete="off"/>
+        <input value={username} onChange={e=>{setUsername(e.target.value);setIdentityVerified(false);}} disabled={busy} maxLength={150} autoComplete="off"/>
+      </label>
+      <label className="field">
+        <span><input type="checkbox" checked={identityVerified} disabled={busy||!guardian||!username.trim()}
+          onChange={e=>setIdentityVerified(e.target.checked)}/> J’ai vérifié que ce compte appartient au responsable légal sélectionné.</span>
       </label>
       <div className="actions">
         {canAssignRole&&<Button disabled={busy||!guardian||!username.trim()} onClick={()=>run(async()=>{
           await portalApi(base+"/members",{username:username.trim(),role:"parent",create_only:true});
           setMessage("Compte rattaché au rôle parent dans cet établissement.");
         })}>Rattacher le compte parent</Button>}
-        <Button primary disabled={busy||!guardian||!username.trim()} onClick={()=>run(async()=>{
-          const verified=await portalApi(base+"/parent-links",{guardian,username:username.trim()});
+        <Button primary disabled={busy||!guardian||!username.trim()||!identityVerified} onClick={()=>run(async()=>{
+          const verified=await portalApi(base+"/parent-links",{guardian,username:username.trim(),identity_verified:true});
+          setIdentityVerified(false);
           setLinks(previous=>[verified,...previous.filter(link=>link.id!==verified.id)]);
           setMessage("Accès familial vérifié et activé.");
         })}>Vérifier et activer l’accès</Button>

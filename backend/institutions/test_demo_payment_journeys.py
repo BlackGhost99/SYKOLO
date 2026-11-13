@@ -205,7 +205,7 @@ class DualPilotAdmissionTests(TestCase):
             self.login(self.proviseur)
             guardian=StudentGuardian.objects.get(student=pupil)
             self.good(self.post(f"schools/{self.school.pk}/parent-links",{
-                "guardian":str(guardian.pk),"username":parent.username,
+                "guardian":str(guardian.pk),"username":parent.username, "identity_verified": True,
             }),201)
             self.login(parent)
             linked=self.good(self.client.get("/api/v1/parents/children"),200)

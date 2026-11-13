@@ -279,7 +279,7 @@ class Lycee2ParentJourneyTests(TestCase):
         self.login(self.proviseur)
         guardian = StudentGuardian.objects.get(student=enrollment.student)
         self.assert_success(self.post(f"schools/{self.school.pk}/parent-links", {
-            "guardian": str(guardian.pk), "username": parent_username,
+            "guardian": str(guardian.pk), "username": parent_username, "identity_verified": True,
         }), 201)
         self.login(created)
         visible = self.client.get("/api/v1/parents/children")

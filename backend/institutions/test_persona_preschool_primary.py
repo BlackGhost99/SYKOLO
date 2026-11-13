@@ -174,13 +174,16 @@ class PreschoolPrimaryPersonaTests(TestCase):
             }),200)
             self.login(self.personnel["secretariat"])
             app.refresh_from_db()
-            self.ok(self.post(root+"/convert",{
+            conversion=self.ok(self.post(root+"/convert",{
                 "revision":app.revision,"enrolled_on":"2026-11-10",
             }),201)
             enrolled=Enrollment.objects.get(school=self.school,
                 student__first_name=f"ENFANT-{i}")
             self.assertEqual(enrolled.classroom_id,self.rooms[i-1][0].pk)
             self.assertTrue(enrolled.student.matricule_yem.startswith("YEM-"))
+            official = conversion["official_enrollment"]
+            self.assertEqual(official["matricule_yem"], enrolled.student.matricule_yem)
+            self.assertEqual(official["student_code"], enrolled.student.student_code)
 
         members=SchoolMember.objects.create(school=self.school,user=parent,
             role=SchoolRole.objects.get(school=self.school,code="parent"))
@@ -190,7 +193,7 @@ class PreschoolPrimaryPersonaTests(TestCase):
                 first_name=link.child.first_name)
             guardian=StudentGuardian.objects.get(school=self.school,student=pupil)
             self.ok(self.post(f"schools/{self.school.pk}/parent-links",{
-                "guardian":str(guardian.pk),"username":parent.username,
+                "guardian":str(guardian.pk),"username":parent.username, "identity_verified": True,
             }),201)
         self.login(parent)
         visible=self.ok(self.client.get("/api/v1/parents/children"),200)["children"]
@@ -243,3 +246,29 @@ class PreschoolPrimaryPersonaTests(TestCase):
                 "received_cash":True,"acknowledge_demo":False,
             }).status_code,403)
         self.assertEqual(Enrollment.objects.filter(school=self.school).count(),2)
+
+        original = self.rooms[0][0]
+        enrollment = Enrollment.objects.select_related("student").get(school=self.school, classroom=original)
+        division = AcademicClass.objects.create(
+            school=self.school, year=self.year, level=original.level,
+            code="division-b", name="Moyenne section B", capacity=20,
+        )
+        root = f"schools/{self.school.pk}/enrollments/{enrollment.pk}"
+        change = {
+            "revision": enrollment.revision, "mode": "manual", "classroom": str(division.pk),
+            "reason": "Équilibrage des divisions",
+        }
+        self.login(educator)
+        self.assertEqual(self.post(root + "/assignment", change).status_code, 403)
+        self.login(self.personnel["direction"])
+        self.ok(self.post(root + "/assignment", change), 200)
+        history = self.ok(self.client.get("/api/v1/" + root + "/history"), 200)["history"]
+        self.assertEqual(history[0]["reason"], change["reason"])
+        self.assertEqual(history[0]["actor"], str(self.personnel["direction"].pk))
+        self.assertEqual(AdmissionCashReceipt.objects.filter(school=self.school).count(), 2)
+        self.login(parent)
+        official = self.ok(self.client.get(
+            f"/api/v1/parents/children/{enrollment.student_id}/enrollments"
+        ), 200)["enrollments"][0]
+        self.assertEqual(official["id"], str(enrollment.pk))
+        self.assertEqual(official["classroom_id"], str(division.pk))
