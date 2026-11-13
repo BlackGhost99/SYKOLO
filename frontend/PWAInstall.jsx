@@ -1,6 +1,6 @@
 import React,{useEffect,useState} from "react";
 
-export default function PWAInstall() {
+export default function PWAInstall({buttonClassName="yp-button",label="Installer YEM sur mon téléphone"}) {
   const [deferred,setDeferred]=useState(null);
   const [installed,setInstalled]=useState(false);
   const [help,setHelp]=useState(false);
@@ -15,12 +15,12 @@ export default function PWAInstall() {
   },[]);
   if(installed)return null;
   return <div style={{display:"inline-flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-    <button className="yp-button" type="button" onClick={async()=>{
+    <button className={buttonClassName} type="button" onClick={async()=>{
       if(!deferred){setHelp(true);return;}
       await deferred.prompt();
       const choice=await deferred.userChoice;
       setDeferred(null);setHelp(choice?.outcome!=="accepted");
-    }}>Installer YEM sur mon téléphone</button>
+    }}>{label}</button>
     {help&&<small role="status">Sur Android : ouvrir YEM dans Chrome, menu ⋮ puis « Installer l'application » ou « Ajouter à l'écran d'accueil ».</small>}
   </div>;
 }

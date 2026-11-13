@@ -3,6 +3,8 @@ import React, {useEffect,useState} from "react";
 import AcademicPanel from "./AcademicPanel.jsx";
 import PedagogicalCalendar from "./PedagogicalCalendar.jsx";
 import StaffPanel from "./StaffPanel.jsx";
+import TeacherHome from "./TeacherHome.jsx";
+import TeacherProfile from "./TeacherProfile.jsx";
 import StaffOnboarding from "./StaffOnboarding.jsx";
 import OwnerDashboard from "./OwnerDashboard.jsx";
 import CycleWorkspace from "./CycleWorkspace.jsx";
@@ -192,15 +194,17 @@ function ModuleGrid({visibleSections,navigate}) {
     <div className="pc-module-grid">{entries.map(([id,s])=><button type="button" key={id} onClick={()=>navigate(id)}><Icon name={sectionIcon[id]} size={26}/><b>{schoolNav.find(n=>n[0]===id)?.[2]}</b><small>{[...s.lives.map(l=>l.label),...s.modules.map(k=>modules[k].label)].filter(Boolean).join(" · ") || s.subtitle}</small></button>)}</div>}</div>;
 }
 
-function UserMenu({user,roleLabel,onAccount,onFamilyWorkspace,onLogout}) {
+function UserMenu({user,roleLabel,onAccount,onProfile,onFamilyWorkspace,onLogout,photoUrl}) {
   const [open,setOpen]=useState(false);
   const name=[user?.first_name,user?.last_name].filter(Boolean).join(" ")||user?.username||"Mon compte";
   return <div className="yd-user-wrap">
     <button type="button" className="yd-user-btn" aria-label={`Compte de ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>
-      <span className="yd-avatar"><Icon name="user" size={22} strokeWidth={0} className="filled"/></span>
+      <span className="yd-avatar">{photoUrl?<img src={photoUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}}/>:
+        <Icon name="user" size={22} strokeWidth={0} className="filled"/>}</span>
       <span><b>{name}</b>{roleLabel&&<small>{roleLabel}</small>}</span><Icon name="chevron" size={18}/>
     </button>
     {open&&<div className="yd-menu right" role="menu">
+      {onProfile&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onProfile();}}><Icon name="user" size={18}/>Mon profil professionnel</button>}
       <button type="button" role="menuitem" onClick={()=>{setOpen(false);onAccount();}}><Icon name="shield" size={18}/>Sécurité du compte</button>
       {onFamilyWorkspace&&<button type="button" role="menuitem" onClick={onFamilyWorkspace}><Icon name="users" size={18}/>YEM Parents</button>}
       {onLogout&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onLogout();}}><Icon name="logout" size={18}/>Se déconnecter</button>}
@@ -213,6 +217,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [loaded,setLoaded]=useState(false);
   const [chosen,setChosen]=useState("");
   const [access,setAccess]=useState(null);
+  const [myPhotoUrl,setMyPhotoUrl]=useState(null);
+  const [photoRevision,setPhotoRevision]=useState(0);
   const [page,setPage]=useState("dashboard");
   const [sub,setSub]=useState("");
   const [params,setParams]=useState(null);
@@ -250,6 +256,17 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       .catch(()=>{});
     return()=>{live=false};
   },[chosen,workingYearId,access,yearCatalogVersion]);
+  useEffect(()=>{
+    if(!chosen){setMyPhotoUrl(null);return;}
+    let active=true;
+    const load=()=>get("schools/"+chosen+"/staff/me/profile")
+      .then(data=>{if(active)setMyPhotoUrl(data.photo_url);})
+      .catch(()=>{if(active)setMyPhotoUrl(null);});
+    load();
+    const refresh=event=>{if(event.detail?.schoolId===chosen){setPhotoRevision(v=>v+1);load();}};
+    window.addEventListener("yem:staff-photo-updated",refresh);
+    return()=>{active=false;window.removeEventListener("yem:staff-photo-updated",refresh);};
+  },[chosen]);
   const perms=access?.permissions||[];
   const can = permission => perms.includes(permission) ||
     (permission==="school.students.profile.read" && perms.includes("school.students.read"));
@@ -358,7 +375,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       onSchoolWorkspace={canUseSchoolWorkspace?()=>setShowWorkspace(true):undefined}/>;
   }
   let content;
-  if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
+  if (page==="profile") content=<><PageHeader title="Mon profil professionnel" subtitle="Photo et informations synchronisées avec la fiche Personnel"/><div className="yd-real-body"><TeacherProfile schoolId={chosen}/></div></>;
+  else if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}</div></>;
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p></Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
   else if (page==="owner"&&isOwner) content=<OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/>;
@@ -407,6 +425,11 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         onSettings:can("school.settings.write")&&can("school.settings.read")?()=>navigate("settings","attendance-policy"):undefined}:{})}/>}</div>
   </>;
   else if (isOwner && !perms.includes("school.finance.read")) content=<><OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></>;
+  else if (page==="dashboard" && access?.role==="enseignant") content=<TeacherHome
+    schoolName={schoolName} onNavigate={navigate}
+    canNotes={ownCourseAssessment||can("school.assessments.read")}
+    canAttendance={can("school.attendance.assigned")||can("school.attendance.read")}
+    canClasses={can("school.academic.read")}/>;
   else if (perms.includes("school.finance.read")) content=<>
     <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>
     <MySchoolFunctions schoolId={chosen}/>
@@ -421,6 +444,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
   return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
     userMenu={<UserMenu user={user} roleLabel={roleLabel} onAccount={()=>navigate("account")}
+       onProfile={myPhotoUrl!==null||access?.role==="enseignant"?()=>navigate("profile"):undefined}
+       photoUrl={myPhotoUrl?myPhotoUrl+"?rev="+photoRevision:undefined}
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
     {message&&<p role="status" className="pc-alert">{message}</p>}
     {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school">

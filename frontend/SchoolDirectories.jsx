@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {ClassField, useSchoolData} from "./SchoolSettings.jsx";
 import {Button, Card, Status, Table} from "./yem-ui.jsx";
+import "./school-staff-photos.css";
 
 export function FamilyDirectory({schoolId, onNavigate, workingYearId = ""}) {
   const root = "schools/" + schoolId + "/";
@@ -60,7 +61,11 @@ export function StaffDirectory({schoolId, onAdd, onAssign}) {
       </label>
       {staff.length === 0 ? <p>{query ? "Aucun résultat pour cette recherche." : "Aucun collaborateur enregistré."}</p> :
         <Table headers={["Nom", "Poste", "Matricule", "Accès YEM"]} rows={staff.map(person => [
-          person.first_name + " " + person.last_name, person.position, person.staff_code,
+          <span className="yd-staff-person">
+            {person.photo_url?<img className="yd-staff-avatar" src={person.photo_url} alt={"Photo de "+person.first_name+" "+person.last_name} loading="lazy"/>:
+              <span className="yd-staff-avatar empty" aria-hidden="true">●</span>}
+            <span>{person.first_name} {person.last_name}</span>
+          </span>, person.position, person.staff_code,
           <Status tone={person.account_id ? "green" : "gray"}>{person.account_id ? "Compte lié" : "Sans compte"}</Status>,
         ])}/>}
     </>}

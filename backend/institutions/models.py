@@ -137,6 +137,7 @@ from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, Academi
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent  # noqa: E402,F401
 
 from .staff_models import StaffRecord, StaffAssignment  # noqa: E402,F401
+from .staff_profile_models import StaffProfile  # noqa: E402,F401
 
 from .curriculum_models import Subject, CourseOffering, CourseUnit, CourseInstructor  # noqa: E402,F401
 
