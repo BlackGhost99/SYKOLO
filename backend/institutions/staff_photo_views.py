@@ -12,7 +12,7 @@ from .views import access, log_event, refuse
 
 MAX_PHOTO_BYTES = 350_000
 SIGNATURES = {
-    "image/jpeg": b"\xff\xd8\\xff",
+    "image/jpeg": b"\xff\xd8\xff",
     "image/png": b"\x89PNG\r\n\x1a\n",
 }
 
