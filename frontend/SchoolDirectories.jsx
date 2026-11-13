@@ -64,7 +64,9 @@ export function StaffDirectory({schoolId, onAdd, onAssign}) {
           <span className="yd-staff-person">
             {person.photo_url?<img className="yd-staff-avatar" src={person.photo_url} alt={"Photo de "+person.first_name+" "+person.last_name} loading="lazy"/>:
               <span className="yd-staff-avatar empty" aria-hidden="true">●</span>}
-            <span>{person.first_name} {person.last_name}</span>
+            <span><strong>{person.first_name} {person.last_name}</strong>
+              {person.presentation&&<small style={{display:"block"}}>{person.presentation}</small>}
+            </span>
           </span>, person.position, person.staff_code,
           <Status tone={person.account_id ? "green" : "gray"}>{person.account_id ? "Compte lié" : "Sans compte"}</Status>,
         ])}/>}

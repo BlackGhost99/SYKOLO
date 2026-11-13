@@ -58,10 +58,12 @@ class StaffProfileTests(TestCase):
     def test_photo_shared_with_authorized_personnel_view(self):
         self.assertEqual(self.upload().status_code, 200)
         self.assertEqual(self.client.get(self.photo).content, b"\xff\xd8\xff" + b"private picture data")
+        self.assertEqual(self.patch({"revision": 2, "presentation": "Cours de mathématiques"}).status_code, 200)
         self.login(self.director)
         team = self.client.get(self.base + "staff")
         self.assertEqual(team.status_code, 200)
         self.assertEqual(team.json()["staff"][0]["photo_url"], self.photo)
+        self.assertEqual(team.json()["staff"][0]["presentation"], "Cours de mathématiques")
         response = self.client.get(self.photo)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Cache-Control"], "private, no-store")

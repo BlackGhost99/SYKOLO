@@ -57,15 +57,18 @@ def parse_staff(data, *, editing=False):
     return output
 
 
-def staff_repr(s, has_photo=None):
+def staff_repr(s, has_photo=None, presentation=None):
     if has_photo is None:
         has_photo = StaffProfile.objects.filter(staff_id=s.pk, photo_data__isnull=False).exists()
+    if presentation is None:
+        presentation = StaffProfile.objects.filter(staff_id=s.pk).values_list("presentation", flat=True).first() or ""
     return {"id":str(s.id),"staff_code":s.staff_code,"first_name":s.first_name,
         "last_name":s.last_name,"position":s.position,
         "hired_on":s.hired_on.isoformat() if s.hired_on else None,
         "account_id":str(s.account_id) if s.account_id else None,
         "active":s.active,"revision":s.revision,
-        "photo_url":f"/api/v1/schools/{s.school_id}/staff/{s.pk}/photo" if has_photo else None}
+        "photo_url":f"/api/v1/schools/{s.school_id}/staff/{s.pk}/photo" if has_photo else None,
+        "presentation":presentation}
 
 
 def assignment_repr(s):
@@ -87,10 +90,16 @@ def staff(request,school_id):
     if error is not None: return error
     if request.method=="GET":
         members = list(StaffRecord.objects.filter(school=school).order_by("last_name","first_name")[:500])
+        ids = [s.pk for s in members]
         photo_ids = set(StaffProfile.objects.filter(
-            staff_id__in=[s.pk for s in members], photo_data__isnull=False,
+            staff_id__in=ids, photo_data__isnull=False,
         ).values_list("staff_id", flat=True))
-        return JsonResponse({"staff":[staff_repr(s,has_photo=s.pk in photo_ids) for s in members]})
+        presentations = dict(StaffProfile.objects.filter(
+            staff_id__in=ids,
+        ).values_list("staff_id", "presentation"))
+        return JsonResponse({"staff":[staff_repr(
+            s, has_photo=s.pk in photo_ids, presentation=presentations.get(s.pk, ""),
+        ) for s in members]})
     data,error=parse_body(request)
     if error is not None:return error
     try:
