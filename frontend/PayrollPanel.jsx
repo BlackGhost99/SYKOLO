@@ -153,8 +153,8 @@ export default function PayrollPanel({schoolId,workingYearId="",canManage=false,
           <label className="field">Type de rémunération<select value={basis} onChange={e=>setBasis(e.target.value)}>
             {BASES.map(([v,label])=><option key={v} value={v}>{label}</option>)}
           </select></label>
-          <label className="field">Montant brut<input required inputMode="decimal" pattern="[0-9]+(\\.[0-9]{1,2})?" value={gross} onChange={e=>setGross(e.target.value)}/></label>
-          <label className="field">Retenues<input required inputMode="decimal" pattern="[0-9]+(\\.[0-9]{1,2})?" value={deductions} onChange={e=>setDeductions(e.target.value)}/></label>
+          <label className="field">Montant brut<input required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" value={gross} onChange={e=>setGross(e.target.value)}/></label>
+          <label className="field">Retenues<input required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" value={deductions} onChange={e=>setDeductions(e.target.value)}/></label>
           <label className="field">Devise<input required maxLength={3} value={currency} onChange={e=>setCurrency(e.target.value.toUpperCase())}/></label>
         </div>
         <label className="field">Observation (facultative)<input maxLength={240} value={note} onChange={e=>setNote(e.target.value)}/></label>
