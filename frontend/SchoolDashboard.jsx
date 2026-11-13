@@ -401,13 +401,13 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else if (perms.includes("school.finance.read")) content=<>
     <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>
     <MySchoolFunctions schoolId={chosen}/>
-    {teacherExperience&&<div className="yd-real-body"><Card title="YEM sur votre téléphone" icon="school" subtitle="Retrouvez vos cours, notes et appels depuis votre écran d’accueil."><PWAInstall/><div className="actions"><Button onClick={()=>navigate("bulletins","assessments")}>Saisir mes notes</Button><Button onClick={()=>navigate("absences","attendance")}>Faire l’appel</Button><Button onClick={()=>navigate("account")}>Mon profil et ma photo</Button></div></Card></div>}
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   else content=<>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={roleLabel||"Membre"} badgeIcon="crown"/>
     <MySchoolFunctions schoolId={chosen}/>
     {restricted&&<div className="yd-real-body"><p className="hint">Ce compte est limité aux cycles autorisés. Les modules non encore sécurisés par cycle sont temporairement indisponibles.</p></div>}
+    {teacherExperience&&<div className="yd-real-body"><Card title="YEM sur votre téléphone" icon="school" subtitle="Retrouvez vos cours, notes et appels depuis votre écran d’accueil."><PWAInstall/><div className="actions"><Button onClick={()=>navigate("bulletins","assessments")}>Saisir mes notes</Button><Button onClick={()=>navigate("absences","attendance")}>Faire l’appel</Button><Button onClick={()=>navigate("account")}>Mon profil et ma photo</Button></div></Card></div>}
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
