@@ -57,7 +57,7 @@ def summary(request, school_id):
         "by_method": {},
     })
     today = timezone.localdate()
-    for charge in charges.only("id", "currency", "amount", "due_date").iterator():
+    for charge in charges.only("id", "currency", "amount", "scholarship_discount", "due_date").iterator():
         section = totals[charge.currency]
         paid = paid_by_charge.get(charge.pk, ZERO)
         balance = charge.amount - charge.scholarship_discount - paid
