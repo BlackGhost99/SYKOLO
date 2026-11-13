@@ -1,5 +1,6 @@
 import React, {useEffect,useState} from "react";
 import {Button,Card,Status,Table} from "./yem-ui.jsx";
+import StaffPhotoEditor from "./StaffPhotoEditor.jsx";
 
 const PROFILE_FIELDS = [
   ["qualification","Diplôme / qualification"],
@@ -42,14 +43,14 @@ export default function StaffProfessionalDossier({schoolId,staffId="",own=false,
 
   async function save(event){
     event.preventDefault();
-    if(!data?.can_edit||busy)return;
+    if(!(data?.can_edit||data?.can_edit_contact)||busy)return;
     setBusy(true);setError("");setNotice("");
     try {
       const csrf=await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
       if(!csrf.ok)throw Error("Votre session a expiré.");
       const token=document.cookie.split("; ").find(item=>item.startsWith("csrftoken="))?.split("=")[1]||"";
       const payload={revision:data.professional.revision};
-      PROFILE_FIELDS.forEach(([key])=>{payload[key]=draft[key]||"";});
+      (own?PROFILE_FIELDS.filter(([key])=>["professional_email","professional_phone"].includes(key)):PROFILE_FIELDS).forEach(([key])=>{payload[key]=draft[key]||"";});
       const response=await fetch(route,{
         method:"PATCH",credentials:"same-origin",
         headers:{"Content-Type":"application/json","X-CSRFToken":token},
@@ -71,15 +72,19 @@ export default function StaffProfessionalDossier({schoolId,staffId="",own=false,
   </Card>;
   if(!data)return null;
   const s=data.staff,p=data.professional;
+  const canEdit=Boolean(data.can_edit||data.can_edit_contact);
+  const editableFields=own?PROFILE_FIELDS.filter(([key])=>["professional_email","professional_phone"].includes(key)):PROFILE_FIELDS;
   const formDate=value=>value||"—";
 
   return <section aria-label={own?"Ma fiche professionnelle":"Fiche professionnelle du personnel"}>
     <Card title={own?"Ma fiche professionnelle":`Fiche professionnelle · ${s.last_name} ${s.first_name}`} icon="idcard">
       <div className="actions">
         {onClose&&<Button onClick={onClose}>Retour à l’annuaire</Button>}
-        {data.can_edit&&!editing&&<Button onClick={()=>{setDraft({...p});setEditing(true);setNotice("");}}>Modifier les informations professionnelles</Button>}
+        {canEdit&&!editing&&<Button onClick={()=>{setDraft({...p});setEditing(true);setNotice("");}}>{own?"Modifier mes coordonnées professionnelles":"Modifier les informations professionnelles"}</Button>}
       </div>
       <p className="hint">Cette fiche présente les informations professionnelles, les nominations et les affectations. Elle ne contient ni salaire, ni adresse privée, ni documents RH confidentiels.</p>
+      <StaffPhotoEditor schoolId={schoolId} staffId={staffId} own={own} photoUrl={s.photo_url} canEdit={canEdit}
+        onChange={url=>setData(prev=>({...prev,staff:{...prev.staff,photo_url:url}}))}/>
       <div className="two" style={{marginBottom:"1rem"}}>
         <p><strong>Nom et prénom</strong><span style={{display:"block"}}>{s.last_name} {s.first_name}</span></p>
         <p><strong>Matricule du personnel</strong><span style={{display:"block"}}>{s.staff_code}</span></p>
@@ -92,7 +97,7 @@ export default function StaffProfessionalDossier({schoolId,staffId="",own=false,
         {PROFILE_FIELDS.map(([key,label])=><p key={key}><strong>{label}</strong><span style={{display:"block"}}>{p[key]||"Non renseigné"}</span></p>)}
       </div> : <form onSubmit={save}>
         <div className="two">
-          {PROFILE_FIELDS.map(([key,label])=><label key={key} className="field">{label}
+          {editableFields.map(([key,label])=><label key={key} className="field">{label}
             <input type={key==="professional_email"?"email":key==="professional_phone"?"tel":"text"}
               maxLength={key==="professional_email"?254:key==="professional_phone"?45:key==="qualification"||key==="specialty"?180:100}
               value={draft[key]||""} onChange={event=>setDraft(current=>({...current,[key]:event.target.value}))}/>
