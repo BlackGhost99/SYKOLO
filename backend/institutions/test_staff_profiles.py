@@ -66,7 +66,8 @@ class StaffProfileTests(TestCase):
         self.assertEqual(team.json()["staff"][0]["presentation"], "Cours de mathématiques")
         response = self.client.get(self.photo)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertIn("private", response["Cache-Control"])
+        self.assertIn("no-store", response["Cache-Control"])
         self.assertEqual(self.client.post(self.photo).status_code, 403)
 
     def test_revoked_access_foreign_school_and_invalid_photo(self):

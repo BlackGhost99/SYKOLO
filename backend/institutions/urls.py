@@ -141,6 +141,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>", assessment_views.assessment_detail),
     path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>/roster", assessment_views.roster),
     path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>/grades", assessment_views.grades),
+    path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>/grades/batch", assessment_views.grade_batch),
+    path("schools/<uuid:school_id>/courses/<uuid:course_id>/averages", assessment_views.course_averages),
     path("schools/<uuid:school_id>/assessments/<uuid:assessment_id>/grades/<uuid:grade_id>", assessment_views.grade_detail),
     path("schools/<uuid:school_id>/subjects", curriculum_views.subjects),
     path("schools/<uuid:school_id>/subjects/<uuid:subject_id>", curriculum_views.subject_detail),

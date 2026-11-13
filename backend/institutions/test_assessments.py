@@ -142,3 +142,44 @@ class AssessmentTests(TestCase):
         self.assertEqual(self.write("assessments/"+own.json()["id"],{"revision":1,"policy_snapshot":policy("numeric-10")},method="patch").status_code,422)
         self.assertEqual(self.write("assessments/"+own.json()["id"],{"revision":1,"name":"Nouvelle appellation"},method="patch").status_code,200)
         self.assertEqual(self.write("assessments/"+own.json()["id"],{},method="delete").status_code,405)
+
+    def test_atomic_gradebook_and_course_average_with_missing_notes(self):
+        self.configure(policy("numeric-20"))
+        self.login(self.teacher)
+        assessment=self.add_assessment().json()
+        path="assessments/"+assessment["id"]+"/grades/batch"
+        own={"enrollment":str(self.enrollment.pk),"revision":0,"score":18}
+        foreign={"enrollment":str(self.foreign_class_enrollment.pk),"revision":0,"score":11}
+        self.assertEqual(self.write(path,{"grades":[own,foreign]}).status_code,422)
+        self.assertEqual(AssessmentGrade.objects.count(),0)
+        self.assertEqual(self.write(path,{"grades":[own,own]}).status_code,422)
+        self.assertEqual(self.write(path,{"grades":[own]}).status_code,200)
+        self.assertEqual(AssessmentGrade.objects.count(),1)
+        avg=self.client.get(self.base+"courses/"+str(self.course.pk)+"/averages?period="+str(self.period.pk))
+        self.assertEqual(avg.status_code,200,avg.content.decode())
+        self.assertTrue(avg.json()["provisional"])
+        self.assertEqual(avg.json()["class_average_on_20"],"18.00")
+        self.assertEqual(avg.json()["students"][0]["average_percent"],"90.00")
+        self.assertTrue(avg.json()["students"][0]["complete"])
+        self.assertEqual(self.write(path,{"grades":[own]}).status_code,409)
+        self.assertEqual(AssessmentGrade.objects.first().score,18)
+        changed={"enrollment":str(self.enrollment.pk),"revision":1,"score":15}
+        self.assertEqual(self.write(path,{"grades":[changed]}).status_code,200)
+        self.assertEqual(self.client.get(self.base+"courses/"+str(self.course.pk)+"/averages").json()["class_average_on_20"],"15.00")
+
+    def test_course_averages_deny_unassigned_teacher_and_invalid_period(self):
+        self.configure(policy("numeric-10"))
+        self.login(self.teacher)
+        first=self.add_assessment().json()
+        self.assertEqual(self.write("assessments/"+first["id"]+"/grades/batch",{
+            "grades":[{"enrollment":str(self.enrollment.pk),"revision":0,"score":9}]
+        }).status_code,200)
+        avg=self.client.get(self.base+"courses/"+str(self.course.pk)+"/averages")
+        self.assertEqual(avg.json()["students"][0]["average_on_20"],"18.00")
+        self.assertEqual(self.client.get(self.base+"courses/"+str(self.other_course.pk)+"/averages").status_code,404)
+        self.assertEqual(self.client.get(self.base+"courses/"+str(self.course.pk)+"/averages?period=not-uuid").status_code,422)
+        self.login(self.stranger)
+        self.assertEqual(self.client.get(self.base+"courses/"+str(self.course.pk)+"/averages").status_code,404)
+        self.assertEqual(self.write("assessments/"+first["id"]+"/grades/batch",{
+            "grades":[{"enrollment":str(self.enrollment.pk),"revision":1,"score":10}]
+        }).status_code,404)
