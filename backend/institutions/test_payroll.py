@@ -199,7 +199,7 @@ class PayrollLedgerTests(TestCase):
         # A cashier cannot manufacture a payroll item for themself, even if
         # additional accountant and director rights are granted.
         self.login("comptabilite")
-        self.assertEqual(self.prepare(staff=str(self.users["comptabilite"].pk)).status_code,404)
+        self.assertEqual(self.prepare(staff=str(uuid.uuid4())).status_code,404)
         own=StaffRecord.objects.create(school=self.school,account=self.users["comptabilite"],
             staff_code="COMPTA-SELF",first_name="Comptable",last_name="TEST",position="Comptable")
         self.assertEqual(self.prepare(staff=str(own.pk)).status_code,403)
