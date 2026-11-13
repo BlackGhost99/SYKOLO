@@ -188,3 +188,38 @@ export default function PayrollPanel({schoolId,workingYearId="",canManage=false,
     </Card>}
   </section>;
 }
+
+
+// Confidential extension of the technical staff file: never rendered for
+// employees or directory-only accounts. Backend verifies payroll.read again.
+export function StaffPayrollHistory({schoolId,staffId,workingYearId=""}){
+  const [data,setData]=useState(null);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    let active=true;
+    setData(null);setError("");
+    const params=new URLSearchParams({staff:staffId});
+    if(workingYearId)params.set("year",workingYearId);
+    request("schools/"+schoolId+"/payroll/runs?"+params)
+      .then(payload=>{if(active)setData(payload.runs||[]);})
+      .catch(err=>{if(active)setError(err.message);});
+    return()=>{active=false;};
+  },[schoolId,staffId,workingYearId]);
+  return <Card title="Rémunérations et paiements — accès RH réservé" icon="shield">
+    <p className="hint">Montants privés. Un règlement « enregistré » est une déclaration interne avec justificatif, pas une confirmation bancaire.</p>
+    {error&&<p role="alert">{error}</p>}
+    {data===null&&!error&&<p role="status">Chargement des rémunérations…</p>}
+    {data?.length===0&&<p>Aucune rémunération préparée pour l'année affichée.</p>}
+    {data?.length>0&&<Table
+      headers={["Période","Type","Brut","Retenues","Net dû","Payé","Reste","État"]}
+      rows={data.map(run=>[
+        run.period.slice(0,7),BASES.find(([v])=>v===run.basis)?.[1]||run.basis,
+        fmt(run.gross_amount,run.currency),fmt(run.deductions,run.currency),
+        fmt(run.net_amount,run.currency),fmt(run.paid,run.currency),
+        fmt(run.balance,run.currency),
+        <Status tone={run.status==="paid"?"green":run.status==="draft"?"gray":"blue"}>
+          {({draft:"À valider",approved:"Approuvée",partially_paid:"Partielle",paid:"Réglée"})[run.status]||run.status}
+        </Status>,
+      ])}/>}
+  </Card>;
+}
