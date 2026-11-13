@@ -5,6 +5,7 @@ from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views
 from . import annual_views
+from . import class_assignment_views
 from . import calendar_views
 from . import secondary_views
 from . import demo_payment_views, admission_cash_views, admission_finance_views
@@ -186,6 +187,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/students/<uuid:student_id>/guardians/<uuid:guardian_id>", student_views.guardian_detail),
     path("schools/<uuid:school_id>/enrollments", student_views.enrollments),
     path("schools/<uuid:school_id>/enrollments/<uuid:enrollment_id>", student_views.enrollment_detail),
+    path("schools/<uuid:school_id>/enrollments/<uuid:enrollment_id>/assignment", class_assignment_views.assignment),
     path("schools/<uuid:school_id>/enrollments/<uuid:enrollment_id>/history", student_views.enrollment_history),
     path("schools/<uuid:school_id>/academic/annual-snapshot", annual_views.annual_snapshot),
     path("schools/<uuid:school_id>/academic/pedagogical-calendar", calendar_views.events),

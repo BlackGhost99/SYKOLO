@@ -406,12 +406,23 @@ def enrollment_detail(request,school_id,enrollment_id):
     except ValueError as exc: return JsonResponse({"error":str(exc)},status=422)
     try:
         with transaction.atomic():
+            # Serialize with the M2.7 assignment API and admissions intake.
+            from .models import School
+            School.objects.select_for_update().get(pk=school.pk)
             rec=Enrollment.objects.select_for_update().filter(school=school,pk=enrollment_id).first()
             if rec is None: return JsonResponse({"error":"Inscription introuvable."},status=404)
             if rec.revision!=data["revision"]: return JsonResponse({"error":"Conflit de version.","revision":rec.revision},status=409)
             new_class=AcademicClass.objects.filter(school=school,pk=fields.get("classroom",rec.classroom_id)).first()
             if not new_class: raise ValueError("Classe introuvable.")
             new_class=AcademicClass.objects.select_for_update().get(pk=new_class.pk)
+            changing_class = new_class.pk != rec.classroom_id
+            if changing_class and (
+                not rec.active or new_class.level_id != rec.classroom.level_id
+                or new_class.track_id != rec.classroom.track_id
+            ):
+                return JsonResponse({
+                    "error": "Changement limité à une division du même niveau et de la même série."
+                }, status=422)
             validate_enrollment_slot(new_class,rec.student,rec.year,active=fields.get("active",rec.active),enrollment=rec)
             previous_class=rec.classroom_id
             previous_status=rec.status
@@ -419,8 +430,13 @@ def enrollment_detail(request,school_id,enrollment_id):
             rec.full_clean();rec.revision+=1;rec.save()
             EnrollmentEvent.objects.create(enrollment=rec,school=school,actor=request.user,
                 previous_class_id=previous_class,new_class_id=rec.classroom_id,
-                previous_status=previous_status,new_status=rec.status)
-            log_event(school,request,"enrollment_updated",rec.pk)
+                previous_status=previous_status,new_status=rec.status,
+                assignment_mode="legacy" if changing_class else "",
+                reason="Changement de classe via la fiche élève" if changing_class else "")
+            log_event(school,request,"enrollment_updated",rec.pk, {
+                "from_class": str(previous_class), "to_class": str(rec.classroom_id),
+                "assignment_mode": "legacy" if changing_class else "",
+            })
     except ValueError as exc: return JsonResponse({"error":str(exc)},status=422)
     except ValidationError as exc: return validation_response(exc)
     return JsonResponse(describe(rec))
@@ -436,7 +452,10 @@ def enrollment_history(request,school_id,enrollment_id):
     if not Enrollment.objects.filter(school=school,pk=enrollment_id).exists():
         return JsonResponse({"error":"Inscription introuvable."},status=404)
     rows=EnrollmentEvent.objects.filter(school=school,enrollment_id=enrollment_id).order_by("-at")[:100]
+    can_manage = has_permission(request.user, school, "school.students.manage")
     return JsonResponse({"history":[{
         "at":r.at.isoformat(),"previous_class":str(r.previous_class_id) if r.previous_class_id else None,
         "new_class":str(r.new_class_id),"previous_status":r.previous_status,"new_status":r.new_status,
-    } for r in rows]})
+        **({"reason": r.reason, "assignment_mode": r.assignment_mode,
+            "actor": str(r.actor_id) if r.actor_id else None} if can_manage else {}),
+    } for r in rows]}, headers={"Cache-Control": "no-store"})

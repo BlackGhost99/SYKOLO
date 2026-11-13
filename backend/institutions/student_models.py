@@ -128,6 +128,8 @@ class EnrollmentEvent(models.Model):
     new_class_id = models.UUIDField()
     previous_status = models.CharField(max_length=40, blank=True)
     new_status = models.CharField(max_length=40)
+    assignment_mode = models.CharField(max_length=16, blank=True)
+    reason = models.CharField(max_length=300, blank=True)
     at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
