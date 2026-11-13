@@ -4,7 +4,7 @@ import {Button,Card,Status,Table} from "./yem-ui.jsx";
 const API="/api/v1/";
 const METHODS=[["especes","Espèces déclarées"],["virement","Virement déclaré"],["mobile_money","Mobile Money déclaré"],["autre","Autre règlement déclaré"]];
 const BASES=[["monthly","Mensuelle"],["hourly","Heures / vacations"],["session","Séances"],["fixed","Forfait / prime"]];
-const today=()=>new Date().toLocaleDateString("en-CA");
+const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
 const currentMonth=()=>today().slice(0,7);
 const fmt=(amount,currency)=>new Intl.NumberFormat("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(amount||0))+" "+currency;
 
@@ -108,9 +108,13 @@ export default function PayrollPanel({schoolId,workingYearId="",canManage=false,
   }
   const filtered=selected?runs.filter(x=>x.staff===selected):runs;
   const selectedName=staff.find(x=>x.id===selected)?.name;
-  const grossTotal=filtered.reduce((sum,x)=>sum+Number(x.net_amount),0);
-  const paidTotal=filtered.reduce((sum,x)=>sum+Number(x.paid),0);
-  const balances=filtered.reduce((sum,x)=>sum+Number(x.balance),0);
+  const totalsByCurrency=filtered.reduce((result,row)=>{
+    const total=result[row.currency]||(result[row.currency]={net:0,paid:0,balance:0});
+    total.net+=Number(row.net_amount);
+    total.paid+=Number(row.paid);
+    total.balance+=Number(row.balance);
+    return result;
+  },{});
   const statusTone=value=>value==="paid"?"green":value==="approved"?"blue":value==="partially_paid"?"orange":"gray";
   const statusText={draft:"À valider",approved:"Validée",partially_paid:"Partiellement réglée",paid:"Réglée"};
 
@@ -128,10 +132,11 @@ export default function PayrollPanel({schoolId,workingYearId="",canManage=false,
       </label>
       <p><strong>Année scolaire :</strong> {workingYearId?"Année sélectionnée dans la barre supérieure":"Sélectionnez une année scolaire pour préparer une rémunération"}</p>
       <div className="two">
-        <p><strong>Net prévu</strong><span style={{display:"block"}}>{fmt(grossTotal,currency)}*</span></p>
-        <p><strong>Versé / Reste</strong><span style={{display:"block"}}>{fmt(paidTotal,currency)} / {fmt(balances,currency)}*</span></p>
+        {Object.entries(totalsByCurrency).map(([unit,t])=><p key={unit}>
+          <strong>Paie {unit}</strong><span style={{display:"block"}}>Net : {fmt(t.net,unit)}</span>
+          <span style={{display:"block"}}>Déclaré : {fmt(t.paid,unit)} · Reste : {fmt(t.balance,unit)}</span>
+        </p>)}
       </div>
-      <p className="hint">*Synthèse indicative dans la devise affichée ; en présence de plusieurs devises, consultez chaque ligne séparément.</p>
       {!filtered.length?<p>Aucune rémunération saisie pour ce filtre.</p>:<Table headers={["Collaborateur","Période","Net prévu","Déjà déclaré","Reste","Statut","Fiche"]} rows={filtered.map(run=>[
         run.staff_name,run.period.slice(0,7),fmt(run.net_amount,run.currency),fmt(run.paid,run.currency),
         fmt(run.balance,run.currency),
@@ -153,7 +158,7 @@ export default function PayrollPanel({schoolId,workingYearId="",canManage=false,
           <label className="field">Devise<input required maxLength={3} value={currency} onChange={e=>setCurrency(e.target.value.toUpperCase())}/></label>
         </div>
         <label className="field">Observation (facultative)<input maxLength={240} value={note} onChange={e=>setNote(e.target.value)}/></label>
-        <Button primary disabled={busy||!selected||!workingYearId}>Préparer la paie de {selectedName||"l'employé"}</Button>
+        <Button type="submit" primary disabled={busy||!selected||!workingYearId}>Préparer la paie de {selectedName||"l'employé"}</Button>
       </form>
     </Card>}
 
@@ -173,7 +178,7 @@ export default function PayrollPanel({schoolId,workingYearId="",canManage=false,
           <label className="field">Référence justificatif<input required maxLength={120} value={payment.reference} onChange={e=>{setPayment({...payment,reference:e.target.value});setPaymentKey("");}}/></label>
           <label className="field">Date<input required type="date" max={today()} value={payment.paid_on} onChange={e=>{setPayment({...payment,paid_on:e.target.value});setPaymentKey("");}}/></label>
         </div>
-        <Button disabled={busy} primary>Enregistrer le versement déclaré</Button>
+        <Button type="submit" disabled={busy} primary>Enregistrer le versement déclaré</Button>
       </form>}
       {detail.payments?.length>0&&<Table headers={["Date","Montant","Méthode","Justificatif","Statut","Contrôle"]} rows={detail.payments.map(p=>[
         p.paid_on,fmt(p.amount,detail.run.currency),METHODS.find(([k])=>k===p.method)?.[1]||p.method,
