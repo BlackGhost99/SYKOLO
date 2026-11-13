@@ -186,7 +186,7 @@ test("la direction accepte une candidature puis le secrétariat confirme l’ins
   await user.click(screen.getByText("Obame David"));
   await user.click(screen.getByRole("button",{name:"Voir la fiche"}));
   expect(await screen.findByRole("heading",{name:"Obame David"})).toBeTruthy();
-  expect(screen.getByText("Mme Obame")).toBeTruthy();
+  expect(screen.getAllByText("Mme Obame").length).toBeGreaterThan(0);
   expect(network).not.toHaveBeenCalled();
 });
 test("le calendrier affiche les événements et le bilan annuel dans les composants réels",async()=>{

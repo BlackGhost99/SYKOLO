@@ -661,7 +661,14 @@ a.yd-btn { text-decoration: none; }
 .yf-inline-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 .yf-inline-form.wrap { align-items: flex-end; }
 .yf-inline-form.tight { margin: 0; gap: 4px; flex-wrap: nowrap; }
-.yf-inline-form select { flex: 1 1 220px; width: auto; }
+/* Only direct row controls should flex: selects nested inside vertical .yf-field must keep their natural height. */
+.yf-inline-form > select { flex: 1 1 220px; width: auto; }
+/* Student dossier: primary profile, parents and read-only finance are visible before secondary actions. */
+.yf-student-overview { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); align-items: start; gap: 14px; }
+.yf-student-overview .yd-card { margin: 0; min-width: 0; height: 100%; }
+.yf-student-class-actions { margin-top: 12px; }
+.yf-student-class-actions .yd-btn { max-width: 100%; }
+
 .yd-app .yf-num { width: 90px; padding: 5px 8px; }
 .yf-head-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .yf-person { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; padding: 10px 0; border-bottom: 1px solid var(--yd-line-soft); }
