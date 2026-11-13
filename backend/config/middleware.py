@@ -67,6 +67,7 @@ class SchoolCycleBoundaryMiddleware:
         rf"enrollments/{_UUID}",
         r"staff/onboard",
         r"staff/me/assignments",
+        r"staff/me/dossier",
         r"organization/my-appointments",
     )
     _ALLOW_POST = (r"staff/onboard",)

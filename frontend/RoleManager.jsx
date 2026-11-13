@@ -39,6 +39,8 @@ const STUDENT_RIGHTS = {
 };
 export function permissionLabel(value){
   if(STUDENT_RIGHTS[value])return STUDENT_RIGHTS[value];
+  if(value==="school.staff.dossier.read")return "Personnel — Consulter la fiche professionnelle détaillée";
+  if(value==="school.staff.dossier.manage")return "Personnel — Modifier les informations professionnelles";
   const parts=value.split(".");
   const domain=DOMAIN_LABELS[parts[1]]||parts[1];
   const action=ACTION_LABELS[parts[2]]||parts[2]||"";

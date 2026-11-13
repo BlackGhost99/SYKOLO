@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from "react";
+import StaffProfessionalDossier from "./StaffProfessionalDossier.jsx";
 import {ClassField, useSchoolData} from "./SchoolSettings.jsx";
 import {Button, Card, Status, Table} from "./yem-ui.jsx";
 import "./school-staff-photos.css";
@@ -41,14 +42,16 @@ function ClassFamilies({root, room, onNavigate}) {
   </Card>;
 }
 
-export function StaffDirectory({schoolId, onAdd, onAssign}) {
+export function StaffDirectory({schoolId, onAdd, onAssign, canReadDossiers=false, initialStaffId=""}) {
+  const [selectedStaff,setSelectedStaff]=useState(initialStaffId);
+  useEffect(()=>setSelectedStaff(initialStaffId),[schoolId,initialStaffId]);
   const {data, error} = useSchoolData("schools/" + schoolId + "/", "staff");
   const [search, setSearch] = useState("");
   const query = search.trim().toLocaleLowerCase("fr");
   const staff = data?.staff.filter(person =>
     person.active && [person.first_name, person.last_name, person.position, person.staff_code]
       .join(" ").toLocaleLowerCase("fr").includes(query)) || [];
-  return <Card title="Personnel de l’établissement" icon="idcard">
+  return <><Card title="Personnel de l’établissement" icon="idcard">
     <div className="actions">
       {onAdd && <Button primary icon="adduser" onClick={onAdd}>Ajouter un collaborateur</Button>}
       {onAssign && <Button onClick={onAssign}>Affecter à une classe</Button>}
@@ -60,7 +63,7 @@ export function StaffDirectory({schoolId, onAdd, onAssign}) {
         <input type="search" value={search} onChange={event => setSearch(event.target.value)}/>
       </label>
       {staff.length === 0 ? <p>{query ? "Aucun résultat pour cette recherche." : "Aucun collaborateur enregistré."}</p> :
-        <Table headers={["Nom", "Poste", "Matricule", "Accès YEM"]} rows={staff.map(person => [
+        <Table headers={["Nom", "Poste", "Matricule", "Accès YEM", "Fiche technique"]} rows={staff.map(person => [
           <span className="yd-staff-person">
             {person.photo_url?<img className="yd-staff-avatar" src={person.photo_url} alt={"Photo de "+person.first_name+" "+person.last_name} loading="lazy"/>:
               <span className="yd-staff-avatar empty" aria-hidden="true">●</span>}
@@ -69,7 +72,12 @@ export function StaffDirectory({schoolId, onAdd, onAssign}) {
             </span>
           </span>, person.position, person.staff_code,
           <Status tone={person.account_id ? "green" : "gray"}>{person.account_id ? "Compte lié" : "Sans compte"}</Status>,
+          canReadDossiers ? <Button className="small" onClick={()=>setSelectedStaff(person.id)}>Consulter la fiche</Button> : "Accès réservé",
         ])}/>}
     </>}
-  </Card>;
+  </Card>
+    {canReadDossiers && selectedStaff &&
+      <StaffProfessionalDossier key={selectedStaff} schoolId={schoolId} staffId={selectedStaff}
+        onClose={()=>setSelectedStaff("")}/>}
+  </>;
 }
