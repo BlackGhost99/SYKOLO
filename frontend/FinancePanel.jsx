@@ -290,7 +290,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
     {current&&<>
       <h3>Historique des encaissements</h3>
       {payments.length===0?<p className="hint">Aucun encaissement pour ce frais.</p>:payments.map(p=><p key={p.id}>
-        <strong>{p.amount} {p.currency}</strong> · {p.paid_on} · {p.method} · {p.voided?"Annulé":"Enregistré"} ·
+        <strong>{p.amount} {p.currency}</strong> · {p.paid_on} · {p.method} · {p.voided?"Annulé":p.evidence_class==="simulation"?"SIMULATION — aucune recette":p.evidence_class==="legacy_unverified"?"À rapprocher — paiement historique non vérifié":"Enregistré (déclaratif)"} ·
         {" "}<a href={"/api/v1/"+finance+"payments/"+p.id+"/receipt"}>Reçu PDF</a>
         {canReverse&&!p.voided&&<button type="button" disabled={busy} style={{marginLeft:"0.5rem"}} onClick={()=>{setCancelPayment(p.id);setCancelReason("");}}>Demander une annulation</button>}
       </p>)}
