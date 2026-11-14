@@ -8,8 +8,9 @@ from django.db.models import Sum
 from .finance_models import CashClosing, FeePayment
 from .parent_payment_models import AdmissionCashReceipt
 
-# Legacy fixtures also used "cash"; both codes represent physical cash.
-CASH_METHODS = ("especes", "cash")
+# Only "especes" certifies a cashier declaration. Legacy "cash" may be fictitious.
+CASH_METHODS = ("especes",)
+LEGACY_UNVERIFIED_METHODS = ("cash", "simulation")
 
 
 def cash_closed_for_recorder(*, school, day, currency, user):
