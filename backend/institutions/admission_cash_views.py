@@ -4,6 +4,7 @@ Only school cashiers may record a real receipt. Synthetic test cash is explicitl
 non-financial, requires school opt-in, and never reaches the real cashbook.
 """
 from datetime import date
+from decimal import Decimal
 from html import escape
 from io import BytesIO
 from uuid import UUID
