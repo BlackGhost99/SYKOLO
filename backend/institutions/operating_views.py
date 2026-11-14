@@ -246,9 +246,9 @@ def budgets(request, school_id):
             year = year_for(school, request.GET.get("year"))
         except ValueError as exc:
             return fail(str(exc))
-        qs = OperatingBudget.objects.filter(school=school)
-        if year:
-            qs = qs.filter(year=year)
+        if year is None:
+            return fail("Année scolaire introuvable.", 404) if request.GET.get("year") else result({"budgets": []})
+        qs = OperatingBudget.objects.filter(school=school, year=year)
         return result({"budgets": [budget_data(b) for b in qs.order_by("category", "currency")[:200]]})
     data, err = body(request, {"year", "category", "currency", "ceiling"}, {"year", "category", "currency", "ceiling"})
     if err is not None:
@@ -374,9 +374,9 @@ def expenses(request, school_id):
             year = year_for(school, request.GET.get("year"))
         except ValueError as exc:
             return fail(str(exc))
-        qs = OperatingExpense.objects.filter(school=school).select_related("supplier", "budget")
-        if year:
-            qs = qs.filter(year=year)
+        if year is None:
+            return fail("Année scolaire introuvable.", 404) if request.GET.get("year") else result({"expenses": []})
+        qs = OperatingExpense.objects.filter(school=school, year=year).select_related("supplier", "budget")
         return result({"expenses": [expense_data(row) for row in qs.order_by("-expense_on", "-created_at")[:400]]})
     data, err = body(request, {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount"},
                      {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount"})
