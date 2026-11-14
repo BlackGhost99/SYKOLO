@@ -338,3 +338,285 @@ def approve_budget(request, school_id, budget_id):
         row.save(update_fields=["approved_by", "approved_at", "revision"])
         log_event(school, request, "operating_budget_approved", row.pk)
     return result(budget_data(row))
+
+
+def expense_fields(school, data):
+    budget = OperatingBudget.objects.select_related("year").filter(
+        school=school, pk=uuidval(data["budget"]),
+    ).first()
+    supplier = OperatingSupplier.objects.filter(school=school, pk=uuidval(data["supplier"])).first()
+    if not budget or not supplier:
+        raise LookupError("Enveloppe ou fournisseur d'un autre établissement.")
+    if not supplier.active:
+        raise ValueError("Fournisseur archivé : demande refusée.")
+    if not budget.approved_at:
+        raise ValueError("Le budget doit être approuvé avant une dépense.")
+    if not open_year(budget.year):
+        raise ValueError("Année scolaire clôturée.")
+    return {
+        "budget": budget, "year": budget.year, "supplier": supplier,
+        "label": txt(data["label"], 200, "Libellé"),
+        "invoice_reference": txt(data["invoice_reference"], 120, "Référence justificative"),
+        "expense_on": day(data["expense_on"]), "amount": money(data["amount"]),
+    }
+
+
+@never_cache
+@require_http_methods(["GET", "POST"])
+@authorized
+def expenses(request, school_id):
+    school, err = gate(request, school_id, "school.operating.read" if request.method == "GET" else "school.operating.manage")
+    if err is not None:
+        return err
+    if request.method == "GET":
+        try:
+            year = year_for(school, request.GET.get("year"))
+        except ValueError as exc:
+            return fail(str(exc))
+        qs = OperatingExpense.objects.filter(school=school).select_related("supplier", "budget")
+        if year:
+            qs = qs.filter(year=year)
+        return result({"expenses": [expense_data(row) for row in qs.order_by("-expense_on", "-created_at")[:400]]})
+    data, err = body(request, {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount"},
+                     {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount"})
+    if err is not None:
+        return err
+    try:
+        fields = expense_fields(school, data)
+        with transaction.atomic():
+            row = OperatingExpense(school=school, prepared_by=request.user, **fields)
+            row.full_clean()
+            row.save()
+            log_event(school, request, "operating_expense_prepared", row.pk)
+    except LookupError as exc:
+        return fail(str(exc), 404)
+    except ValueError as exc:
+        return fail(str(exc))
+    except ValidationError as exc:
+        return validation(exc)
+    return result(expense_data(row), 201)
+
+
+@never_cache
+@require_http_methods(["GET", "PATCH"])
+@authorized
+def expense_detail(request, school_id, expense_id):
+    school, err = gate(request, school_id, "school.operating.read" if request.method == "GET" else "school.operating.manage")
+    if err is not None:
+        return err
+    if request.method == "GET":
+        row = OperatingExpense.objects.select_related("supplier", "budget").filter(school=school, pk=expense_id).first()
+        if not row:
+            return fail("Dépense introuvable.", 404)
+        return result({"expense": expense_data(row),
+                       "payments": [payment_data(p) for p in row.payments.order_by("recorded_at")]})
+    data, err = body(request, {"revision", "label", "invoice_reference", "expense_on", "amount", "supplier"}, {"revision"})
+    if err is not None:
+        return err
+    if type(data["revision"]) is not int or not set(data).difference({"revision"}):
+        return fail("Version et modification requises.")
+    with transaction.atomic():
+        row = OperatingExpense.objects.select_for_update().select_related("year", "supplier", "budget").filter(
+            school=school, pk=expense_id,
+        ).first()
+        if not row:
+            return fail("Dépense introuvable.", 404)
+        if row.approved_at or not open_year(row.year):
+            return fail("Dépense déjà approuvée ou exercice clôturé.", 409)
+        if row.revision != data["revision"]:
+            return fail("Demande modifiée par un autre agent.", 409)
+        try:
+            if "label" in data:
+                row.label = txt(data["label"], 200, "Libellé")
+            if "invoice_reference" in data:
+                row.invoice_reference = txt(data["invoice_reference"], 120, "Justificatif")
+            if "expense_on" in data:
+                row.expense_on = day(data["expense_on"])
+            if "amount" in data:
+                row.amount = money(data["amount"])
+            if "supplier" in data:
+                new_supplier = OperatingSupplier.objects.filter(
+                    school=school, pk=uuidval(data["supplier"]), active=True,
+                ).first()
+                if not new_supplier:
+                    return fail("Fournisseur absent ou archivé.", 404)
+                row.supplier = new_supplier
+            row.full_clean()
+        except ValueError as exc:
+            return fail(str(exc))
+        except ValidationError as exc:
+            return validation(exc)
+        row.revision += 1
+        row.save()
+        log_event(school, request, "operating_expense_updated", row.pk)
+    return result(expense_data(row))
+
+
+@never_cache
+@require_POST
+@authorized
+def approve_expense(request, school_id, expense_id):
+    school, err = gate(request, school_id, "school.operating.approve")
+    if err is not None:
+        return err
+    data, err = body(request, {"revision"}, {"revision"})
+    if err is not None:
+        return err
+    if type(data["revision"]) is not int:
+        return fail("Révision obligatoire.")
+    with transaction.atomic():
+        # Lock the spending envelope before checking its commitments to
+        # serialise independent approvals competing for the last funds.
+        initial = OperatingExpense.objects.filter(school=school, pk=expense_id).values("budget_id").first()
+        if not initial:
+            return fail("Dépense introuvable.", 404)
+        budget = OperatingBudget.objects.select_for_update().select_related("year").filter(
+            school=school, pk=initial["budget_id"],
+        ).first()
+        row = OperatingExpense.objects.select_for_update().select_related("budget", "supplier", "year").filter(
+            school=school, pk=expense_id, budget=budget,
+        ).first()
+        if not budget or not row:
+            return fail("Dépense introuvable.", 404)
+        if not open_year(row.year) or not budget.approved_at or row.approved_at or row.revision != data["revision"]:
+            return fail("Dépense déjà approuvée, modifiée ou année clôturée.", 409)
+        if request.user.pk == row.prepared_by_id:
+            return fail("Le préparateur ne peut approuver sa propre dépense.", 403)
+        if authorised_total(budget) + row.amount > budget.ceiling:
+            return fail("Budget insuffisant : la dépense dépasse les fonds non engagés.", 409)
+        row.approved_by = request.user
+        row.approved_at = timezone.now()
+        row.revision += 1
+        row.full_clean()
+        row.save()
+        log_event(school, request, "operating_expense_approved", row.pk)
+    return result(expense_data(row))
+
+
+@never_cache
+@require_POST
+@authorized
+def pay_expense(request, school_id, expense_id):
+    school, err = gate(request, school_id, "school.operating.pay")
+    if err is not None:
+        return err
+    keys = {"amount", "method", "reference", "paid_on", "idempotency_key"}
+    data, err = body(request, keys, keys)
+    if err is not None:
+        return err
+    try:
+        amount = money(data["amount"])
+        method = txt(data["method"], 20, "Mode de paiement")
+        if method not in METHODS:
+            raise ValueError("Mode de paiement déclaré invalide.")
+        reference = txt(data["reference"], 120, "Justificatif")
+        paid_on = day(data["paid_on"])
+        key = uuidval(data["idempotency_key"])
+        if paid_on > timezone.localdate():
+            raise ValueError("Date future interdite.")
+    except ValueError as exc:
+        return fail(str(exc))
+    with transaction.atomic():
+        # The school lock protects the uniqueness decision across requests,
+        # and the expense lock protects against overpaying a shared balance.
+        school.__class__.objects.select_for_update().get(pk=school.pk)
+        previous = OperatingExpensePayment.objects.filter(school=school, idempotency_key=key).first()
+        if previous:
+            if (previous.voided_at is None and previous.expense_id == expense_id and
+                    previous.amount == amount and previous.method == method and
+                    previous.reference == reference and previous.paid_on == paid_on):
+                return result(payment_data(previous))
+            return fail("Clé anti-doublon déjà utilisée avec une autre opération.", 409)
+        row = OperatingExpense.objects.select_for_update().select_related("year", "budget", "supplier").filter(
+            school=school, pk=expense_id,
+        ).first()
+        if not row:
+            return fail("Dépense introuvable.", 404)
+        if not row.approved_at or not open_year(row.year):
+            return fail("Dépense non approuvée ou année clôturée.", 409)
+        if request.user.pk in (row.prepared_by_id, row.approved_by_id):
+            return fail("Le règlement exige un caissier indépendant du préparateur et du contrôleur.", 403)
+        if cleared_total(row) + amount > row.amount:
+            return fail("Règlement supérieur au solde restant.", 409)
+        payment = OperatingExpensePayment(
+            school=school, expense=row, amount=amount, method=method,
+            reference=reference, paid_on=paid_on, idempotency_key=key, recorded_by=request.user,
+        )
+        try:
+            payment.full_clean()
+        except ValidationError as exc:
+            return validation(exc)
+        payment.save()
+        log_event(school, request, "operating_expense_disbursed", payment.pk,
+                  {"expense": str(row.pk)})
+    return result(payment_data(payment), 201)
+
+
+@never_cache
+@require_POST
+@authorized
+def void_expense_payment(request, school_id, payment_id):
+    school, err = gate(request, school_id, "school.operating.reverse")
+    if err is not None:
+        return err
+    data, err = body(request, {"reason"}, {"reason"})
+    if err is not None:
+        return err
+    try:
+        reason = txt(data["reason"], 240, "Motif de l'annulation")
+        if len(reason) < 10:
+            raise ValueError("Motif de 10 caractères minimum requis.")
+    except ValueError as exc:
+        return fail(str(exc))
+    with transaction.atomic():
+        payment = OperatingExpensePayment.objects.select_for_update().select_related(
+            "expense__year",
+        ).filter(school=school, pk=payment_id).first()
+        if not payment:
+            return fail("Règlement introuvable.", 404)
+        if payment.voided_at or not open_year(payment.expense.year):
+            return fail("Règlement déjà annulé ou exercice clôturé.", 409)
+        if request.user.pk == payment.recorded_by_id:
+            return fail("Un autre contrôleur doit annuler ce règlement.", 403)
+        payment.voided_at = timezone.now()
+        payment.voided_by = request.user
+        payment.void_reason = reason
+        payment.full_clean()
+        payment.save(update_fields=["voided_at", "voided_by", "void_reason"])
+        log_event(school, request, "operating_expense_payment_voided", payment.pk,
+                  {"expense": str(payment.expense_id)})
+    return result(payment_data(payment))
+
+
+@never_cache
+@require_GET
+@authorized
+def summary(request, school_id):
+    school, err = gate(request, school_id, "school.operating.read")
+    if err is not None:
+        return err
+    try:
+        year = year_for(school, request.GET.get("year"))
+    except ValueError as exc:
+        return fail(str(exc))
+    if not year:
+        return result({"year": None, "budgets": [], "totals": {}})
+    budgets = OperatingBudget.objects.filter(school=school, year=year).order_by("category")
+    output = []
+    totals = {}
+    for budget in budgets[:200]:
+        data = budget_data(budget)
+        payments = OperatingExpensePayment.objects.filter(
+            school=school, expense__budget=budget, voided_at__isnull=True,
+        ).aggregate(t=Sum("amount"))["t"] or ZERO
+        data["paid"] = fmt(payments)
+        data["unpaid_commitments"] = fmt(Decimal(data["committed"]) - payments)
+        output.append(data)
+        entry = totals.setdefault(budget.currency, {"ceiling": ZERO, "committed": ZERO, "paid": ZERO, "remaining": ZERO})
+        entry["ceiling"] += budget.ceiling if budget.approved_at else ZERO
+        entry["committed"] += Decimal(data["committed"])
+        entry["paid"] += payments
+        entry["remaining"] += (budget.ceiling - Decimal(data["committed"])) if budget.approved_at else ZERO
+    return result({"year": str(year.pk), "budgets": output,
+                   "totals": {currency: {key: fmt(amount) for key, amount in items.items()}
+                              for currency, items in totals.items()}})
