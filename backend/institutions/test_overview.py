@@ -91,6 +91,25 @@ class OverviewTests(TestCase):
         self.assertEqual(d["monthly"][-1]["total"], "140000.00")
         self.assertEqual(len(d["monthly"]), 6)
 
+    def test_finance_overview_identifies_unverified_cash_and_simulation(self):
+        self.client.force_login(self.director)
+        for who, method, amount in (("MINKO", "cash", "5000"), ("OBAME", "simulation", "7000")):
+            FeePayment.objects.create(
+                school=self.school, charge=self.rows[who][2], idempotency_key=uuid.uuid4(),
+                amount=Decimal(amount), currency="XAF", method=method,
+                paid_on=self.today,
+            )
+        data = self.client.get(self.base+"finance").json()
+        self.assertFalse(data["revenue_certified"])
+        self.assertEqual(data["today"]["total"], "152000.00")
+        self.assertEqual(data["evidence"], {
+            "explicit_demo": "7000.00",
+            "legacy_cash_unverified": "5000.00",
+            "other_declared": "140000.00",
+        })
+        self.assertEqual({p["evidence_class"] for p in data["today"]["payments"]},
+                         {"simulation", "legacy_unverified", "manual_record"})
+
     def test_teacher_refused_and_secretariat_without_finance(self):
         self.client.force_login(self.teacher)
         self.assertEqual(self.client.get(self.base + "students").status_code, 403)
