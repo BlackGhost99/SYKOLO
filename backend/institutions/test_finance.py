@@ -89,6 +89,130 @@ class FinanceLedgerTests(TestCase):
             "idempotency_key": idem or str(uuid.uuid4()),
         })
 
+    def test_legacy_cash_is_unverified_and_cannot_be_reused(self):
+        """Unmarked historical cash may be a simulation, not physical currency."""
+        charge = self.charge(self.schedule(code="legacy-cash"))
+        row = FeeCharge.objects.get(pk=charge["id"])
+        FeePayment.objects.create(
+            school=self.school, charge=row, amount=Decimal("1000.00"),
+            currency="XAF", method="cash", reference="HISTORICAL-UNKNOWN",
+            paid_on="2026-11-02", idempotency_key=uuid.uuid4(),
+            recorded_by=self.director,
+        )
+        self.assertEqual(self.pay(charge, "1000", method="cash").status_code, 422)
+        self.assertEqual(self.pay(charge, "1000", method="simulation").status_code, 422)
+        self.assertEqual(self.post("batches", {
+            "enrollment": str(self.enrollment.pk),
+            "lines": [{"charge": charge["id"], "amount": "1000"}],
+            "method": "cash", "reference": "NEW-LEGACY", "paid_on": "2026-11-02",
+            "idempotency_key": str(uuid.uuid4()),
+        }).status_code, 422)
+        confirmed = self.pay(charge, "1500", method="especes")
+        self.assertEqual(confirmed.status_code, 201, confirmed.content.decode())
+        closing = self.post("cash/closings", {
+            "day": "2026-11-02", "currency": "XAF", "counted": "1500.00", "note": "",
+        })
+        self.assertEqual(closing.status_code, 201, closing.content.decode())
+        self.assertEqual(closing.json()["expected"], "1500.00")
+        self.assertEqual(self.pay(charge, "1000", method="especes").status_code, 409)
+        self.assertEqual(self.post("batches", {
+            "enrollment": str(self.enrollment.pk),
+            "lines": [{"charge": charge["id"], "amount": "1000"}],
+            "method": "especes", "reference": "LATE-BATCH", "paid_on": "2026-11-02",
+            "idempotency_key": str(uuid.uuid4()),
+        }).status_code, 409)
+
+    def test_demo_fee_cannot_be_collected_and_is_excluded_from_cash_closing(self):
+        schedule = self.schedule("10000", code="demo-fee")
+        charge = self.charge(schedule)
+        row = FeeCharge.objects.get(pk=charge["id"])
+        FeeCharge.objects.filter(pk=row.pk).update(label="DÉMO — exercice fictif")
+        self.assertEqual(self.pay(charge, "500", method="especes").status_code, 422)
+        self.assertEqual(self.pay(charge, "500", method="virement").status_code, 422)
+        grouped = {
+            "enrollment": str(self.enrollment.pk),
+            "lines": [{"charge": charge["id"], "amount": "500"}],
+            "method": "especes", "reference": "FAKE-BATCH",
+            "paid_on": "2026-11-02", "idempotency_key": str(uuid.uuid4()),
+        }
+        self.assertEqual(self.post("batches", grouped).status_code, 422)
+        grouped["method"] = "simulation"
+        self.assertEqual(self.post("batches", grouped).status_code, 422)
+        # Import ancien : méthode espèces, mais frais explicitement fictif.
+        FeePayment.objects.create(
+            school=self.school, charge=row, amount=Decimal("1000.00"),
+            currency="XAF", method="especes", reference="IMPORT-DEMO",
+            paid_on="2026-11-02", idempotency_key=uuid.uuid4(),
+            recorded_by=self.director,
+        )
+        closing = self.post("cash/closings", {
+            "day": "2026-11-02", "currency": "XAF", "counted": "0", "note": "",
+        })
+        self.assertEqual(closing.status_code, 201, closing.content.decode())
+        self.assertEqual(closing.json()["expected"], "0.00")
+
+    def test_quality_report_keeps_demo_and_unverified_cash_separate(self):
+        from .finance_quality_views import explicit_demo
+        self.assertTrue(explicit_demo("DÉMO — essais"))
+        self.assertFalse(explicit_demo("Démographie"))
+        demo = self.charge(self.schedule("4000", code="demo-fee"))
+        FeeCharge.objects.filter(pk=demo["id"]).update(label="DÉMO — frais fictifs")
+        FeePayment.objects.create(
+            school=self.school, charge_id=demo["id"], amount=Decimal("4000"),
+            currency="XAF", method="simulation", paid_on="2026-11-02",
+            idempotency_key=uuid.uuid4(),
+        )
+        normal = self.charge(self.schedule("10000", code="real-fee"))
+        FeePayment.objects.create(
+            school=self.school, charge_id=normal["id"], amount=Decimal("2000"),
+            currency="XAF", method="cash", paid_on="2026-11-02",
+            idempotency_key=uuid.uuid4(),
+        )
+        FeePayment.objects.create(
+            school=self.school, charge_id=normal["id"], amount=Decimal("3000"),
+            currency="XAF", method="especes", paid_on="2026-11-02",
+            idempotency_key=uuid.uuid4(),
+        )
+        old_count = FeePayment.objects.count()
+        response = self.client.get(self.base+"quality?year="+str(self.year.pk))
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertIn("private", response["Cache-Control"])
+        self.assertIn("no-store", response["Cache-Control"])
+        report = response.json()
+        self.assertFalse(report["certified_revenue"])
+        sections = report["currencies"]["XAF"]
+        self.assertEqual(sections["explicit_demo_charges"], {"count": 1, "net_amount": "4000.00"})
+        self.assertEqual(sections["explicit_demo_payments"], {"count": 1, "amount": "4000.00"})
+        self.assertEqual(sections["legacy_cash_unverified"], {"count": 1, "amount": "2000.00"})
+        self.assertEqual(sections["cash_declared"], {"count": 1, "amount": "3000.00"})
+        self.assertEqual(FeePayment.objects.count(), old_count)
+        # Editing the current tariff must not rewrite older invoice evidence.
+        real_charge = FeeCharge.objects.get(pk=normal["id"])
+        FeeSchedule.objects.filter(pk=real_charge.schedule_id).update(
+            label="DÉMO — libellé tarifaire modifié ultérieurement"
+        )
+        reread = self.client.get(self.base+"quality?year="+str(self.year.pk))
+        self.assertEqual(reread.status_code, 200)
+        updated = reread.json()["currencies"]["XAF"]
+        self.assertEqual(updated["explicit_demo_charges"]["count"], 1)
+        self.assertEqual(updated["explicit_demo_payments"]["count"], 1)
+        self.assertEqual(updated["legacy_cash_unverified"]["count"], 1)
+        self.assertEqual(updated["cash_declared"]["count"], 1)
+        for method, expected in (
+            ("simulation", "simulation"),
+            ("cash", "legacy_unverified"),
+            ("especes", "manual_record"),
+        ):
+            payment = FeePayment.objects.get(school=self.school, method=method)
+            pdf = self.client.get(self.base+"payments/"+str(payment.pk)+"/receipt")
+            self.assertEqual(pdf.status_code, 200)
+            self.assertEqual(pdf["X-YEM-Receipt-Class"], expected)
+            self.assertTrue(pdf.content.startswith(b"%PDF-"))
+        self.login(self.teacher)
+        self.assertEqual(self.client.get(self.base+"quality").status_code, 403)
+        self.login(self.stranger)
+        self.assertEqual(self.client.get(self.base+"quality").status_code, 404)
+
     def test_payment_lifecycle_partial_receipt_void_and_balance(self):
         schedule = self.schedule()
         charge = self.charge(schedule)

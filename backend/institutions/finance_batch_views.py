@@ -26,7 +26,8 @@ from .finance_views import (
     payment_data, cleared_total, uid,
 )
 from .models import School
-from .finance_cash_policy import cash_closed_for_recorder
+from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
+from .finance_evidence import classify_payment, classify_batch
 from .views import log_event, parse_body
 
 
@@ -61,6 +62,8 @@ def create_batch(request, school_id):
     method, reference = data["method"], data["reference"]
     if method == "singpay":
         return JsonResponse({"error": "SingPay est réservé aux confirmations serveur du prestataire."}, status=422)
+    if method in ("cash", "simulation"):
+        return JsonResponse({"error": "Code historique ou fictif interdit pour un nouvel encaissement. Choisissez « especes » pour des espèces réellement reçues."}, status=422)
     if enrollment_id is None or idem is None or not isinstance(method, str) or not CODE_PATTERN.fullmatch(method):
         return JsonResponse({"error": "Inscription, méthode ou clé d'opération invalide."}, status=422)
     if not isinstance(reference, str) or len(reference) > 100:
@@ -114,10 +117,13 @@ def create_batch(request, school_id):
             ).order_by("pk"))
             if len(charges) != len(entries):
                 return JsonResponse({"error": "Frais ou inscription introuvable dans cette école."}, status=404)
+            if any(classify_payment(method, charge.label) == "simulation"
+                   for charge in charges):
+                return JsonResponse({"error": "Paiement sur un frais explicitement DÉMO interdit en caisse réelle."}, status=422)
             currency = charges[0].currency
             if any(charge.currency != currency for charge in charges):
                 return JsonResponse({"error": "Plusieurs devises : effectuez des paiements séparés."}, status=422)
-            if method == "especes" and cash_closed_for_recorder(
+            if method in CASH_METHODS and cash_closed_for_recorder(
                 school=school, day=paid_on, currency=currency, user=request.user,
             ):
                 return JsonResponse({"error": "Caisse du jour déjà déclarée par ce caissier."}, status=409)
@@ -176,11 +182,22 @@ def batch_receipt(request, school_id, batch_id):
         return JsonResponse({"error": "Reçu groupé introuvable."}, status=404)
 
     lines = list(batch.lines.select_related("charge").order_by("charge__label", "pk"))
+    evidence = {
+        p.pk: classify_payment(p.method, p.charge.label)
+        for p in lines
+    }
+    receipt_class = classify_batch(evidence.values())
+    headings = {
+        "simulation": "YEM — SIMULATION GROUPÉE — AUCUN ARGENT REÇU",
+        "legacy_unverified": "YEM — HISTORIQUE GROUPÉ NON RAPPROCHÉ — PAS UN REÇU D'ESPÈCES",
+        "mixed_review": "YEM — ÉCRITURES GROUPÉES MIXTES — RAPPROCHEMENT OBLIGATOIRE",
+        "manual_record": "YEM — REÇU GROUPÉ D'ENCAISSEMENT ENREGISTRÉ",
+    }
     student = batch.enrollment.student
     active_sum = sum((p.amount for p in lines if not hasattr(p, "void")), Decimal("0.00"))
     cancelled = any(hasattr(p, "void") for p in lines)
     text = [
-        "YEM — REÇU GROUPÉ D'ENCAISSEMENT ENREGISTRÉ",
+        headings[receipt_class],
         "Référence interne : " + str(batch.pk),
         "Établissement : " + school.name,
         "Élève : " + student.first_name + " " + student.last_name,
@@ -193,11 +210,17 @@ def batch_receipt(request, school_id, batch_id):
         text.append(
             p.charge.label + " : " + str(p.amount) + " " + p.currency
             + (" (ANNULÉ)" if hasattr(p, "void") else "")
+            + (" (SIMULATION — aucune recette)" if evidence[p.pk] == "simulation" else
+               " (À RAPPROCHER — cash historique)" if evidence[p.pk] == "legacy_unverified"
+               else "")
         )
     text.extend([
         "Montant initial déclaré : " + str(batch.total) + " " + batch.currency,
         "Montant restant après annulations : " + str(active_sum) + " " + batch.currency,
-        "Statut : PARTIELLEMENT OU TOTALEMENT ANNULÉ" if cancelled else "Statut : Enregistré par l'établissement.",
+        "Statut : PARTIELLEMENT OU TOTALEMENT ANNULÉ" if cancelled else
+        "Statut : SIMULATION — aucun argent reçu." if receipt_class == "simulation" else
+        "Statut : ÉCRITURES NON RAPPROCHÉES." if receipt_class in ("legacy_unverified", "mixed_review") else
+        "Statut : Enregistré par l'établissement.",
         "Reçu interne — ne constitue pas une confirmation bancaire ou Mobile Money automatique.",
     ])
 
@@ -210,4 +233,5 @@ def batch_receipt(request, school_id, batch_id):
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="yem-recu-groupe-{batch.pk}.pdf"'
     response["Cache-Control"] = "private, no-store"
+    response["X-YEM-Receipt-Class"] = receipt_class
     return response

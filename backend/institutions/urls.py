@@ -3,7 +3,7 @@ from conduct import views as conduct_views
 from . import import_views
 from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
-from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views
+from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
 from . import annual_views
 from . import class_assignment_views
 from . import calendar_views
@@ -132,6 +132,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/finance/charges", finance_views.charges),
     path("schools/<uuid:school_id>/finance/charges/<uuid:charge_id>", finance_views.charge_detail),
     path("schools/<uuid:school_id>/finance/summary", finance_summary_views.summary),
+    path("schools/<uuid:school_id>/finance/quality", finance_quality_views.quality),
     path("schools/<uuid:school_id>/finance/roster", finance_summary_views.finance_roster),
     path("schools/<uuid:school_id>/finance/payments", finance_views.payments),
     path("schools/<uuid:school_id>/finance/cash/closings/<uuid:closing_id>/transfers", finance_cash_views.cash_transfer),
