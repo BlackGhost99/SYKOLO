@@ -89,6 +89,45 @@ class FinanceLedgerTests(TestCase):
             "idempotency_key": idem or str(uuid.uuid4()),
         })
 
+    def test_quality_report_keeps_demo_and_unverified_cash_separate(self):
+        from .finance_quality_views import explicit_demo
+        self.assertTrue(explicit_demo("DÉMO — essais"))
+        self.assertFalse(explicit_demo("Démographie"))
+        demo = self.charge(self.schedule("4000", code="demo-fee"))
+        FeeCharge.objects.filter(pk=demo["id"]).update(label="DÉMO — frais fictifs")
+        FeePayment.objects.create(
+            school=self.school, charge_id=demo["id"], amount=Decimal("4000"),
+            currency="XAF", method="simulation", paid_on="2026-11-02",
+            idempotency_key=uuid.uuid4(),
+        )
+        normal = self.charge(self.schedule("10000", code="real-fee"))
+        FeePayment.objects.create(
+            school=self.school, charge_id=normal["id"], amount=Decimal("2000"),
+            currency="XAF", method="cash", paid_on="2026-11-02",
+            idempotency_key=uuid.uuid4(),
+        )
+        FeePayment.objects.create(
+            school=self.school, charge_id=normal["id"], amount=Decimal("3000"),
+            currency="XAF", method="especes", paid_on="2026-11-02",
+            idempotency_key=uuid.uuid4(),
+        )
+        old_count = FeePayment.objects.count()
+        response = self.client.get(self.base+"quality?year="+str(self.year.pk))
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        report = response.json()
+        self.assertFalse(report["certified_revenue"])
+        sections = report["currencies"]["XAF"]
+        self.assertEqual(sections["explicit_demo_charges"], {"count": 1, "net_amount": "4000.00"})
+        self.assertEqual(sections["explicit_demo_payments"], {"count": 1, "amount": "4000.00"})
+        self.assertEqual(sections["legacy_cash_unverified"], {"count": 1, "amount": "2000.00"})
+        self.assertEqual(sections["cash_declared"], {"count": 1, "amount": "3000.00"})
+        self.assertEqual(FeePayment.objects.count(), old_count)
+        self.login(self.teacher)
+        self.assertEqual(self.client.get(self.base+"quality").status_code, 403)
+        self.login(self.stranger)
+        self.assertEqual(self.client.get(self.base+"quality").status_code, 404)
+
     def test_payment_lifecycle_partial_receipt_void_and_balance(self):
         schedule = self.schedule()
         charge = self.charge(schedule)
