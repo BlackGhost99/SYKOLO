@@ -8,6 +8,9 @@ from django.db.models import Sum
 from .finance_models import CashClosing, FeePayment
 from .parent_payment_models import AdmissionCashReceipt
 
+# Legacy fixtures also used "cash"; both codes represent physical cash.
+CASH_METHODS = ("especes", "cash")
+
 
 def cash_closed_for_recorder(*, school, day, currency, user):
     return CashClosing.objects.filter(
@@ -18,7 +21,7 @@ def cash_closed_for_recorder(*, school, day, currency, user):
 def recorded_cash_total(*, school, day, currency, user):
     total = FeePayment.objects.filter(
         school=school, recorded_by=user, paid_on=day,
-        currency=currency, method="especes", void__isnull=True,
+        currency=currency, method__in=CASH_METHODS, void__isnull=True,
     ).aggregate(total=Sum("amount"))["total"]
     admission = AdmissionCashReceipt.objects.filter(
         school=school, recorded_by=user, received_on=day,
