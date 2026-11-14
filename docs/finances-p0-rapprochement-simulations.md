@@ -8,6 +8,8 @@
 
 ## Service d'audit
 L'API GET /api/v1/schools/{school_id}/finance/quality est réservée à school.finance.read.
+
+La classification se fonde sur la méthode déclarée et sur le libellé figé dans la facture `FeeCharge.label` ; elle ne se fonde **pas** sur `FeeSchedule.label` car un gestionnaire peut modifier le tarif ultérieurement. Un changement de libellé tarifaire ne doit jamais changer rétroactivement la classification d'un paiement ou l'attestation PDF.
 L'année scolaire est filtrable par ?year={uuid}; les montants sont regroupés par devise.
 Catégories disjointes :
 1. explicit_demo_charges : frais dont le libellé ou celui du tarif indique explicitement DÉMO.
