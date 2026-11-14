@@ -206,7 +206,7 @@ function OnboardingHome({m}) {
       <span className="yfx-onboarding-icon"><Icon name="users" size={33}/></span>
       <div><span className="yfx-onboarding-eyebrow">BIENVENUE SUR YEM FAMILLES</span>
         <h2>Commençons le suivi de votre enfant</h2>
-        <p>Créez son profil et retrouvez son établissement. Ses notes et ses paiements apparaîtront dès que l'école aura validé le rattachement.</p></div>
+        <p>Si votre enfant est déjà scolarisé, retrouvez son établissement et demandez le rattachement à son dossier, sans nouvelle inscription. Ses résultats seront visibles après vérification.</p></div>
     </div>
     <div className="yfx-onboarding-steps" aria-label="Étapes du rattachement">
       <div><span>1</span><strong>Ajouter un enfant</strong><small>Créez son profil familial</small></div>
@@ -214,6 +214,7 @@ function OnboardingHome({m}) {
       <div><span>3</span><strong>Valider le lien</strong><small>Vérification par l'établissement</small></div>
     </div>
     <div className="yfx-onboarding-actions">
+      <button type="button" className="yfx-primary" onClick={()=>m.goDiscovery("existing")}><Icon name="school" size={20}/> Mon enfant est déjà inscrit</button>
       <button type="button" className="yfx-primary" onClick={()=>m.goDiscovery("children")}><Icon name="users" size={20}/> Ajouter un enfant</button>
       <button type="button" className="yfx-outline" onClick={m.refreshChildren}><Icon name="check" size={18}/> Actualiser mes enfants</button>
     </div>
