@@ -5,7 +5,7 @@ for visibility and receipt wording; it never changes booked amounts or debt.
 """
 import re
 
-DEMO_LABEL = re.compile(r"^(?:d[eé]mo)(?:\\s*[-—:]|\\s*$|\\s*\\[)", re.IGNORECASE)
+DEMO_LABEL = re.compile(r"^(?:d[eé]mo)(?:\s*[-—:]|\s*$|\s*\[)", re.IGNORECASE)
 
 
 def explicit_demo(label):
