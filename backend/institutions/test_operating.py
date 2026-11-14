@@ -190,6 +190,9 @@ class OperatingLedgerTests(TestCase):
             "year": str(self.other_year.pk), "category": "Énergie",
             "currency": "XAF", "ceiling": "20000.00",
         }).status_code, 404)
+        # A valid UUID from another school must not widen a year-scoped GET.
+        self.assertEqual(self.get("budgets", {"year": str(self.other_year.pk)}).status_code, 404)
+        self.assertEqual(self.get("expenses", {"year": str(self.other_year.pk)}).status_code, 404)
         self.login("secretariat")
         self.assertEqual(self.get("suppliers").status_code, 403)
         self.assertEqual(self.get("budgets").status_code, 403)
