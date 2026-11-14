@@ -467,9 +467,23 @@ def receipt(request, school_id, payment_id):
     if payment is None:
         return JsonResponse({"error": "Reçu introuvable."}, status=404)
     void = FeePaymentVoid.objects.filter(payment=payment, school=school).first()
+    from .finance_quality_views import explicit_demo
+    simulated = (payment.method == "simulation"
+                 or explicit_demo(payment.charge.label)
+                 or explicit_demo(payment.charge.schedule.label))
+    unverified_legacy = payment.method == "cash" and not simulated
+    receipt_class = ("simulation" if simulated else
+                     "legacy_unverified" if unverified_legacy else "manual_record")
+    heading = (
+        "YEM — SIMULATION FINANCIÈRE — AUCUN ARGENT REÇU"
+        if simulated else
+        "YEM — ÉCRITURE HISTORIQUE NON RAPPROCHÉE — PAS UN REÇU D'ESPÈCES"
+        if unverified_legacy else
+        "YEM — REÇU D'ENCAISSEMENT ENREGISTRÉ"
+    )
     student = payment.charge.enrollment.student
     lines = [
-        "YEM — REÇU D'ENCAISSEMENT ENREGISTRÉ",
+        heading,
         "Référence interne : " + str(payment.pk),
         "Établissement : " + school.name,
         "Élève : " + student.first_name + " " + student.last_name,
@@ -478,7 +492,10 @@ def receipt(request, school_id, payment_id):
         "Date déclarée : " + payment.paid_on.isoformat(),
         "Méthode déclarée : " + payment.method,
         "Référence : " + (payment.reference or "Non renseignée"),
-        "Statut : ANNULÉ — ne vaut plus preuve d'encaissement." if void else "Statut : Enregistré par l'établissement.",
+        "Statut : ANNULÉ — ne vaut plus preuve d'encaissement." if void else
+        "Statut : SIMULATION — aucune recette réelle." if simulated else
+        "Statut : À RAPPROCHER — déclaration historique non vérifiée." if unverified_legacy else
+        "Statut : Enregistré par l'établissement.",
         "Document interne : aucune confirmation automatique d'un établissement bancaire ou opérateur mobile.",
     ]
     buffer = BytesIO()
@@ -490,4 +507,5 @@ def receipt(request, school_id, payment_id):
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="yem-recu-{payment.pk}.pdf"'
     response["Cache-Control"] = "private, no-store"
+    response["X-YEM-Receipt-Class"] = receipt_class
     return response
