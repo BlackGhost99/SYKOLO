@@ -13,6 +13,7 @@ from . import parent_existing_views
 from . import parent_dossier_views
 from . import staff_onboarding_views, staff_profile_views, staff_dossier_views
 from . import school_branding_views
+from . import finance_parent_documents
 from . import owner_overview_views
 from . import cycle_access_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
@@ -86,6 +87,8 @@ urlpatterns = [
     path("parents/children/<uuid:student_id>/reports/<uuid:report_id>/pdf", parent_views.child_report_pdf),
     path("parents/children/<uuid:student_id>/attendance", parent_views.child_attendance),
     path("parents/children/<uuid:student_id>/finance", parent_views.child_finance),
+    path("parents/children/<uuid:student_id>/finance/documents", finance_parent_documents.list_documents),
+    path("parents/children/<uuid:student_id>/finance/documents/<str:kind>/<uuid:document_id>/pdf", finance_parent_documents.document_pdf),
     path("parents/children/<uuid:student_id>/timetable", parent_views.child_timetable),
     path("schools/<uuid:school_id>/parent-links", parent_views.links),
     path("schools/<uuid:school_id>/parent-links/<uuid:link_id>", parent_views.link_detail),
