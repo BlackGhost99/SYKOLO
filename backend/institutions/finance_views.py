@@ -340,6 +340,8 @@ def payments(request, school_id):
     reference = data["reference"]
     if method == "singpay":
         return JsonResponse({"error": "SingPay est réservé aux confirmations serveur du prestataire."}, status=422)
+    if method in ("cash", "simulation"):
+        return JsonResponse({"error": "Code historique ou fictif interdit pour un nouvel encaissement. Choisissez « especes » pour des espèces réellement reçues."}, status=422)
     if charge_id is None or idem is None or not isinstance(method, str) or not CODE_PATTERN.fullmatch(method):
         return JsonResponse({"error": "Frais, moyen ou identifiant d'opération invalide."}, status=422)
     if not isinstance(reference, str) or len(reference) > 100:
