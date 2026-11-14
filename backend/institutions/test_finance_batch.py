@@ -377,3 +377,10 @@ class MultiFeeReceiptTests(TestCase):
         self.assertEqual(other_document.status_code, 404)
         GuardianAccountLink.objects.filter(user=parent).update(active=False)
         self.assertEqual(self.client.get(root).status_code, 404)
+
+    def test_receipt_evidence_classifier_never_certifies_old_cash_or_demo(self):
+        from .finance_document_pdf import payment_evidence
+        self.assertEqual(payment_evidence("simulation", "Scolarité"), "simulation")
+        self.assertEqual(payment_evidence("especes", "Démo - inscription"), "simulation")
+        self.assertEqual(payment_evidence("cash", "Mensualité"), "legacy_unverified")
+        self.assertEqual(payment_evidence("especes", "Mensualité"), "manual_record")
