@@ -1,6 +1,7 @@
 import React, {useEffect, useMemo, useRef, useState} from "react";
 import "./parent-discovery.css";
 import SingPayPayment from "./SingPayPayment.jsx";
+import ParentExistingSchool from "./ParentExistingSchool.jsx";
 import {SchoolRequirements, FamilyProfileEditor, ParentAdmissionDocuments} from "./ParentSchoolForms.jsx";
 
 async function api(path, body, updateMethod="POST") {
@@ -113,16 +114,24 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
       <div className="yp-stat">{family.length}<small>profils enfant</small></div>
     </header>}
     {!embedded && <nav className="yp-tabs" aria-label="Espace familles">
-      {[["schools","Établissements"],["children","Mes enfants"],["requests","Mes demandes"],["notifications","Actualités"]].map(([key,label])=>
+      {[["schools","Établissements"],["existing","Enfant déjà inscrit"],["children","Mes enfants"],["requests","Mes demandes"],["notifications","Actualités"]].map(([key,label])=>
         <button type="button" key={key} aria-current={view===key?"page":undefined}
           onClick={()=>{setView(key);setMessage("");setError("");}}>{label}</button>)}
     </nav>}
     {error&&<p className="yp-error" role="alert">{error}</p>}
     {message&&<p className="yp-success" role="status">{message}</p>}
+    {view==="existing"&&<ParentExistingSchool api={api}/>}
     {view==="schools"&&<>
       <label className="yp-field">Rechercher une école
         <input type="search" placeholder="Nom, ville ou quartier..." value={search} onChange={e=>setSearch(e.target.value)}/>
       </label>
+      <div className="yp-pane">
+        <h3>Votre enfant fréquente déjà un établissement ?</h3>
+        <p>Retrouvez son école et demandez l'accès à son dossier sans refaire l'inscription, même si l'école ne publie pas de places.</p>
+        <button type="button" className="yp-button yp-primary" onClick={()=>{setView("existing");setMessage("");setError("");}}>
+          Mon enfant est déjà inscrit
+        </button>
+      </div>
       <div className="yp-schools">
         {visible.length===0&&<p>Aucun établissement n'a encore publié de places dans ce catalogue.</p>}
         {visible.map(s=><article key={s.id} className={"yp-school"+(s.id===chosenSchool?" active":"")}>

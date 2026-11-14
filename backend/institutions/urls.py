@@ -9,6 +9,7 @@ from . import class_assignment_views
 from . import calendar_views
 from . import secondary_views
 from . import demo_payment_views, admission_cash_views, admission_finance_views
+from . import parent_existing_views
 from . import parent_dossier_views
 from . import staff_onboarding_views, staff_profile_views, staff_dossier_views
 from . import school_branding_views
@@ -61,6 +62,11 @@ urlpatterns = [
     path("schools/<uuid:school_id>/admission-gateway", parent_payment_views.school_gateway),
     path("schools/<uuid:school_id>/admission-fees", parent_payment_views.school_admission_fees),
     path("schools/<uuid:school_id>/admission-payments", parent_payment_views.staff_admission_payments),
+    path("parents/existing-schools", parent_existing_views.school_directory),
+    path("parents/existing-requests", parent_existing_views.family_requests),
+    path("parents/existing-requests/<uuid:request_id>", parent_existing_views.family_request_detail),
+    path("schools/<uuid:school_id>/parent-existing-requests", parent_existing_views.school_requests),
+    path("schools/<uuid:school_id>/parent-existing-requests/<uuid:request_id>", parent_existing_views.school_request_detail),
     path("parents/catalog", parent_admission_views.directory),
     path("parents/admission-form", parent_dossier_views.school_form),
     path("parents/family-children/<uuid:child_id>", parent_dossier_views.family_profile),

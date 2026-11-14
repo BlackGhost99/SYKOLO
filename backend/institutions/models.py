@@ -175,6 +175,7 @@ from .admission_models import AdmissionApplication, AdmissionEvent, AdmissionPol
 from .admission_finance import AdmissionFinancePolicy, GovernmentScholarship  # noqa: E402,F401
 
 from .parent_models import GuardianAccountLink  # noqa: E402,F401
+from .parent_existing_models import ExistingStudentLinkRequest  # noqa: E402,F401
 from .parent_admission_models import SchoolPublicListing, FamilyChild, FamilyChildPhoto, ParentAdmissionRequest, ParentDocumentUpload  # noqa: E402,F401
 from .parent_payment_models import SchoolAdmissionFee, SchoolPaymentGateway, ParentPaymentAttempt, SchoolDemoPaymentConfig, AdmissionCashReceipt, AdmissionCashReceiptVoid  # noqa: E402,F401
 
