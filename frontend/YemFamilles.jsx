@@ -83,8 +83,8 @@ export default function YemFamilles({api, accountView, onLogout, onSchoolWorkspa
   useEffect(() => {
     let alive = true;
     let inFlight = false;
-    async function refreshNotifications() {
-      if (!alive || inFlight || (typeof document !== "undefined" && document.hidden)) return;
+    async function refreshNotifications(force = false) {
+      if (!alive || inFlight || (!force && typeof document !== "undefined" && document.hidden)) return;
       inFlight = true;
       try {
         const result = await api("parents/notifications");
@@ -95,13 +95,14 @@ export default function YemFamilles({api, accountView, onLogout, onSchoolWorkspa
         inFlight = false;
       }
     }
-    refreshNotifications();
-    const interval = window.setInterval(refreshNotifications, 60_000);
-    document.addEventListener("visibilitychange", refreshNotifications);
+    refreshNotifications(true);
+    const tick = () => refreshNotifications(false);
+    const interval = window.setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       alive = false;
       window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", refreshNotifications);
+      document.removeEventListener("visibilitychange", tick);
     };
   }, [api]);
 
