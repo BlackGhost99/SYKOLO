@@ -124,8 +124,10 @@ def charge_data(row):
 
 
 def payment_data(row):
+    evidence = classify_payment(row.method, row.charge.label, row.charge.schedule.label)
     return {
         "id": str(row.pk), "charge": str(row.charge_id),
+        "evidence_class": evidence,
         "amount": str(row.amount), "currency": row.currency,
         "method": row.method, "reference": row.reference,
         "paid_on": row.paid_on.isoformat(), "recorded_at": row.created_at.isoformat(),
@@ -328,7 +330,9 @@ def payments(request, school_id):
             return JsonResponse({"error": "Identifiant du frais requis."}, status=422)
         if not FeeCharge.objects.filter(school=school, pk=charge_id).exists():
             return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
-        rows = FeePayment.objects.filter(school=school, charge_id=charge_id).order_by("created_at", "pk")[:500]
+        rows = FeePayment.objects.select_related("charge__schedule").filter(
+            school=school, charge_id=charge_id
+        ).order_by("created_at", "pk")[:500]
         return JsonResponse({"payments": [payment_data(row) for row in rows]})
     data, error = parse_body(request)
     if error is not None:
@@ -472,9 +476,21 @@ def receipt(request, school_id, payment_id):
     if payment is None:
         return JsonResponse({"error": "Reçu introuvable."}, status=404)
     void = FeePaymentVoid.objects.filter(payment=payment, school=school).first()
+    receipt_class = classify_payment(
+        payment.method, payment.charge.label, payment.charge.schedule.label
+    )
+    simulated = receipt_class == "simulation"
+    unverified_legacy = receipt_class == "legacy_unverified"
+    heading = (
+        "YEM — SIMULATION FINANCIÈRE — AUCUN ARGENT REÇU"
+        if simulated else
+        "YEM — ÉCRITURE HISTORIQUE NON RAPPROCHÉE — PAS UN REÇU D'ESPÈCES"
+        if unverified_legacy else
+        "YEM — REÇU D'ENCAISSEMENT ENREGISTRÉ"
+    )
     student = payment.charge.enrollment.student
     lines = [
-        "YEM — REÇU D'ENCAISSEMENT ENREGISTRÉ",
+        heading,
         "Référence interne : " + str(payment.pk),
         "Établissement : " + school.name,
         "Élève : " + student.first_name + " " + student.last_name,
@@ -483,7 +499,10 @@ def receipt(request, school_id, payment_id):
         "Date déclarée : " + payment.paid_on.isoformat(),
         "Méthode déclarée : " + payment.method,
         "Référence : " + (payment.reference or "Non renseignée"),
-        "Statut : ANNULÉ — ne vaut plus preuve d'encaissement." if void else "Statut : Enregistré par l'établissement.",
+        "Statut : ANNULÉ — ne vaut plus preuve d'encaissement." if void else
+        "Statut : SIMULATION — aucune recette réelle." if simulated else
+        "Statut : À RAPPROCHER — déclaration historique non vérifiée." if unverified_legacy else
+        "Statut : Enregistré par l'établissement.",
         "Document interne : aucune confirmation automatique d'un établissement bancaire ou opérateur mobile.",
     ]
     buffer = BytesIO()
@@ -495,4 +514,5 @@ def receipt(request, school_id, payment_id):
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="yem-recu-{payment.pk}.pdf"'
     response["Cache-Control"] = "private, no-store"
+    response["X-YEM-Receipt-Class"] = receipt_class
     return response
