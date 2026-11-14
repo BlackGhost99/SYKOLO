@@ -21,6 +21,7 @@ from accounts.views import authorized
 from .academic_models import AcademicYear, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid
 from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
+from .finance_evidence import classify_payment
 from .models import School
 from .student_models import Enrollment
 from .services import has_permission
@@ -362,6 +363,8 @@ def payments(request, school_id):
             charge = FeeCharge.objects.select_for_update().filter(school=school, pk=charge_id).first()
             if charge is None:
                 return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
+            if classify_payment(method, charge.label, charge.schedule.label) == "simulation":
+                return JsonResponse({"error": "Paiement sur un frais explicitement DÉMO interdit en caisse réelle."}, status=422)
             previous = FeePayment.objects.filter(school=school, idempotency_key=idem).first()
             if previous:
                 same = (previous.charge_id == charge.pk and previous.amount == amount
