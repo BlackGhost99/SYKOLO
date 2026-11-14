@@ -328,3 +328,52 @@ class MultiFeeReceiptTests(TestCase):
                          "Soixante-quinze mille francs CFA et 50 centimes")
         self.assertEqual(amount_in_words("0", "XAF"), "Zéro francs CFA")
         self.assertEqual(amount_in_words("1000000", "XAF"), "Un million francs CFA")
+
+    def test_verified_parent_can_download_own_financial_documents(self):
+        from .models import SchoolRole
+        from .parent_models import GuardianAccountLink
+        from .student_models import StudentGuardian
+        User = get_user_model()
+        parent = User.objects.create_user("finance-doc-parent", password="Good Testing Pass 2026!")
+        outsider = User.objects.create_user("finance-doc-outsider", password="Good Testing Pass 2026!")
+        student = self.enrollment.student
+        guardian = StudentGuardian.objects.create(
+            school=self.school, student=student,
+            full_name="Responsable vérifié", is_primary=True, active=True,
+        )
+        for user in (parent, outsider):
+            SchoolMember.objects.create(
+                school=self.school, user=user,
+                role=SchoolRole.objects.get(school=self.school, code="parent"),
+            )
+        GuardianAccountLink.objects.create(
+            school=self.school, guardian=guardian, user=parent,
+            verified_by=self.cashier,
+        )
+        batch = self.send(self.payload())
+        self.assertEqual(batch.status_code, 201, batch.content)
+        root = f"/api/v1/parents/children/{student.pk}/finance/documents"
+        self.login(parent)
+        listing = self.client.get(root)
+        self.assertEqual(listing.status_code, 200, listing.content)
+        self.assertEqual(len(listing.json()["invoices"]), 3)
+        self.assertEqual(len(listing.json()["grouped_receipts"]), 1)
+        for url in (
+            listing.json()["invoices"][0]["url"],
+            listing.json()["grouped_receipts"][0]["url"],
+        ):
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 200, r.content[:300])
+            self.assertTrue(r.content.startswith(b"%PDF-"))
+        self.login(outsider)
+        self.assertEqual(self.client.get(root).status_code, 404)
+        self.assertEqual(self.client.get(
+            f"{root}/invoice/{self.charges[0].pk}/pdf"
+        ).status_code, 404)
+        self.login(parent)
+        other_document = self.client.get(
+            f"{root}/invoice/{uuid.uuid4()}/pdf"
+        )
+        self.assertEqual(other_document.status_code, 404)
+        GuardianAccountLink.objects.filter(user=parent).update(active=False)
+        self.assertEqual(self.client.get(root).status_code, 404)
