@@ -169,45 +169,35 @@ def batch_receipt(request, school_id, batch_id):
     school, error = gate(request, school_id, "school.finance.read")
     if error is not None:
         return error
-    batch = FeePaymentBatch.objects.select_related("enrollment__student").filter(
-        school=school, pk=batch_id,
-    ).first()
+    batch = FeePaymentBatch.objects.select_related(
+        "enrollment__student", "enrollment__year", "enrollment__classroom", "recorded_by",
+    ).filter(school=school, pk=batch_id).first()
     if batch is None:
         return JsonResponse({"error": "Reçu groupé introuvable."}, status=404)
-
-    lines = list(batch.lines.select_related("charge").order_by("charge__label", "pk"))
-    student = batch.enrollment.student
-    active_sum = sum((p.amount for p in lines if not hasattr(p, "void")), Decimal("0.00"))
-    cancelled = any(hasattr(p, "void") for p in lines)
-    text = [
-        "YEM — REÇU GROUPÉ D'ENCAISSEMENT ENREGISTRÉ",
-        "Référence interne : " + str(batch.pk),
-        "Établissement : " + school.name,
-        "Élève : " + student.first_name + " " + student.last_name,
-        "Date déclarée : " + batch.paid_on.isoformat(),
-        "Méthode déclarée : " + batch.method,
-        "Référence externe déclarée : " + (batch.reference or "Non renseignée"),
-        "— Détail des frais —",
-    ]
-    for p in lines:
-        text.append(
-            p.charge.label + " : " + str(p.amount) + " " + p.currency
-            + (" (ANNULÉ)" if hasattr(p, "void") else "")
-        )
-    text.extend([
-        "Montant initial déclaré : " + str(batch.total) + " " + batch.currency,
-        "Montant restant après annulations : " + str(active_sum) + " " + batch.currency,
-        "Statut : PARTIELLEMENT OU TOTALEMENT ANNULÉ" if cancelled else "Statut : Enregistré par l'établissement.",
-        "Reçu interne — ne constitue pas une confirmation bancaire ou Mobile Money automatique.",
-    ])
-
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm)
-    styles = getSampleStyleSheet()
-    story = [Paragraph(escape(t), styles["Normal"]) for t in text]
-    story.insert(1, Spacer(1, 8*mm))
-    doc.build(story)
-    response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="yem-recu-groupe-{batch.pk}.pdf"'
-    response["Cache-Control"] = "private, no-store"
-    return response
+    from .finance_document_pdf import render_school_financial_pdf, school_guardian
+    from .finance_views import cleared_total
+    payments = list(batch.lines.select_related("charge", "void").order_by("charge__label", "pk"))
+    enrollment = batch.enrollment
+    student = enrollment.student
+    cancelled = any(hasattr(payment, "void") for payment in payments)
+    balance = sum(
+        (p.charge.amount - p.charge.scholarship_discount - cleared_total(p.charge)
+         for p in payments), Decimal("0.00")
+    )
+    return render_school_financial_pdf(
+        school=school, title="Reçu groupé de paiement", receipt=True,
+        reference="REG-" + batch.paid_on.strftime("%Y") + "-" + batch.pk.hex.upper(),
+        issued_on=batch.created_at,
+        student_name=f"{student.first_name} {student.last_name}".strip(),
+        matricule=student.student_code, classroom=enrollment.classroom.name,
+        year=enrollment.year.name, payer=school_guardian(student),
+        rows=[(p.charge.label + (" — ANNULÉ" if hasattr(p, "void") else ""), p.amount)
+              for p in payments],
+        currency=batch.currency, total=batch.total, balance=balance,
+        method=batch.method, external_reference=batch.reference,
+        cashier=batch.recorded_by.get_username() if batch.recorded_by else "",
+        note="Encaissé le " + batch.paid_on.strftime("%d/%m/%Y") +
+        (" • Une ou plusieurs lignes ont été annulées ; ce document n'est plus une preuve d'encaissement intégral."
+         if cancelled else ""),
+        cancelled=cancelled, filename=f"yem-recu-groupe-{batch.pk}.pdf",
+    )
