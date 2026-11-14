@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import ParentDiscovery from "./ParentDiscovery.jsx";
+import {SchoolExistingRequests} from "./ParentExistingSchool.jsx";
 import PWAInstall from "./PWAInstall.jsx";
 import SingPayPayment from "./SingPayPayment.jsx";
 import YemFamilles from "./YemFamilles.jsx";
@@ -240,6 +241,8 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
   const [message, setMessage] = useState("");
   const [loadError, setLoadError] = useState("");
   const [guardiansError, setGuardiansError] = useState("");
+  const [pendingRequest, setPendingRequest] = useState(null);
+  const [queueVersion, setQueueVersion] = useState(0);
 
   useEffect(()=>{
     let alive=true;
@@ -270,6 +273,26 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
   return <SchoolCard title="Responsables légaux et comptes parents" icon="users">
     {loadError&&<p role="alert">{loadError}</p>}
     <Message>{message}</Message>
+    <SchoolExistingRequests api={portalApi} base={base} reloadKey={queueVersion}
+      onSelect={request=>{
+        setPendingRequest(request);
+        setUsername(request.username);
+        const match=(students||[]).find(row=>{
+          const text=value=>String(value||"").trim().toLocaleLowerCase("fr");
+          return text(row.first_name)===text(request.first_name)
+            && text(row.last_name)===text(request.last_name)
+            && (!request.student_code||[row.student_code,row.matricule_yem].some(code=>text(code)===text(request.student_code)));
+        });
+        setStudent(match?.id||"");setGuardian("");setGuardians(null);setGuardiansError("");
+        setIdentityVerified(false);
+        setMessage("Demande sélectionnée : vérifiez l'identité de l'élève et du responsable légal dans le dossier de l'école.");
+      }}/>
+    {pendingRequest&&<div className="yp-pane" role="status">
+      <strong>Demande à vérifier :</strong> {pendingRequest.first_name} {pendingRequest.last_name} · {pendingRequest.username}
+      <button type="button" className="yp-button" onClick={()=>{setPendingRequest(null);setIdentityVerified(false);}}>
+        Annuler la sélection
+      </button>
+    </div>}
     {canReadStudents&&links&&students&&<>
       <p className="hint">Demandez l’identifiant YEM Parents du responsable légal et vérifiez son identité avant d’activer l’accès à cet élève.</p>
       <label className="field">Élève
@@ -302,8 +325,12 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
           setMessage("Compte rattaché au rôle parent dans cet établissement.");
         })}>Rattacher le compte parent</Button>}
         <Button primary disabled={busy||!guardian||!username.trim()||!identityVerified} onClick={()=>run(async()=>{
-          const verified=await portalApi(base+"/parent-links",{guardian,username:username.trim(),identity_verified:true});
+          const payload={guardian,username:username.trim(),identity_verified:true};
+          if(pendingRequest) payload.request_id=pendingRequest.id;
+          const verified=await portalApi(base+"/parent-links",payload);
           setIdentityVerified(false);
+          setPendingRequest(null);
+          setQueueVersion(current=>current+1);
           setLinks(previous=>[verified,...previous.filter(link=>link.id!==verified.id)]);
           setMessage("Accès familial vérifié et activé.");
         })}>Vérifier et activer l’accès</Button>

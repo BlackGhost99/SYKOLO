@@ -27,6 +27,7 @@ from .finance_models import FeeCharge
 from .finance_views import cleared_total
 from .models import SchoolMember, School
 from .parent_models import GuardianAccountLink
+from .parent_existing_models import ExistingStudentLinkRequest
 from .parent_admission_models import ParentAdmissionRequest, FamilyChildPhoto
 from .report_models import SchoolReport
 from .report_views import pdf_bytes
@@ -129,8 +130,12 @@ def links(request, school_id):
     data, error = parse_body(request)
     if error is not None:
         return error
-    if set(data) != {"guardian", "username", "identity_verified"}:
+    mandatory = {"guardian", "username", "identity_verified"}
+    if not mandatory.issubset(data) or set(data) - mandatory - {"request_id"}:
         return reject("Responsable légal, compte utilisateur et confirmation de vérification requis.")
+    request_id = uuid_input(data.get("request_id")) if "request_id" in data else None
+    if "request_id" in data and request_id is None:
+        return reject("Demande de rattachement invalide.")
     if data["identity_verified"] is not True:
         return reject("Confirmez que le compte appartient au responsable légal sélectionné.")
     guardian_id = uuid_input(data["guardian"])
@@ -153,6 +158,28 @@ def links(request, school_id):
             ).first()
             if member is None:
                 return reject("Attribuez d'abord le rôle parent au compte actif dans cette école.", 422)
+            pending = None
+            if request_id is not None:
+                pending = ExistingStudentLinkRequest.objects.select_for_update().filter(
+                    pk=request_id, school=school, owner=member.user,
+                    status=ExistingStudentLinkRequest.PENDING,
+                ).first()
+                if pending is None:
+                    return reject("Demande de rattachement introuvable ou déjà traitée.", 404)
+                student = guardian.student
+                normalize = lambda value: " ".join(value.split()).casefold()
+                child_matches = (
+                    normalize(student.first_name) == normalize(pending.first_name)
+                    and normalize(student.last_name) == normalize(pending.last_name)
+                )
+                code_matches = (
+                    not pending.student_code
+                    or normalize(pending.student_code) in (
+                        normalize(student.student_code), normalize(student.matricule_yem)
+                    )
+                )
+                if not child_matches or not code_matches:
+                    return reject("Le dossier de l'élève ne correspond pas à la demande. Vérifiez l'identité déclarée.", 422)
             row = GuardianAccountLink.objects.select_for_update().filter(
                 school=school, guardian=guardian, user=member.user
             ).first()
@@ -174,6 +201,13 @@ def links(request, school_id):
                 row.full_clean()
                 row.save()
             log_event(school, request, "parent_link_verified", row.pk, {"revision": row.revision, "identity_verified": True})
+            if pending is not None:
+                pending.status = ExistingStudentLinkRequest.APPROVED
+                pending.linked_guardian = guardian
+                pending.reviewed_by = request.user
+                pending.reviewed_at = timezone.now()
+                pending.save(update_fields=["status", "linked_guardian", "reviewed_by", "reviewed_at"])
+                log_event(school, request, "parent_request_approved", pending.pk)
     except ValidationError as exc:
         return model_error(exc)
     except IntegrityError:
