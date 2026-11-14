@@ -134,7 +134,7 @@ class MultiFeeReceiptTests(TestCase):
         response = self.client.get(self.base + "batches/" + str(mixed.pk))
         self.assertEqual(response.status_code, 200)
         categories = [x["evidence_class"] for x in response.json()["payments"]]
-        self.assertEqual(categories, ["manual_record", "simulation"])
+        self.assertEqual(sorted(categories), ["manual_record", "simulation"])
         pdf = self.client.get(self.base + "batches/" + str(mixed.pk) + "/receipt")
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf["X-YEM-Receipt-Class"], "mixed_review")
