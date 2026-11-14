@@ -30,6 +30,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const [statement, setStatement] = useState(null);
   const [onlineAdmissions,setOnlineAdmissions] = useState([]);
   const [financeQuality,setFinanceQuality] = useState(null);
+  const [qualityRevision,setQualityRevision] = useState(0);
   const [selectedYear, setSelectedYear] = useState(workingYearId);
   useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");setSelectedSchedule("");setSelectedCharge("");},[workingYearId,schoolId]);
   const [selectedClass, setSelectedClass] = useState("");
@@ -63,7 +64,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
     financeApi(finance+"quality"+param).then(report=>{if(active)setFinanceQuality(report);})
       .catch(()=>{if(active)setFinanceQuality(null);});
     return ()=>{active=false;};
-  },[finance,settings,workingYearId]);
+  },[finance,settings,workingYearId,qualityRevision]);
   useEffect(()=>{
     if(settings)return;
     let live=true;
@@ -81,6 +82,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   }, [schoolId]);
 
   async function refresh() {
+    setQualityRevision(value=>value+1);
     if (settings) {
       setSchedules((await financeApi(finance+"schedules")).schedules || []);
       return;
