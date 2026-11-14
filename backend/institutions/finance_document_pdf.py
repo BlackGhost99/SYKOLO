@@ -150,7 +150,8 @@ def render_school_financial_pdf(
     classroom="", year="", payer="", rows=(), currency="XAF",
     total=ZERO, paid=None, balance=None, due_on=None, method="",
     external_reference="", cashier="", note="", cancelled=False,
-    demo=False, review_required=False, discount=None, filename="yem-document.pdf", receipt=False,
+    demo=False, review_required=False, correction=False, discount=None,
+    filename="yem-document.pdf", receipt=False,
 ):
     """Render one document from trusted ledger values; never alter ledger state.
 
@@ -250,7 +251,9 @@ def render_school_financial_pdf(
     totals = []
     if discount is not None and Decimal(str(discount)) > ZERO:
         totals.append(("Prise en charge / bourse", "-" + _amount(discount, currency)))
-    if receipt:
+    if correction:
+        totals.append(("MONTANT ANNULÉ", _amount(value, currency)))
+    elif receipt:
         totals.append(("TOTAL SIMULÉ" if demo else "MONTANT À RAPPROCHER" if review_required else "TOTAL ENCAISSÉ",
                        _amount(value, currency)))
         if balance is not None:
@@ -293,7 +296,7 @@ def render_school_financial_pdf(
         story.append(_paragraph("Enregistré par : " + cashier, body))
     if note:
         story.extend([Spacer(1, 4 * mm), _paragraph(note, font(8, MUTED))])
-    if not receipt:
+    if not receipt and not correction:
         story.extend([Spacer(1, 3 * mm), _paragraph(
             "Cette facture ne constitue pas une preuve de paiement. Un reçu distinct est remis après "
             "confirmation de chaque encaissement.", font(8, MUTED))])
