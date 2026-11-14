@@ -27,12 +27,12 @@ from .finance_views import (
 )
 from .models import School
 from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
-from .finance_evidence import classify_payment
+from .finance_evidence import classify_payment, classify_batch
 from .views import log_event, parse_body
 
 
 def batch_data(batch):
-    payments = list(batch.lines.select_related("charge").order_by("charge_id"))
+    payments = list(batch.lines.select_related("charge__schedule").order_by("charge_id"))
     return {
         "id": str(batch.pk),
         "enrollment": str(batch.enrollment_id),
@@ -181,12 +181,23 @@ def batch_receipt(request, school_id, batch_id):
     if batch is None:
         return JsonResponse({"error": "Reçu groupé introuvable."}, status=404)
 
-    lines = list(batch.lines.select_related("charge").order_by("charge__label", "pk"))
+    lines = list(batch.lines.select_related("charge__schedule").order_by("charge__label", "pk"))
+    evidence = {
+        p.pk: classify_payment(p.method, p.charge.label, p.charge.schedule.label)
+        for p in lines
+    }
+    receipt_class = classify_batch(evidence.values())
+    headings = {
+        "simulation": "YEM — SIMULATION GROUPÉE — AUCUN ARGENT REÇU",
+        "legacy_unverified": "YEM — HISTORIQUE GROUPÉ NON RAPPROCHÉ — PAS UN REÇU D'ESPÈCES",
+        "mixed_review": "YEM — ÉCRITURES GROUPÉES MIXTES — RAPPROCHEMENT OBLIGATOIRE",
+        "manual_record": "YEM — REÇU GROUPÉ D'ENCAISSEMENT ENREGISTRÉ",
+    }
     student = batch.enrollment.student
     active_sum = sum((p.amount for p in lines if not hasattr(p, "void")), Decimal("0.00"))
     cancelled = any(hasattr(p, "void") for p in lines)
     text = [
-        "YEM — REÇU GROUPÉ D'ENCAISSEMENT ENREGISTRÉ",
+        headings[receipt_class],
         "Référence interne : " + str(batch.pk),
         "Établissement : " + school.name,
         "Élève : " + student.first_name + " " + student.last_name,
@@ -199,11 +210,17 @@ def batch_receipt(request, school_id, batch_id):
         text.append(
             p.charge.label + " : " + str(p.amount) + " " + p.currency
             + (" (ANNULÉ)" if hasattr(p, "void") else "")
+            + (" (SIMULATION — aucune recette)" if evidence[p.pk] == "simulation" else
+               " (À RAPPROCHER — cash historique)" if evidence[p.pk] == "legacy_unverified"
+               else "")
         )
     text.extend([
         "Montant initial déclaré : " + str(batch.total) + " " + batch.currency,
         "Montant restant après annulations : " + str(active_sum) + " " + batch.currency,
-        "Statut : PARTIELLEMENT OU TOTALEMENT ANNULÉ" if cancelled else "Statut : Enregistré par l'établissement.",
+        "Statut : PARTIELLEMENT OU TOTALEMENT ANNULÉ" if cancelled else
+        "Statut : SIMULATION — aucun argent reçu." if receipt_class == "simulation" else
+        "Statut : ÉCRITURES NON RAPPROCHÉES." if receipt_class in ("legacy_unverified", "mixed_review") else
+        "Statut : Enregistré par l'établissement.",
         "Reçu interne — ne constitue pas une confirmation bancaire ou Mobile Money automatique.",
     ])
 
@@ -216,4 +233,5 @@ def batch_receipt(request, school_id, batch_id):
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="yem-recu-groupe-{batch.pk}.pdf"'
     response["Cache-Control"] = "private, no-store"
+    response["X-YEM-Receipt-Class"] = receipt_class
     return response
