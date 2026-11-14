@@ -29,6 +29,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const [payments, setPayments] = useState([]);
   const [statement, setStatement] = useState(null);
   const [onlineAdmissions,setOnlineAdmissions] = useState([]);
+  const [financeQuality,setFinanceQuality] = useState(null);
   const [selectedYear, setSelectedYear] = useState(workingYearId);
   useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");setSelectedSchedule("");setSelectedCharge("");},[workingYearId,schoolId]);
   const [selectedClass, setSelectedClass] = useState("");
@@ -54,6 +55,15 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const canManage = permissions.includes("school.finance.manage");
   const canReceive = permissions.includes("school.finance.receive");
   const canReverse = permissions.includes("school.finance.reverse");
+  useEffect(()=>{
+    if (settings) {setFinanceQuality(null);return;}
+    let active=true;
+    const param=workingYearId ? "?year="+encodeURIComponent(workingYearId) : "";
+    setFinanceQuality(null);
+    financeApi(finance+"quality"+param).then(report=>{if(active)setFinanceQuality(report);})
+      .catch(()=>{if(active)setFinanceQuality(null);});
+    return ()=>{active=false;};
+  },[finance,settings,workingYearId]);
   useEffect(()=>{
     if(settings)return;
     let live=true;
@@ -190,6 +200,20 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
         years.find(year => year.id === item.year)?.name
       } · {classes.find(room => room.id === item.classroom)?.name || "Toutes les classes"}</p>)}
     </div> : <>
+    {financeQuality && <aside className="hint" aria-label="Contrôle de qualité des écritures financières" style={{marginBottom:"1rem"}}>
+      <strong>Contrôle des écritures — rapprochement requis</strong>
+      <p>Les sommes affichées dans les états historiques sont des écritures enregistrées, pas une certification d'argent réellement reçu. Les simulations restent conservées pour audit.</p>
+      {Object.entries(financeQuality.currencies||{}).map(([unit,categories])=>{
+        const legacy=categories.legacy_cash_unverified;
+        const simulated=categories.explicit_demo_payments;
+        const demos=categories.explicit_demo_charges;
+        return <p key={unit}>
+          {unit} : {legacy?.count||0} paiement(s) sous code ancien « cash » à vérifier ({legacy?.amount||"0.00"} {unit}) ;
+          {" "}{simulated?.count||0} paiement(s) explicitement fictif(s) ({simulated?.amount||"0.00"} {unit}) ;
+          {" "}{demos?.count||0} ligne(s) de frais marquée(s) DÉMO ({demos?.net_amount||"0.00"} {unit}).
+        </p>;
+      })}
+    </aside>}
     <h3>1. Admissions acceptées — relais de paiement</h3>
     <p className="hint">La candidature est examinée dans Admissions ; ici, la caisse confirme les espèces nettes après bourse. Une inscription officielle ne sera possible qu’après validation des conditions financières.</p>
     <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive} onUpdated={refresh}/>
@@ -266,7 +290,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
     {current&&<>
       <h3>Historique des encaissements</h3>
       {payments.length===0?<p className="hint">Aucun encaissement pour ce frais.</p>:payments.map(p=><p key={p.id}>
-        <strong>{p.amount} {p.currency}</strong> · {p.paid_on} · {p.method} · {p.voided?"Annulé":"Enregistré"} ·
+        <strong>{p.amount} {p.currency}</strong> · {p.paid_on} · {p.method} · {p.voided?"Annulé":p.evidence_class==="simulation"?"SIMULATION — aucune recette":p.evidence_class==="legacy_unverified"?"À rapprocher — paiement historique non vérifié":"Enregistré (déclaratif)"} ·
         {" "}<a href={"/api/v1/"+finance+"payments/"+p.id+"/receipt"}>Reçu PDF</a>
         {canReverse&&!p.voided&&<button type="button" disabled={busy} style={{marginLeft:"0.5rem"}} onClick={()=>{setCancelPayment(p.id);setCancelReason("");}}>Demander une annulation</button>}
       </p>)}
