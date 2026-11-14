@@ -310,6 +310,28 @@ class MultiFeeReceiptTests(TestCase):
         self.login(self.teacher)
         self.assertEqual(self.client.get(self.base + "summary").status_code, 403)
 
+    def test_financial_summary_distinguishes_demo_from_legacy_and_manual_entries(self):
+        row1, row2 = self.charges[:2]
+        for charge, method, value in (
+            (row1, "simulation", "5000"),
+            (row2, "cash", "5000"),
+        ):
+            FeePayment.objects.create(
+                school=self.school, charge=charge, idempotency_key=uuid.uuid4(),
+                amount=Decimal(value), currency="XAF", method=method,
+                paid_on=timezone.localdate(), recorded_by=self.cashier,
+            )
+        response = self.client.get(self.base+"summary")
+        self.assertEqual(response.status_code, 200, response.content)
+        data = response.json()
+        self.assertFalse(data["revenue_certified"])
+        self.assertEqual(data["currencies"]["XAF"]["paid"], "10000.00")
+        self.assertEqual(data["evidence"]["XAF"], {
+            "explicit_demo": "5000.00",
+            "legacy_cash_unverified": "5000.00",
+            "other_declared": "0.00",
+        })
+
     def test_future_dated_manual_payment_cannot_be_recorded(self):
         from datetime import timedelta
         future=(timezone.localdate()+timedelta(days=1)).isoformat()
