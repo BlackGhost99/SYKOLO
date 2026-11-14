@@ -1,6 +1,7 @@
 """Regression coverage for consolidated school receipts and transaction rollback."""
 import json
 import uuid
+from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.utils import timezone
@@ -103,6 +104,41 @@ class MultiFeeReceiptTests(TestCase):
         self.assertEqual(pdf.status_code, 200)
         self.assertTrue(pdf.content.startswith(b"%PDF-"))
         self.assertEqual(pdf["Cache-Control"], "private, no-store")
+
+    def test_historical_group_receipts_are_not_misrepresented(self):
+        """An existing batch may be legacy cash or contain a fictitious fee."""
+        def historical_batch(method, charges, amounts):
+            b = FeePaymentBatch.objects.create(
+                school=self.school, enrollment=self.enrollment,
+                idempotency_key=uuid.uuid4(), request_hash="1" * 64,
+                total=sum((Decimal(a) for a in amounts), Decimal("0")),
+                currency="XAF", method=method, reference="HISTORIC",
+                paid_on=timezone.localdate(), recorded_by=self.cashier,
+            )
+            for charge, amount in zip(charges, amounts):
+                FeePayment.objects.create(
+                    school=self.school, charge=charge, batch=b,
+                    idempotency_key=uuid.uuid4(), amount=Decimal(amount),
+                    currency="XAF", method=method, reference="HISTORIC",
+                    paid_on=timezone.localdate(), recorded_by=self.cashier,
+                )
+            return b
+        historical = historical_batch("cash", [self.charges[0]], ["1000"])
+        pdf = self.client.get(self.base + "batches/" + str(historical.pk) + "/receipt")
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["X-YEM-Receipt-Class"], "legacy_unverified")
+        self.assertTrue(pdf.content.startswith(b"%PDF-"))
+
+        FeeCharge.objects.filter(pk=self.charges[1].pk).update(label="DÉMO — essai")
+        mixed = historical_batch("especes", self.charges[:2], ["500", "800"])
+        response = self.client.get(self.base + "batches/" + str(mixed.pk))
+        self.assertEqual(response.status_code, 200)
+        categories = [x["evidence_class"] for x in response.json()["payments"]]
+        self.assertEqual(sorted(categories), ["manual_record", "simulation"])
+        pdf = self.client.get(self.base + "batches/" + str(mixed.pk) + "/receipt")
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["X-YEM-Receipt-Class"], "mixed_review")
+        self.assertTrue(pdf.content.startswith(b"%PDF-"))
 
     def test_bad_line_rolls_back_every_payment(self):
         too_much = self.send(self.payload(("10000", "150000")))
