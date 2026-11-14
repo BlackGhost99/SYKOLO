@@ -462,32 +462,65 @@ def receipt(request, school_id, payment_id):
     if error is not None:
         return error
     payment = FeePayment.objects.select_related(
-        "charge__schedule", "charge__enrollment__student"
+        "charge__enrollment__student", "charge__enrollment__year",
+        "charge__enrollment__classroom", "recorded_by",
     ).filter(school=school, pk=payment_id).first()
     if payment is None:
         return JsonResponse({"error": "Reçu introuvable."}, status=404)
-    void = FeePaymentVoid.objects.filter(payment=payment, school=school).first()
-    student = payment.charge.enrollment.student
-    lines = [
-        "YEM — REÇU D'ENCAISSEMENT ENREGISTRÉ",
-        "Référence interne : " + str(payment.pk),
-        "Établissement : " + school.name,
-        "Élève : " + student.first_name + " " + student.last_name,
-        "Frais : " + payment.charge.label,
-        "Montant enregistré : " + str(payment.amount) + " " + payment.currency,
-        "Date déclarée : " + payment.paid_on.isoformat(),
-        "Méthode déclarée : " + payment.method,
-        "Référence : " + (payment.reference or "Non renseignée"),
-        "Statut : ANNULÉ — ne vaut plus preuve d'encaissement." if void else "Statut : Enregistré par l'établissement.",
-        "Document interne : aucune confirmation automatique d'un établissement bancaire ou opérateur mobile.",
-    ]
-    buffer = BytesIO()
-    document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm)
-    styles = getSampleStyleSheet()
-    story = [Paragraph(escape(line), styles["Normal"]) for line in lines]
-    story.insert(1, Spacer(1, 8*mm))
-    document.build(story)
-    response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="yem-recu-{payment.pk}.pdf"'
-    response["Cache-Control"] = "private, no-store"
-    return response
+    from .finance_document_pdf import render_school_financial_pdf, school_guardian
+    charge = payment.charge
+    enrollment = charge.enrollment
+    student = enrollment.student
+    cancelled = FeePaymentVoid.objects.filter(payment=payment, school=school).exists()
+    remaining = (charge.amount - charge.scholarship_discount - cleared_total(charge))
+    cashier = payment.recorded_by.get_username() if payment.recorded_by else ""
+    return render_school_financial_pdf(
+        school=school, title="Reçu de paiement", receipt=True,
+        reference="REC-" + payment.paid_on.strftime("%Y") + "-" + payment.pk.hex.upper(),
+        issued_on=payment.created_at,
+        student_name=f"{student.first_name} {student.last_name}".strip(),
+        matricule=student.student_code, classroom=enrollment.classroom.name,
+        year=enrollment.year.name, payer=school_guardian(student),
+        rows=[(charge.label, payment.amount)], currency=payment.currency,
+        total=payment.amount, balance=remaining, method=payment.method,
+        external_reference=payment.reference, cashier=cashier,
+        note="Encaissé le " + payment.paid_on.strftime("%d/%m/%Y") +
+        (" • Ce paiement a été annulé et ne vaut plus preuve d'encaissement." if cancelled else ""),
+        cancelled=cancelled, filename=f"yem-recu-{payment.pk}.pdf",
+    )
+
+
+@require_GET
+@authorized
+def invoice(request, school_id, charge_id):
+    """Invoice of one actually-assessed school fee, never a payment receipt.
+
+    The charge is immutable; the settlement section is a current account status.
+    """
+    school, error = gate(request, school_id, "school.finance.read")
+    if error is not None:
+        return error
+    charge = FeeCharge.objects.select_related(
+        "enrollment__student", "enrollment__year", "enrollment__classroom"
+    ).filter(school=school, pk=charge_id).first()
+    if charge is None:
+        return JsonResponse({"error": "Frais facturé introuvable."}, status=404)
+    from .finance_document_pdf import render_school_financial_pdf, school_guardian
+    enrollment = charge.enrollment
+    student = enrollment.student
+    net = charge.amount - charge.scholarship_discount
+    paid = cleared_total(charge)
+    return render_school_financial_pdf(
+        school=school, title="Facture scolaire", receipt=False,
+        reference="FAC-" + charge.created_at.strftime("%Y") + "-" + charge.pk.hex.upper(),
+        issued_on=charge.created_at,
+        student_name=f"{student.first_name} {student.last_name}".strip(),
+        matricule=student.student_code, classroom=enrollment.classroom.name,
+        year=enrollment.year.name, payer=school_guardian(student),
+        rows=[(charge.label, charge.amount)], currency=charge.currency,
+        total=net, paid=paid, balance=net-paid, discount=charge.scholarship_discount,
+        due_on=charge.due_date,
+        note="Situation des règlements actualisée au " + timezone.localdate().strftime("%d/%m/%Y") +
+        ". Le montant et la désignation des frais correspondent au barème figé lors de l'affectation.",
+        filename=f"yem-facture-{charge.pk}.pdf",
+    )
