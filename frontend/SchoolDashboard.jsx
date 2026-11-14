@@ -25,13 +25,14 @@ import TimetablePanel from "./TimetablePanel.jsx";
 import {AdmissionTariffSettings} from "./SchoolPaymentSetup.jsx";
 import AdmissionsPanel, {AdmissionSettings, AdmissionPaymentSettings} from "./AdmissionsPanel.jsx";
 import {SchoolSettings, TeachingSettings} from "./SchoolSettings.jsx";
+import SchoolBrandingSettings from "./SchoolBrandingSettings.jsx";
 import {FamilyDirectory, StaffDirectory} from "./SchoolDirectories.jsx";
 import StudentNumberingSettings from "./StudentNumberingSettings.jsx";
 import {FamilyWorkspace, SchoolParentAccess} from "./ParentPortal.jsx";
 import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens.jsx";
 import ClassWorkspace from "./ClassWorkspace.jsx";
 import {StudentForm,StudentFile,ClassEnrollments,ClassSetup,FormSettings,PaymentTracking,ImportStudents} from "./EnrollmentScreens.jsx";
-import {Shell,NAV,PageHeader,Card,Icon,Button} from "./yem-ui.jsx";
+import {Shell,NAV,PageHeader,Card,Icon,Button,BrandContext} from "./yem-ui.jsx";
 import "./yem-desktop.css";
 
 /* Espace réel connecté : mêmes cadre, menu et en-têtes que les maquettes (docs/maquettes),
@@ -80,6 +81,9 @@ const schoolNav = [...NAV.slice(0,1), ["owner","barchart","Pilotage propriétair
 const sectionIcon=Object.fromEntries(schoolNav.map(([id,icon])=>[id,icon]));
 
 const settingsSections = [
+  {id:"identity", title:"Identité de l’établissement", icon:"school", items:[
+    {id:"branding", label:"Logo et bannière de l’établissement", need:["school.view"], owner:true},
+  ]},
   {id:"access", title:"Droits généraux", icon:"shield", items:[
     {id:"users", label:"Comptes et accès", need:["school.members.write"]},
     {id:"roles", label:"Rôles et droits d’accès", need:["school.roles.read"], owner:true},
@@ -225,6 +229,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [schools,setSchools]=useState([]);
   const [loaded,setLoaded]=useState(false);
   const [chosen,setChosen]=useState("");
+  const [schoolBranding,setSchoolBranding]=useState(null);
   const [access,setAccess]=useState(null);
   const [myPhotoUrl,setMyPhotoUrl]=useState(null);
   const [hasStaffProfile,setHasStaffProfile]=useState(false);
@@ -252,6 +257,18 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [workingYearId,setWorkingYearId]=useState("");
   const [yearCatalogVersion,setYearCatalogVersion]=useState(0);
   useEffect(()=>{get("schools").then(d=>{setSchools(d.schools||[]);setChosen(old=>old||(d.schools||[]).find(s=>String(s.id)===String(initialSchoolId))?.id||(d.schools||[])[0]?.id||"");}).catch(e=>setMessage(e.message)).finally(()=>setLoaded(true));},[]);
+  useEffect(()=>{
+    if(!chosen){setSchoolBranding(null);return;}
+    let active=true;
+    const reload=()=>get("schools/"+chosen+"/branding")
+      .then(data=>{if(active)setSchoolBranding(data);})
+      .catch(()=>{if(active)setSchoolBranding(null);});
+    setSchoolBranding(null);
+    reload();
+    const refresh=event=>{if(event.detail?.schoolId===chosen)reload();};
+    window.addEventListener("yem:school-branding-updated",refresh);
+    return()=>{active=false;window.removeEventListener("yem:school-branding-updated",refresh);};
+  },[chosen]);
   useEffect(()=>{
     if (!chosen) {setAccess(null);return;}
     let alive=true;setAccess(null);
@@ -378,6 +395,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     const common={schoolId:chosen,schoolName,onNavigate:navigate,workingYearId,onWorkingYearChange:setWorkingYearId};
     const SettingView=modules[id]?.view;
     return {
+      branding:<SchoolBrandingSettings key={chosen+"-branding"} schoolId={chosen}
+        canEdit={can("school.settings.write")||isOwner} onUpdated={setSchoolBranding}/>,
       users:<UsersForm key={chosen} schoolId={chosen} onMessage={setMessage}/>,
       "cycle-access":<StaffOnboarding key={chosen+"-cycle"} schoolId={chosen} mode="access"/>,
       classes:<ClassSetup key={chosen} {...common}/>,
@@ -395,6 +414,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const tabBar=tabs.length>1&&page!=="staff"?<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>:null;
   const schoolName=access?.school?.name||schools.find(s=>s.id===chosen)?.name||"Mon établissement";
   const selector=<div className="yd-school-select-wrap"><label className="yd-school-select"><Icon name="school" size={24}/>
+    {schoolBranding?.logo_url&&<img className="yd-school-logo" src={schoolBranding.logo_url} alt=""/>}
     {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>{
       setAccess(null);setShowWorkspace(false);setChosen(e.target.value);navigate("dashboard");
     }}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:<b>{schoolName}</b>}
@@ -506,7 +526,10 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
-  return <Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
+  return <BrandContext.Provider value={{
+    name:schoolName,city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
+    logo:schoolBranding?.logo_url||"",banner:schoolBranding?.banner_url||"",
+  }}><Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
     userMenu={<UserMenu user={user} roleLabel={roleLabel} onAccount={()=>navigate("account")}
        onTeacherWorkspace={mobileTeacher&&teacherEligible?()=>setTeacherViewRequested(true):undefined}
        onProfile={hasStaffProfile?()=>navigate("profile"):undefined}
@@ -524,5 +547,5 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     </Card>}
     {content}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
-  </Shell>;
+  </Shell></BrandContext.Provider>;
 }
