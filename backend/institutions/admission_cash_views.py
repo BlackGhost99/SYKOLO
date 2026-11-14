@@ -297,36 +297,25 @@ def void_cash(request, school_id, application_id):
 
 
 def render_receipt(cash):
+    """Same official school identity as tuition receipts, keeping demo and void safety."""
+    from .finance_document_pdf import render_school_financial_pdf
     app = cash.application or cash.request.application
-    school = cash.school
     voided = AdmissionCashReceiptVoid.objects.filter(receipt=cash).exists()
-    banner = ("DOCUMENT DE SIMULATION — AUCUN ARGENT REÇU — SANS VALEUR FINANCIÈRE"
-              if cash.is_demo else "YEM — REÇU DE PAIEMENT EN ESPÈCES")
-    lines = [
-        banner,
-        f"Établissement : {school.name}",
-        f"Référence du reçu : {cash.pk}",
-        f"Candidature : {app.pk}",
-        f"Élève : {app.first_name} {app.last_name}",
-        f"Classe demandée : {app.classroom.name}",
-        f"Année : {app.year.name}",
-        f"Montant : {cash.amount_xaf} FCFA" + (" (SIMULÉ, NON ENCAISSÉ)" if cash.is_demo else ""),
-        f"Date : {cash.received_on.isoformat()}",
-        f"Référence de caisse : {cash.reference}",
-        f"Statut : {'ANNULÉ' if voided else 'SIMULÉ' if cash.is_demo else 'ESPÈCES REÇUES'}",
-        "Le paiement d'admission ne vaut pas acceptation définitive ni matriculation.",
-    ]
-    out = BytesIO()
-    doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm)
-    style = getSampleStyleSheet()
-    story = [Paragraph(escape(line), style["Heading2"] if n == 0 else style["Normal"])
-             for n, line in enumerate(lines)]
-    story.insert(1, Spacer(1, 8*mm))
-    doc.build(story)
-    response = HttpResponse(out.getvalue(), content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="yem-admission-cash-{cash.pk}.pdf"'
-    response["Cache-Control"] = "private, no-store"
-    return response
+    return render_school_financial_pdf(
+        school=cash.school, title="Reçu des frais d'admission", receipt=True,
+        reference="RAD-" + cash.received_on.strftime("%Y") + "-" + cash.pk.hex.upper(),
+        issued_on=cash.received_on,
+        student_name=f"{app.first_name} {app.last_name}".strip(),
+        classroom=app.classroom.name, year=app.year.name,
+        rows=[("Frais de dossier / admission", Decimal(cash.amount_xaf))],
+        currency="XAF", total=Decimal(cash.amount_xaf), method="especes",
+        external_reference=cash.reference,
+        note=("Paiement lié à la candidature " + str(app.pk) +
+              ". Il ne vaut pas admission définitive ni matriculation." +
+              (" Opération annulée." if voided else "")),
+        demo=cash.is_demo, cancelled=voided,
+        filename=f"yem-admission-cash-{cash.pk}.pdf",
+    )
 
 
 @never_cache
