@@ -271,7 +271,7 @@ def render_school_financial_pdf(
         totals.append(("TOTAL SIMULÉ" if demo else "MONTANT À RAPPROCHER" if review_required else "TOTAL ENCAISSÉ",
                        _amount(value, currency)))
         if balance is not None:
-            totals.append(("Reste dû sur les frais concernés", _amount(balance, currency)))
+            totals.append(("Solde actuel des frais concernés", _amount(balance, currency)))
     else:
         totals.append(("TOTAL FACTURÉ (NET)", _amount(value, currency)))
         if paid is not None:
