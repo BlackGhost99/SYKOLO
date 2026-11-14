@@ -120,6 +120,14 @@ class ExistingParentLinkTests(TestCase):
         children=self.client.get("/api/v1/parents/children").json()["children"]
         self.assertEqual([row["student"] for row in children],[str(self.student.pk)])
         self.assertEqual(Enrollment.objects.count(),1)
+        self.assertTrue(self.client.get(self.url).json()["requests"][0]["access_active"])
+        self.login(self.admin)
+        revoked=self.write(self.link_url+"/"+successful.json()["id"],
+            {"revision":1,"active":False},"patch")
+        self.assertEqual(revoked.status_code,200,revoked.content)
+        self.login(self.parent)
+        self.assertFalse(self.client.get(self.url).json()["requests"][0]["access_active"])
+        self.assertEqual(self.client.get("/api/v1/parents/children").json()["children"],[])
 
     def test_request_cannot_be_approved_for_other_account_or_without_matching_code(self):
         id=self.request_link()
