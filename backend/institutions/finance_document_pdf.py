@@ -106,7 +106,11 @@ def amount_in_words(value, currency):
     ):
         group, remaining = divmod(remaining, divisor)
         if group:
-            prefix = "" if divisor == 1_000 and group == 1 else _words_below_1000(group) + " "
+            group_words = _words_below_1000(group)
+            if divisor == 1_000:
+                if group_words.endswith("cents") or group_words.endswith("vingts"):
+                    group_words = group_words[:-1]
+            prefix = "" if divisor == 1_000 and group == 1 else group_words + " "
             parts.append(prefix + (singular if group == 1 else plural))
     if remaining or not parts:
         parts.append(_words_below_1000(remaining))
@@ -299,7 +303,13 @@ def render_school_financial_pdf(
     if due_on:
         story.append(_paragraph("Date limite de règlement : " + due_on.strftime("%d/%m/%Y"), bold))
     if method:
-        story.append(_paragraph("Mode de paiement : " + method.replace("_", " ").title(), body))
+        names = {
+            "especes": "Espèces", "airtel_money": "Airtel Money (déclaré)",
+            "moov_money": "Moov Money (déclaré)", "virement": "Virement déclaré",
+            "cash": "Espèces historiques (à rapprocher)", "simulation": "Simulation",
+            "singpay": "SingPay confirmé par le serveur",
+        }
+        story.append(_paragraph("Mode de paiement : " + names.get(method, method.replace("_", " ").title()), body))
     if external_reference:
         story.append(_paragraph("Référence de paiement déclarée : " + external_reference, body))
     if cashier:
