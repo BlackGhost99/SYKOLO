@@ -52,17 +52,17 @@ def quality(request, school_id):
         }
 
     sections = defaultdict(new_section)
-    for charge in charges.values("currency", "amount", "scholarship_discount", "label", "schedule__label").iterator():
-        if explicit_demo(charge["label"]) or explicit_demo(charge["schedule__label"]):
+    for charge in charges.values("currency", "amount", "scholarship_discount", "label").iterator():
+        if explicit_demo(charge["label"]):
             item = sections[charge["currency"]]["explicit_demo_charges"]
             item["count"] += 1
             item["net_amount"] += charge["amount"] - (charge["scholarship_discount"] or ZERO)
 
     for payment in payments.values(
-        "currency", "amount", "method", "charge__label", "charge__schedule__label"
+        "currency", "amount", "method", "charge__label"
     ).iterator():
         kind = classify_payment(
-            payment["method"], payment["charge__label"], payment["charge__schedule__label"]
+            payment["method"], payment["charge__label"]
         )
         if kind == "simulation":
             category = "explicit_demo_payments"
