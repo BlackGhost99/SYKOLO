@@ -60,3 +60,21 @@ test.each([["50000","50000.00"],["10000","10000.00"]])(
     expect((await screen.findByRole("link",{name:/Télécharger le reçu groupé/})).getAttribute("href")).toBe("/recu");
   },
 );
+
+test("la caisse affiche les écritures historiques cash à rapprocher",async()=>{
+  const report = {
+    currency:"XAF",currencies:["XAF"],year:{id:"year",name:"Année"},
+    years:[{id:"year",name:"Année"}],revenue_certified:false,
+    evidence:{explicit_demo:"175000.00",legacy_cash_unverified:"77900000.00",other_declared:"600000.00"},
+    today:{total:"0",count:0,by_method:{},payments:[]},yesterday:{total:"0",count:0},
+  };
+  vi.stubGlobal("fetch",vi.fn(async (path)=>{
+    if(String(path).includes("overview/students"))return Response.json({students:[]});
+    if(String(path).includes("finance/charges"))return Response.json({charges:[]});
+    return Response.json(report);
+  }));
+  render(<LivePayments schoolId="school" canReceive={false}/>);
+  const warning=await screen.findByText(/ancien cash à rapprocher/i);
+  expect(warning.textContent).toContain("77 900 000");
+  expect(warning.textContent).toContain("175 000");
+});

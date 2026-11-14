@@ -20,6 +20,7 @@ from .academic_models import AcademicYear, AcademicClass
 from .student_models import Student, StudentGuardian, Enrollment
 from .finance_models import FeeCharge, FeePayment
 from .finance_views import uid, CURRENCY_PATTERN
+from .finance_evidence import classify_payment, evidence_totals
 
 ZERO = Decimal("0.00")
 
@@ -212,6 +213,7 @@ def finance_overview(request, school_id):
     payments = FeePayment.objects.filter(school=school, void__isnull=True, charge__enrollment__year=year)
     if currency:
         payments = payments.filter(currency=currency)
+    evidence = evidence_totals(payments)
 
     def total(qs):
         return qs.aggregate(t=Sum("amount"))["t"] or ZERO
@@ -252,13 +254,24 @@ def finance_overview(request, school_id):
     return JsonResponse({
         "currencies": sorted(set(FeeCharge.objects.filter(school=school, enrollment__year=year).values_list("currency", flat=True))),
         "currency": currency or "XAF",
+        "revenue_certified": False,
+        "evidence": evidence.get(currency or "XAF", {
+            "explicit_demo": "0.00",
+            "legacy_cash_unverified": "0.00",
+            "other_declared": "0.00",
+        }),
+        "note": ("Les montants affichés comme encaissés sont des écritures déclaratives, "
+                 "non des recettes vérifiées. Les anciennes écritures cash et les simulations "
+                 "sont identifiées séparément dans evidence."),
         "years": [{"id": str(y.pk), "name": y.name} for y in AcademicYear.objects.filter(school=school).order_by("-start_date")],
         "year": {"id": str(year.pk), "name": year.name} if year else None,
         "today": {
             "date": today.isoformat(), "total": money(total(payments.filter(paid_on=today))),
             "count": payments.filter(paid_on=today).count(), "by_method": by_method(payments.filter(paid_on=today)),
             "payments": [{
-                "id": str(p.pk), "currency": p.currency, "amount": money(p.amount), "method": p.method, "recorded_at": p.created_at.isoformat(),
+                "id": str(p.pk), "currency": p.currency, "amount": money(p.amount), "method": p.method,
+                "evidence_class": classify_payment(p.method, p.charge.label),
+                "recorded_at": p.created_at.isoformat(),
                 "student": f"{p.charge.enrollment.student.last_name} {p.charge.enrollment.student.first_name}",
                 "classroom": p.charge.enrollment.classroom.name, "label": p.charge.label,
             } for p in todays],

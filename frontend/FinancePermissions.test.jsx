@@ -6,10 +6,11 @@ import userEvent from '@testing-library/user-event';
 import FinancePanel from './FinancePanel.jsx';
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 
-function mockFinance(permissions) {
+function mockFinance(permissions, evidenceClass='manual_record') {
   vi.stubGlobal('fetch',vi.fn(async path=>({ok:true,headers:{get:()=> 'application/json'},json:async()=> {
     if(String(path).endsWith('my-access')) return {permissions};
-    if(String(path).includes('payments?')) return {payments:[{id:'receipt',amount:'10',currency:'XAF',method:'especes',paid_on:'2026-11-04',voided:false}]};
+    if(String(path).includes('finance/quality')) return {certified_revenue:false,currencies:{XAF:{legacy_cash_unverified:{count:2,amount:'5000.00'},explicit_demo_payments:{count:1,amount:'1000.00'},explicit_demo_charges:{count:1,net_amount:'1000.00'}}}};
+    if(String(path).includes('payments?')) return {payments:[{id:'receipt',amount:'10',currency:'XAF',method:evidenceClass==='legacy_unverified'?'cash':evidenceClass==='simulation'?'simulation':'especes',evidence_class:evidenceClass,paid_on:'2026-11-04',voided:false}]};
     if(String(path).endsWith('charges')) return {charges:[{id:'charge',label:'Scolarité',enrollment:'enroll',balance:'10',currency:'XAF'}]};
     return {years:[{id:'year',name:'Année',active:true}],classes:[],enrollments:[],students:[],schedules:[]};
   }})));
@@ -42,4 +43,31 @@ test('pricing delegate sees tariff actions',async()=>{
   render(<FinancePanel schoolId='school'/>);
   await screen.findByRole('button',{name:'Créer le tarif'});
   expect(screen.getByRole('button',{name:'Affecter ce frais'})).toBeTruthy();
+});
+
+test('finance quality warning exposes unverified historical cash without labeling it real',async()=>{
+  mockFinance(['school.finance.read']);
+  render(<FinancePanel schoolId='school'/>);
+  const quality=await screen.findByLabelText('Contrôle de qualité des écritures financières');
+  expect(quality.textContent).toContain('à vérifier');
+  expect(quality.textContent).toContain('5000.00 XAF');
+  expect(quality.textContent).toContain('explicitement fictif');
+});
+
+test('legacy cash payment in the detailed history is visibly unverified',async()=>{
+  mockFinance(['school.finance.read'], 'legacy_unverified');
+  render(<FinancePanel schoolId='school'/>);
+  await screen.findByRole('option',{name:/Scolarité/});
+  await userEvent.setup().selectOptions(screen.getByLabelText('Frais dû'),'charge');
+  expect((await screen.findByText(/À rapprocher — paiement historique non vérifié/)).textContent)
+    .toContain('paiement historique non vérifié');
+});
+
+test('explicit simulation in the detailed history cannot appear as ordinary cash',async()=>{
+  mockFinance(['school.finance.read'], 'simulation');
+  render(<FinancePanel schoolId='school'/>);
+  await screen.findByRole('option',{name:/Scolarité/});
+  await userEvent.setup().selectOptions(screen.getByLabelText('Frais dû'),'charge');
+  expect((await screen.findByText(/SIMULATION — aucune recette/)).textContent)
+    .toContain('aucune recette');
 });

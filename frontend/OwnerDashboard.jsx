@@ -39,13 +39,22 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
   const finance=data?.finance?.currencies||[];
   const activity=data?.activity||{};
   const financialTable=finance.length
-    ? <Table headers={["Devise","Facturé","Encaissé","Restant dû","Échu","Encaissé ce mois"]}
+    ? <Table headers={["Devise","Frais nets comptabilisés","Paiements enregistrés","Solde comptable","Échu comptable","Enregistré ce mois"]}
       rows={finance.map(row=>[
         row.currency,amount(row.billed,row.currency),amount(row.paid,row.currency),
         amount(row.outstanding,row.currency),amount(row.overdue,row.currency),
         amount(row.paid_this_month,row.currency),
       ])}/>
     : <p className="hint">Aucun frais enregistré pour cette année scolaire.</p>;
+  const reconciliationTable=finance.length
+    ? <Table headers={["Devise","Simulations identifiées","Ancien cash à justifier","Autres montants déclarés"]}
+      rows={finance.map(row=>[
+        row.currency,
+        amount(row.evidence?.explicit_demo||"0.00",row.currency),
+        amount(row.evidence?.legacy_cash_unverified||"0.00",row.currency),
+        amount(row.evidence?.other_declared||"0.00",row.currency),
+      ])}/>
+    : null;
 
   return <>
     <PageHeader title={title} subtitle={`Indicateurs de ${schoolName||data?.school?.name||"l’établissement"} — consultation sans pouvoir d’encaissement`}/>
@@ -92,9 +101,12 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
         {(tab==="synthese"||tab==="finances")&&<Card title="Situation financière de l’établissement" icon="coins"
           subtitle="Total des frais et règlements enregistrés ; aucune caisse ni modification depuis cet espace">
           {financialTable}
+          <p className="hint" role="note">Ce tableau est un relevé d'écritures, pas un état de recettes certifiées. Les montants à justifier ne sont pas considérés comme vérifiés.</p>
+          <h3>Contrôle des écritures enregistrées</h3>
+          {reconciliationTable}
           <p className="hint">{data.finance?.note}</p>
           {tab==="finances"&&data.finance?.monthly?.length>0&&<>
-            <h3>Encaissements par mois</h3>
+            <h3>Paiements enregistrés par mois (non certifiés)</h3>
             <Table headers={["Mois","Devise","Montant"]}
               rows={data.finance.monthly.map(item=>[item.month,item.currency,amount(item.total,item.currency)])}/>
           </>}
