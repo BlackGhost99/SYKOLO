@@ -124,7 +124,7 @@ def charge_data(row):
 
 
 def payment_data(row):
-    evidence = classify_payment(row.method, row.charge.label, row.charge.schedule.label)
+    evidence = classify_payment(row.method, row.charge.label)
     return {
         "id": str(row.pk), "charge": str(row.charge_id),
         "evidence_class": evidence,
@@ -330,7 +330,7 @@ def payments(request, school_id):
             return JsonResponse({"error": "Identifiant du frais requis."}, status=422)
         if not FeeCharge.objects.filter(school=school, pk=charge_id).exists():
             return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
-        rows = FeePayment.objects.select_related("charge__schedule").filter(
+        rows = FeePayment.objects.select_related("charge").filter(
             school=school, charge_id=charge_id
         ).order_by("created_at", "pk")[:500]
         return JsonResponse({"payments": [payment_data(row) for row in rows]})
@@ -367,7 +367,7 @@ def payments(request, school_id):
             charge = FeeCharge.objects.select_for_update().filter(school=school, pk=charge_id).first()
             if charge is None:
                 return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
-            if classify_payment(method, charge.label, charge.schedule.label) == "simulation":
+            if classify_payment(method, charge.label) == "simulation":
                 return JsonResponse({"error": "Paiement sur un frais explicitement DÉMO interdit en caisse réelle."}, status=422)
             previous = FeePayment.objects.filter(school=school, idempotency_key=idem).first()
             if previous:
@@ -476,9 +476,7 @@ def receipt(request, school_id, payment_id):
     if payment is None:
         return JsonResponse({"error": "Reçu introuvable."}, status=404)
     void = FeePaymentVoid.objects.filter(payment=payment, school=school).first()
-    receipt_class = classify_payment(
-        payment.method, payment.charge.label, payment.charge.schedule.label
-    )
+    receipt_class = classify_payment(payment.method, payment.charge.label)
     simulated = receipt_class == "simulation"
     unverified_legacy = receipt_class == "legacy_unverified"
     heading = (
