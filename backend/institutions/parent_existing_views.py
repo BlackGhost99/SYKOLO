@@ -15,6 +15,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 
 from accounts.views import authorized
 from .models import School
+from .phone_utils import normalize_guardian_phone
 from .parent_existing_models import ExistingStudentLinkRequest as LinkRequest
 from .services import has_permission
 from .views import access, log_event, parse_body, refuse
@@ -53,6 +54,7 @@ def staff_summary(row):
     return {
         **summary(row), "username": row.owner.get_username(),
         "guardian_name": row.guardian_name, "contact_phone": row.contact_phone,
+        "whatsapp_opt_in": row.whatsapp_opt_in,
     }
 
 
@@ -90,17 +92,20 @@ def family_requests(request):
     if error is not None:
         return error
     expected = {"school", "first_name", "last_name", "student_code", "guardian_name", "contact_phone"}
-    if set(data) != expected:
-        return fail("École, enfant et responsable légal requis.")
+    if not expected.issubset(data) or set(data) - expected - {"whatsapp_opt_in"}:
+        return fail("École, enfant, nom et téléphone du responsable légal requis.")
+    if type(data.get("whatsapp_opt_in", False)) is not bool:
+        return fail("Choix WhatsApp invalide.")
+    whatsapp_opt_in = data.get("whatsapp_opt_in", False)
     try:
         school_id = UUID(data["school"]) if isinstance(data["school"], str) else None
         first = normalized(data["first_name"], 120, required=True)
         last = normalized(data["last_name"], 120, required=True)
         code = normalized(data["student_code"], 50)
         guardian = normalized(data["guardian_name"], 180, required=True)
-        phone = normalized(data["contact_phone"], 45)
-    except (ValueError, TypeError, AttributeError):
-        return fail("Informations invalides ou incomplètes.")
+        phone = normalize_guardian_phone(data["contact_phone"])
+    except (ValueError, TypeError, AttributeError) as exc:
+        return fail(str(exc) if str(exc) else "Informations invalides ou incomplètes.")
     if not school_id:
         return fail("Établissement invalide.")
 
@@ -113,7 +118,12 @@ def family_requests(request):
             first_name__iexact=first, last_name__iexact=last, student_code__iexact=code,
         ).order_by("-created_at").first()
         if previous:
-            # N'atteste ni l'existence de l'eleve ni celle du responsable legal.
+            # La personne ne peut modifier que SA demande non traitée.
+            # Cela n'atteste ni l'existence de l'élève ni sa qualité de responsable légal.
+            if previous.contact_phone != phone or previous.whatsapp_opt_in != whatsapp_opt_in:
+                previous.contact_phone = phone
+                previous.whatsapp_opt_in = whatsapp_opt_in
+                previous.save(update_fields=["contact_phone", "whatsapp_opt_in"])
             return JsonResponse(summary(previous), status=200)
         if LinkRequest.objects.filter(owner=request.user, school=school, status=LinkRequest.PENDING).count() >= 5:
             return fail("Vous avez déjà cinq demandes à traiter dans cet établissement.", 429)
@@ -123,6 +133,7 @@ def family_requests(request):
         row = LinkRequest.objects.create(
             school=school, owner=request.user, first_name=first, last_name=last,
             student_code=code, guardian_name=guardian, contact_phone=phone,
+            whatsapp_opt_in=whatsapp_opt_in,
         )
         log_event(school, request, "parent_link_requested", row.pk)
     return JsonResponse(summary(row), status=201)
