@@ -6,27 +6,18 @@ This route does not mutate, void, relabel or backfill financial records.
 """
 from collections import defaultdict
 from decimal import Decimal
-import re
 
-from django.db.models import Q
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 from accounts.views import authorized
 
 from .academic_models import AcademicYear
+from .finance_evidence import explicit_demo, classify_payment
 from .finance_models import FeeCharge, FeePayment
 from .finance_views import gate, uid
 
 ZERO = Decimal("0.00")
-DEMO_LABEL = re.compile(r"^(?:d[eé]mo)(?:\s*[-—:]|\s*$|\s*\[)", re.IGNORECASE)
-
-
-def explicit_demo(label):
-    """Only conspicuous, intentional prefixes are treated as demo evidence."""
-    return bool(DEMO_LABEL.match((label or "").strip()))
-
-
 def money(value):
     return str(value.quantize(Decimal("0.01")))
 
@@ -70,11 +61,12 @@ def quality(request, school_id):
     for payment in payments.values(
         "currency", "amount", "method", "charge__label", "charge__schedule__label"
     ).iterator():
-        if (payment["method"] == "simulation"
-                or explicit_demo(payment["charge__label"])
-                or explicit_demo(payment["charge__schedule__label"])):
+        kind = classify_payment(
+            payment["method"], payment["charge__label"], payment["charge__schedule__label"]
+        )
+        if kind == "simulation":
             category = "explicit_demo_payments"
-        elif payment["method"] == "cash":
+        elif kind == "legacy_unverified":
             category = "legacy_cash_unverified"
         elif payment["method"] == "especes":
             category = "cash_declared"
