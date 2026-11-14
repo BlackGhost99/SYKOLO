@@ -271,7 +271,8 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
           })}
         </tr>)}</tbody></table>
       </div>
-      <p className="ym-hint">Un champ vide signifie « non renseigné », jamais zéro. Les autres colonnes restent consultables ; sélectionnez leur en-tête pour les modifier.</p>
+      <p className="ym-grade-mobile-hint">Sur téléphone, choisissez l’évaluation à modifier dans le filtre ci-dessus.</p>
+      <p className="ym-hint">Un champ vide signifie « non renseigné », jamais zéro. Sur écran large, touchez l’en-tête d’une autre colonne pour la modifier.</p>
       {editable&&<Button primary className="ym-full-btn"
         disabled={busy||!Object.keys(drafts).length||Object.keys(drafts).length>100}
         onClick={saveGrades} icon="check">Enregistrer {Object.keys(drafts).length} modification(s)</Button>}

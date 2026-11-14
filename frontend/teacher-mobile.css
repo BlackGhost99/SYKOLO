@@ -391,3 +391,180 @@
   .ym-prof-app .ym-status-buttons { gap: 4px; }
   .ym-prof-app .ym-status { font-size: 10px; padding: 6px 2px; }
 }
+
+
+/* Correctif cahier professeur : les règles historiques styles.css imposent
+   td:first-child=23% et td:nth-child(3)=25%. Garder le tableau autonome. */
+.ym-prof-app .ym-grade-table-wrap {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.ym-prof-app .ym-grade-table {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 600px;
+  table-layout: fixed;
+}
+.ym-prof-app .ym-grade-table :is(th,td) {
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+.ym-prof-app .ym-grade-table tr > :first-child {
+  width: 38px;
+  min-width: 38px;
+  max-width: 38px;
+}
+.ym-prof-app .ym-grade-table .ym-grade-student {
+  width: 165px;
+  min-width: 165px;
+  max-width: 165px;
+  overflow-wrap: anywhere;
+}
+.ym-prof-app .ym-grade-table tbody tr > td:nth-child(3) {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+.ym-prof-app .ym-grade-table tbody td :is(input,select) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 7px 4px;
+  font-size: 14px;
+}
+.ym-prof-app .ym-grade-table .ym-grade-readonly {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.ym-prof-app .ym-grade-table thead th button {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ym-grade-mobile-hint { display: none; }
+
+/* Téléphones : une seule évaluation sélectionnée à la fois. La feuille
+   entière tient dans la fenêtre et aucun champ ne passe sous un nom sticky. */
+@media (max-width: 600px) {
+  .ym-prof-app .ym-note-sheet {
+    min-width: 0;
+    max-width: 100%;
+    padding: clamp(9px, 3vw, 15px);
+  }
+  .ym-prof-app .ym-grade-table-wrap {
+    overflow-x: hidden;
+    border-radius: 9px;
+  }
+  .ym-prof-app .ym-grade-table {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    table-layout: fixed;
+    font-size: 12px;
+  }
+  .ym-prof-app .ym-grade-table thead tr > th:nth-child(n+4),
+  .ym-prof-app .ym-grade-table tbody tr > td:nth-child(n+4) {
+    display: none;
+  }
+  .ym-prof-app .ym-grade-table :is(th,td) {
+    padding: 8px 4px;
+    line-height: 1.3;
+  }
+  .ym-prof-app .ym-grade-table thead th {
+    white-space: normal;
+    font-size: 11px;
+    height: 56px;
+  }
+  .ym-prof-app .ym-grade-table tr > :first-child {
+    position: static;
+    left: auto;
+    z-index: auto;
+    width: 33px;
+    min-width: 33px;
+    max-width: 33px;
+    text-align: center;
+  }
+  .ym-prof-app .ym-grade-table .ym-grade-student {
+    position: static;
+    left: auto;
+    z-index: auto;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
+    font-weight: 650;
+  }
+  .ym-prof-app .ym-grade-table thead th:nth-child(3),
+  .ym-prof-app .ym-grade-table tbody tr > td:nth-child(3) {
+    width: 99px;
+    min-width: 99px;
+    max-width: 99px;
+  }
+  .ym-prof-app .ym-grade-table tbody td :is(input,select) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: 39px;
+    padding: 6px 2px;
+    font-size: 14px;
+    text-align: center;
+    border-radius: 8px;
+  }
+  .ym-prof-app .ym-grade-table .ym-grade-readonly {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 9px 2px;
+    font-size: 13px;
+    text-align: center;
+  }
+  .ym-grade-mobile-hint {
+    display: block;
+    color: var(--ym-muted);
+    font-size: 11px;
+    line-height: 1.4;
+    margin: 0;
+  }
+  .ym-prof-app .ym-stats-four > div { min-width: 0; overflow-wrap: anywhere; }
+  .ym-prof-app .ym-stats-four > div strong {
+    font-size: clamp(16px, 5vw, 22px);
+    overflow-wrap: anywhere;
+  }
+  .ym-prof-app .ym-ranking-row > * { min-width: 0; }
+  .ym-prof-app .ym-ranking-mark { font-size: 13px; }
+  .ym-prof-app .ym-chart-bin { font-size: 9px; }
+  .ym-prof-app .ym-call-card,
+  .ym-prof-app .ym-course-filters,
+  .ym-prof-app .ym-averages-view { max-width: 100%; min-width: 0; }
+  .ym-prof-app .ym-call-heading > div { min-width: 0; }
+  .ym-prof-app .ym-call-heading :is(h2,p) { overflow-wrap: anywhere; }
+  .ym-prof-app .ym-search-row > * { min-width: 0; }
+}
+@media (max-width: 340px) {
+  .ym-prof-app .ym-grade-table thead th:nth-child(3),
+  .ym-prof-app .ym-grade-table tbody tr > td:nth-child(3) {
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
+  }
+  .ym-prof-app .ym-filter-row,
+  .ym-prof-app .ym-select-row { grid-template-columns: minmax(0,1fr); }
+  .ym-prof-app .ym-grade-table .ym-grade-student { font-size: 11px; }
+  .ym-prof-app .ym-attendance-stats { gap: 4px; }
+  .ym-prof-app .ym-status { font-size: 10px; }
+}
