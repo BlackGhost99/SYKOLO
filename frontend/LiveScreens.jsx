@@ -264,6 +264,12 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
                 style={{display:"inline-block",marginRight:12}}>
                 {c.label} (PDF)
               </a>)}
+              <span> Avis d’échéance : </span>
+              {Array.from(new Set(issuedCharges.map(c => c.currency))).map(code =>
+                <a key={code} href={`/api/v1/schools/${schoolId}/finance/enrollments/${enrollment}/notice?currency=${code}`}
+                  target="_blank" rel="noreferrer" className="yd-link" style={{marginRight:12}}>
+                  {code} (PDF)
+                </a>)}
             </div>}
             <label className="yd-label">Mode de paiement <i>*</i></label>
             <div className="yd-paymodes">{METHODS.map(([k, l, ic]) => <Button key={k} primary={method === k} icon={ic} onClick={() => setMethod(k)}>{l}</Button>)}</div>
