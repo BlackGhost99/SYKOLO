@@ -32,7 +32,7 @@ from .views import log_event, parse_body
 
 
 def batch_data(batch):
-    payments = list(batch.lines.select_related("charge__schedule").order_by("charge_id"))
+    payments = list(batch.lines.select_related("charge").order_by("charge_id"))
     return {
         "id": str(batch.pk),
         "enrollment": str(batch.enrollment_id),
@@ -117,7 +117,7 @@ def create_batch(request, school_id):
             ).order_by("pk"))
             if len(charges) != len(entries):
                 return JsonResponse({"error": "Frais ou inscription introuvable dans cette école."}, status=404)
-            if any(classify_payment(method, charge.label, charge.schedule.label) == "simulation"
+            if any(classify_payment(method, charge.label) == "simulation"
                    for charge in charges):
                 return JsonResponse({"error": "Paiement sur un frais explicitement DÉMO interdit en caisse réelle."}, status=422)
             currency = charges[0].currency
@@ -181,9 +181,9 @@ def batch_receipt(request, school_id, batch_id):
     if batch is None:
         return JsonResponse({"error": "Reçu groupé introuvable."}, status=404)
 
-    lines = list(batch.lines.select_related("charge__schedule").order_by("charge__label", "pk"))
+    lines = list(batch.lines.select_related("charge").order_by("charge__label", "pk"))
     evidence = {
-        p.pk: classify_payment(p.method, p.charge.label, p.charge.schedule.label)
+        p.pk: classify_payment(p.method, p.charge.label)
         for p in lines
     }
     receipt_class = classify_batch(evidence.values())
