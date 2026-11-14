@@ -145,6 +145,18 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
 /* ---------- Paiements ---------- */
 function newKey() { return (crypto.randomUUID && crypto.randomUUID()) || "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)); }
 
+function FinanceEvidenceNotice({data}) {
+  if (!data || data.revenue_certified !== false) return null;
+  const evidence = data.evidence || {};
+  const currency = data.currency || "XAF";
+  return <p className="hint" role="note">
+    Suivi des écritures, non des recettes certifiées. Ces montants incluent
+    {" "}{fmtMoney(evidence.explicit_demo||"0.00",currency)} de simulations identifiées et
+    {" "}{fmtMoney(evidence.legacy_cash_unverified||"0.00",currency)} d'ancien cash à rapprocher.
+    Ne pas utiliser ces totaux comme justificatif de caisse.
+  </p>;
+}
+
 export function LivePayments({ schoolId, canReceive, params, tabs, advancedSettings, workingYearId = "", onWorkingYearChange }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
@@ -232,11 +244,12 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
     {tabs}
     <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive} onUpdated={fin.reload}/>
     <Loading state={fin}>{d && <>
+      <FinanceEvidenceNotice data={d}/>
       <div className="yd-metrics four">
-        <Metric icon="coins" label="Encaissé aujourd’hui" value={fmtMoney(d.today.total, d.currency)} trend={total >= Number(d.yesterday.total) ? "up" : "down"} trendValue={pct(d.today.total, d.yesterday.total) || ""} trendLabel={`vs. hier (${fmtMoney(d.yesterday.total, d.currency)})`}/>
+        <Metric icon="coins" label="Enregistré aujourd’hui" value={fmtMoney(d.today.total, d.currency)} trend={total >= Number(d.yesterday.total) ? "up" : "down"} trendValue={pct(d.today.total, d.yesterday.total) || ""} trendLabel={`vs. hier (${fmtMoney(d.yesterday.total, d.currency)})`}/>
         <Metric icon="file" label="Nombre de paiements" value={num(d.today.count)} trend={d.today.count >= d.yesterday.count ? "up" : "down"} trendValue={pct(d.today.count, d.yesterday.count) || ""} trendLabel={`vs. hier (${d.yesterday.count})`}/>
-        <Metric icon="cash" label="Espèces" value={fmtMoney(cash, d.currency)} trend="none" trendValue={share(cash)} trendLabel="du total"/>
-        <Metric icon="mobile" label="Mobile money" value={fmtMoney(mobile, d.currency)} trend="none" trendValue={share(mobile)} trendLabel="du total"/>
+        <Metric icon="cash" label="Espèces déclarées" value={fmtMoney(cash, d.currency)} trend="none" trendValue={share(cash)} trendLabel="du total"/>
+        <Metric icon="mobile" label="Mobile money déclaré" value={fmtMoney(mobile, d.currency)} trend="none" trendValue={share(mobile)} trendLabel="du total"/>
       </div>
       <div className="yd-grid payments-grid">
         <Card title="Nouvel encaissement" subtitle="Frais scolaires d’un élève déjà inscrit" icon="card" className="payment-form">
@@ -280,8 +293,8 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
           </Card>
           <Card title="Caisse du jour" icon="layers">
             <div className="cash-row">
-              <Donut size={180} values={donutRows.map(r => r[1])} centerTop={num(total)} centerBottom={`${cur(d.currency)}\nencaissés`} legend={donutRows.map(([l, v]) => [`${l} : ${fmtMoney(v, d.currency)}`, `(${share(v)})`])}/>
-              <div className="cash-total"><div><span>Total encaissé</span><strong>{fmtMoney(total, d.currency)}</strong></div></div>
+              <Donut size={180} values={donutRows.map(r => r[1])} centerTop={num(total)} centerBottom={`${cur(d.currency)}\nenregistrés`} legend={donutRows.map(([l, v]) => [`${l} : ${fmtMoney(v, d.currency)}`, `(${share(v)})`])}/>
+              <div className="cash-total"><div><span>Total enregistré</span><strong>{fmtMoney(total, d.currency)}</strong></div></div>
             </div>
           </Card>
         </div>
@@ -318,13 +331,15 @@ export function LiveArrears({ schoolId, schoolName, tabs, workingYearId = "", on
       {sendHref ? <a className="yd-btn primary" href={sendHref} target="_blank" rel="noreferrer"><Icon name="send" size={20}/><span>Envoyer la relance</span></a> : <Button primary icon="send" disabled>Envoyer la relance</Button>}
       <Button icon="whatsapp" onClick={() => setChannel("WhatsApp")}>WhatsApp</Button><Button icon="message" onClick={() => setChannel("SMS")}>SMS</Button><Button icon="download" disabled={!d.arrears.length} onClick={exportCsv}>Exporter</Button></>}/>
     {tabs}
-    <Loading state={fin}>{d && <div className="yd-grid arrears-layout">
+    <Loading state={fin}>{d && <div>
+      <FinanceEvidenceNotice data={d}/>
+      <div className="yd-grid arrears-layout">
       <div className="yd-stack">
         <div className="yd-metrics four">
           <Metric icon="coins" label="Total restant dû" value={fmtMoney(d.outstanding, d.currency)} trend="none" trendLabel="toutes échéances"/>
           <Metric icon="alert" label="Familles en retard" value={num(d.families_late)} trend="none" trendLabel="échéance dépassée"/>
           <Metric icon="hourglass" label="Montant échu" value={fmtMoney(d.overdue_total, d.currency)} trend="none" trendLabel="à recouvrer"/>
-          <Metric icon="card" label="Encaissé ce mois" value={fmtMoney(d.month.total, d.currency)} trend={Number(d.month.total) >= Number(d.month.previous) ? "up" : "down"} trendValue={pct(d.month.total, d.month.previous) || ""} trendLabel="vs. mois précédent"/>
+          <Metric icon="card" label="Enregistré ce mois" value={fmtMoney(d.month.total, d.currency)} trend={Number(d.month.total) >= Number(d.month.previous) ? "up" : "down"} trendValue={pct(d.month.total, d.month.previous) || ""} trendLabel="vs. mois précédent"/>
         </div>
         <Card title="Liste des familles en impayé" count={`(${d.families_late})`} icon="users">
           {d.arrears.length === 0 ? <Empty>Aucune famille en retard de paiement.</Empty> :
@@ -342,7 +357,7 @@ export function LiveArrears({ schoolId, schoolName, tabs, workingYearId = "", on
           {d.arrears_by_class.length ? <BarList items={d.arrears_by_class.map(c => [c.classroom, c.families])}/> : <Empty>Aucun impayé.</Empty>}
         </Card>
       </div>
-    </div>}</Loading>
+    </div></div>}</Loading>
   </>;
 }
 
@@ -364,19 +379,20 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName} — ${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`} badge={roleLabel || "Membre"} badgeIcon="crown"/>
     {tabs}
     <Loading state={fin}>{d && <>
+      <FinanceEvidenceNotice data={d}/>
       <div className="yd-metrics five">
-        <Metric icon="coins" label="Encaissé ce mois" value={fmtMoney(d.month.total, d.currency)} trend={monthTotal >= Number(d.month.previous) ? "up" : "down"} trendValue={pct(d.month.total, d.month.previous) || ""} trendLabel="vs. mois précédent"/>
+        <Metric icon="coins" label="Enregistré ce mois" value={fmtMoney(d.month.total, d.currency)} trend={monthTotal >= Number(d.month.previous) ? "up" : "down"} trendValue={pct(d.month.total, d.month.previous) || ""} trendLabel="vs. mois précédent"/>
         <Metric icon="file" label="Restant dû" value={fmtMoney(d.outstanding, d.currency)} trend="none" trendLabel="toutes échéances"/>
         <Metric icon="users" label="Élèves actifs" value={num(d.active_students)} trend="none" trendLabel={d.year?.name || ""}/>
         <Metric icon="alert" label="Familles en retard" value={num(d.families_late)} trend="none" trendLabel={`${fmtMoney(d.overdue_total, d.currency)} échus`}/>
         <Metric icon="receipt" label="Paiements aujourd’hui" value={num(d.today.count)} trend="none" trendLabel={fmtMoney(d.today.total, d.currency)}/>
       </div>
       <div className="yd-grid dash-main">
-        <Card title="Évolution des encaissements" icon="barchart" subtitle={`Montants encaissés (${cur(d.currency)}) sur les 6 derniers mois`}>
+        <Card title="Évolution des écritures" icon="barchart" subtitle={`Paiements enregistrés (${cur(d.currency)}) sur les 6 derniers mois — non certifiés`}>
           <LineChart points={monthly} labels={d.monthly.map(m => monthLabel(m.month))} min={sc.min} max={sc.max} step={sc.step}/>
         </Card>
         <Card title="Répartition des moyens de paiement" icon="wallet">
-          <Donut size={160} values={methods.map(m => m[1])} centerTop={num(monthTotal)} centerBottom={`${cur(d.currency)}\nencaissés`} legend={methods.map(([l, v]) => [`${l} : ${share(v)}`, `(${fmtMoney(v, d.currency)})`])}/>
+          <Donut size={160} values={methods.map(m => m[1])} centerTop={num(monthTotal)} centerBottom={`${cur(d.currency)}\nenregistrés`} legend={methods.map(([l, v]) => [`${l} : ${share(v)}`, `(${fmtMoney(v, d.currency)})`])}/>
         </Card>
         <Card title="Actions rapides" icon="bolt" className="quick">
           {canReceive && <Button primary icon="card" onClick={() => onNavigate("payments", "live")}>Nouvel encaissement</Button>}
