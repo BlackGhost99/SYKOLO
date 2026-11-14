@@ -4,6 +4,18 @@ import django.db.models.deletion
 import uuid
 
 
+def private_inbox(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute('ALTER TABLE "public"."institutions_schoolfamilynotification" ENABLE ROW LEVEL SECURITY')
+        cursor.execute("SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated')")
+        for (role,) in cursor.fetchall():
+            cursor.execute(
+                f'REVOKE ALL PRIVILEGES ON TABLE "public"."institutions_schoolfamilynotification" FROM "{role}"'
+            )
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("institutions", "0055_guardian_whatsapp_consent"),
@@ -30,4 +42,5 @@ class Migration(migrations.Migration):
                 models.Index(fields=["parent", "destination", "-created_at"], name="yem_family_inbox_parent"),
             ]},
         ),
+        migrations.RunPython(private_inbox, migrations.RunPython.noop),
     ]
