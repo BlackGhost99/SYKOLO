@@ -27,6 +27,7 @@ from .finance_views import (
 )
 from .models import School
 from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
+from .finance_evidence import classify_payment
 from .views import log_event, parse_body
 
 
@@ -116,6 +117,9 @@ def create_batch(request, school_id):
             ).order_by("pk"))
             if len(charges) != len(entries):
                 return JsonResponse({"error": "Frais ou inscription introuvable dans cette école."}, status=404)
+            if any(classify_payment(method, charge.label, charge.schedule.label) == "simulation"
+                   for charge in charges):
+                return JsonResponse({"error": "Paiement sur un frais explicitement DÉMO interdit en caisse réelle."}, status=422)
             currency = charges[0].currency
             if any(charge.currency != currency for charge in charges):
                 return JsonResponse({"error": "Plusieurs devises : effectuez des paiements séparés."}, status=422)
