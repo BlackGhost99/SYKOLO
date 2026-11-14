@@ -34,10 +34,18 @@ def normalized(value, max_length, required=False):
 
 
 def summary(row):
+    access_active = False
+    if row.status == LinkRequest.APPROVED and row.linked_guardian_id:
+        # L'approbation historique ne signifie pas qu'un acces revoque existe encore.
+        from .parent_views import guardian_links
+        access_active = guardian_links(row.owner).filter(
+            school_id=row.school_id, guardian_id=row.linked_guardian_id
+        ).exists()
     return {
         "id": str(row.pk), "school": str(row.school_id), "school_name": row.school.name,
         "first_name": row.first_name, "last_name": row.last_name, "student_code": row.student_code,
-        "status": row.status, "created_at": row.created_at.isoformat(),
+        "status": row.status, "access_active": access_active,
+        "created_at": row.created_at.isoformat(),
     }
 
 
