@@ -80,6 +80,10 @@ class StudentAdmissionsTests(TestCase):
             }).status_code, 201)
         self.assertEqual(self.write(f"students/{first['id']}/guardians", {
             "full_name": "Ancien responsable", "active": False,
+        }).status_code, 422)  # même un responsable historique doit être joignable
+        self.assertEqual(self.write(f"students/{first['id']}/guardians", {
+            "full_name": "Ancien responsable", "active": False,
+            "phone": "+241 01 02 03 04",
         }).status_code, 201)
         path = self.base + f"guardians-by-class?classroom={self.classroom.id}"
         families = self.client.get(path).json()["families"]
