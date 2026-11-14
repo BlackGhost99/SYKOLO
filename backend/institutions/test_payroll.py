@@ -73,32 +73,32 @@ class PayrollLedgerTests(TestCase):
         return self.post(f"runs/{run_id}/approve",{"revision":revision})
 
     def test_salary_privacy_and_role_separation(self):
-        self.assertEqual(self.client.get("staff").status_code,200)
-        self.assertEqual(self.client.get("runs").status_code,200)
+        self.assertEqual(self.client.get(self.root+"staff").status_code,200)
+        self.assertEqual(self.client.get(self.root+"runs").status_code,200)
         self.assertEqual(self.prepare().status_code,201)
         self.login("enseignant")
-        self.assertEqual(self.client.get("runs").status_code,403)
-        self.assertEqual(self.client.get("staff").status_code,403)
+        self.assertEqual(self.client.get(self.root+"runs").status_code,403)
+        self.assertEqual(self.client.get(self.root+"staff").status_code,403)
         self.assertEqual(self.client.get(
             f"/api/v1/schools/{self.school.pk}/staff/{self.staff.pk}/dossier"
         ).status_code,403)
         self.login("secretariat")
-        self.assertEqual(self.client.get("runs").status_code,403)
+        self.assertEqual(self.client.get(self.root+"runs").status_code,403)
         # Secretariat can read the professional dossier but must never see salary.
         result=self.client.get(f"/api/v1/schools/{self.school.pk}/staff/{self.staff.pk}/dossier")
         self.assertEqual(result.status_code,200,result.content)
         self.assertNotIn("gross_amount",str(result.json()))
         self.assertNotIn("payroll",str(result.json()))
         self.login("parent")
-        self.assertEqual(self.client.get("runs").status_code,403)
+        self.assertEqual(self.client.get(self.root+"runs").status_code,403)
         self.login("direction")
-        self.assertEqual(self.client.get("runs").status_code,200)
+        self.assertEqual(self.client.get(self.root+"runs").status_code,200)
         self.assertEqual(self.prepare().status_code,403)
         self.login("econome")
-        self.assertEqual(self.client.get("runs").status_code,200)
+        self.assertEqual(self.client.get(self.root+"runs").status_code,200)
         self.assertEqual(self.prepare().status_code,403)
         self.login(self.stranger)
-        self.assertEqual(self.client.get("runs").status_code,404)
+        self.assertEqual(self.client.get(self.root+"runs").status_code,404)
 
     def test_independent_approval_then_partial_declared_payments(self):
         created=self.prepare()
@@ -125,13 +125,13 @@ class PayrollLedgerTests(TestCase):
         self.assertEqual(same.json()["id"],paid.json()["id"])
         self.assertEqual(self.pay(row["id"],amount="50000.00",idem=key).status_code,409)
         self.assertEqual(self.pay(row["id"],amount="60000.01").status_code,409)
-        detail=self.client.get("runs/"+row["id"])
+        detail=self.client.get(self.root+"runs/"+row["id"])
         self.assertEqual(detail.status_code,200,detail.content)
         self.assertEqual(detail.json()["run"]["paid"],"40000.00")
         self.assertEqual(detail.json()["run"]["balance"],"60000.00")
         self.assertEqual(detail.json()["run"]["status"],"partially_paid")
         self.assertEqual(self.pay(row["id"],amount="60000.00").status_code,201)
-        self.assertEqual(self.client.get("runs/"+row["id"]).json()["run"]["status"],"paid")
+        self.assertEqual(self.client.get(self.root+"runs/"+row["id"]).json()["run"]["status"],"paid")
         self.assertEqual(StaffPayDisbursement.objects.filter(school=self.school).count(),2)
         self.assertEqual(self.pay(row["id"],amount="1.00").status_code,409)
         # Audit entries must not expose salary amounts; do not mix with tuition.
@@ -157,7 +157,7 @@ class PayrollLedgerTests(TestCase):
         })
         self.assertEqual(voided.status_code,200,voided.content)
         self.assertTrue(voided.json()["voided"])
-        self.assertEqual(self.client.get("runs/"+row["id"]).json()["run"]["balance"],"100000.00")
+        self.assertEqual(self.client.get(self.root+"runs/"+row["id"]).json()["run"]["balance"],"100000.00")
         self.assertEqual(self.post("payments/"+payment["id"]+"/void",{
             "reason":"Tentative de second remboursement"
         }).status_code,409)
@@ -205,7 +205,7 @@ class PayrollLedgerTests(TestCase):
         self.assertEqual(self.prepare(staff=str(own.pk)).status_code,403)
         row=self.prepare().json()
         self.login("enseignant")
-        self.assertEqual(self.client.get("runs/"+row["id"]).status_code,403)
+        self.assertEqual(self.client.get(self.root+"runs/"+row["id"]).status_code,403)
         self.login("direction")
         self.assertEqual(self.client.get(
             f"/api/v1/schools/{self.other.pk}/payroll/runs/{row['id']}"
