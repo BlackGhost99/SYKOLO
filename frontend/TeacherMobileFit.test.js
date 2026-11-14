@@ -2,7 +2,7 @@
 import {afterEach,expect,test} from "vitest";
 import {readFileSync} from "node:fs";
 
-const css=readFileSync(new URL("./teacher-mobile.css",import.meta.url),"utf8");
+const css=readFileSync("frontend/teacher-mobile.css","utf8");
 afterEach(()=>{
   document.getElementById("yem-mobile-fit-test-style")?.remove();
   document.body.innerHTML="";
