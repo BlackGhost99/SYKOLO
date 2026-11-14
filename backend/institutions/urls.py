@@ -3,7 +3,7 @@ from conduct import views as conduct_views
 from . import import_views
 from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
-from . import finance_batch_views, finance_cash_views, finance_summary_views
+from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views
 from . import annual_views
 from . import class_assignment_views
 from . import calendar_views
@@ -107,6 +107,12 @@ urlpatterns = [
     path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/marks", attendance_views.record_marks),
     path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/close", attendance_views.close_session),
     path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/marks/<uuid:enrollment_id>/history", attendance_views.changes),
+    path("schools/<uuid:school_id>/payroll/staff", payroll_views.personnel),
+    path("schools/<uuid:school_id>/payroll/runs", payroll_views.runs),
+    path("schools/<uuid:school_id>/payroll/runs/<uuid:run_id>", payroll_views.run_detail),
+    path("schools/<uuid:school_id>/payroll/runs/<uuid:run_id>/approve", payroll_views.approve),
+    path("schools/<uuid:school_id>/payroll/runs/<uuid:run_id>/payments", payroll_views.pay),
+    path("schools/<uuid:school_id>/payroll/payments/<uuid:payment_id>/void", payroll_views.void),
     path("schools/<uuid:school_id>/finance/schedules", finance_views.schedules),
     path("schools/<uuid:school_id>/finance/schedules/<uuid:schedule_id>", finance_views.schedule_detail),
     path("schools/<uuid:school_id>/finance/charges", finance_views.charges),

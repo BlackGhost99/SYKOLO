@@ -138,6 +138,7 @@ from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEven
 
 from .staff_models import StaffRecord, StaffAssignment, StaffProfessionalDossier  # noqa: E402,F401
 from .staff_profile_models import StaffProfile  # noqa: E402,F401
+from .payroll_models import StaffPayRun, StaffPayDisbursement  # noqa: E402,F401
 
 from .curriculum_models import Subject, CourseOffering, CourseUnit, CourseInstructor  # noqa: E402,F401
 

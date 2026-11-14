@@ -4,6 +4,7 @@ import AcademicPanel from "./AcademicPanel.jsx";
 import PedagogicalCalendar from "./PedagogicalCalendar.jsx";
 import StaffPanel from "./StaffPanel.jsx";
 import StaffProfessionalDossier from "./StaffProfessionalDossier.jsx";
+import PayrollPanel from "./PayrollPanel.jsx";
 import TeacherHome from "./TeacherHome.jsx";
 import TeacherMobileWorkspace from "./TeacherMobileWorkspace.jsx";
 import {teacherWorkspacePolicy} from "./teacher-access.js";
@@ -69,7 +70,8 @@ const sections = {
   parents:{title:"Parents",subtitle:"Les responsables légaux de chaque élève, par classe",modules:[],lives:[
     {key:"directory",label:"Parents par classe",need:["school.parents.manage","school.students.profile.read","school.students.sensitive.read","school.academic.read"]}]},
   staff:{title:"Personnel",subtitle:"Retrouvez les collaborateurs et gérez leurs affectations",modules:["onboarding"],lives:[
-    {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]}]},
+    {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]},
+    {key:"payroll",label:"Rémunérations (RH)",need:["school.payroll.read"]}]},
 };
 const schoolNav = [...NAV.slice(0,1), ["owner","barchart","Pilotage propriétaire"], ...NAV.slice(1,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
 const sectionIcon=Object.fromEntries(schoolNav.map(([id,icon])=>[id,icon]));
@@ -445,12 +447,21 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "arrears:live":<LiveArrears key={chosen} {...props}/>,
       "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
         <div className="yd-real-body"><FamilyDirectory key={chosen} schoolId={chosen} onNavigate={navigate} workingYearId={workingYearId}/></div></>,
-      "staff:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
+      "staff:directory":<><PageHeader title={section.title} subtitle={section.subtitle}
+        actions={can("school.payroll.read")?<Button icon="idcard" onClick={()=>navigate("staff","payroll")}>Rémunérations (RH)</Button>:advancedSettings}/>
         <div className="yd-real-body"><StaffDirectory key={chosen} schoolId={chosen}
           canReadDossiers={can("school.staff.dossier.read")} initialStaffId={params?.staffId||""}
+          canReadPayroll={can("school.payroll.read")} workingYearId={workingYearId}
           onAdd={allowed("onboarding")?()=>navigate("staff","onboarding"):undefined}
           onAssign={availableSettings.some(group=>group.items.some(item=>item.id==="staff-setup"))
             ?()=>navigate("settings","staff-setup"):undefined}/></div></>,
+      "staff:payroll":<><PageHeader title="Rémunérations du personnel" subtitle="Module RH confidentiel et séparé de la caisse scolaire"
+        actions={can("school.staff.read")||can("school.staff.dossier.read")?
+          <Button onClick={()=>navigate("staff","directory")}>Retour au personnel</Button>:null}/>
+        <div className="yd-real-body"><PayrollPanel key={chosen+":"+workingYearId} schoolId={chosen}
+          workingYearId={workingYearId} canManage={can("school.payroll.manage")}
+          canApprove={can("school.payroll.approve")} canPay={can("school.payroll.pay")}
+          canReverse={can("school.payroll.reverse")}/></div></>,
     }[page+":"+tab];
   }
   else if (section) content=<>

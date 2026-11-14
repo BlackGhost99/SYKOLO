@@ -41,6 +41,11 @@ export function permissionLabel(value){
   if(STUDENT_RIGHTS[value])return STUDENT_RIGHTS[value];
   if(value==="school.staff.dossier.read")return "Personnel — Consulter la fiche professionnelle détaillée";
   if(value==="school.staff.dossier.manage")return "Personnel — Modifier les informations professionnelles";
+  if(value==="school.payroll.read")return "Rémunérations — Consulter les montants et règlements privés";
+  if(value==="school.payroll.manage")return "Rémunérations — Préparer les fiches de paie";
+  if(value==="school.payroll.approve")return "Rémunérations — Approuver après contrôle indépendant";
+  if(value==="school.payroll.pay")return "Rémunérations — Déclarer le versement";
+  if(value==="school.payroll.reverse")return "Rémunérations — Annuler un versement d'autrui";
   const parts=value.split(".");
   const domain=DOMAIN_LABELS[parts[1]]||parts[1];
   const action=ACTION_LABELS[parts[2]]||parts[2]||"";
