@@ -137,7 +137,7 @@ function Head({m}) {
     <nav className="yfx-topbar" aria-label="Navigation du compte parent">
       <div className="yfx-brand"><Icon name="cap" size={36}/><span><strong>YEM Familles</strong><small>Espace Parents</small></span></div>
       <div className="yfx-top-actions">
-        <button type="button" aria-label="Voir les notifications" onClick={()=>goDiscovery("notifications")}>
+        <button type="button" aria-label="Voir les notifications" onClick={()=>navTo("notifications")}>
           <Icon name="bell" size={25}/>{alerts.length>0&&<span className="yfx-red-dot"/>}</button>
         <button type="button" aria-label="Aide et compte" onClick={()=>navTo("profile")}><Icon name="help" size={25}/></button>
       </div>
@@ -170,7 +170,7 @@ function ActionTiles({goSchool,navTo}) {
 }
 function Notifications({m}) {
  return <Section title="Notifications récentes" icon="bell" className="yfx-notifications"
-   action={<button className="yfx-link" onClick={()=>m.goDiscovery("notifications")}>Tout voir</button>}>
+   action={<button className="yfx-link" onClick={()=>m.navTo("notifications")}>Tout voir</button>}>
   {m.alerts.length?m.alerts.slice(0,3).map(n=><div className="yfx-notification" key={n.kind+n.id}>
     <span className="yfx-row-icon"><Icon name="file" size={20}/></span>
     <div><strong>{n.message||"Information de l'établissement"}</strong><small>{n.school}</small></div>
@@ -430,6 +430,7 @@ export default function YemFamillesFidele({m}) {
     {screen==="payments"&&<Payments m={m}/>}
     {screen==="school"&&<School m={m}/>}
     {screen==="children"&&<Children m={m}/>}
+    {screen==="notifications"&&<ParentDiscovery embedded activeSection="notifications"/>}
     {screen==="profile"&&<Section title="Mon profil et ma sécurité" icon="user">
       {accountView||<p>{user?.username||family?.parent_username||"Compte parent"}</p>}
       {onSchoolWorkspace&&<button className="yfx-outline" onClick={onSchoolWorkspace}>Espace établissement</button>}

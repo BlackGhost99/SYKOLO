@@ -10,6 +10,7 @@ from . import calendar_views
 from . import secondary_views
 from . import demo_payment_views, admission_cash_views, admission_finance_views
 from . import parent_existing_views
+from . import family_notification_views
 from . import parent_dossier_views
 from . import staff_onboarding_views, staff_profile_views, staff_dossier_views
 from . import school_branding_views
@@ -51,6 +52,8 @@ urlpatterns = [
     path("platform/schools/<uuid:school_id>/admin-access", platform_views.platform_assume_school_administration),
     path("parents/paycentral/webhook", parent_payment_views.paycentral_webhook),
     path("parents/notifications", parent_payment_views.family_notifications),
+    path("parents/notification-messages", family_notification_views.parent_message),
+    path("parents/notification-messages/<uuid:notice_id>", family_notification_views.parent_notice_detail),
     path("parents/applications/<uuid:application_id>/payments", parent_payment_views.parent_payment_status),
     path("parents/applications/<uuid:application_id>/pay", parent_payment_views.parent_pay),
     path("parents/applications/<uuid:application_id>/payment-refresh", parent_payment_views.parent_payment_refresh),
@@ -66,6 +69,9 @@ urlpatterns = [
     path("parents/existing-schools", parent_existing_views.school_directory),
     path("parents/existing-requests", parent_existing_views.family_requests),
     path("parents/existing-requests/<uuid:request_id>", parent_existing_views.family_request_detail),
+    path("schools/<uuid:school_id>/notification-inbox", family_notification_views.school_inbox),
+    path("schools/<uuid:school_id>/notification-inbox/<uuid:notice_id>", family_notification_views.school_notice_detail),
+    path("schools/<uuid:school_id>/notification-inbox/requests/<uuid:request_id>/candidates", family_notification_views.request_candidates),
     path("schools/<uuid:school_id>/parent-existing-requests", parent_existing_views.school_requests),
     path("schools/<uuid:school_id>/parent-existing-requests/<uuid:request_id>", parent_existing_views.school_request_detail),
     path("parents/catalog", parent_admission_views.directory),

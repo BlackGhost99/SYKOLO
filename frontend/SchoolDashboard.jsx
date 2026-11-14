@@ -29,6 +29,7 @@ import SchoolBrandingSettings from "./SchoolBrandingSettings.jsx";
 import {FamilyDirectory, StaffDirectory} from "./SchoolDirectories.jsx";
 import StudentNumberingSettings from "./StudentNumberingSettings.jsx";
 import {FamilyWorkspace, SchoolParentAccess} from "./ParentPortal.jsx";
+import SchoolNotificationCenter from "./SchoolNotificationCenter.jsx";
 import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens.jsx";
 import ClassWorkspace from "./ClassWorkspace.jsx";
 import {StudentForm,StudentFile,ClassEnrollments,ClassSetup,FormSettings,PaymentTracking,ImportStudents} from "./EnrollmentScreens.jsx";
@@ -54,6 +55,8 @@ const modules = {
 };
 /* Chaque entrée du menu des maquettes regroupe un ou plusieurs modules réels. */
 const sections = {
+  notifications:{title:"Notifications",subtitle:"Demandes, décisions et échanges avec les familles",modules:[],lives:[
+    {key:"inbox",label:"Boîte de réception",need:["school.parents.manage"]}]},
   owner:{title:"Pilotage propriétaire",subtitle:"Suivi consolidé de l’établissement",modules:[],lives:[{key:"overview",label:"Synthèse",need:[]}]},
   students:{title:"Gestion des élèves",subtitle:"Inscriptions, classes, responsables et suivi administratif",modules:[],lives:[
     {key:"live",label:"Liste des élèves",need:["school.students.profile.read"]},
@@ -77,7 +80,7 @@ const sections = {
     {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]},
     {key:"payroll",label:"Rémunérations (RH)",need:["school.payroll.read"]}]},
 };
-const schoolNav = [...NAV.slice(0,1), ["owner","barchart","Pilotage propriétaire"], ...NAV.slice(1,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ["expenses","receipt","Dépenses et budgets"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
+const schoolNav = [...NAV.slice(0,1), ["notifications","bell","Notifications"], ["owner","barchart","Pilotage propriétaire"], ...NAV.slice(1,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ["expenses","receipt","Dépenses et budgets"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
 const sectionIcon=Object.fromEntries(schoolNav.map(([id,icon])=>[id,icon]));
 
 const settingsSections = [
@@ -253,6 +256,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [settingsReturn,setSettingsReturn]=useState(null);
   const [showWorkspace,setShowWorkspace]=useState(false);
   const [message,setMessage]=useState("");
+  const [inboxCount,setInboxCount]=useState(0);
   const [academicYears,setAcademicYears]=useState([]);
   const [workingYearId,setWorkingYearId]=useState("");
   const [yearCatalogVersion,setYearCatalogVersion]=useState(0);
@@ -322,6 +326,26 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     ];
     Promise.all(checks).then(flags=>{if(alive)setHasTeachingAssignment(flags.some(Boolean));});
     return()=>{alive=false};
+  },[chosen,access]);
+  useEffect(()=>{
+    if(!chosen||!access?.permissions?.includes("school.parents.manage")){
+      setInboxCount(0);return;
+    }
+    let active=true;
+    let busy=false;
+    const refresh=async()=>{
+      if(busy||(typeof document!=="undefined"&&document.hidden))return;
+      busy=true;
+      try{
+        const result=await get("schools/"+chosen+"/notification-inbox");
+        if(active)setInboxCount(result.unread||0);
+      }catch{if(active)setInboxCount(0);}
+      finally{busy=false;}
+    };
+    refresh();
+    const interval=window.setInterval(refresh,45_000);
+    document.addEventListener("visibilitychange",refresh);
+    return()=>{active=false;window.clearInterval(interval);document.removeEventListener("visibilitychange",refresh);};
   },[chosen,access]);
   const perms=access?.permissions||[];
   const can = permission => perms.includes(permission) ||
@@ -468,6 +492,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "payments:live":<LivePayments key={k} {...props}/>,
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
       "arrears:live":<LiveArrears key={chosen} {...props}/>,
+      "notifications:inbox":<SchoolNotificationCenter key={chosen} schoolId={chosen} onUnread={setInboxCount}/>,
       "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
         <div className="yd-real-body"><FamilyDirectory key={chosen} schoolId={chosen} onNavigate={navigate} workingYearId={workingYearId}/></div></>,
       "expenses:live":<><PageHeader title="Dépenses et budgets" subtitle="Budget annuel, fournisseurs, dépenses et règlements vérifiés"/>
@@ -529,7 +554,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   return <BrandContext.Provider value={{
     name:schoolName,city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
     logo:schoolBranding?.logo_url||"",banner:schoolBranding?.banner_url||"",
-  }}><Shell nav={nav} active={page} onNavigate={navigate} notifications={0} schoolSelector={selector}
+  }}><Shell nav={nav} active={page} onNavigate={navigate} notifications={inboxCount}
+    onNotifications={can("school.parents.manage")?()=>navigate("notifications","inbox"):undefined} schoolSelector={selector}
     userMenu={<UserMenu user={user} roleLabel={roleLabel} onAccount={()=>navigate("account")}
        onTeacherWorkspace={mobileTeacher&&teacherEligible?()=>setTeacherViewRequested(true):undefined}
        onProfile={hasStaffProfile?()=>navigate("profile"):undefined}

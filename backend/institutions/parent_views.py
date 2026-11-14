@@ -29,6 +29,7 @@ from .models import SchoolMember, School, SchoolRole
 from .parent_models import GuardianAccountLink
 from .parent_existing_models import ExistingStudentLinkRequest
 from .phone_utils import normalize_guardian_phone
+from .family_notification_views import send_system_notice
 from .parent_admission_models import ParentAdmissionRequest, FamilyChildPhoto
 from .report_models import SchoolReport
 from .report_views import pdf_bytes
@@ -261,6 +262,9 @@ def links(request, school_id):
                 pending.reviewed_at = timezone.now()
                 pending.save(update_fields=["status", "linked_guardian", "reviewed_by", "reviewed_at"])
                 log_event(school, request, "parent_request_approved", pending.pk)
+                send_system_notice(school=school, parent=account, destination="parent",
+                    message="Votre accès à l'enfant a été validé et activé. Consultez désormais son dossier scolaire dans YEM Familles.",
+                    related_request=pending)
             log_event(school, request, "parent_link_verified", row.pk, {
                 "revision": row.revision, "identity_verified": True
             })

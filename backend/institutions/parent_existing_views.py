@@ -16,6 +16,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from accounts.views import authorized
 from .models import School
 from .phone_utils import normalize_guardian_phone
+from .family_notification_views import send_system_notice
 from .parent_existing_models import ExistingStudentLinkRequest as LinkRequest
 from .services import has_permission
 from .views import access, log_event, parse_body, refuse
@@ -137,6 +138,9 @@ def family_requests(request):
             whatsapp_opt_in=whatsapp_opt_in,
         )
         log_event(school, request, "parent_link_requested", row.pk)
+        send_system_notice(school=school, parent=request.user, destination="parent",
+            message="Votre demande de rattachement a été transmise à l'établissement. Vous serez averti de sa décision.",
+            related_request=row)
     return JsonResponse(summary(row), status=201)
 
 
@@ -210,4 +214,7 @@ def school_request_detail(request, school_id, request_id):
         row.reviewed_at = timezone.now()
         row.save(update_fields=["status", "reviewed_by", "reviewed_at"])
         log_event(school, request, "parent_link_rejected", row.pk)
+        send_system_notice(school=school, parent=row.owner, destination="parent",
+            message="Votre demande de rattachement n'a pas été acceptée. Contactez l'établissement via les notifications.",
+            related_request=row)
     return JsonResponse(staff_summary(row))

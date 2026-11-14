@@ -26,6 +26,8 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
   const [family,setFamily]=useState([]);
   const [applications,setApplications]=useState([]);
   const [notifications,setNotifications]=useState([]);
+  const [replyFor,setReplyFor]=useState("");
+  const [replyBody,setReplyBody]=useState("");
   const lastNotification=useRef(null);
   const [search,setSearch]=useState("");
   const [chosenSchool,setChosenSchool]=useState("");
@@ -329,8 +331,8 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
       </article>)}
     </div>}
     {view==="notifications"&&<div className="yp-pane">
-      <h3>Notifications de mes établissements</h3>
-      <p>Décisions d'admission et confirmations du prestataire de paiement.</p>
+      <h3>Mes notifications et messages</h3>
+      <p>Messages des établissements, décisions, rappels et réponses du système YEM.</p>
       <div className="yp-two">
         <button className="yp-button" type="button" onClick={()=>run(async()=>{
           const data=await api("parents/notifications");setNotifications(data.notifications||[]);
@@ -345,10 +347,33 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
       </div>
       {notifications.length===0&&<p>Aucune actualité pour le moment.</p>}
       {notifications.map(n=><article className="yp-request" key={n.kind+n.id}>
-        <b>{n.school}</b><p>{n.message}</p>
-        <small>{new Date(n.at).toLocaleString("fr-GA")}</small>
+        <b>{n.school}{n.origin==="system"?" · YEM":""}</b><p>{n.message}</p>
+        <small>{new Date(n.at).toLocaleString("fr-GA")}
+          {n.kind==="family_message"&&(n.read?" · Lu":" · Non lu")}</small>
+        {n.kind==="family_message"&&<div className="actions">
+          {!n.read&&<button type="button" className="yp-button" disabled={busy} onClick={()=>run(async()=>{
+            await api("parents/notification-messages/"+n.id,{read:true},"PATCH");
+            setMessage("Notification marquée comme lue.");
+          })}>Marquer comme lu</button>}
+          <button type="button" className="yp-button" disabled={busy} onClick={()=>{
+            setReplyFor(replyFor===n.id?"":n.id);setReplyBody("");
+          }}>Répondre à l'établissement</button>
+        </div>}
+        {replyFor===n.id&&n.school_id&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
+          await api("parents/notification-messages",{
+            school:n.school_id,request_id:n.request_id||null,message:replyBody.trim(),
+          });
+          setReplyFor("");setReplyBody("");
+          setMessage("Votre message a été transmis à l'établissement.");
+        });}}>
+          <label className="yp-field">Votre message à l'établissement
+            <textarea required maxLength={700} rows={3} value={replyBody}
+              onChange={e=>setReplyBody(e.target.value)}/>
+          </label>
+          <button type="submit" className="yp-button yp-primary" disabled={busy||!replyBody.trim()}>Envoyer</button>
+        </form>}
       </article>)}
-      <small>Les alertes en arrière-plan nécessitent encore un service Web Push.</small>
+      <small>Les messages sont consultables dans YEM. Les alertes quand l'application est fermée nécessitent encore un service Web Push.</small>
     </div>}
   </section>;
 }
