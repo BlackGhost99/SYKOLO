@@ -12,7 +12,7 @@ L'API GET /api/v1/schools/{school_id}/finance/quality est réservée à school.f
 La classification se fonde sur la méthode déclarée et sur le libellé figé dans la facture `FeeCharge.label` ; elle ne se fonde **pas** sur `FeeSchedule.label` car un gestionnaire peut modifier le tarif ultérieurement. Un changement de libellé tarifaire ne doit jamais changer rétroactivement la classification d'un paiement ou l'attestation PDF.
 L'année scolaire est filtrable par ?year={uuid}; les montants sont regroupés par devise.
 Catégories disjointes :
-1. explicit_demo_charges : frais dont le libellé ou celui du tarif indique explicitement DÉMO.
+1. explicit_demo_charges : frais dont le libellé facturé et figé indique explicitement DÉMO (un tarif modifié plus tard n'est pas une preuve).
 2. explicit_demo_payments : paiements sous méthode simulation ou relatifs aux frais marqués DÉMO.
 3. legacy_cash_unverified : écritures historiques cash sans preuve d'espèces réelles.
 4. cash_declared : montants déclarés sous especes, non certifiés par une banque.
