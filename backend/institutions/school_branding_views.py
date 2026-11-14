@@ -75,7 +75,7 @@ def school_branding(request, school_id):
         if (record.revision if record else 0) != revision:
             return rejected("L'identite a change. Rechargez les informations.", 409)
         if record is None:
-            record = SchoolBranding(school=school)
+            record = SchoolBranding(school=school, revision=0)
         record.city = city.strip()
         record.tagline = tagline.strip()
         record.revision += 1
@@ -132,7 +132,7 @@ def school_brand_image(request, school_id, kind):
         if (record.revision if record else 0) != revision:
             return rejected("Le visuel a change. Rechargez la page.", 409)
         if record is None:
-            record = SchoolBranding(school=school)
+            record = SchoolBranding(school=school, revision=0)
         setattr(record, data_field, payload if request.method == "POST" else None)
         setattr(record, mime_field, upload.content_type if request.method == "POST" else "")
         record.revision += 1
