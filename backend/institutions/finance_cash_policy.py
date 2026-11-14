@@ -26,10 +26,10 @@ def recorded_cash_total(*, school, day, currency, user):
     entries = FeePayment.objects.filter(
         school=school, recorded_by=user, paid_on=day,
         currency=currency, method__in=CASH_METHODS, void__isnull=True,
-    ).values_list("amount", "method", "charge__label", "charge__schedule__label")
+    ).values_list("amount", "method", "charge__label")
     total = sum((
-        amount for amount, method, label, schedule_label in entries.iterator()
-        if classify_payment(method, label, schedule_label) != "simulation"
+        amount for amount, method, label in entries.iterator()
+        if classify_payment(method, label) != "simulation"
     ), Decimal("0.00"))
     admission = AdmissionCashReceipt.objects.filter(
         school=school, recorded_by=user, received_on=day,
