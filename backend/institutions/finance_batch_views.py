@@ -26,7 +26,7 @@ from .finance_views import (
     payment_data, cleared_total, uid,
 )
 from .models import School
-from .finance_cash_policy import cash_closed_for_recorder
+from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
 from .views import log_event, parse_body
 
 
@@ -117,7 +117,7 @@ def create_batch(request, school_id):
             currency = charges[0].currency
             if any(charge.currency != currency for charge in charges):
                 return JsonResponse({"error": "Plusieurs devises : effectuez des paiements séparés."}, status=422)
-            if method == "especes" and cash_closed_for_recorder(
+            if method in CASH_METHODS and cash_closed_for_recorder(
                 school=school, day=paid_on, currency=currency, user=request.user,
             ):
                 return JsonResponse({"error": "Caisse du jour déjà déclarée par ce caissier."}, status=409)
