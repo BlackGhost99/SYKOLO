@@ -289,3 +289,129 @@ class MultiFeeReceiptTests(TestCase):
             content_type="application/json",HTTP_X_CSRFTOKEN=self.token)
         self.assertEqual(response.status_code,422)
         self.assertEqual(FeePayment.objects.count(),0)
+
+    def test_professional_financial_pdfs_and_school_logo(self):
+        from io import BytesIO
+        from PIL import Image
+        from .models import SchoolBranding
+
+        logo = BytesIO()
+        Image.new("RGB", (80, 60), "white").save(logo, "PNG")
+        SchoolBranding.objects.create(
+            school=self.school, city="Libreville", tagline="La réussite pour tous",
+            logo_data=logo.getvalue(), logo_content_type="image/png",
+        )
+        result = self.send(self.payload())
+        self.assertEqual(result.status_code, 201, result.content)
+        receipt_url = self.base + "batches/" + result.json()["id"] + "/receipt"
+        invoice_url = self.base + "charges/" + str(self.charges[0].pk) + "/invoice"
+        for url in (receipt_url, invoice_url):
+            pdf = self.client.get(url)
+            self.assertEqual(pdf.status_code, 200, pdf.content[:250])
+            self.assertTrue(pdf.content.startswith(b"%PDF-"))
+            self.assertIn(b"/Image", pdf.content)
+            self.assertEqual(pdf["Cache-Control"], "private, no-store")
+            self.assertEqual(pdf["X-Content-Type-Options"], "nosniff")
+        self.login(self.teacher)
+        self.assertEqual(self.client.get(receipt_url).status_code, 403)
+        self.assertEqual(self.client.get(invoice_url).status_code, 403)
+        self.login(self.cashier)
+        self.assertEqual(self.client.get(
+            self.base + "charges/" + str(uuid.uuid4()) + "/invoice"
+        ).status_code, 404)
+
+    def test_pdf_receipt_and_invoice_names_and_amounts(self):
+        from .finance_document_pdf import amount_in_words, _amount
+        self.assertEqual(_amount("30000.00", "XAF"), "30 000 FCFA")
+        self.assertEqual(amount_in_words("30000.00", "XAF"), "Trente mille francs CFA")
+        self.assertEqual(amount_in_words("75000.50", "XAF"),
+                         "Soixante-quinze mille francs CFA et 50 centimes")
+        self.assertEqual(amount_in_words("0", "XAF"), "Zéro francs CFA")
+        self.assertEqual(amount_in_words("1000000", "XAF"), "Un million francs CFA")
+
+    def test_verified_parent_can_download_own_financial_documents(self):
+        from .models import SchoolRole
+        from .parent_models import GuardianAccountLink
+        from .student_models import StudentGuardian
+        User = get_user_model()
+        parent = User.objects.create_user("finance-doc-parent", password="Good Testing Pass 2026!")
+        outsider = User.objects.create_user("finance-doc-outsider", password="Good Testing Pass 2026!")
+        student = self.enrollment.student
+        guardian = StudentGuardian.objects.create(
+            school=self.school, student=student,
+            full_name="Responsable vérifié", is_primary=True, active=True,
+        )
+        for user in (parent, outsider):
+            SchoolMember.objects.create(
+                school=self.school, user=user,
+                role=SchoolRole.objects.get(school=self.school, code="parent"),
+            )
+        GuardianAccountLink.objects.create(
+            school=self.school, guardian=guardian, user=parent,
+            verified_by=self.cashier,
+        )
+        batch = self.send(self.payload())
+        self.assertEqual(batch.status_code, 201, batch.content)
+        root = f"/api/v1/parents/children/{student.pk}/finance/documents"
+        self.login(parent)
+        listing = self.client.get(root)
+        self.assertEqual(listing.status_code, 200, listing.content)
+        self.assertEqual(len(listing.json()["invoices"]), 3)
+        self.assertEqual(len(listing.json()["grouped_receipts"]), 1)
+        for url in (
+            listing.json()["invoices"][0]["url"],
+            listing.json()["grouped_receipts"][0]["url"],
+        ):
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 200, r.content[:300])
+            self.assertTrue(r.content.startswith(b"%PDF-"))
+        self.login(outsider)
+        self.assertEqual(self.client.get(root).status_code, 404)
+        self.assertEqual(self.client.get(
+            f"{root}/invoice/{self.charges[0].pk}/pdf"
+        ).status_code, 404)
+        self.login(parent)
+        other_document = self.client.get(
+            f"{root}/invoice/{uuid.uuid4()}/pdf"
+        )
+        self.assertEqual(other_document.status_code, 404)
+        GuardianAccountLink.objects.filter(user=parent).update(active=False)
+        self.assertEqual(self.client.get(root).status_code, 404)
+
+    def test_receipt_evidence_classifier_never_certifies_old_cash_or_demo(self):
+        from .finance_document_pdf import payment_evidence
+        self.assertEqual(payment_evidence("simulation", "Scolarité"), "simulation")
+        self.assertEqual(payment_evidence("especes", "Démo - inscription"), "simulation")
+        self.assertEqual(payment_evidence("cash", "Mensualité"), "legacy_unverified")
+        self.assertEqual(payment_evidence("especes", "Mensualité"), "manual_record")
+
+    def test_notice_and_cancellation_pdf(self):
+        from .finance_models import FeePaymentVoid
+        notice_url = self.base + f"enrollments/{self.enrollment.pk}/notice?currency=XAF"
+        notice = self.client.get(notice_url)
+        self.assertEqual(notice.status_code, 200, notice.content[:300])
+        self.assertTrue(notice.content.startswith(b"%PDF-"))
+        self.assertEqual(self.client.get(
+            self.base + f"enrollments/{self.enrollment.pk}/notice"
+        ).status_code, 422)
+        self.assertEqual(self.client.get(
+            self.base + f"enrollments/{self.enrollment.pk}/notice?currency=USD"
+        ).status_code, 404)
+        result = self.send(self.payload())
+        self.assertEqual(result.status_code, 201, result.content)
+        payment = FeePayment.objects.filter(batch_id=result.json()["id"]).first()
+        FeePaymentVoid.objects.create(
+            school=self.school, payment=payment,
+            reason="Double règlement déclaré par erreur.",
+            approved_by=self.teacher,
+        )
+        cancellation = self.client.get(
+            self.base + f"payments/{payment.pk}/cancellation-pdf"
+        )
+        self.assertEqual(cancellation.status_code, 200, cancellation.content[:300])
+        self.assertTrue(cancellation.content.startswith(b"%PDF-"))
+        self.assertIn("private", cancellation["Cache-Control"])
+        self.assertIn("no-store", cancellation["Cache-Control"])
+        self.assertIn("no-cache", cancellation["Cache-Control"])
+        self.login(self.teacher)
+        self.assertEqual(self.client.get(notice_url).status_code, 403)
