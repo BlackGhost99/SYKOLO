@@ -231,7 +231,7 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
     {message&&<p role="status" className="ym-notice">{message}</p>}
     {mode==="notes"&&chosen&&<section className="ym-note-sheet" aria-label="Cahier de notes">
       <div className="ym-section-heading"><h2>Progression de la saisie</h2><strong>{percent} %</strong></div>
-      <p className="ym-hint">{progressSaved} notes calculées sur {progressTotal} cellules affichées.
+      <p className="ym-hint">{progressSaved} notes calculées sur {progressTotal} possibles dans la sélection.
         Sélectionnez une évaluation pour modifier sa colonne.</p>
       <progress className="ym-progress-track" value={progressSaved} max={progressTotal||1}
         aria-label="Progression de la saisie"/>
