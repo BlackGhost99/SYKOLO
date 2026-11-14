@@ -1,6 +1,7 @@
 """Parent portal: explicit verification and per-child object authorization."""
 import json
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -135,6 +136,47 @@ class ParentPortalTests(TestCase):
             paid_on="2026-11-02", idempotency_key=uuid.uuid4(),
             recorded_by=self.director,
         )
+
+    def test_tuition_reminders_respect_due_date_payment_and_verified_guardian(self):
+        self.link()
+        self.link(index=1, user=self.parent_b)
+        self.add_finance(0)
+        self.add_finance(1)
+        today = timezone.localdate()
+        own = FeeCharge.objects.get(enrollment=self.enrollments[0])
+        other = FeeCharge.objects.get(enrollment=self.enrollments[1])
+        FeeCharge.objects.filter(pk=own.pk).update(due_date=today + timedelta(days=1))
+        FeeCharge.objects.filter(pk=other.pk).update(due_date=today)
+
+        def reminders():
+            response = self.client.get("/api/v1/parents/notifications")
+            self.assertEqual(response.status_code, 200, response.content)
+            return [entry for entry in response.json()["notifications"]
+                    if entry["kind"] == "tuition_reminder"]
+
+        self.login(self.parent_a)
+        self.assertEqual(reminders(), [])
+        FeeCharge.objects.filter(pk=own.pk).update(due_date=today)
+        upcoming = reminders()
+        self.assertEqual(len(upcoming), 1)
+        self.assertEqual(upcoming[0]["status"], "due_today")
+        self.assertIn("100 000 FCFA", upcoming[0]["message"])
+        self.assertNotIn(self.students[1].first_name, upcoming[0]["message"])
+        self.assertEqual(reminders()[0]["id"], upcoming[0]["id"])
+
+        FeeCharge.objects.filter(pk=own.pk).update(due_date=today - timedelta(days=1))
+        overdue = reminders()
+        self.assertEqual(overdue[0]["status"], "overdue")
+        self.assertIn("Échéance dépassée", overdue[0]["message"])
+        FeePayment.objects.filter(charge=own).update(amount=Decimal("120000.00"))
+        self.assertEqual(reminders(), [])
+
+        self.login(self.parent_b)
+        for_other_parent = reminders()
+        self.assertEqual(len(for_other_parent), 1)
+        self.assertIn(self.students[1].first_name, for_other_parent[0]["message"])
+        self.login(self.outsider)
+        self.assertEqual(reminders(), [])
 
     def add_attendance(self, index=0, closed=True):
         session = AttendanceSession.objects.create(
