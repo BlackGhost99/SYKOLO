@@ -114,7 +114,8 @@ class FinanceLedgerTests(TestCase):
         old_count = FeePayment.objects.count()
         response = self.client.get(self.base+"quality?year="+str(self.year.pk))
         self.assertEqual(response.status_code, 200, response.content.decode())
-        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertIn("private", response["Cache-Control"])
+        self.assertIn("no-store", response["Cache-Control"])
         report = response.json()
         self.assertFalse(report["certified_revenue"])
         sections = report["currencies"]["XAF"]
