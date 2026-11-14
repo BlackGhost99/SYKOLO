@@ -137,7 +137,8 @@ def budget_data(b):
     authorised = authorised_total(b)
     return {"id": str(b.pk), "year": str(b.year_id), "category": b.category,
             "currency": b.currency, "ceiling": fmt(b.ceiling),
-            "committed": fmt(authorised), "available": fmt(b.ceiling - authorised),
+            "committed": fmt(authorised),
+            "available": fmt(b.ceiling - authorised) if b.approved_at else "0.00",
             "revision": b.revision, "approved": bool(b.approved_at),
             "proposed_by": str(b.proposed_by_id),
             "approved_by": str(b.approved_by_id) if b.approved_by_id else None}
