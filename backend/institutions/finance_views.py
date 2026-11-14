@@ -20,7 +20,7 @@ from accounts.views import authorized
 
 from .academic_models import AcademicYear, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid
-from .finance_cash_policy import cash_closed_for_recorder
+from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
 from .models import School
 from .student_models import Enrollment
 from .services import has_permission
@@ -353,7 +353,7 @@ def payments(request, school_id):
         return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
-            if method == "especes":
+            if method in CASH_METHODS:
                 # Lock order matches the cash-closing endpoint, avoiding a race
                 # between a cashier's last payment and the end-of-day snapshot.
                 School.objects.select_for_update().get(pk=school.pk)
@@ -368,7 +368,7 @@ def payments(request, school_id):
                 if same:
                     return JsonResponse(payment_data(previous), status=200)
                 return JsonResponse({"error": "Clé d'opération réutilisée avec des données différentes."}, status=409)
-            if method == "especes" and cash_closed_for_recorder(
+            if method in CASH_METHODS and cash_closed_for_recorder(
                 school=school, day=paid_on, currency=charge.currency, user=request.user,
             ):
                 return JsonResponse({"error": "Caisse du jour déjà déclarée par ce caissier."}, status=409)
@@ -409,7 +409,7 @@ def void_payment(request, school_id, payment_id):
             return JsonResponse({"error": "Paiement prestataire : remboursement et rapprochement requis, annulation manuelle interdite."}, status=409)
         if row.recorded_by_id == request.user.pk:
             return JsonResponse({"error": "Un autre agent doit autoriser cette annulation."}, status=403)
-        if row.method == "especes" and cash_closed_for_recorder(school=school, day=row.paid_on, currency=row.currency, user=row.recorded_by):
+        if row.method in CASH_METHODS and cash_closed_for_recorder(school=school, day=row.paid_on, currency=row.currency, user=row.recorded_by):
             return JsonResponse({"error": "Caisse déclarée : annulation bloquée pour préserver le contrôle."}, status=409)
         FeeCharge.objects.select_for_update().get(pk=row.charge_id, school=school)
         if FeePaymentVoid.objects.filter(school=school, payment=row).exists():
