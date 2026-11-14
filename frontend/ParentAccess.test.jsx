@@ -78,7 +78,7 @@ test("une directrice consulte les parents par classe puis gère les accès dans 
     method:"POST", body:JSON.stringify({username:"famille", role:"parent", create_only:true}),
   }));
   const activate = screen.getByRole("button", {name:"Vérifier et activer l’accès"});
-  const verification = screen.getByRole("checkbox", {name:/J’ai vérifié que ce compte appartient/});
+  const verification = screen.getByRole("checkbox", {name:/J’ai vérifié l’identité/});
   expect(activate.disabled).toBe(true);
   await user.click(verification);
   const account = screen.getByLabelText("Identifiant du compte parent existant");

@@ -27,6 +27,7 @@ export default function StudentPanel({schoolId}) {
   const [parentName,setParentName]=useState("");
   const [parentRelation,setParentRelation]=useState("");
   const [parentPhone,setParentPhone]=useState("");
+  const [parentWhatsapp,setParentWhatsapp]=useState(false);
   const [parentEmail,setParentEmail]=useState("");
   const [year,setYear]=useState("");
   const [classroom,setClassroom]=useState("");
@@ -101,8 +102,9 @@ export default function StudentPanel({schoolId}) {
         <form onSubmit={e=>{e.preventDefault();run(async()=>{
           await call(base+"students/"+chosen+"/guardians",{
             full_name:parentName,relationship:parentRelation,phone:parentPhone,email:parentEmail,
+            whatsapp_opt_in:parentWhatsapp,
           });
-          setParentName("");setParentRelation("");setParentPhone("");setParentEmail("");
+          setParentName("");setParentRelation("");setParentPhone("");setParentWhatsapp(false);setParentEmail("");
           setMessage("Responsable enregistré.");
         });}}>
           <h3>Ajouter un responsable légal</h3>
@@ -113,13 +115,16 @@ export default function StudentPanel({schoolId}) {
             <label className="field">Relation avec l’élève
               <input value={parentRelation} onChange={e=>setParentRelation(e.target.value)} maxLength={80} />
             </label>
-            <label className="field">Téléphone
-              <input type="tel" value={parentPhone} onChange={e=>setParentPhone(e.target.value)} maxLength={45} />
+            <label className="field">Téléphone obligatoire du responsable légal
+              <input type="tel" value={parentPhone} onChange={e=>setParentPhone(e.target.value)}
+                placeholder="+241..." required maxLength={45} autoComplete="tel"/>
             </label>
             <label className="field">Email
               <input type="email" value={parentEmail} onChange={e=>setParentEmail(e.target.value)} maxLength={254} />
             </label>
           </div>
+          <label className="field"><input type="checkbox" checked={parentWhatsapp}
+            onChange={e=>setParentWhatsapp(e.target.checked)}/> Le responsable a explicitement autorisé les communications scolaires via WhatsApp à ce numéro.</label>
           <button type="submit" disabled={busy}>Ajouter le responsable</button>
         </form>
         <form onSubmit={e=>{e.preventDefault();run(async()=>{

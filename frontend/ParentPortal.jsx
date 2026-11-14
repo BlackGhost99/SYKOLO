@@ -259,15 +259,25 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
     if(!student||!canReadStudents)return;
     let alive=true;
     portalApi(base+"/students/"+student+"/guardians").then(result=>{
-      if(alive)setGuardians(result.guardians.filter(row=>row.active));
+      if(!alive)return;
+      const people=result.guardians.filter(row=>row.active);
+      setGuardians(people);
+      if(pendingRequest){
+        const norm=value=>String(value||"").trim().toLocaleLowerCase("fr").replace(/\s+/g," ");
+        const fullname=norm(pendingRequest.account_name);
+        const claimed=norm(pendingRequest.guardian_name);
+        const matches=people.filter(row=>norm(row.full_name)===fullname || norm(row.full_name)===claimed);
+        setGuardian(matches.length===1?matches[0].id:"");
+        if(matches.length!==1)setGuardiansError("Sélectionnez le responsable légal correspondant au compte parent.");
+      }
     }).catch(error=>{if(alive)setGuardiansError(error.message);});
     return()=>{alive=false;};
-  },[base,student,canReadStudents]);
+  },[base,student,canReadStudents,pendingRequest]);
 
   async function run(action) {
     setBusy(true);
     setMessage("");
-    try{await action();}catch(error){setMessage(error.message);}finally{setBusy(false);}
+    try{await action();}catch(error){setMessage("Échec du rattachement : "+error.message);}finally{setBusy(false);}
   }
 
   return <SchoolCard title="Responsables légaux et comptes parents" icon="users">
@@ -289,6 +299,8 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
       }}/>
     {pendingRequest&&<div className="yp-pane" role="status">
       <strong>Demande à vérifier :</strong> {pendingRequest.first_name} {pendingRequest.last_name} · {pendingRequest.username}
+      <p>Matricule : <strong>{pendingRequest.student_code||"à vérifier dans le dossier"}</strong> · Compte : {pendingRequest.account_name||pendingRequest.username}</p>
+      <p>Téléphone du responsable : <strong>{pendingRequest.contact_phone||"manquant"}</strong> · WhatsApp : {pendingRequest.whatsapp_opt_in?"autorisé":"non autorisé"}</p>
       <button type="button" className="yp-button" onClick={()=>{setPendingRequest(null);setIdentityVerified(false);}}>
         Annuler la sélection
       </button>
@@ -317,10 +329,10 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
       </label>
       <label className="field">
         <span><input type="checkbox" checked={identityVerified} disabled={busy||!guardian||!username.trim()}
-          onChange={e=>setIdentityVerified(e.target.checked)}/> J’ai vérifié que ce compte appartient au responsable légal sélectionné.</span>
+          onChange={e=>setIdentityVerified(e.target.checked)}/> J’ai vérifié l’identité, le matricule, le téléphone et le responsable légal dans le dossier de l’élève.</span>
       </label>
       <div className="actions">
-        {canAssignRole&&<Button disabled={busy||!guardian||!username.trim()} onClick={()=>run(async()=>{
+        {canAssignRole&&!pendingRequest&&<Button disabled={busy||!guardian||!username.trim()} onClick={()=>run(async()=>{
           await portalApi(base+"/members",{username:username.trim(),role:"parent",create_only:true});
           setMessage("Compte rattaché au rôle parent dans cet établissement.");
         })}>Rattacher le compte parent</Button>}
@@ -333,7 +345,7 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
           setQueueVersion(current=>current+1);
           setLinks(previous=>[verified,...previous.filter(link=>link.id!==verified.id)]);
           setMessage("Accès familial vérifié et activé.");
-        })}>Vérifier et activer l’accès</Button>
+        })}>{pendingRequest?"Accepter et activer l’accès":"Vérifier et activer l’accès"}</Button>
       </div>
     </>}
     <h3>Accès enregistrés</h3>

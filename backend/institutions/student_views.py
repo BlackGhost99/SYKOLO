@@ -12,6 +12,7 @@ from .services import has_permission, quota_reached
 from .student_access import can_read_profile, can_edit_administration, can_read_sensitive
 from .cycle_scope import scoped_cycle_ids
 from .academic_models import AcademicYear, AcademicClass
+from .phone_utils import normalize_guardian_phone
 from .student_models import Student, StudentGuardian, Enrollment, EnrollmentEvent
 from .admission_finance import direct_enrollment_blocker
 
@@ -82,8 +83,7 @@ def parse_fields(data, allowed, required=(), *, revision=False):
             if not isinstance(value, str) or len(value) > 80:
                 raise ValueError("Lien de parenté invalide.")
         elif key == "phone":
-            if not isinstance(value, str) or len(value) > 45 or any(ord(c) < 32 for c in value):
-                raise ValueError("Numéro invalide.")
+            value = normalize_guardian_phone(value)
         elif key == "email":
             if not isinstance(value, str) or len(value) > 254:
                 raise ValueError("Adresse email invalide.")
@@ -99,7 +99,7 @@ def parse_fields(data, allowed, required=(), *, revision=False):
                         raise ValueError()
                 except ValueError:
                     raise ValueError("Date ISO invalide.") from None
-        elif key in ("active", "is_primary"):
+        elif key in ("active", "is_primary", "whatsapp_opt_in"):
             if type(value) is not bool:
                 raise ValueError("Booléen attendu.")
         elif key in ("student", "year", "classroom"):
@@ -116,7 +116,7 @@ def describe(obj):
     if isinstance(obj, Student):
         fields = ("student_code", "matricule_yem", "first_name", "last_name", "date_of_birth", "admission_date", *STUDENT_INFO, "extra_fields", "documents", "active")
     elif isinstance(obj, StudentGuardian):
-        fields = ("full_name", "relationship", "phone", "email", *GUARDIAN_INFO, "is_primary", "active")
+        fields = ("full_name", "relationship", "phone", "whatsapp_opt_in", "email", *GUARDIAN_INFO, "is_primary", "active")
     else:
         fields = ("student_id", "year_id", "classroom_id", "enrolled_on", "status", "active")
     for field in fields:
@@ -259,7 +259,7 @@ def guardians(request, school_id, student_id):
     data,error = parse_body(request)
     if error is not None: return error
     try:
-        fields=parse_fields(data,("full_name","relationship","phone","email",*GUARDIAN_INFO,"is_primary","active"),("full_name",))
+        fields=parse_fields(data,("full_name","relationship","phone","email",*GUARDIAN_INFO,"is_primary","active","whatsapp_opt_in"),("full_name","phone"))
         with transaction.atomic():
             g=StudentGuardian(school=school,student=student,**fields)
             g.full_clean();g.save();log_event(school,request,"guardian_added",student.pk)
@@ -311,13 +311,15 @@ def guardian_detail(request, school_id, student_id, guardian_id):
         return refuse()
     data,error=parse_body(request)
     if error is not None: return error
-    try: fields=parse_fields(data,("full_name","relationship","phone","email",*GUARDIAN_INFO,"is_primary","active"),revision=True)
+    try: fields=parse_fields(data,("full_name","relationship","phone","email",*GUARDIAN_INFO,"is_primary","active","whatsapp_opt_in"),revision=True)
     except ValueError as exc: return JsonResponse({"error":str(exc)},status=422)
     try:
         with transaction.atomic():
             g=StudentGuardian.objects.select_for_update().filter(school=school,student_id=student_id,pk=guardian_id).first()
             if g is None: return JsonResponse({"error":"Responsable introuvable."},status=404)
             if g.revision != data["revision"]: return JsonResponse({"error":"Conflit de version.","revision":g.revision},status=409)
+            if not fields.get("phone", g.phone):
+                return JsonResponse({"error": "Complétez le téléphone obligatoire du responsable légal."},status=422)
             for k,v in fields.items(): setattr(g,k,v)
             g.full_clean();g.revision+=1;g.save()
             log_event(school,request,"guardian_updated",student_id)

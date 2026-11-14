@@ -10,7 +10,7 @@ from uuid import UUID
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count, F, Q
+from django.db.models import Count, Exists, F, OuterRef, Q
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -25,13 +25,14 @@ from .attendance_models import AttendanceMark
 from .council_models import ReportAmendment
 from .finance_models import FeeCharge
 from .finance_views import cleared_total
-from .models import SchoolMember, School
+from .models import SchoolMember, School, SchoolRole
 from .parent_models import GuardianAccountLink
 from .parent_existing_models import ExistingStudentLinkRequest
+from .phone_utils import normalize_guardian_phone
 from .parent_admission_models import ParentAdmissionRequest, FamilyChildPhoto
 from .report_models import SchoolReport
 from .report_views import pdf_bytes
-from .services import has_permission
+from .services import has_permission, quota_reached
 from .student_models import StudentGuardian, Enrollment
 from .timetable_models import TimetableEntry
 from .views import access, refuse, parse_body, log_event
@@ -51,22 +52,26 @@ def uuid_input(value):
 
 
 def guardian_links(user):
-    """The account must be a current parent in the same active school."""
+    """An active verified link AND an active parent role are both mandatory.
+
+    A school member may keep another primary role and hold parent additionally.
+    """
+    member = SchoolMember.objects.filter(
+        school_id=OuterRef("school_id"), user=user, active=True,
+        role__school_id=OuterRef("school_id"),
+    ).filter(
+        Q(role__code="parent")
+        | Q(additional_roles__code="parent", additional_roles__school_id=OuterRef("school_id"))
+    )
     return GuardianAccountLink.objects.select_related(
         "school", "guardian__student"
     ).filter(
         user=user, user__is_active=True, active=True,
         school__is_active=True,
-        guardian__active=True,
-        guardian__student__active=True,
+        guardian__active=True, guardian__student__active=True,
         guardian__school_id=F("school_id"),
         guardian__student__school_id=F("school_id"),
-        school__members__user=user,
-        school__members__active=True,
-        school__members__role__school_id=F("school_id"),
-        school__members__role__code="parent",
-    ).distinct()
-
+    ).filter(Exists(member)).distinct()
 
 def permitted_child(user, student_id):
     link = guardian_links(user).filter(guardian__student_id=student_id).first()
@@ -145,27 +150,21 @@ def links(request, school_id):
     username = username.strip()
     try:
         with transaction.atomic():
-            guardian = StudentGuardian.objects.select_related("student").filter(
+            guardian = StudentGuardian.objects.select_for_update().select_related("student").filter(
                 school=school, pk=guardian_id, active=True, student__active=True,
             ).first()
             if guardian is None:
                 return reject("Responsable légal introuvable.", 404)
-            # User lookup alone is not proof. A human administrator has to assign
-            # the parent role to this existing active account before verification.
-            member = SchoolMember.objects.select_related("user", "role").filter(
-                school=school, user__username=username, user__is_active=True,
-                active=True, role__school=school, role__code="parent",
-            ).first()
-            if member is None:
-                return reject("Attribuez d'abord le rôle parent au compte actif dans cette école.", 422)
+
             pending = None
             if request_id is not None:
-                pending = ExistingStudentLinkRequest.objects.select_for_update().filter(
-                    pk=request_id, school=school, owner=member.user,
-                    status=ExistingStudentLinkRequest.PENDING,
+                pending = ExistingStudentLinkRequest.objects.select_for_update().select_related(
+                    "owner"
+                ).filter(
+                    pk=request_id, school=school, status=ExistingStudentLinkRequest.PENDING
                 ).first()
-                if pending is None:
-                    return reject("Demande de rattachement introuvable ou déjà traitée.", 404)
+                if pending is None or pending.owner.get_username() != username or not pending.owner.is_active:
+                    return reject("Demande introuvable ou compte parent différent.", 404)
                 student = guardian.student
                 normalize = lambda value: " ".join(value.split()).casefold()
                 child_matches = (
@@ -179,19 +178,66 @@ def links(request, school_id):
                     )
                 )
                 if not child_matches or not code_matches:
-                    return reject("Le dossier de l'élève ne correspond pas à la demande. Vérifiez l'identité déclarée.", 422)
-            row = GuardianAccountLink.objects.select_for_update().filter(
-                school=school, guardian=guardian, user=member.user
+                    return reject("Le matricule ou le nom ne correspond pas au dossier choisi.", 422)
+                try:
+                    checked_phone = normalize_guardian_phone(pending.contact_phone)
+                except ValueError:
+                    return reject("La demande doit comporter un téléphone valide du responsable légal.", 422)
+                account = pending.owner
+            else:
+                # Manual links keep their former requirement: an existing account
+                # with a parent role, never a blind role grant by username alone.
+                account = User.objects.filter(username=username, is_active=True).first()
+                if account is None:
+                    return reject("Compte parent actif introuvable.", 404)
+
+            member = SchoolMember.objects.select_for_update().select_related("role").filter(
+                school=school, user=account
             ).first()
-            if row is not None and row.active:
+            if member is not None and not member.active:
+                return reject("Le compte est désactivé dans cette école. Contactez l'administration.", 422)
+            if member is not None and member.role.school_id != school.pk:
+                return reject("Le rôle du compte ne correspond pas à l'établissement.", 422)
+
+            parent_role = SchoolRole.objects.filter(school=school, code="parent").first()
+            if parent_role is None:
+                return reject("Rôle parent non configuré pour cet établissement.", 422)
+            has_parent_role = (
+                member is not None and (
+                    member.role_id == parent_role.id
+                    or member.additional_roles.filter(pk=parent_role.pk).exists()
+                )
+            )
+            if pending is None and not has_parent_role:
+                return reject("Attribuez d'abord le rôle parent à ce compte.", 422)
+
+            row = GuardianAccountLink.objects.select_for_update().filter(
+                school=school, guardian=guardian, user=account
+            ).first()
+            if row is not None and row.active and pending is None:
                 return reject("Compte déjà associé à ce responsable légal.", 409)
+
+            # The staff member's explicit verified approval creates all required
+            # rights in one transaction, without asking them to perform an
+            # independent privileged membership mutation.
+            if pending is not None and not has_parent_role:
+                if member is None:
+                    if quota_reached(school, "users"):
+                        return reject("Limite des comptes de cet établissement atteinte.", 409)
+                    member = SchoolMember(school=school, user=account, role=parent_role)
+                    member.full_clean()
+                    member.save()
+                else:
+                    member.additional_roles.add(parent_role)
+                log_event(school, request, "parent_role_assigned", account.pk)
+
             if row is None:
                 row = GuardianAccountLink(
-                    school=school, guardian=guardian, user=member.user, verified_by=request.user
+                    school=school, guardian=guardian, user=account, verified_by=request.user
                 )
                 row.full_clean()
                 row.save()
-            else:
+            elif not row.active:
                 row.active = True
                 row.revision += 1
                 row.verified_at = timezone.now()
@@ -200,14 +246,24 @@ def links(request, school_id):
                 row.revoked_by = None
                 row.full_clean()
                 row.save()
-            log_event(school, request, "parent_link_verified", row.pk, {"revision": row.revision, "identity_verified": True})
+
             if pending is not None:
+                # Only after a school authority has checked the real guardian;
+                # never copy an unverified number during the request itself.
+                guardian.phone = checked_phone
+                guardian.whatsapp_opt_in = pending.whatsapp_opt_in
+                guardian.revision += 1
+                guardian.full_clean()
+                guardian.save(update_fields=["phone", "whatsapp_opt_in", "revision"])
                 pending.status = ExistingStudentLinkRequest.APPROVED
                 pending.linked_guardian = guardian
                 pending.reviewed_by = request.user
                 pending.reviewed_at = timezone.now()
                 pending.save(update_fields=["status", "linked_guardian", "reviewed_by", "reviewed_at"])
                 log_event(school, request, "parent_request_approved", pending.pk)
+            log_event(school, request, "parent_link_verified", row.pk, {
+                "revision": row.revision, "identity_verified": True
+            })
     except ValidationError as exc:
         return model_error(exc)
     except IntegrityError:

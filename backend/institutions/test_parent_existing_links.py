@@ -100,15 +100,19 @@ class ExistingParentLinkTests(TestCase):
         self.assertEqual(len(queue.json()["requests"]),1)
         request_payload={"guardian":str(self.guardian.pk),"username":self.parent.username,
                          "identity_verified":True,"request_id":id}
-        self.assertEqual(self.write(self.link_url,request_payload).status_code,422)
-        SchoolMember.objects.create(school=self.school,user=self.parent,
-            role=SchoolRole.objects.get(school=self.school,code="parent"))
+        self.assertFalse(SchoolMember.objects.filter(school=self.school,user=self.parent).exists())
         self.assertEqual(self.write(self.link_url,{**request_payload,"identity_verified":False}).status_code,422)
+        self.assertFalse(SchoolMember.objects.filter(school=self.school,user=self.parent).exists())
         wrong=self.write(self.link_url,{**request_payload,"guardian":str(self.wrong_guardian.pk)})
         self.assertEqual(wrong.status_code,422,wrong.content)
         self.assertEqual(GuardianAccountLink.objects.count(),0)
         successful=self.write(self.link_url,request_payload)
         self.assertEqual(successful.status_code,201,successful.content)
+        member=SchoolMember.objects.get(school=self.school,user=self.parent)
+        self.assertEqual(member.role.code,"parent")
+        self.guardian.refresh_from_db()
+        self.assertEqual(self.guardian.phone,"+24106000000")
+        self.assertFalse(self.guardian.whatsapp_opt_in)
         row=ExistingStudentLinkRequest.objects.get(pk=id)
         self.assertEqual(row.status,"approved")
         self.assertEqual(row.linked_guardian,self.guardian)
@@ -128,6 +132,52 @@ class ExistingParentLinkTests(TestCase):
         self.login(self.parent)
         self.assertFalse(self.client.get(self.url).json()["requests"][0]["access_active"])
         self.assertEqual(self.client.get("/api/v1/parents/children").json()["children"],[])
+
+    def test_phone_required_and_whatsapp_consent_recorded_only_after_verified_link(self):
+        empty=self.write(self.url,{**self.payload(),"contact_phone":""})
+        self.assertEqual(empty.status_code,422,empty.content)
+        invalid=self.write(self.url,{**self.payload(),"contact_phone":"bad"})
+        self.assertEqual(invalid.status_code,422,invalid.content)
+        created=self.write(self.url,{**self.payload(),"whatsapp_opt_in":True})
+        self.assertEqual(created.status_code,201,created.content)
+        self.guardian.refresh_from_db()
+        self.assertEqual(self.guardian.phone,"")
+        self.assertFalse(self.guardian.whatsapp_opt_in)
+        self.login(self.admin)
+        approved=self.write(self.link_url,{
+            "guardian":str(self.guardian.pk),"username":self.parent.username,
+            "identity_verified":True,"request_id":created.json()["id"],
+        })
+        self.assertEqual(approved.status_code,201,approved.content)
+        self.guardian.refresh_from_db()
+        self.assertEqual(self.guardian.phone,"+24106000000")
+        self.assertTrue(self.guardian.whatsapp_opt_in)
+
+    def test_existing_staff_role_is_preserved_when_parent_access_is_added(self):
+        staff=SchoolMember.objects.create(school=self.school,user=self.parent,
+            role=SchoolRole.objects.get(school=self.school,code="enseignant"))
+        request_id=self.request_link()
+        self.login(self.admin)
+        approved=self.write(self.link_url,{
+            "guardian":str(self.guardian.pk),"username":self.parent.username,
+            "identity_verified":True,"request_id":request_id,
+        })
+        self.assertEqual(approved.status_code,201,approved.content)
+        staff.refresh_from_db()
+        self.assertEqual(staff.role.code,"enseignant")
+        self.assertTrue(staff.additional_roles.filter(code="parent").exists())
+        self.login(self.parent)
+        self.assertEqual(len(self.client.get("/api/v1/parents/children").json()["children"]),1)
+
+    def test_manual_link_still_requires_explicit_parent_role(self):
+        self.login(self.admin)
+        denied=self.write(self.link_url,{
+            "guardian":str(self.guardian.pk),"username":self.parent.username,
+            "identity_verified":True,
+        })
+        self.assertEqual(denied.status_code,422,denied.content)
+        self.assertFalse(GuardianAccountLink.objects.exists())
+        self.assertFalse(SchoolMember.objects.filter(school=self.school,user=self.parent).exists())
 
     def test_request_cannot_be_approved_for_other_account_or_without_matching_code(self):
         id=self.request_link()

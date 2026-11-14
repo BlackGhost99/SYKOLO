@@ -76,7 +76,8 @@ class StudentGuardian(models.Model):
     student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name="guardians")
     full_name = models.CharField(max_length=180)
     relationship = models.CharField(max_length=80, blank=True)
-    phone = models.CharField(max_length=45, blank=True)
+    phone = models.CharField(max_length=45, blank=True)  # anciens dossiers sans téléphone à régulariser
+    whatsapp_opt_in = models.BooleanField(default=False)
     email = models.EmailField(blank=True)
     profession = models.CharField(max_length=120, blank=True)
     address = models.CharField(max_length=255, blank=True)

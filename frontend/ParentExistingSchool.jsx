@@ -17,7 +17,7 @@ export default function ParentExistingSchool({api}) {
   const [requests,setRequests]=useState([]);
   const [school,setSchool]=useState("");
   const [fields,setFields]=useState({
-    first_name:"",last_name:"",student_code:"",guardian_name:"",contact_phone:"",
+    first_name:"",last_name:"",student_code:"",guardian_name:"",contact_phone:"",whatsapp_opt_in:false,
   });
   const [busy,setBusy]=useState(false);
   const [loading,setLoading]=useState(true);
@@ -65,7 +65,7 @@ export default function ParentExistingSchool({api}) {
       setMessage(result.status==="pending"
         ?"Demande enregistrée. L'établissement vérifiera votre identité et votre lien avec l'enfant."
         :"Demande reçue.");
-      setFields({first_name:"",last_name:"",student_code:"",guardian_name:"",contact_phone:""});
+      setFields({first_name:"",last_name:"",student_code:"",guardian_name:"",contact_phone:"",whatsapp_opt_in:false});
     });}}>
       <label className="yp-field">Rechercher l'établissement
         <input type="search" value={search} maxLength={80} placeholder="Nom de l'école ou du lycée"
@@ -96,10 +96,14 @@ export default function ParentExistingSchool({api}) {
         <input required maxLength={180} value={fields.guardian_name}
           onChange={e=>set("guardian_name",e.target.value)}/>
       </label>
-      <label className="yp-field">Téléphone de contact (facultatif)
-        <input type="tel" maxLength={45} autoComplete="tel" value={fields.contact_phone}
-          onChange={e=>set("contact_phone",e.target.value)}/>
+      <label className="yp-field">Téléphone du responsable légal (obligatoire)
+        <input required type="tel" maxLength={45} autoComplete="tel" value={fields.contact_phone}
+          placeholder="+241 06 23 08 36 3" onChange={e=>set("contact_phone",e.target.value)}/>
       </label>
+      <label className="yp-field"><input type="checkbox" checked={fields.whatsapp_opt_in}
+        onChange={e=>set("whatsapp_opt_in",e.target.checked)}/>
+        Ce numéro utilise WhatsApp et j'accepte d'y recevoir les notifications scolaires et rappels de frais.</label>
+      <p className="yp-muted">WhatsApp est facultatif ; aucun message automatique n'est envoyé sans intégration autorisée.</p>
       <p className="yp-muted">Votre demande ne prouve pas l'identité de l'enfant et ne donne aucun accès immédiat.
         L'établissement contrôlera le dossier et pourra demander un justificatif.</p>
       <button className="yp-button yp-primary" type="submit" disabled={busy||!school}>
@@ -152,6 +156,7 @@ export function SchoolExistingRequests({api,base,reloadKey,onSelect}) {
       <p>{item.school_name} · Matricule déclaré : {item.student_code||"non communiqué"}</p>
       <p>Compte parent : <strong>{item.username}</strong></p>
       <p>Responsable déclaré : {item.guardian_name}{item.contact_phone?" · "+item.contact_phone:""}</p>
+      <p>{item.whatsapp_opt_in?"WhatsApp : consentement donné":"WhatsApp : pas d'autorisation de notification"}</p>
       <div className="actions">
         <button type="button" className="yp-button" disabled={busy}
           onClick={()=>{onSelect(item);setMessage("Sélectionnez le dossier et le responsable réel puis confirmez la vérification.");}}>

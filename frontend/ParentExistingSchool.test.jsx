@@ -41,12 +41,14 @@ test("parent sans enfant rattaché retrouve une école non publiée et dépose u
   await user.type(screen.getByLabelText("Nom de l'enfant"),"Ondo");
   await user.type(screen.getByLabelText(/Matricule scolaire/),"AWA-0001");
   await user.type(screen.getByLabelText(/Votre nom tel qu'enregistré/),"Marie Ondo");
+  await user.type(screen.getByLabelText(/Téléphone du responsable légal/),"+24106000000");
+  await user.click(screen.getByRole("checkbox",{name:/Ce numéro utilise WhatsApp/}));
   await user.click(screen.getByRole("button",{name:"Demander le rattachement"}));
   expect(await screen.findByText(/En cours de vérification/)).toBeTruthy();
   const req=calls.find(([url,opts])=>url==="/api/v1/parents/existing-requests"&&opts.method==="POST");
   expect(JSON.parse(req[1].body)).toMatchObject({
     school:"awassi",first_name:"Malia",last_name:"Ondo",
-    student_code:"AWA-0001",guardian_name:"Marie Ondo",
+    student_code:"AWA-0001",guardian_name:"Marie Ondo",contact_phone:"+24106000000",whatsapp_opt_in:true,
   });
   expect(calls.some(([url])=>url.includes("/applications")&&url!=="/api/v1/parents/applications")).toBe(false);
   expect(screen.queryByText("Inscription confirmée")).toBeNull();
@@ -57,7 +59,7 @@ test("la direction choisit la demande et confirme séparément le responsable l�
   const prefix="/api/v1/schools/awassi";
   const request={id:"request-1",school:"awassi",school_name:"Lycée AWASSI",
     first_name:"Malia",last_name:"Ondo",student_code:"AWA-0001",
-    guardian_name:"Marie Ondo",contact_phone:"",username:"marie-parents",status:"pending"};
+    guardian_name:"Marie Ondo",account_name:"Marie Ondo",contact_phone:"+24106000000",username:"marie-parents",status:"pending"};
   const calls=[];
   let complete=false;
   const fetch=vi.fn(async(url,opts={})=>{
@@ -85,9 +87,9 @@ test("la direction choisit la demande et confirme séparément le responsable l�
   expect(username.value).toBe("marie-parents");
   expect(screen.getByLabelText("Élève",{exact:true}).value).toBe("student-1");
   await user.selectOptions(await screen.findByLabelText("Responsable légal",{exact:true}),"guardian-1");
-  const activate=screen.getByRole("button",{name:"Vérifier et activer l’accès"});
+  const activate=screen.getByRole("button",{name:"Accepter et activer l’accès"});
   expect(activate.disabled).toBe(true);
-  await user.click(screen.getByRole("checkbox",{name:/J’ai vérifié que ce compte appartient/}));
+  await user.click(screen.getByRole("checkbox",{name:/J’ai vérifié l’identité/}));
   await user.click(activate);
   const call=calls.find(([url,opts])=>url===prefix+"/parent-links"&&opts.method==="POST");
   expect(JSON.parse(call[1].body)).toEqual({
