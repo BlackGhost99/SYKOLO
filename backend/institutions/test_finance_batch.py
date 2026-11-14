@@ -289,3 +289,42 @@ class MultiFeeReceiptTests(TestCase):
             content_type="application/json",HTTP_X_CSRFTOKEN=self.token)
         self.assertEqual(response.status_code,422)
         self.assertEqual(FeePayment.objects.count(),0)
+
+    def test_professional_financial_pdfs_and_school_logo(self):
+        from io import BytesIO
+        from PIL import Image
+        from .models import SchoolBranding
+
+        logo = BytesIO()
+        Image.new("RGB", (80, 60), "white").save(logo, "PNG")
+        SchoolBranding.objects.create(
+            school=self.school, city="Libreville", tagline="La réussite pour tous",
+            logo_data=logo.getvalue(), logo_content_type="image/png",
+        )
+        result = self.send(self.payload())
+        self.assertEqual(result.status_code, 201, result.content)
+        receipt_url = self.base + "batches/" + result.json()["id"] + "/receipt"
+        invoice_url = self.base + "charges/" + str(self.charges[0].pk) + "/invoice"
+        for url in (receipt_url, invoice_url):
+            pdf = self.client.get(url)
+            self.assertEqual(pdf.status_code, 200, pdf.content[:250])
+            self.assertTrue(pdf.content.startswith(b"%PDF-"))
+            self.assertIn(b"/Image", pdf.content)
+            self.assertEqual(pdf["Cache-Control"], "private, no-store")
+            self.assertEqual(pdf["X-Content-Type-Options"], "nosniff")
+        self.login(self.teacher)
+        self.assertEqual(self.client.get(receipt_url).status_code, 403)
+        self.assertEqual(self.client.get(invoice_url).status_code, 403)
+        self.login(self.cashier)
+        self.assertEqual(self.client.get(
+            self.base + "charges/" + str(uuid.uuid4()) + "/invoice"
+        ).status_code, 404)
+
+    def test_pdf_receipt_and_invoice_names_and_amounts(self):
+        from .finance_document_pdf import amount_in_words, _amount
+        self.assertEqual(_amount("30000.00", "XAF"), "30 000 FCFA")
+        self.assertEqual(amount_in_words("30000.00", "XAF"), "Trente mille francs CFA")
+        self.assertEqual(amount_in_words("75000.50", "XAF"),
+                         "Soixante-quinze mille francs CFA et 50 centimes")
+        self.assertEqual(amount_in_words("0", "XAF"), "Zéro francs CFA")
+        self.assertEqual(amount_in_words("1000000", "XAF"), "Un million francs CFA")
