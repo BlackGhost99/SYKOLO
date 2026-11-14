@@ -218,7 +218,7 @@ export const NAV = [
 ];
 
 /* Cadre commun : barre supérieure + menu latéral + zone de contenu. */
-export function Shell({ schoolSelector, search, userName = "Mme la Directrice", userMenu, notifications = 3, nav = NAV, active, onNavigate, children, className = "" }) {
+export function Shell({ schoolSelector, search, userName = "Mme la Directrice", userMenu, notifications = 0, onNotifications, nav = NAV, active, onNavigate, children, className = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const navId = useId();
   const menuButton = useRef(null);
@@ -233,7 +233,9 @@ export function Shell({ schoolSelector, search, userName = "Mme la Directrice", 
       <div className="yd-topbar-sep"/>
       {schoolSelector}
       {search || <SearchBox placeholder="Rechercher un élève, une famille, un paiement..." className="yd-global-search"/>}
-      <div className="yd-bell" aria-label={notifications ? `${notifications} notifications` : "Notifications"}><Icon name="bell" size={26} strokeWidth={1.6}/>{notifications ? <i>{notifications}</i> : null}</div>
+      {onNotifications?<button type="button" className="yd-bell" aria-label={notifications ? `${notifications} notifications, ouvrir` : "Ouvrir les notifications"}
+        onClick={onNotifications}><Icon name="bell" size={26} strokeWidth={1.6}/>{notifications ? <i>{notifications}</i> : null}</button>:
+        <div className="yd-bell" aria-label="Notifications"><Icon name="bell" size={26} strokeWidth={1.6}/></div>}
       <div className="yd-topbar-sep small"/>
       <button ref={menuButton} type="button" className="yd-mobile-toggle" aria-label="Menu de l’établissement"
         aria-controls={navId} aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}>
