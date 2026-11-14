@@ -39,6 +39,21 @@ class School(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class SchoolBranding(models.Model):
+    """Images de l'établissement, indépendantes de l'identité visuelle YEM."""
+    school = models.OneToOneField(
+        School, primary_key=True, on_delete=models.CASCADE, related_name="branding"
+    )
+    city = models.CharField(max_length=120, blank=True, default="")
+    tagline = models.CharField(max_length=160, blank=True, default="")
+    logo_data = models.BinaryField(null=True, blank=True)
+    logo_content_type = models.CharField(max_length=30, blank=True, default="")
+    banner_data = models.BinaryField(null=True, blank=True)
+    banner_content_type = models.CharField(max_length=30, blank=True, default="")
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class SchoolRole(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="roles")
