@@ -15,7 +15,7 @@ test("la démonstration monte le vrai Shell de direction et les vraies rubriques
   render(<RealDemoExperience/>);
   expect(await screen.findByRole("heading",{name:"Tableau de bord"})).toBeTruthy();
   expect(screen.getByRole("navigation",{name:"Navigation principale"})).toBeTruthy();
-  expect(await screen.findByText("Encaissé ce mois")).toBeTruthy();
+  expect(await screen.findByText("Enregistré ce mois")).toBeTruthy();
   await userEvent.setup().click(screen.getByRole("button",{name:"Élèves",exact:true}));
   expect(await screen.findByRole("button",{name:"Paramètres avancés"})).toBeTruthy();
   expect(network).not.toHaveBeenCalled();
@@ -66,7 +66,7 @@ test("la caisse fictive enregistre un paiement partiel et met à jour le journal
   await chooseRole(user,"econome");
   const nav=await screen.findByRole("navigation",{name:"Navigation principale"});
   await user.click(await within(nav).findByRole("button",{name:"Paiements"}));
-  expect(await screen.findByText("Encaissé aujourd’hui")).toBeTruthy();
+  expect(await screen.findByText("Enregistré aujourd’hui")).toBeTruthy();
   await user.selectOptions(screen.getByRole("combobox",{name:/^Élève/}),"en-s1");
   const amount=screen.getByLabelText(/Montant saisi/);
   await waitFor(()=>expect(amount.disabled).toBe(false));
