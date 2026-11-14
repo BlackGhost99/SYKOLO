@@ -24,6 +24,7 @@ PERMISSIONS = frozenset({
     "school.staff.read", "school.staff.manage",
     "school.staff.dossier.read", "school.staff.dossier.manage",
     "school.payroll.read", "school.payroll.manage", "school.payroll.approve", "school.payroll.pay", "school.payroll.reverse",
+    "school.operating.read", "school.operating.manage", "school.operating.approve", "school.operating.pay", "school.operating.reverse",
     "school.organization.read", "school.organization.manage",
     "school.curriculum.read", "school.curriculum.manage",
     "school.assessments.read", "school.assessments.manage",
@@ -39,11 +40,13 @@ FINANCE_MUTATION_PERMISSIONS = frozenset({
     "school.finance.manage", "school.finance.receive", "school.finance.reverse",
     "school.finance.approve", "school.finance.deposit",
     "school.payroll.manage", "school.payroll.approve", "school.payroll.pay", "school.payroll.reverse",
+    "school.operating.manage", "school.operating.approve", "school.operating.pay", "school.operating.reverse",
 })
 
 DIRECTION_PERMISSIONS = sorted(PERMISSIONS - {
     "school.finance.receive", "school.finance.reverse", "school.finance.manage", "school.finance.deposit",
     "school.payroll.manage", "school.payroll.pay", "school.payroll.reverse",
+    "school.operating.manage", "school.operating.pay", "school.operating.reverse",
 })
 OWNER_ROLE_CODE = "proprietaire"
 OWNER_ROLE_TEMPLATE = (OWNER_ROLE_CODE, "Propriétaire de l’établissement", (
@@ -57,9 +60,10 @@ ROLE_TEMPLATES = [
     ("secretariat", "Secrétariat", ["school.view", "school.members.read", "school.settings.read", "school.academic.read", "school.students.read", "school.students.manage", "school.students.profile.read", "school.students.admin.write", "school.students.sensitive.read", "school.admissions.read", "school.admissions.manage", "school.admissions.enroll", "school.staff.read", "school.staff.manage", "school.staff.dossier.read", "school.organization.read", "school.curriculum.read", "school.curriculum.manage", "school.reports.read", "school.deliberations.read", "school.attendance.read", "school.attendance.write", "school.timetable.read", "school.timetable.manage"]),
     ("enseignant", "Enseignant", ["school.view", "school.settings.read", "school.academic.read", "school.curriculum.read", "school.timetable.read"]),
     ("comptabilite", "Comptabilité", ["school.view", "school.students.finance.read", "school.academic.read", "school.finance.read", "school.finance.approve", "school.finance.reverse",
-        "school.payroll.read", "school.payroll.manage", "school.payroll.reverse"]),
+        "school.payroll.read", "school.payroll.manage", "school.payroll.reverse",
+        "school.operating.read", "school.operating.manage", "school.operating.reverse"]),
     ("econome", "Économe / Caissier", ["school.view", "school.students.finance.read", "school.academic.read", "school.finance.read", "school.finance.receive", "school.finance.deposit",
-        "school.payroll.read", "school.payroll.pay"]),
+        "school.payroll.read", "school.payroll.pay", "school.operating.read", "school.operating.pay"]),
     ("tarification", "Responsable des tarifs", ["school.view", "school.finance.read", "school.finance.manage"]),
     ("parent", "Parent", ["school.view"]),
     ("eleve", "Élève", ["school.view"]),
