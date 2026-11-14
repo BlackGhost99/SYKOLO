@@ -122,6 +122,35 @@ class FinanceLedgerTests(TestCase):
             "idempotency_key": str(uuid.uuid4()),
         }).status_code, 409)
 
+    def test_demo_fee_cannot_be_collected_and_is_excluded_from_cash_closing(self):
+        schedule = self.schedule("10000", code="demo-fee")
+        charge = self.charge(schedule)
+        row = FeeCharge.objects.get(pk=charge["id"])
+        FeeCharge.objects.filter(pk=row.pk).update(label="DÉMO — exercice fictif")
+        self.assertEqual(self.pay(charge, "500", method="especes").status_code, 422)
+        self.assertEqual(self.pay(charge, "500", method="virement").status_code, 422)
+        grouped = {
+            "enrollment": str(self.enrollment.pk),
+            "lines": [{"charge": charge["id"], "amount": "500"}],
+            "method": "especes", "reference": "FAKE-BATCH",
+            "paid_on": "2026-11-02", "idempotency_key": str(uuid.uuid4()),
+        }
+        self.assertEqual(self.post("batches", grouped).status_code, 422)
+        grouped["method"] = "simulation"
+        self.assertEqual(self.post("batches", grouped).status_code, 422)
+        # Import ancien : méthode espèces, mais frais explicitement fictif.
+        FeePayment.objects.create(
+            school=self.school, charge=row, amount=Decimal("1000.00"),
+            currency="XAF", method="especes", reference="IMPORT-DEMO",
+            paid_on="2026-11-02", idempotency_key=uuid.uuid4(),
+            recorded_by=self.director,
+        )
+        closing = self.post("cash/closings", {
+            "day": "2026-11-02", "currency": "XAF", "counted": "0", "note": "",
+        })
+        self.assertEqual(closing.status_code, 201, closing.content.decode())
+        self.assertEqual(closing.json()["expected"], "0.00")
+
     def test_payment_lifecycle_partial_receipt_void_and_balance(self):
         schedule = self.schedule()
         charge = self.charge(schedule)
