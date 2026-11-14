@@ -9,7 +9,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 from accounts.views import authorized
 
-from .finance_document_pdf import render_school_financial_pdf, school_guardian
+from .finance_document_pdf import render_school_financial_pdf, school_guardian, payment_evidence
 from .finance_models import FeeCharge, FeePayment, FeePaymentBatch, FeePaymentVoid
 from .finance_views import cleared_total
 from .parent_views import permitted_child
@@ -88,6 +88,7 @@ def document_pdf(request, student_id, kind, document_id):
             return JsonResponse({"error": "Document introuvable."}, status=404)
         charge = payment.charge
         cancelled = FeePaymentVoid.objects.filter(payment=payment).exists()
+        evidence = payment_evidence(payment.method, charge.label)
         return render_school_financial_pdf(
             **common, title="Reçu de paiement", receipt=True,
             reference="REC-" + payment.paid_on.strftime("%Y") + "-" + payment.pk.hex.upper(),
@@ -98,7 +99,9 @@ def document_pdf(request, student_id, kind, document_id):
             balance=charge.amount - charge.scholarship_discount - cleared_total(charge),
             method=payment.method, external_reference=payment.reference,
             cashier=payment.recorded_by.get_username() if payment.recorded_by else "",
-            cancelled=cancelled, filename=f"yem-recu-{payment.pk}.pdf",
+            cancelled=cancelled, demo=evidence == "simulation",
+            review_required=evidence == "legacy_unverified",
+            filename=f"yem-recu-{payment.pk}.pdf",
         )
     if kind == "batch":
         batch = FeePaymentBatch.objects.select_related(
@@ -110,6 +113,9 @@ def document_pdf(request, student_id, kind, document_id):
             return JsonResponse({"error": "Document introuvable."}, status=404)
         payments = list(batch.lines.select_related("charge", "void").order_by("charge__label", "pk"))
         cancelled = any(hasattr(p, "void") for p in payments)
+        evidence = [payment_evidence(p.method, p.charge.label) for p in payments]
+        simulated = bool(evidence) and all(item == "simulation" for item in evidence)
+        review = any(item != "manual_record" for item in evidence) and not simulated
         remaining = sum(
             (p.charge.amount - p.charge.scholarship_discount - cleared_total(p.charge)
              for p in payments), Decimal("0.00")
@@ -124,6 +130,7 @@ def document_pdf(request, student_id, kind, document_id):
             currency=batch.currency, total=batch.total, balance=remaining,
             method=batch.method, external_reference=batch.reference,
             cashier=batch.recorded_by.get_username() if batch.recorded_by else "",
-            cancelled=cancelled, filename=f"yem-recu-groupe-{batch.pk}.pdf",
+            cancelled=cancelled, demo=simulated, review_required=review,
+            filename=f"yem-recu-groupe-{batch.pk}.pdf",
         )
     return JsonResponse({"error": "Type de document inconnu."}, status=404)
