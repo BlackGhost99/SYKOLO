@@ -32,6 +32,18 @@ PAPER = colors.HexColor("#F4F7F8")
 ZERO = Decimal("0.00")
 
 
+def payment_evidence(method, charge_label):
+    """Conservative classification compatible with the pending finance safety PR."""
+    if method == "simulation" or re.match(
+        r"^(?:d[eé]mo)(?:\s*[-—:]|\s*$|\s*\[)", (charge_label or "").strip(), re.I
+    ):
+        return "simulation"
+    if method == "cash":
+        return "legacy_unverified"
+    return "manual_record"
+
+
+
 def _font():
     """Keep accented French text readable; stay functional in minimal containers."""
     source = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
@@ -138,7 +150,7 @@ def render_school_financial_pdf(
     classroom="", year="", payer="", rows=(), currency="XAF",
     total=ZERO, paid=None, balance=None, due_on=None, method="",
     external_reference="", cashier="", note="", cancelled=False,
-    demo=False, discount=None, filename="yem-document.pdf", receipt=False,
+    demo=False, review_required=False, discount=None, filename="yem-document.pdf", receipt=False,
 ):
     """Render one document from trusted ledger values; never alter ledger state.
 
@@ -239,7 +251,8 @@ def render_school_financial_pdf(
     if discount is not None and Decimal(str(discount)) > ZERO:
         totals.append(("Prise en charge / bourse", "-" + _amount(discount, currency)))
     if receipt:
-        totals.append(("TOTAL ENCAISSÉ", _amount(value, currency)))
+        totals.append(("TOTAL SIMULÉ" if demo else "MONTANT À RAPPROCHER" if review_required else "TOTAL ENCAISSÉ",
+                       _amount(value, currency)))
         if balance is not None:
             totals.append(("Reste dû sur les frais concernés", _amount(balance, currency)))
     else:
@@ -262,8 +275,14 @@ def render_school_financial_pdf(
         ("RIGHTPADDING", (0, 0), (-1, -1), 10),
     ]))
     story.extend([totals_table, Spacer(1, 6 * mm)])
-    if receipt:
+    if receipt and not demo and not review_required:
         story.append(_paragraph("Arrêté la présente somme à : " + amount_in_words(value, currency) + ".", body))
+    if demo or review_required:
+        story.append(_paragraph(
+            "AUCUNE PREUVE DE RECETTE RÉELLE" if demo
+            else "ÉCRITURE HISTORIQUE NON RAPPROCHÉE : justificatif de caisse requis.",
+            font(9, colors.HexColor("#A11D32"), True),
+        ))
     if due_on:
         story.append(_paragraph("Date limite de règlement : " + due_on.strftime("%d/%m/%Y"), bold))
     if method:
@@ -293,12 +312,12 @@ def render_school_financial_pdf(
         canvas.setFillColor(MUTED)
         canvas.drawString(18 * mm, 11 * mm, "Document émis par l'établissement • Généré avec YEM")
         canvas.drawRightString(width - 18 * mm, 11 * mm, f"Page {rendered.page}")
-        if cancelled or demo:
+        if cancelled or demo or review_required:
             canvas.translate(width / 2, height / 2)
             canvas.rotate(32)
             canvas.setFillColor(colors.Color(.78, .18, .2, alpha=.19))
             canvas.setFont(bold_font, 33 if demo else 44)
-            canvas.drawCentredString(0, 0, "SPÉCIMEN - NON VALABLE" if demo else "ANNULÉ")
+            canvas.drawCentredString(0, 0, "ANNULÉ" if cancelled else "SPÉCIMEN - NON VALABLE" if demo else "À RAPPROCHER")
         canvas.restoreState()
 
     doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
