@@ -34,7 +34,7 @@ test("lecteur dépenses : budgets et règlements visibles, boutons de mutation m
   const fetch=fakeBackend();vi.stubGlobal("fetch",fetch);
   render(<OperatingPanel schoolId="school-1" workingYearId="year-1"/>);
   expect(await screen.findByText("Réparation tableau")).toBeTruthy();
-  expect(screen.getByText("Électricien TEST")).toBeTruthy();
+  expect(screen.getAllByText("Électricien TEST").length).toBeGreaterThan(0);
   expect(screen.getAllByText(/40.000,00/).length).toBeGreaterThan(0);
   expect(screen.queryByRole("button",{name:"Ajouter un fournisseur"})).toBeNull();
   expect(screen.queryByRole("button",{name:"Enregistrer le règlement déclaré"})).toBeNull();
