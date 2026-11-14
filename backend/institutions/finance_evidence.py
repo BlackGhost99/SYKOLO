@@ -12,8 +12,10 @@ def explicit_demo(label):
     return bool(DEMO_LABEL.match((label or "").strip()))
 
 
-def classify_payment(method, charge_label, schedule_label):
-    if method == "simulation" or explicit_demo(charge_label) or explicit_demo(schedule_label):
+def classify_payment(method, charge_label, schedule_label=None):
+    # FeeCharge.label is a frozen invoice snapshot; FeeSchedule.label is editable.
+    # An edited tariff must never rewrite historical cash evidence.
+    if method == "simulation" or explicit_demo(charge_label):
         return "simulation"
     if method == "cash":
         return "legacy_unverified"
