@@ -123,6 +123,16 @@ class FinanceLedgerTests(TestCase):
         self.assertEqual(sections["legacy_cash_unverified"], {"count": 1, "amount": "2000.00"})
         self.assertEqual(sections["cash_declared"], {"count": 1, "amount": "3000.00"})
         self.assertEqual(FeePayment.objects.count(), old_count)
+        for method, expected in (
+            ("simulation", "simulation"),
+            ("cash", "legacy_unverified"),
+            ("especes", "manual_record"),
+        ):
+            payment = FeePayment.objects.get(school=self.school, method=method)
+            pdf = self.client.get(self.base+"payments/"+str(payment.pk)+"/receipt")
+            self.assertEqual(pdf.status_code, 200)
+            self.assertEqual(pdf["X-YEM-Receipt-Class"], expected)
+            self.assertTrue(pdf.content.startswith(b"%PDF-"))
         self.login(self.teacher)
         self.assertEqual(self.client.get(self.base+"quality").status_code, 403)
         self.login(self.stranger)
