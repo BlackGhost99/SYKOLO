@@ -186,6 +186,18 @@ class FinanceLedgerTests(TestCase):
         self.assertEqual(sections["legacy_cash_unverified"], {"count": 1, "amount": "2000.00"})
         self.assertEqual(sections["cash_declared"], {"count": 1, "amount": "3000.00"})
         self.assertEqual(FeePayment.objects.count(), old_count)
+        # Editing the current tariff must not rewrite older invoice evidence.
+        real_charge = FeeCharge.objects.get(pk=normal["id"])
+        FeeSchedule.objects.filter(pk=real_charge.schedule_id).update(
+            label="DÉMO — libellé tarifaire modifié ultérieurement"
+        )
+        reread = self.client.get(self.base+"quality?year="+str(self.year.pk))
+        self.assertEqual(reread.status_code, 200)
+        updated = reread.json()["currencies"]["XAF"]
+        self.assertEqual(updated["explicit_demo_charges"]["count"], 1)
+        self.assertEqual(updated["explicit_demo_payments"]["count"], 1)
+        self.assertEqual(updated["legacy_cash_unverified"]["count"], 1)
+        self.assertEqual(updated["cash_declared"]["count"], 1)
         for method, expected in (
             ("simulation", "simulation"),
             ("cash", "legacy_unverified"),
