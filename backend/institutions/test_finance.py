@@ -89,27 +89,38 @@ class FinanceLedgerTests(TestCase):
             "idempotency_key": idem or str(uuid.uuid4()),
         })
 
-    def test_legacy_cash_alias_counts_in_closing_and_blocks_later_receipts(self):
-        """Both cash codes must be reconciled and frozen after submission."""
+    def test_legacy_cash_is_unverified_and_cannot_be_reused(self):
+        """Unmarked historical cash may be a simulation, not physical currency."""
         charge = self.charge(self.schedule(code="legacy-cash"))
-        first = self.pay(charge, "1000", method="cash", reference="LEGACY-CASH")
-        self.assertEqual(first.status_code, 201, first.content.decode())
-        closing = self.post("cash/closings", {
-            "day": "2026-11-02", "currency": "XAF", "counted": "1000.00", "note": "",
-        })
-        self.assertEqual(closing.status_code, 201, closing.content.decode())
-        self.assertEqual(closing.json()["expected"], "1000.00")
-        self.assertEqual(
-            self.pay(charge, "1000", method="cash", reference="LATE-CASH").status_code,
-            409,
+        row = FeeCharge.objects.get(pk=charge["id"])
+        FeePayment.objects.create(
+            school=self.school, charge=row, amount=Decimal("1000.00"),
+            currency="XAF", method="cash", reference="HISTORICAL-UNKNOWN",
+            paid_on="2026-11-02", idempotency_key=uuid.uuid4(),
+            recorded_by=self.director,
         )
-        batch = self.post("batches", {
+        self.assertEqual(self.pay(charge, "1000", method="cash").status_code, 422)
+        self.assertEqual(self.pay(charge, "1000", method="simulation").status_code, 422)
+        self.assertEqual(self.post("batches", {
             "enrollment": str(self.enrollment.pk),
             "lines": [{"charge": charge["id"], "amount": "1000"}],
-            "method": "cash", "reference": "LATE-BATCH", "paid_on": "2026-11-02",
+            "method": "cash", "reference": "NEW-LEGACY", "paid_on": "2026-11-02",
             "idempotency_key": str(uuid.uuid4()),
+        }).status_code, 422)
+        confirmed = self.pay(charge, "1500", method="especes")
+        self.assertEqual(confirmed.status_code, 201, confirmed.content.decode())
+        closing = self.post("cash/closings", {
+            "day": "2026-11-02", "currency": "XAF", "counted": "1500.00", "note": "",
         })
-        self.assertEqual(batch.status_code, 409, batch.content.decode())
+        self.assertEqual(closing.status_code, 201, closing.content.decode())
+        self.assertEqual(closing.json()["expected"], "1500.00")
+        self.assertEqual(self.pay(charge, "1000", method="especes").status_code, 409)
+        self.assertEqual(self.post("batches", {
+            "enrollment": str(self.enrollment.pk),
+            "lines": [{"charge": charge["id"], "amount": "1000"}],
+            "method": "especes", "reference": "LATE-BATCH", "paid_on": "2026-11-02",
+            "idempotency_key": str(uuid.uuid4()),
+        }).status_code, 409)
 
     def test_payment_lifecycle_partial_receipt_void_and_balance(self):
         schedule = self.schedule()
