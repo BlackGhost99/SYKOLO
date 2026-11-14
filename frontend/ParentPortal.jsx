@@ -263,7 +263,7 @@ export function SchoolParentAccess({schoolId, canAssignRole, canReadStudents}) {
       const people=result.guardians.filter(row=>row.active);
       setGuardians(people);
       if(pendingRequest){
-        const norm=value=>String(value||"").trim().toLocaleLowerCase("fr").replace(/\\s+/g," ");
+        const norm=value=>String(value||"").trim().toLocaleLowerCase("fr").replace(/\s+/g," ");
         const fullname=norm(pendingRequest.account_name);
         const claimed=norm(pendingRequest.guardian_name);
         const matches=people.filter(row=>norm(row.full_name)===fullname || norm(row.full_name)===claimed);
