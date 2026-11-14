@@ -467,11 +467,12 @@ def receipt(request, school_id, payment_id):
     ).filter(school=school, pk=payment_id).first()
     if payment is None:
         return JsonResponse({"error": "Reçu introuvable."}, status=404)
-    from .finance_document_pdf import render_school_financial_pdf, school_guardian
+    from .finance_document_pdf import render_school_financial_pdf, school_guardian, payment_evidence
     charge = payment.charge
     enrollment = charge.enrollment
     student = enrollment.student
     cancelled = FeePaymentVoid.objects.filter(payment=payment, school=school).exists()
+    evidence = payment_evidence(payment.method, charge.label)
     remaining = (charge.amount - charge.scholarship_discount - cleared_total(charge))
     cashier = payment.recorded_by.get_username() if payment.recorded_by else ""
     return render_school_financial_pdf(
@@ -486,7 +487,9 @@ def receipt(request, school_id, payment_id):
         external_reference=payment.reference, cashier=cashier,
         note="Encaissé le " + payment.paid_on.strftime("%d/%m/%Y") +
         (" • Ce paiement a été annulé et ne vaut plus preuve d'encaissement." if cancelled else ""),
-        cancelled=cancelled, filename=f"yem-recu-{payment.pk}.pdf",
+        cancelled=cancelled, demo=evidence == "simulation",
+        review_required=evidence == "legacy_unverified",
+        filename=f"yem-recu-{payment.pk}.pdf",
     )
 
 
