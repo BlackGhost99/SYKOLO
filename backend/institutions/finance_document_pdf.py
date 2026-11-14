@@ -8,6 +8,7 @@ from decimal import Decimal
 from html import escape
 from io import BytesIO
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from django.http import HttpResponse
 from django.utils import timezone
@@ -160,9 +161,18 @@ def render_school_financial_pdf(
     """
     normal_font, bold_font = _font()
     hue = school.primary_color if re.fullmatch(r"#[0-9a-fA-F]{6}", school.primary_color or "") else "#1B664C"
+    rgb = tuple(int(hue[i:i+2], 16) for i in (1, 3, 5))
+    if sum(rgb[i] * weight for i, weight in enumerate((0.2126, 0.7152, 0.0722))) > 165:
+        hue = "#1B664C"  # Keep white table headings legible on pale school themes.
     accent = colors.HexColor(hue)
     branding = SchoolBranding.objects.filter(school=school).first()
-    date = issued_on.date() if hasattr(issued_on, "date") else issued_on
+    if getattr(issued_on, "tzinfo", None) is not None:
+        local_issued = timezone.localtime(issued_on, ZoneInfo("Africa/Libreville"))
+        date = local_issued.date()
+        issued_text = local_issued.strftime("%d/%m/%Y à %H:%M")
+    else:
+        date = issued_on.date() if hasattr(issued_on, "date") else issued_on
+        issued_text = date.strftime("%d/%m/%Y")
     value = Decimal(str(total))
     font = lambda size=9, color=TEXT, bold=False, align=TA_LEFT, leading=None: ParagraphStyle(
         "YEMDoc", fontName=bold_font if bold else normal_font,
@@ -201,7 +211,7 @@ def render_school_financial_pdf(
     story = [header, Spacer(1, 8 * mm)]
     kind = _paragraph(title.upper(), heading_style)
     ref_line = [_paragraph("N° " + reference, font(8, MUTED)), _paragraph(
-        "Émis le " + date.strftime("%d/%m/%Y"), font(8, MUTED, align=TA_RIGHT)
+        "Émis le " + issued_text, font(8, MUTED, align=TA_RIGHT)
     )]
     title_table = Table([[kind], [Table([ref_line], colWidths=[page_width * .56, page_width * .44])]],
                         colWidths=[page_width])
