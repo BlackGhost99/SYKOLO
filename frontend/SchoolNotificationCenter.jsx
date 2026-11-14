@@ -144,7 +144,7 @@ export default function SchoolNotificationCenter({schoolId, onUnread}) {
             <textarea required maxLength={700} rows={3} value={draft} onChange={e=>setDraft(e.target.value)}
               placeholder="Votre message à la famille…"/>
           </label>
-          <Button primary disabled={busy||!target.trim()||!draft.trim()}>Envoyer la notification</Button>
+          <Button type="submit" primary disabled={busy||!target.trim()||!draft.trim()}>Envoyer la notification</Button>
         </form>
       </Card>
       {error&&<p className="pc-alert" role="alert">{error}</p>}
