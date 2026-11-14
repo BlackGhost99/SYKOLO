@@ -176,10 +176,19 @@ export function BarList({ items, max, unit = "familles" }) {
 export const BrandContext = React.createContext({ banner: "" });
 export function PageHeader({ title, subtitle, badge, badgeIcon, actions, banner = true }) {
   const brand = React.useContext(BrandContext);
+  const namedSchool = Boolean(brand?.name);
   return <div className={`yd-hero ${banner ? "" : "nobanner"}`}>
     <div className="yd-hero-text"><div className="yd-hero-row"><h1>{title}</h1>{badge && <span className="yd-page-badge">{badgeIcon && <Icon name={badgeIcon} size={20}/>}{badge}</span>}</div><p>{subtitle}</p></div>
     {actions && <div className="yd-hero-actions">{actions}</div>}
-    {banner && <div className="yd-school-banner" aria-hidden="true">{brand?.banner && <img src={brand.banner} alt=""/>}</div>}
+    {banner && <div className={`yd-school-banner ${namedSchool ? "school-identified" : ""}`}
+      aria-label={namedSchool ? "Identité de l'établissement" : undefined}
+      aria-hidden={namedSchool ? undefined : "true"}>
+      {brand?.banner && <img src={brand.banner} alt=""/>}
+      {namedSchool && <div className="yd-school-banner-identity">
+        {brand?.logo && <img className="yd-school-identity-logo" src={brand.logo} alt="Logo de l'établissement"/>}
+        <span><strong>{brand.name}</strong>{brand.city && <small>{brand.city}</small>}</span>
+      </div>}
+    </div>}
   </div>;
 }
 

@@ -1,0 +1,27 @@
+/* Identité des écoles seulement : aucun changement au logo ni à la palette YEM. */
+.school-identity-settings{max-width:1050px;width:100%}
+.school-identity-settings .yd-card{overflow:hidden}
+.school-identity-preview{position:relative;min-height:190px;border:1px solid var(--yd-line,#dfe6e0);
+  border-radius:10px;overflow:hidden;background:linear-gradient(130deg,#f1f5f1,#e7eee7);
+  display:flex;align-items:flex-end;margin:14px 0 22px}
+.school-identity-preview-banner{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.school-identity-preview::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(10,36,24,.80),rgba(10,36,24,.08));pointer-events:none}
+.school-identity-preview-overlap{position:relative;z-index:1;display:flex;align-items:center;gap:15px;
+  padding:18px;min-width:0;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.4)}
+.school-identity-preview-logo,.school-identity-preview-fallback{height:74px;width:74px;object-fit:contain;
+  border:2px solid #fff;border-radius:12px;background:#fff;flex:0 0 auto}
+.school-identity-preview-fallback{display:grid;place-items:center;color:var(--yd-green,#2f6b37)}
+.school-identity-preview-overlap div{display:grid;gap:4px;min-width:0}
+.school-identity-preview-overlap strong{font-size:23px;overflow-wrap:anywhere}
+.school-identity-preview-overlap span,.school-identity-preview-overlap small{font-size:13px}
+.school-identity-settings form{margin:16px 0}
+.school-identity-images{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}
+.school-identity-images section{min-width:0;padding:14px;border:1px solid var(--yd-line,#e0e5e1);border-radius:9px;background:#fff}
+.school-identity-images h3{font-size:16px;margin:0 0 8px}
+.school-identity-images .yd-btn{margin-right:8px;margin-top:9px}
+.school-identity-picker{display:inline-flex;align-items:center;cursor:pointer;position:relative}
+.school-identity-picker input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.school-identity-picker:has(input:focus-visible){outline:2px solid var(--yd-green,#27663d);outline-offset:3px}
+@media(max-width:760px){.school-identity-images{grid-template-columns:1fr}
+  .school-identity-preview{min-height:150px}.school-identity-preview-logo,.school-identity-preview-fallback{width:55px;height:55px}
+  .school-identity-preview-overlap strong{font-size:18px}}
