@@ -173,13 +173,14 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
     api(`schools/${schoolId}/finance/charges?enrollment=${enrollment}`).then(r => {
       if (!live) return;
       const open = r.charges.filter(c => Number(c.balance) > 0);
-      setCharges(open);
+      setCharges(r.charges);
       setPicked(open.length ? { [open[0].id]: true } : {});
       setLoadedEnrollment(enrollment);
     }).catch(e => { if (live) setChargeError(e.message); });
     return () => { live = false; };
   }, [schoolId, enrollment, canReceive, chargeVersion]);
-  const openCharges = loadedEnrollment === enrollment ? charges : [];
+  const issuedCharges = loadedEnrollment === enrollment ? charges : [];
+  const openCharges = issuedCharges.filter(c => Number(c.balance) > 0);
   const selected = openCharges.filter(c => picked[c.id]);
   const dueCents = selected.reduce((total, charge) => total + Math.round(Number(charge.balance) * 100), 0);
   const defaultAmount = new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(dueCents / 100).replace(/ | /g, " ");
@@ -255,6 +256,21 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
               setAmount(null);
               setPicked(p => selected.some(row => row.currency !== c.currency) ? {[c.id]:true} : ({ ...p, [c.id]: !p[c.id] }));
             }}><Check on={!!picked[c.id]}/><span>{c.label}{c.due_date ? ` · échéance ${fmtDate(c.due_date)}` : ""}</span><b>{fmtMoney(c.balance, c.currency)}</b></button>)}</div>
+            {issuedCharges.length > 0 && <div className="yd-card-sub" aria-label="Factures scolaires">
+              <strong>Factures scolaires :</strong>{" "}
+              {issuedCharges.map(c => <a key={c.id}
+                href={`/api/v1/schools/${schoolId}/finance/charges/${c.id}/invoice`}
+                target="_blank" rel="noreferrer" className="yd-link"
+                style={{display:"inline-block",marginRight:12}}>
+                {c.label} (PDF)
+              </a>)}
+              <span> Avis d’échéance : </span>
+              {Array.from(new Set(issuedCharges.map(c => c.currency))).map(code =>
+                <a key={code} href={`/api/v1/schools/${schoolId}/finance/enrollments/${enrollment}/notice?currency=${code}`}
+                  target="_blank" rel="noreferrer" className="yd-link" style={{marginRight:12}}>
+                  {code} (PDF)
+                </a>)}
+            </div>}
             <label className="yd-label">Mode de paiement <i>*</i></label>
             <div className="yd-paymodes">{METHODS.map(([k, l, ic]) => <Button key={k} primary={method === k} icon={ic} onClick={() => setMethod(k)}>{l}</Button>)}</div>
             <label className="yd-label" htmlFor="pay-amount">Montant saisi <i>*</i></label>
