@@ -9,6 +9,7 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 function mockFinance(permissions) {
   vi.stubGlobal('fetch',vi.fn(async path=>({ok:true,headers:{get:()=> 'application/json'},json:async()=> {
     if(String(path).endsWith('my-access')) return {permissions};
+    if(String(path).includes('finance/quality')) return {certified_revenue:false,currencies:{XAF:{legacy_cash_unverified:{count:2,amount:'5000.00'},explicit_demo_payments:{count:1,amount:'1000.00'},explicit_demo_charges:{count:1,net_amount:'1000.00'}}}};
     if(String(path).includes('payments?')) return {payments:[{id:'receipt',amount:'10',currency:'XAF',method:'especes',paid_on:'2026-11-04',voided:false}]};
     if(String(path).endsWith('charges')) return {charges:[{id:'charge',label:'Scolarité',enrollment:'enroll',balance:'10',currency:'XAF'}]};
     return {years:[{id:'year',name:'Année',active:true}],classes:[],enrollments:[],students:[],schedules:[]};
@@ -42,4 +43,13 @@ test('pricing delegate sees tariff actions',async()=>{
   render(<FinancePanel schoolId='school'/>);
   await screen.findByRole('button',{name:'Créer le tarif'});
   expect(screen.getByRole('button',{name:'Affecter ce frais'})).toBeTruthy();
+});
+
+test('finance quality warning exposes unverified historical cash without labeling it real',async()=>{
+  mockFinance(['school.finance.read']);
+  render(<FinancePanel schoolId='school'/>);
+  const quality=await screen.findByLabelText('Contrôle de qualité des écritures financières');
+  expect(quality.textContent).toContain('à vérifier');
+  expect(quality.textContent).toContain('5000.00 XAF');
+  expect(quality.textContent).toContain('explicitement fictif');
 });
