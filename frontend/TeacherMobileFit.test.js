@@ -26,3 +26,20 @@ test("les grilles restent bornées, le tableau de notes seul défile horizontale
   expect(css).toMatch(/\.ym-prof-app\s+\.ym-status\s*\{[^}]*min-width:\s*0\s*;/);
   expect(css).toMatch(/\.ym-prof-app\s*>\s*nav\.ym-prof-nav\s*\{[^}]*max-width:\s*100vw\s*;/);
 });
+
+test("les colonnes globales de styles.css ne masquent plus les notes sur téléphone",()=>{
+  const compact=css.slice(css.indexOf("Correctif cahier professeur"));
+  expect(compact).toMatch(/@media \(max-width: 600px\)/);
+  expect(compact).toMatch(/thead tr > th:nth-child\(n\+4\)/);
+  expect(compact).toMatch(/tbody tr > td:nth-child\(n\+4\)/);
+  expect(compact).toMatch(/\.ym-grade-table \.ym-grade-student\s*\{[^}]*position: static;/);
+  expect(compact).toMatch(/\.ym-grade-table tbody td :is\(input,select\)\s*\{[^}]*width: 100%;[^}]*min-width: 0;/);
+  expect(compact).toMatch(/\.ym-grade-table tbody tr > td:nth-child\(3\)\s*\{[^}]*width: 99px;/);
+  expect(compact).toMatch(/\.ym-grade-table tr > :first-child\s*\{[^}]*width: 38px;/);
+});
+test("les tableaux, moyennes et appels restent bornés sur mobile",()=>{
+  const compact=css.slice(css.indexOf("Correctif cahier professeur"));
+  expect(compact).toMatch(/\.ym-grade-table-wrap\s*\{[^}]*overflow-x: auto;/);
+  expect(compact).toMatch(/\.ym-stats-four > div strong\s*\{[^}]*font-size: clamp\(/);
+  expect(compact).toMatch(/\.ym-call-heading :is\(h2,p\)\s*\{[^}]*overflow-wrap: anywhere;/);
+});
