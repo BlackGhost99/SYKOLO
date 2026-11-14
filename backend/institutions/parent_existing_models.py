@@ -31,7 +31,8 @@ class ExistingStudentLinkRequest(models.Model):
     last_name = models.CharField(max_length=120)
     student_code = models.CharField(max_length=50, blank=True)
     guardian_name = models.CharField(max_length=180)
-    contact_phone = models.CharField(max_length=45, blank=True)
+    contact_phone = models.CharField(max_length=45, blank=True)  # demandes antérieures conservées
+    whatsapp_opt_in = models.BooleanField(default=False)
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=PENDING, db_index=True)
     linked_guardian = models.ForeignKey(StudentGuardian, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
