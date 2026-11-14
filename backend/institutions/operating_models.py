@@ -18,6 +18,7 @@ class OperatingSupplier(models.Model):
     phone = models.CharField(max_length=50, blank=True)
     email = models.EmailField(blank=True)
     active = models.BooleanField(default=True)
+    revision = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
