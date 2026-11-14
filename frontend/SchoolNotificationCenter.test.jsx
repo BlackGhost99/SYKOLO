@@ -17,7 +17,7 @@ test("la cloche permet d'accepter un rattachement sans naviguer dans Paramètres
     username:"Sylvie",contact_phone:"+241062308363",school_name:"Lycée AWASSI"};
   const fetch=vi.fn(async(url,options={})=>{
     if(url==="/api/v1/auth/csrf")return Response.json({});
-    if(url===prefix+"/notification-inbox" && !options.method)
+    if(url===prefix+"/notification-inbox" && options.method==="GET")
       return Response.json({requests:accepted?[]:[request],messages:[],unread:accepted?0:1});
     if(url===prefix+"/notification-inbox/requests/req-1/candidates")
       return Response.json({candidates:[{student:"student-1",student_code:"AWA-26-0046",
@@ -49,7 +49,7 @@ test("la direction peut répondre à un parent depuis la notification reçue",as
   const sent=[];
   const fetch=vi.fn(async(url,options={})=>{
     if(url==="/api/v1/auth/csrf")return Response.json({});
-    if(url===prefix+"/notification-inbox" && !options.method)
+    if(url===prefix+"/notification-inbox" && options.method==="GET")
       return Response.json({requests:[],messages:[{
         id:"msg-1",kind:"family_message",origin:"parent",destination:"school",
         parent_username:"Sylvie",request_id:"req-1",read:false,message:"Bonjour la direction",
