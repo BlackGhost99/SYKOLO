@@ -32,7 +32,7 @@ export default function SchoolNotificationCenter({schoolId, onUnread}) {
   const [feedback,setFeedback]=useState("");
   const load=useCallback(async()=>{
     const response=await inboxApi(base+"/notification-inbox");
-    setData(response);
+    setData({requests:response.requests||[],messages:response.messages||[],unread:response.unread||0});
     onUnread?.(response.unread||0);
     return response;
   },[base,onUnread]);
@@ -40,7 +40,7 @@ export default function SchoolNotificationCenter({schoolId, onUnread}) {
   useEffect(()=>{
     let active=true;
     inboxApi(base+"/notification-inbox").then(result=>{
-      if(active){setData(result);onUnread?.(result.unread||0);}
+      if(active){setData({requests:result.requests||[],messages:result.messages||[],unread:result.unread||0});onUnread?.(result.unread||0);}
     }).catch(e=>{if(active)setError(e.message);});
     return()=>{active=false;};
   },[base,onUnread]);
