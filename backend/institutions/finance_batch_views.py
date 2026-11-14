@@ -174,12 +174,15 @@ def batch_receipt(request, school_id, batch_id):
     ).filter(school=school, pk=batch_id).first()
     if batch is None:
         return JsonResponse({"error": "Reçu groupé introuvable."}, status=404)
-    from .finance_document_pdf import render_school_financial_pdf, school_guardian
+    from .finance_document_pdf import render_school_financial_pdf, school_guardian, payment_evidence
     from .finance_views import cleared_total
     payments = list(batch.lines.select_related("charge", "void").order_by("charge__label", "pk"))
     enrollment = batch.enrollment
     student = enrollment.student
     cancelled = any(hasattr(payment, "void") for payment in payments)
+    evidence = [payment_evidence(p.method, p.charge.label) for p in payments]
+    simulated = bool(evidence) and all(item == "simulation" for item in evidence)
+    review = any(item != "manual_record" for item in evidence) and not simulated
     balance = sum(
         (p.charge.amount - p.charge.scholarship_discount - cleared_total(p.charge)
          for p in payments), Decimal("0.00")
@@ -199,5 +202,6 @@ def batch_receipt(request, school_id, batch_id):
         note="Encaissé le " + batch.paid_on.strftime("%d/%m/%Y") +
         (" • Une ou plusieurs lignes ont été annulées ; ce document n'est plus une preuve d'encaissement intégral."
          if cancelled else ""),
-        cancelled=cancelled, filename=f"yem-recu-groupe-{batch.pk}.pdf",
+        cancelled=cancelled, demo=simulated, review_required=review,
+        filename=f"yem-recu-groupe-{batch.pk}.pdf",
     )
