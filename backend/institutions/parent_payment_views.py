@@ -539,4 +539,11 @@ def family_notifications(request):
         }.get(p.state, "Paiement mis à jour"),
     } for p in payments]
     messages.extend(unpaid_tuition_notifications(request.user))
+    from .family_notification_models import SchoolFamilyNotification
+    from .family_notification_views import notice_output
+    inbox = SchoolFamilyNotification.objects.select_related("school", "parent").filter(
+        parent=request.user, destination=SchoolFamilyNotification.TO_PARENT,
+        school__is_active=True,
+    ).order_by("-created_at")[:100]
+    messages.extend(notice_output(item) for item in inbox)
     return JsonResponse({"notifications": sorted(messages, key=lambda x: x["at"], reverse=True)[:100]})
