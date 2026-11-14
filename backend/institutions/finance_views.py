@@ -21,6 +21,7 @@ from accounts.views import authorized
 from .academic_models import AcademicYear, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid
 from .finance_cash_policy import cash_closed_for_recorder
+from .finance_evidence import classify_payment
 from .models import School
 from .student_models import Enrollment
 from .services import has_permission
@@ -123,8 +124,10 @@ def charge_data(row):
 
 
 def payment_data(row):
+    evidence = classify_payment(row.method, row.charge.label, row.charge.schedule.label)
     return {
         "id": str(row.pk), "charge": str(row.charge_id),
+        "evidence_class": evidence,
         "amount": str(row.amount), "currency": row.currency,
         "method": row.method, "reference": row.reference,
         "paid_on": row.paid_on.isoformat(), "recorded_at": row.created_at.isoformat(),
@@ -327,7 +330,9 @@ def payments(request, school_id):
             return JsonResponse({"error": "Identifiant du frais requis."}, status=422)
         if not FeeCharge.objects.filter(school=school, pk=charge_id).exists():
             return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
-        rows = FeePayment.objects.filter(school=school, charge_id=charge_id).order_by("created_at", "pk")[:500]
+        rows = FeePayment.objects.select_related("charge__schedule").filter(
+            school=school, charge_id=charge_id
+        ).order_by("created_at", "pk")[:500]
         return JsonResponse({"payments": [payment_data(row) for row in rows]})
     data, error = parse_body(request)
     if error is not None:
@@ -467,13 +472,11 @@ def receipt(request, school_id, payment_id):
     if payment is None:
         return JsonResponse({"error": "Reçu introuvable."}, status=404)
     void = FeePaymentVoid.objects.filter(payment=payment, school=school).first()
-    from .finance_quality_views import explicit_demo
-    simulated = (payment.method == "simulation"
-                 or explicit_demo(payment.charge.label)
-                 or explicit_demo(payment.charge.schedule.label))
-    unverified_legacy = payment.method == "cash" and not simulated
-    receipt_class = ("simulation" if simulated else
-                     "legacy_unverified" if unverified_legacy else "manual_record")
+    receipt_class = classify_payment(
+        payment.method, payment.charge.label, payment.charge.schedule.label
+    )
+    simulated = receipt_class == "simulation"
+    unverified_legacy = receipt_class == "legacy_unverified"
     heading = (
         "YEM — SIMULATION FINANCIÈRE — AUCUN ARGENT REÇU"
         if simulated else
