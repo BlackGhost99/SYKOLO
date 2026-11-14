@@ -384,3 +384,32 @@ class MultiFeeReceiptTests(TestCase):
         self.assertEqual(payment_evidence("especes", "Démo - inscription"), "simulation")
         self.assertEqual(payment_evidence("cash", "Mensualité"), "legacy_unverified")
         self.assertEqual(payment_evidence("especes", "Mensualité"), "manual_record")
+
+    def test_notice_and_cancellation_pdf(self):
+        from .finance_models import FeePaymentVoid
+        notice_url = self.base + f"enrollments/{self.enrollment.pk}/notice?currency=XAF"
+        notice = self.client.get(notice_url)
+        self.assertEqual(notice.status_code, 200, notice.content[:300])
+        self.assertTrue(notice.content.startswith(b"%PDF-"))
+        self.assertEqual(self.client.get(
+            self.base + f"enrollments/{self.enrollment.pk}/notice"
+        ).status_code, 422)
+        self.assertEqual(self.client.get(
+            self.base + f"enrollments/{self.enrollment.pk}/notice?currency=USD"
+        ).status_code, 404)
+        result = self.send(self.payload())
+        self.assertEqual(result.status_code, 201, result.content)
+        payment = FeePayment.objects.filter(batch_id=result.json()["id"]).first()
+        FeePaymentVoid.objects.create(
+            school=self.school, payment=payment,
+            reason="Double règlement déclaré par erreur.",
+            approved_by=self.teacher,
+        )
+        cancellation = self.client.get(
+            self.base + f"payments/{payment.pk}/cancellation-pdf"
+        )
+        self.assertEqual(cancellation.status_code, 200, cancellation.content[:300])
+        self.assertTrue(cancellation.content.startswith(b"%PDF-"))
+        self.assertEqual(cancellation["Cache-Control"], "private, no-store")
+        self.login(self.teacher)
+        self.assertEqual(self.client.get(notice_url).status_code, 403)
