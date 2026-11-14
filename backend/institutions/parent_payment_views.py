@@ -7,7 +7,9 @@ merchant account; YEM never accepts a shared platform merchant key here.
 import json
 import re
 import uuid
-from datetime import timedelta
+from datetime import datetime, time, timedelta
+from decimal import Decimal
+from django.db.models import F, Sum
 
 from django.conf import settings
 from django.db import transaction
@@ -441,6 +443,66 @@ def staff_admission_payments(request, school_id):
     ]})
 
 
+def unpaid_tuition_notifications(user):
+    """Live private reminders; no persisted duplicate alerts or side-effectful GET.
+
+    A bill becomes due on its deadline and overdue the next calendar day.
+    Settled/voided payments and verified scholarship discounts are respected.
+    Only explicitly verified, active guardian links grant access.
+    """
+    from .finance_models import FeeCharge, FeePayment
+    from .parent_views import guardian_links
+
+    student_ids = guardian_links(user).values_list("guardian__student_id", flat=True)
+    today = timezone.localdate()
+    charges = list(
+        FeeCharge.objects.filter(
+            enrollment__student_id__in=student_ids,
+            enrollment__active=True,
+            due_date__isnull=False, due_date__lte=today,
+            school_id=F("enrollment__school_id"),
+            enrollment__student__school_id=F("school_id"),
+        ).select_related("school", "enrollment__student")
+        .order_by("-due_date", "pk")[:500]
+    )
+    if not charges:
+        return []
+    paid_by_charge = {
+        row["charge_id"]: row["total"] or Decimal("0.00")
+        for row in FeePayment.objects.filter(
+            charge_id__in=[item.pk for item in charges],
+            void__isnull=True,
+        ).values("charge_id").annotate(total=Sum("amount"))
+    }
+    reminders = []
+    for charge in charges:
+        remaining = charge.amount - charge.scholarship_discount - paid_by_charge.get(
+            charge.pk, Decimal("0.00")
+        )
+        if remaining <= 0:
+            continue
+        student = charge.enrollment.student
+        formatted = f"{remaining:,.0f}".replace(",", " ") if charge.currency == "XAF" else str(remaining)
+        currency = "FCFA" if charge.currency == "XAF" else charge.currency
+        due = charge.due_date
+        state = "due_today" if due == today else "overdue"
+        message = (
+            f"{student.first_name} {student.last_name} · {charge.label} · "
+            f"{formatted} {currency} restant à régler. "
+            + (f"Échéance aujourd'hui, le {due:%d/%m/%Y}."
+               if state == "due_today" else
+               f"Échéance dépassée depuis le {due:%d/%m/%Y}.")
+        )
+        reminders.append({
+            "id": f"tuition:{charge.pk}:{due.isoformat()}",
+            "kind": "tuition_reminder", "school": charge.school.name,
+            "status": state,
+            "at": timezone.make_aware(datetime.combine(due, time.min)).isoformat(),
+            "message": message,
+        })
+    return reminders
+
+
 @never_cache
 @require_GET
 @authorized
@@ -476,4 +538,5 @@ def family_notifications(request):
             "refunded": "Paiement remboursé",
         }.get(p.state, "Paiement mis à jour"),
     } for p in payments]
+    messages.extend(unpaid_tuition_notifications(request.user))
     return JsonResponse({"notifications": sorted(messages, key=lambda x: x["at"], reverse=True)[:100]})
