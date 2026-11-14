@@ -46,6 +46,11 @@ export function permissionLabel(value){
   if(value==="school.payroll.approve")return "Rémunérations — Approuver après contrôle indépendant";
   if(value==="school.payroll.pay")return "Rémunérations — Déclarer le versement";
   if(value==="school.payroll.reverse")return "Rémunérations — Annuler un versement d'autrui";
+  if(value==="school.operating.read")return "Dépenses — Voir les budgets, fournisseurs et règlements";
+  if(value==="school.operating.manage")return "Dépenses — Préparer budgets, fournisseurs et demandes";
+  if(value==="school.operating.approve")return "Dépenses — Approuver par un contrôleur indépendant";
+  if(value==="school.operating.pay")return "Dépenses — Enregistrer les règlements déclarés";
+  if(value==="school.operating.reverse")return "Dépenses — Annuler les règlements d'un autre agent";
   const parts=value.split(".");
   const domain=DOMAIN_LABELS[parts[1]]||parts[1];
   const action=ACTION_LABELS[parts[2]]||parts[2]||"";
