@@ -53,6 +53,7 @@ def summary(row):
 def staff_summary(row):
     return {
         **summary(row), "username": row.owner.get_username(),
+        "account_name": " ".join(filter(None, (row.owner.first_name, row.owner.last_name))),
         "guardian_name": row.guardian_name, "contact_phone": row.contact_phone,
         "whatsapp_opt_in": row.whatsapp_opt_in,
     }
