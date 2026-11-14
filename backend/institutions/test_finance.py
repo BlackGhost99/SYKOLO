@@ -89,6 +89,28 @@ class FinanceLedgerTests(TestCase):
             "idempotency_key": idem or str(uuid.uuid4()),
         })
 
+    def test_legacy_cash_alias_counts_in_closing_and_blocks_later_receipts(self):
+        """Both cash codes must be reconciled and frozen after submission."""
+        charge = self.charge(self.schedule(code="legacy-cash"))
+        first = self.pay(charge, "1000", method="cash", reference="LEGACY-CASH")
+        self.assertEqual(first.status_code, 201, first.content.decode())
+        closing = self.post("cash/closings", {
+            "day": "2026-11-02", "currency": "XAF", "counted": "1000.00", "note": "",
+        })
+        self.assertEqual(closing.status_code, 201, closing.content.decode())
+        self.assertEqual(closing.json()["expected"], "1000.00")
+        self.assertEqual(
+            self.pay(charge, "1000", method="cash", reference="LATE-CASH").status_code,
+            409,
+        )
+        batch = self.post("batches", {
+            "enrollment": str(self.enrollment.pk),
+            "lines": [{"charge": charge["id"], "amount": "1000"}],
+            "method": "cash", "reference": "LATE-BATCH", "paid_on": "2026-11-02",
+            "idempotency_key": str(uuid.uuid4()),
+        })
+        self.assertEqual(batch.status_code, 409, batch.content.decode())
+
     def test_payment_lifecycle_partial_receipt_void_and_balance(self):
         schedule = self.schedule()
         charge = self.charge(schedule)
