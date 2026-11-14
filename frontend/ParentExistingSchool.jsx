@@ -115,7 +115,8 @@ export default function ParentExistingSchool({api}) {
     {requests.map(item=><article className="yp-request" key={item.id}>
       <b>{item.first_name} {item.last_name} · {item.school_name}</b>
       <p role="status">{STATUS[item.status]||"Vérification à confirmer"}</p>
-      {item.status==="approved"&&<p>Accès activé. Revenez à l'accueil et utilisez « Actualiser mes enfants » pour consulter son dossier.</p>}
+      {item.status==="approved"&&item.access_active&&<p>Accès activé. Revenez à l'accueil et utilisez « Actualiser mes enfants » pour consulter son dossier.</p>}
+      {item.status==="approved"&&!item.access_active&&<p role="alert">L'accès familial n'est plus actif. Contactez l'établissement pour vérifier les autorisations.</p>}
       {item.status==="pending"&&<button type="button" className="yp-button" disabled={busy}
         onClick={()=>run(async()=>{
           await api("parents/existing-requests/"+item.id,{status:"cancelled"},"PATCH");
