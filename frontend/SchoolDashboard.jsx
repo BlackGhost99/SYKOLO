@@ -501,7 +501,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         onWorkingYearChange={setWorkingYearId} onYearsUpdated={()=>setYearCatalogVersion(v=>v+1)}/>,
       "payments:live":<LivePayments key={k} {...props}/>,
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
-      "arrears:live":<LiveArrears key={chosen} {...props}/>,
+      "arrears:live":<LiveArrears key={chosen} {...props} canRemind={can("school.finance.receive") || can("school.finance.approve")}/>,
       "notifications:inbox":<SchoolNotificationCenter key={chosen} schoolId={chosen} onUnread={setInboxCount}/>,
       "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
         <div className="yd-real-body"><FamilyDirectory key={chosen} schoolId={chosen} onNavigate={navigate} workingYearId={workingYearId}/></div></>,

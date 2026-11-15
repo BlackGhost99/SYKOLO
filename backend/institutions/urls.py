@@ -69,6 +69,7 @@ urlpatterns = [
     path("parents/existing-schools", parent_existing_views.school_directory),
     path("parents/existing-requests", parent_existing_views.family_requests),
     path("parents/existing-requests/<uuid:request_id>", parent_existing_views.family_request_detail),
+    path("schools/<uuid:school_id>/finance/enrollments/<uuid:enrollment_id>/reminder", family_notification_views.send_payment_reminder),
     path("schools/<uuid:school_id>/notification-inbox", family_notification_views.school_inbox),
     path("schools/<uuid:school_id>/notification-inbox/<uuid:notice_id>", family_notification_views.school_notice_detail),
     path("schools/<uuid:school_id>/notification-inbox/requests/<uuid:request_id>/candidates", family_notification_views.request_candidates),

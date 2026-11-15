@@ -9,13 +9,14 @@ from uuid import UUID
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.http import JsonResponse
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from accounts.views import authorized
 from .family_notification_models import SchoolFamilyNotification as Notice
-from .models import School
+from .models import School, SchoolMember
 from .parent_existing_models import ExistingStudentLinkRequest as LinkRequest
 from .parent_models import GuardianAccountLink
 from .services import has_permission
@@ -268,3 +269,67 @@ def parent_notice_detail(request, notice_id):
             row.read_at = timezone.now()
             row.save(update_fields=["read_at"])
     return JsonResponse(notice_output(row))
+
+@never_cache
+@require_POST
+@authorized
+def send_payment_reminder(request, school_id, enrollment_id):
+    from .finance_views import CURRENCY_PATTERN
+    from .overview_views import enrollment_balances
+    from .student_models import Enrollment
+
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if not has_permission(request.user, school, "school.finance.read") or not any(
+        has_permission(request.user, school, permission)
+        for permission in ("school.finance.receive", "school.finance.approve")
+    ):
+        return refuse()
+    data, error = parse_body(request)
+    if error is not None:
+        return error
+    currency = data.get("currency")
+    if set(data) != {"currency"} or not isinstance(currency, str) or not CURRENCY_PATTERN.fullmatch(currency):
+        return fail("Devise invalide.")
+
+    with transaction.atomic():
+        School.objects.select_for_update().get(pk=school.pk)
+        enrollment = Enrollment.objects.select_related("student", "year").filter(
+            pk=enrollment_id, school=school, student__school=school, student__active=True,
+        ).first()
+        if enrollment is None:
+            return fail("Inscription introuvable.", 404)
+        _, balances = enrollment_balances(school, [enrollment.pk], currency)
+        if not balances.get(enrollment.pk) or balances[enrollment.pk]["overdue"] <= 0:
+            return fail("Aucun solde en retard. Actualisez le relevé.", 409)
+        parent_membership = SchoolMember.objects.filter(
+            school=school, user_id=OuterRef("user_id"), active=True, role__school=school,
+        ).filter(Q(role__code="parent") | Q(additional_roles__school=school, additional_roles__code="parent"))
+        recipients = set(GuardianAccountLink.objects.select_for_update(of=("self",)).filter(
+            school=school, guardian__school=school, guardian__student=enrollment.student,
+            guardian__active=True, active=True, user__is_active=True,
+        ).filter(Exists(parent_membership)).values_list("user_id", flat=True))
+        if not recipients:
+            return fail("Aucun responsable ne dispose d’un compte YEM vérifié pour cet élève.", 409)
+
+        student = enrollment.student
+        message = (
+            f"Rappel de scolarité pour {student.first_name} {student.last_name} "
+            f"({student.student_code}), année {enrollment.year.name}, en {currency}. "
+            "Consultez le relevé dans Mes enfants → Frais pour voir les échéances en retard et le solde à jour."
+        )
+        sent_today = set(Notice.objects.filter(
+            school=school, parent_id__in=recipients, origin="school", destination=Notice.TO_PARENT,
+            message=message, created_at__date=timezone.localdate(),
+        ).values_list("parent_id", flat=True))
+        notices = [
+            Notice(school=school, parent_id=parent_id, actor=request.user,
+                   origin="school", destination=Notice.TO_PARENT, message=message)
+            for parent_id in recipients - sent_today
+        ]
+        Notice.objects.bulk_create(notices)
+        for notice in notices:
+            log_event(school, request, "finance_reminder_sent", notice.pk,
+                      {"enrollment": str(enrollment.pk), "currency": currency})
+    return JsonResponse({"sent": len(notices), "already_sent": len(sent_today)}, status=201 if notices else 200)

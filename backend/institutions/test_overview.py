@@ -143,3 +143,35 @@ class OverviewTests(TestCase):
         financial = self.client.get(self.base + "finance?year=" + str(self.year.pk))
         self.assertEqual(financial.status_code, 200)
         self.assertEqual(financial.json()["active_students"], 3)
+
+    def test_manual_reminder_uses_verified_links_and_current_overdue_balance(self):
+        from .family_notification_models import SchoolFamilyNotification
+        from .parent_models import GuardianAccountLink
+
+        student, enrollment, charge = self.rows["OBAME"]
+        parent = get_user_model().objects.create_user(username="parent-reminder")
+        path = f"/api/v1/schools/{self.school.pk}/finance/enrollments/{enrollment.pk}/reminder"
+        def send():
+            return self.client.post(path, {"currency": "XAF"}, content_type="application/json")
+
+        self.client.force_login(self.teacher)
+        self.assertEqual(send().status_code, 403)
+        self.client.force_login(self.director)
+        self.assertEqual(send().status_code, 409)
+        GuardianAccountLink.objects.create(school=self.school, guardian=student.guardians.get(), user=parent)
+        self.assertEqual(send().status_code, 409)
+        SchoolMember.objects.create(
+            school=self.school, user=parent, role=SchoolRole.objects.get(school=self.school, code="parent"),
+        )
+        reminder = send()
+        self.assertEqual(reminder.status_code, 201, reminder.content)
+        self.assertEqual(send().json(), {"sent": 0, "already_sent": 1})
+        self.assertEqual(SchoolFamilyNotification.objects.filter(parent=parent).count(), 1)
+        self.client.force_login(parent)
+        details = self.client.get(f"/api/v1/parents/children/{student.pk}/finance").json()
+        self.assertEqual(Decimal(details["totals"]["XAF"]["overdue"]), Decimal("60000.00"))
+        self.assertEqual(details["charges"][0]["status"], "En retard")
+        self.client.force_login(self.director)
+        charge.due_date = self.today
+        charge.save(update_fields=["due_date"])
+        self.assertEqual(send().status_code, 409)

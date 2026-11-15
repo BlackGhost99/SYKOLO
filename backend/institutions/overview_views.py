@@ -59,7 +59,7 @@ def primary_guardians(school, student_ids):
 def enrollment_balances(school, enrollment_ids, requested_currency=None):
     """Balances in the explicitly selected currency; other currencies stay selectable."""
     charges = list(FeeCharge.objects.filter(school=school, enrollment_id__in=enrollment_ids).values(
-        "id", "enrollment_id", "amount", "scholarship_discount", "currency", "due_date",
+        "id", "enrollment_id", "amount", "scholarship_discount", "currency", "due_date", "label",
     ))
     currencies = sorted({c["currency"] for c in charges})
     currency = requested_currency or (currencies[0] if currencies else "XAF")
@@ -67,7 +67,7 @@ def enrollment_balances(school, enrollment_ids, requested_currency=None):
         FeePayment.objects.filter(school=school, charge_id__in=[c["id"] for c in charges], void__isnull=True)
         .values_list("charge_id").annotate(total=Sum("amount")).values_list("charge_id", "total")
     )
-    balances = defaultdict(lambda: {"billed": ZERO, "paid": ZERO, "overdue": ZERO, "next_due": None, "first_overdue": None})
+    balances = defaultdict(lambda: {"billed": ZERO, "paid": ZERO, "overdue": ZERO, "next_due": None, "first_overdue": None, "overdue_items": [], "due_today": ZERO})
     today = timezone.localdate()
     for c in charges:
         if c["currency"] != currency:
@@ -83,9 +83,13 @@ def enrollment_balances(school, enrollment_ids, requested_currency=None):
         if remaining > 0 and c["due_date"]:
             if c["due_date"] < today:
                 b["overdue"] += remaining
+                b["overdue_items"].append({"label": c["label"], "date": c["due_date"].isoformat(), "balance": money(remaining)})
                 b["first_overdue"] = min(filter(None, [b["first_overdue"], c["due_date"]]))
-            elif b["next_due"] is None or c["due_date"] < b["next_due"][0]:
-                b["next_due"] = (c["due_date"], remaining)
+            else:
+                if c["due_date"] == today:
+                    b["due_today"] += remaining
+                if b["next_due"] is None or c["due_date"] < b["next_due"][0]:
+                    b["next_due"] = (c["due_date"], remaining)
     return currency, balances
 
 
@@ -244,6 +248,9 @@ def finance_overview(request, school_id):
             "guardian": g.full_name if g else "", "phone": g.phone if g else "",
             "due_date": b["first_overdue"].isoformat() if b["first_overdue"] else None,
             "amount_due": money(b["overdue"]),
+            "overdue_items": sorted(b["overdue_items"], key=lambda item: (item["date"], item["label"])),
+            "due_today": money(b["due_today"]),
+            "remaining": money(b["billed"] - b["paid"]),
             "last_payment": last_payment[eid].isoformat() if eid in last_payment else None,
         })
     arrears.sort(key=lambda a: Decimal(a["amount_due"]), reverse=True)
