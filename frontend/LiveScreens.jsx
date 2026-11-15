@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import CashClosingPanel from "./CashClosingPanel.jsx";
 import {DashboardShortcuts} from "./SchoolDashboardHeader.jsx";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
@@ -334,11 +334,21 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
   const [viewCurrency, setViewCurrency] = useState("");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
   const [selected, setSelected] = useState("");
+  const reminderPanel = useRef(null);
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const d = fin.data;
   const a = d?.arrears.find(row => row.enrollment === selected);
   const whatsappHref = canRemind && a && !fin.loading ? whatsappReminderLink(a, d.currency) : "";
+  function selectEnrollment(enrollment) {
+    if (sending) return;
+    setSelected(enrollment);
+    setFeedback("");
+    if (window.matchMedia?.("(max-width: 1200px)").matches) {
+      reminderPanel.current?.scrollIntoView({block: "start"});
+    }
+  }
+
   async function sendReminder() {
     if (!a || sending || fin.loading) return;
     setSending(true);
@@ -376,25 +386,47 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
         <Card title="Liste des familles en impayé" count={`(${d.families_late})`} icon="users">
           {d.arrears.length === 0 ? <Empty>Aucune famille en retard de paiement.</Empty> :
             <TableScroll label="Impayés par élève"><table className="xs clickable"><thead><tr>{["", "Élève", "Classe", "Responsable", "Plus ancienne échéance impayée", "Total en retard", <>Dernier<br/>paiement</>, "Statut"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-              <tbody>{d.arrears.map((x, i) => <tr key={x.enrollment} className={a === x ? "selected" : ""}><td>{i + 1}</td><td className="nowrap"><button type="button" className="yd-link" aria-pressed={a === x} disabled={sending} onClick={() => {setSelected(x.enrollment);setFeedback("");}}>{x.student}</button></td><td>{x.classroom}</td><td>{x.guardian || "—"}</td><td className="nowrap">{fmtDate(x.due_date)}</td><td className="nowrap"><b>{fmtMoney(x.amount_due, d.currency)}</b></td><td className="nowrap">{fmtDate(x.last_payment)}</td>
-                <td><Status tone={x.last_payment ? "yellow" : "red"}>{x.last_payment ? "À relancer" : "En retard"}</Status></td></tr>)}</tbody></table></TableScroll>}
+              <tbody>{d.arrears.map((row, index) => (
+                <tr key={row.enrollment} className={a === row ? "selected" : ""}
+                    onClick={() => selectEnrollment(row.enrollment)}>
+                  <td>{index + 1}</td>
+                  <td className="nowrap">
+                    <button type="button" className="yd-link" aria-pressed={a === row} disabled={sending}
+                            onClick={event => {
+                              event.stopPropagation();
+                              selectEnrollment(row.enrollment);
+                            }}>{row.student}</button>
+                  </td>
+                  <td>{row.classroom}</td>
+                  <td>{row.guardian || "—"}</td>
+                  <td className="nowrap">{fmtDate(row.due_date)}</td>
+                  <td className="nowrap"><b>{fmtMoney(row.amount_due, d.currency)}</b></td>
+                  <td className="nowrap">{fmtDate(row.last_payment)}</td>
+                  <td><Status tone={row.last_payment ? "yellow" : "red"}>{row.last_payment ? "À relancer" : "En retard"}</Status></td>
+                </tr>
+              ))}</tbody>
+            </table></TableScroll>}
         </Card>
       </div>
-      <div className="yd-stack">
+      <div className="yd-stack yd-arrears-rail" ref={reminderPanel}>
         <Card title="Détail des échéances" icon="file">
           {a ? <>
             <p><strong>{a.student}</strong> · {a.classroom}</p>
             <p>À payer aujourd’hui <strong>{fmtMoney(a.due_today, d.currency)}</strong></p>
             <p>Total en retard <strong>{fmtMoney(a.amount_due, d.currency)}</strong></p>
             <p>Restant dû sur l’année <strong>{fmtMoney(a.remaining, d.currency)}</strong></p>
-            <Table headers={["Frais", "Date", "Solde en retard"]}
-              rows={(a.overdue_items || []).map(item => [item.label, fmtDate(item.date), fmtMoney(item.balance, d.currency)])}/>
+            <div className="yd-arrears-installments" role="region" aria-label="Échéances en retard" tabIndex={0}>
+              <Table headers={["Frais", "Date", "Solde en retard"]}
+                rows={(a.overdue_items || []).map(item => [item.label, fmtDate(item.date), fmtMoney(item.balance, d.currency)])}/>
+            </div>
             {canRemind && <>
               <p>La relance informe les responsables vérifiés et les invite à consulter le relevé à jour dans YEM.</p>
-              <Button primary icon="send" disabled={sending || fin.loading} onClick={sendReminder}>Envoyer la relance dans YEM</Button>
-              {whatsappHref ? <a className="yd-btn" href={whatsappHref} target="_blank" rel="noopener noreferrer">
-                <Icon name="whatsapp" size={20}/><span>Préparer la relance WhatsApp</span>
-              </a> : <Button icon="whatsapp" disabled>Préparer la relance WhatsApp</Button>}
+              <div className="yd-arrears-actions">
+                <Button primary icon="send" disabled={sending || fin.loading} onClick={sendReminder}>Envoyer la relance dans YEM</Button>
+                {whatsappHref ? <a className="yd-btn" href={whatsappHref} target="_blank" rel="noopener noreferrer">
+                  <Icon name="whatsapp" size={20}/><span>Préparer la relance WhatsApp</span>
+                </a> : <Button icon="whatsapp" disabled>Préparer la relance WhatsApp</Button>}
+              </div>
               {!whatsappHref && !fin.loading && <p className="yd-card-sub">Le numéro du responsable doit être accessible et valide pour préparer la relance WhatsApp.</p>}
 
             </>}
