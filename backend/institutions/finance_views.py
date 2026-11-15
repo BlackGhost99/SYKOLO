@@ -194,7 +194,9 @@ def schedules(request, school_id):
     if error is not None:
         return error
     if request.method == "GET":
-        rows = FeeSchedule.objects.filter(school=school).order_by("year__start_date", "label")[:500]
+        rows = FeeSchedule.objects.filter(school=school).order_by("year__start_date", "label", "pk")
+        # The settings catalog must include every generated tariff; a monthly
+        # setup can legitimately contain more than 500 class/month entries.
         result = {"schedules": [schedule_data(row) for row in rows]}
         if request.GET.get("choices") == "1":
             if not can_configure_tariffs(request, school):
@@ -360,11 +362,17 @@ def schedule_detail(request, school_id, schedule_id):
         return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
-            row = FeeSchedule.objects.select_for_update().filter(school=school, pk=schedule_id).first()
+            row = FeeSchedule.objects.select_for_update().select_related("year").filter(school=school, pk=schedule_id).first()
             if row is None:
                 return JsonResponse({"error": "Frais introuvable."}, status=404)
             if row.revision != data["revision"]:
                 return JsonResponse({"error": "Conflit de version.", "revision": row.revision}, status=409)
+            if not row.year.active or row.year.status == AcademicYear.STATUS_CLOSED:
+                return JsonResponse({"error": "Année scolaire inactive ou clôturée."}, status=409)
+            if "due_date" in changes and changes["due_date"] is not None and not (
+                row.year.start_date <= changes["due_date"] <= row.year.end_date
+            ):
+                return JsonResponse({"error": "L’échéance doit être comprise dans l’année scolaire."}, status=422)
             for key, value in changes.items():
                 setattr(row, key, value)
             row.full_clean()
