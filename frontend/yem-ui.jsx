@@ -177,10 +177,11 @@ export const BrandContext = React.createContext({ banner: "" });
 export function PageHeader({ title, subtitle, badge, badgeIcon, actions, banner = true }) {
   const brand = React.useContext(BrandContext);
   const namedSchool = Boolean(brand?.name);
-  return <div className={`yd-hero ${banner ? "" : "nobanner"}`}>
+  const showBanner = banner && !brand?.fixedHeader;
+  return <div className={`yd-hero ${showBanner ? "" : "nobanner"}`}>
     <div className="yd-hero-text"><div className="yd-hero-row"><h1>{title}</h1>{badge && <span className="yd-page-badge">{badgeIcon && <Icon name={badgeIcon} size={20}/>}{badge}</span>}</div><p>{subtitle}</p></div>
     {actions && <div className="yd-hero-actions">{actions}</div>}
-    {banner && <div className={`yd-school-banner ${namedSchool ? "school-identified" : ""}`}
+    {showBanner && <div className={`yd-school-banner ${namedSchool ? "school-identified" : ""}`}
       aria-label={namedSchool ? "Identité de l'établissement" : undefined}
       aria-hidden={namedSchool ? undefined : "true"}>
       {brand?.banner && <img src={brand.banner} alt=""/>}
@@ -218,7 +219,7 @@ export const NAV = [
 ];
 
 /* Cadre commun : barre supérieure + menu latéral + zone de contenu. */
-export function Shell({ schoolSelector, search, userName = "Mme la Directrice", userMenu, notifications = 0, onNotifications, nav = NAV, active, onNavigate, children, className = "" }) {
+export function Shell({ schoolSelector, search, headerBanner, userName = "Mme la Directrice", userMenu, notifications = 0, onNotifications, nav = NAV, active, onNavigate, children, className = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const navId = useId();
   const menuButton = useRef(null);
@@ -232,6 +233,7 @@ export function Shell({ schoolSelector, search, userName = "Mme la Directrice", 
       <YemLogo/>
       <div className="yd-topbar-sep"/>
       {schoolSelector}
+      {headerBanner}
       {search || <SearchBox placeholder="Rechercher un élève, une famille, un paiement..." className="yd-global-search"/>}
       {onNotifications?<button type="button" className="yd-bell" aria-label={notifications ? `${notifications} notifications, ouvrir` : "Ouvrir les notifications"}
         onClick={onNotifications}><Icon name="bell" size={26} strokeWidth={1.6}/>{notifications ? <i>{notifications}</i> : null}</button>:
