@@ -24,7 +24,7 @@ from .parent_views import guardian_links
 from .services import owns_school, has_permission
 from .singpay_models import SingPayMerchant, SingPayIntent, SingPayEvent, SingPaySettlement
 from .singpay_service import (IDENTIFIER, OPEN_STATES, digest, fee_quote, merchant_ready,
-                              normalize_phone, initiate, reconcile, verify_wallet_access)
+                              normalize_phone, initiate, reconcile, verify_wallet_access, WalletVerificationError)
 from .views import access, parse_body, refuse, log_event
 
 
@@ -118,8 +118,8 @@ def merchant_verify(request, school_id):
         return fail("Enregistrez d'abord le portefeuille SingPay.", 409)
     try:
         verify_wallet_access(merchant)
-    except ProviderError:
-        return fail("Accès au portefeuille non confirmé. Vérifiez le portefeuille et les identifiants SingPay.", 502)
+    except WalletVerificationError as exc:
+        return fail(str(exc), 502)
     with transaction.atomic():
         current = SingPayMerchant.objects.select_for_update().filter(school=school).first()
         if current is None or current.revision != merchant.revision:
