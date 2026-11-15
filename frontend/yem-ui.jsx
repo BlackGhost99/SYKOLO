@@ -174,13 +174,26 @@ export function BarList({ items, max, unit = "familles" }) {
 }
 
 export const BrandContext = React.createContext({ banner: "" });
+export function SchoolHeaderBanner() {
+  const brand = React.useContext(BrandContext);
+  if (!brand?.name) return null;
+  return <div className="yd-school-banner school-identified yd-fixed-school-banner" aria-label="Identité de l'établissement">
+    {brand.banner && <img className="yd-fixed-banner-art" src={brand.banner} alt=""/>}
+    <div className="yd-school-banner-identity">
+      {brand.logo && <img className="yd-school-identity-logo" src={brand.logo} alt="Logo de l'établissement"/>}
+      <span><strong>{brand.name}</strong>{brand.city && <small>{brand.city}</small>}</span>
+    </div>
+  </div>;
+}
+
 export function PageHeader({ title, subtitle, badge, badgeIcon, actions, banner = true }) {
   const brand = React.useContext(BrandContext);
   const namedSchool = Boolean(brand?.name);
-  return <div className={`yd-hero ${banner ? "" : "nobanner"}`}>
+  const showBanner = banner && !brand?.fixedHeader;
+  return <div className={`yd-hero ${showBanner ? "" : "nobanner"}`}>
     <div className="yd-hero-text"><div className="yd-hero-row"><h1>{title}</h1>{badge && <span className="yd-page-badge">{badgeIcon && <Icon name={badgeIcon} size={20}/>}{badge}</span>}</div><p>{subtitle}</p></div>
     {actions && <div className="yd-hero-actions">{actions}</div>}
-    {banner && <div className={`yd-school-banner ${namedSchool ? "school-identified" : ""}`}
+    {showBanner && <div className={`yd-school-banner ${namedSchool ? "school-identified" : ""}`}
       aria-label={namedSchool ? "Identité de l'établissement" : undefined}
       aria-hidden={namedSchool ? undefined : "true"}>
       {brand?.banner && <img src={brand.banner} alt=""/>}
@@ -217,9 +230,40 @@ export const NAV = [
   ["settings", "settings", "Paramètres"],
 ];
 
+export function CompactSchoolSearch({nav, onNavigate}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const trigger = useRef(null);
+  const panel = useRef(null);
+  const searchId = useId();
+  const normalized = value => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const matches = nav.filter(([, , label]) => normalized(label).includes(normalized(query.trim())));
+  function close() { setOpen(false); setQuery(""); trigger.current?.focus(); }
+  React.useEffect(() => {
+    if (!open) return;
+    const outside = event => { if (!panel.current?.contains(event.target)) setOpen(false); };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [open]);
+  return <div className="yd-compact-search" ref={panel} onKeyDown={event => {
+    if (event.key === "Escape" && open) { event.stopPropagation(); close(); }
+  }}>
+    <button ref={trigger} type="button" className="yd-search-trigger" aria-label="Rechercher dans les modules"
+      aria-expanded={open} aria-controls={searchId} onClick={() => {setOpen(v=>!v);setQuery("");}}>
+      <Icon name="search" size={23}/>
+    </button>
+    {open && <div id={searchId} className="yd-compact-search-panel">
+      <label className="yd-search"><Icon name="search" size={18}/><input autoFocus aria-label="Rechercher un module" placeholder="Élèves, paiements, familles…" value={query} onChange={e=>setQuery(e.target.value)}/></label>
+      <div className="yd-compact-search-results">{matches.map(([id, icon, label])=><button key={id} type="button" onClick={()=>{close();onNavigate?.(id);}}><Icon name={icon} size={18}/>{label}</button>)}
+        {!matches.length && <p>Aucun module correspondant.</p>}</div>
+    </div>}
+  </div>;
+}
+
 /* Cadre commun : barre supérieure + menu latéral + zone de contenu. */
 export function Shell({ schoolSelector, search, userName = "Mme la Directrice", userMenu, notifications = 0, onNotifications, nav = NAV, active, onNavigate, children, className = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const fixedBrand = Boolean(React.useContext(BrandContext)?.fixedHeader);
   const navId = useId();
   const menuButton = useRef(null);
   function closeMenu(event) {
@@ -227,12 +271,13 @@ export function Shell({ schoolSelector, search, userName = "Mme la Directrice", 
     setMenuOpen(false);
     menuButton.current.focus();
   }
-  return <div className={`yd-app ${className}`} onKeyDown={closeMenu}>
+  return <div className={`yd-app ${fixedBrand ? "yd-school-fixed" : ""} ${className}`} onKeyDown={closeMenu}>
     <header className="yd-topbar">
       <YemLogo/>
       <div className="yd-topbar-sep"/>
       {schoolSelector}
-      {search || <SearchBox placeholder="Rechercher un élève, une famille, un paiement..." className="yd-global-search"/>}
+      {fixedBrand ? <><SchoolHeaderBanner/>{search || <CompactSchoolSearch nav={nav} onNavigate={onNavigate}/>}</> :
+        (search || <SearchBox placeholder="Rechercher un élève, une famille, un paiement..." className="yd-global-search"/> )}
       {onNotifications?<button type="button" className="yd-bell" aria-label={notifications ? `${notifications} notifications, ouvrir` : "Ouvrir les notifications"}
         onClick={onNotifications}><Icon name="bell" size={26} strokeWidth={1.6}/>{notifications ? <i>{notifications}</i> : null}</button>:
         <div className="yd-bell" aria-label="Notifications"><Icon name="bell" size={26} strokeWidth={1.6}/></div>}
