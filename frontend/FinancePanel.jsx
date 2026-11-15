@@ -335,6 +335,8 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
       setMessage("Encaissement n° "+payment.id.slice(0,8)+" enregistré. Le reçu PDF est disponible.");
     });}}>
       <p>Solde du frais : <strong>{current.balance} {current.currency}</strong></p>
+      {current.payment_blocked_by && Number(current.balance) > 0 &&
+        <p role="status">Réglez d’abord le solde de {current.payment_blocked_by}.</p>}
       <div className="two">
         <label className="field">Montant encaissé
           <input required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" value={payAmount} onChange={e=>setPayAmount(e.target.value)} />
@@ -354,7 +356,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
           <input required type="date" value={payDate} onChange={e=>setPayDate(e.target.value)} />
         </label>
       </div>
-      <button type="submit" disabled={busy||!payAmount||!payDate||current.balance==="0.00"}>Enregistrer le paiement constaté</button>
+      <button type="submit" disabled={busy||!payAmount||!payDate||Number(current.balance)<=0||!!current.payment_blocked_by}>Enregistrer le paiement constaté</button>
     </form>}
     {current&&<>
       <h3>Historique des encaissements</h3>

@@ -22,6 +22,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from accounts.views import authorized
 
 from .finance_document_pdf import previewable_pdf
+from .finance_payment_order import payment_order_error
 from .finance_models import FeeCharge, FeePayment, FeePaymentBatch
 from .finance_views import (
     CODE_PATTERN, MAX_MONEY, gate, iso_day, model_error, money,
@@ -132,6 +133,10 @@ def create_batch(request, school_id):
             for charge in charges:
                 if cleared_total(charge) + entries[charge.pk] > charge.amount - charge.scholarship_discount:
                     return JsonResponse({"error": "Solde insuffisant pour " + charge.label}, status=422)
+
+            order_error = payment_order_error(charges, entries)
+            if order_error:
+                return JsonResponse({"error": order_error}, status=409)
 
             batch = FeePaymentBatch(
                 school=school, enrollment_id=enrollment_id, idempotency_key=idem,

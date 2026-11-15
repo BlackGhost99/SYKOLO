@@ -2,7 +2,6 @@
 import re
 from calendar import monthrange
 from datetime import date
-from unicodedata import normalize
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from html import escape
@@ -26,6 +25,7 @@ from .academic_models import AcademicYear, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid
 from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
 from .finance_evidence import classify_payment
+from .finance_payment_order import monthly_blockers, monthly_charge, payment_order_error, tuition_like
 from .models import School
 from .student_models import Enrollment
 from .services import has_permission, can_configure_tariffs, platform_tariff_intervention
@@ -118,6 +118,7 @@ def charge_data(row):
         "id": str(row.pk), "enrollment": str(row.enrollment_id),
         "schedule": str(row.schedule_id),
         "label": row.label, "amount": str(row.amount),
+        "monthly": monthly_charge(row),
         "scholarship_discount": str(row.scholarship_discount),
         "net_amount": str((row.amount - row.scholarship_discount).quantize(Decimal("0.01"))),
         "currency": row.currency,
@@ -261,11 +262,6 @@ def monthly_dates(first, last, day):
     return result
 
 
-def tuition_like(row):
-    text = normalize("NFKD", row.code + " " + row.label).encode("ascii", "ignore").decode().lower()
-    return any(word in text for word in ("scolarite", "mensualite", "tuition"))
-
-
 @require_POST
 @authorized
 def generate_monthly_schedules(request, school_id):
@@ -317,7 +313,7 @@ def generate_monthly_schedules(request, school_id):
                 school=school, year=year,
             ).filter(Q(classroom__isnull=True) | Q(classroom_id__in=selected)))
             by_key = {(row.classroom_id, row.code): row for row in existing}
-            other_tuition = [row for row in existing if tuition_like(row) and row.code not in codes and row.active]
+            other_tuition = [row for row in existing if tuition_like(row.code, row.label) and row.code not in codes and row.active]
             if any(row.due_date is None or any(
                 (row.due_date.year, row.due_date.month) == (day.year, day.month) for day in dates
             ) for row in other_tuition):
@@ -404,7 +400,12 @@ def charges(request, school_id):
             if key is None:
                 return JsonResponse({"error": "Inscription invalide."}, status=422)
             query = query.filter(enrollment_id=key)
-        return JsonResponse({"charges": [charge_data(row) for row in query.order_by("created_at")[:500]]})
+        rows = list(query.order_by("created_at", "pk")[:500])
+        items = {row.pk: charge_data(row) for row in rows}
+        blockers = monthly_blockers(rows, lambda row: Decimal(items[row.pk]["balance"]))
+        for pk, item in items.items():
+            item["payment_blocked_by"] = blockers.get(pk)
+        return JsonResponse({"charges": list(items.values())})
     data, error = parse_body(request)
     if error is not None:
         return error
@@ -491,10 +492,8 @@ def payments(request, school_id):
         return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
-            if method in CASH_METHODS:
-                # Lock order matches the cash-closing endpoint, avoiding a race
-                # between a cashier's last payment and the end-of-day snapshot.
-                School.objects.select_for_update().get(pk=school.pk)
+            # Serialize with grouped payments, provider credits and reversals.
+            School.objects.select_for_update().get(pk=school.pk)
             charge = FeeCharge.objects.select_for_update().filter(school=school, pk=charge_id).first()
             if charge is None:
                 return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
@@ -514,6 +513,9 @@ def payments(request, school_id):
                 return JsonResponse({"error": "Caisse du jour déjà déclarée par ce caissier."}, status=409)
             if cleared_total(charge) + amount > charge.amount - charge.scholarship_discount:
                 return JsonResponse({"error": "Montant supérieur au solde restant dû."}, status=422)
+            order_error = payment_order_error([charge], {charge.pk: amount})
+            if order_error:
+                return JsonResponse({"error": order_error}, status=409)
             row = FeePayment(
                 school=school, charge=charge, idempotency_key=idem,
                 amount=amount, currency=charge.currency, method=method,
