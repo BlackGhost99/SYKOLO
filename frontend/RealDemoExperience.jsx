@@ -56,7 +56,7 @@ export default function RealDemoExperience(){
     if(!href||href.startsWith("#/"))return;
     event.preventDefault();
     if(event.type!=="click")return;
-    if(href.startsWith("/api/v1/")&&/\/(pdf|receipt)$/.test(href)){
+    if(href.startsWith("/api/v1/")&&/\/(pdf|receipt|invoice)$/.test(href.split("?")[0])){
       const result=await backend.fetch(href);
       const document=await result.json();
       if(result.ok&&document.lines){

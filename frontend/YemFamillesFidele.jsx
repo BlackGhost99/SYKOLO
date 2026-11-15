@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from "react";
+import FinancialDocuments from "./FinancialDocuments.jsx";
 import ParentDiscovery from "./ParentDiscovery.jsx";
 import PWAInstall from "./PWAInstall.jsx";
 import SingPayPayment from "./SingPayPayment.jsx";
@@ -239,7 +240,7 @@ function Home({m}) {
  </>;
 }
 function Payments({m}) {
- const {financial,charges,billed,paid,due,currentYearLabel,data,api,activeCharge,setActiveCharge,goDiscovery,child,enrollment}=m;
+ const {financial,charges,billed,paid,due,currentYearLabel,data,api,activeCharge,setActiveCharge,goDiscovery,child,childBase,enrollment}=m;
  const [method,setMethod]=useState("airtel");
  const pending=charges.filter(c=>balance(c)>0);
  function payNow(){if(!pending.length)return;setActiveCharge(prev=>prev||pending[0].id);
@@ -292,9 +293,11 @@ function Payments({m}) {
    <Icon name="check" size={21}/><div><strong>{c.label}</strong><small>Montant comptabilisé par l'établissement</small></div>
    <strong>{money(c.paid)}</strong></div>):
    <Empty>Aucun encaissement confirmé pour l’année sélectionnée.</Empty>}
-   <p className="yfx-small-note">Les reçus et références certifiés sont disponibles pour les paiements confirmés par le prestataire ou dans les demandes d'admission.</p>
  </Section>
- </>}</>;
+ </>}
+ {child && <Section title="Factures et reçus scolaires" icon="receipt">
+  <FinancialDocuments key={childBase} api={api} path={childBase + "/finance/documents"}/>
+ </Section>}</>;
 }
 function SchoolResult({m}) {
  const {reportMean,gradeRows,reportRows,goSchool,childBase}=m;

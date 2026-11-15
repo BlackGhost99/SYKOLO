@@ -1113,6 +1113,24 @@ export function createOfflineDemoBackend(){
         payment.amount+" XAF",payment.method+" / "+(payment.paid_on||payment.recorded_at.slice(0,10)),
         payment.voided?"Paiement annulé : "+payment.void_reason:"Paiement fictif enregistré"]};
     }
+    const financeDocuments=schoolRoute.match(/^finance\/enrollments\/([^/]+)\/documents$/);
+    if(financeDocuments){
+      const student=data.students.find(row=>row.school===id&&"en-"+row.id===financeDocuments[1]);
+      if(!student)throw Error("Inscription fictive introuvable.");
+      const root=`/api/v1/schools/${id}/finance`;
+      const invoices=chargesFor(id,student.year).filter(row=>row.enrollment===financeDocuments[1])
+        .map(row=>({...row,url:`${root}/charges/${row.id}/invoice`}));
+      const grouped_receipts=payments.filter(row=>row.school===id&&row.enrollment===financeDocuments[1])
+        .map(row=>({...row,date:row.paid_on,url:`${root}/payments/${row.id}/receipt`}));
+      return {invoices,receipts:[],grouped_receipts};
+    }
+    const invoice=schoolRoute.match(/^finance\/charges\/([^/]+)\/invoice$/);
+    if(invoice){
+      const row=data.invoices.find(item=>item.school===id&&item.id===invoice[1]);
+      if(!row)throw Error("Facture fictive introuvable.");
+      return {filename:"facture-demo.pdf",lines:["Facture scolaire - DEMONSTRATION",school.name,
+        row.label, row.total+" "+(row.currency||"XAF")]};
+    }
     const financeStatement=path.match(/^schools\/[^/]+\/finance\/enrollments\/([^/]+)\/statement$/);
     if(financeStatement){
       const list=chargesFor(id,yr).filter(f=>f.enrollment===financeStatement[1]);
@@ -1201,6 +1219,9 @@ export function createOfflineDemoBackend(){
         date:"2026-11-04",period:"1er trimestre",score:child.average,scale_kind:"numeric",scale_max:20,weight:1}]:[]};
       if(kind==="attendance")return {attendance:[{id:"att-demo",date:"2026-11-04",slot:"Matin",status:"Retard",group:"late",justified:false}],
         totals:{absent:0,late:1,present:0},conduct:conduct.filter(row=>row.enrollment==="en-"+child?.id&&!row.withdrawn)};
+      if(kind==="finance"&&path.endsWith("/finance/documents")&&child){
+        return fixtureFor(`schools/${child.school}/finance/enrollments/en-${child.id}/documents`,search,"GET",{});
+      }
       if(kind==="finance"){
         const charges=child?chargesFor(child.school,yr).filter(charge=>charge.enrollment==="en-"+child.id):[];
         return {totals:{XAF:charges.reduce((total,charge)=>({

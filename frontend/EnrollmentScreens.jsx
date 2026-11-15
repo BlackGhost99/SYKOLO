@@ -1,3 +1,4 @@
+import FinancialDocuments, {PdfLinks} from "./FinancialDocuments.jsx";
 import React, { useEffect, useMemo, useState } from "react";
 import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Check, Donut, PageHeader } from "./yem-ui.jsx";
 
@@ -187,6 +188,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
   const [target, setTarget] = useState("");
   const [assignmentMode, setAssignmentMode] = useState("manual");
   const [assignmentReason, setAssignmentReason] = useState("");
+  const [documentEnrollment, setDocumentEnrollment] = useState("");
   const [showAssignmentHistory, setShowAssignmentHistory] = useState(false);
   const [showClassAssignment, setShowClassAssignment] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -204,6 +206,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
   const s = d?.student, form = d?.form;
   const curYear = classes.data?.year;
   const current = curYear ? d?.enrollments.find(e => e.year === curYear.id) : d?.enrollments[0];
+  const documentsFor = d?.enrollments.find(row => row.id === documentEnrollment) || current || d?.enrollments[0];
   const enrolledThisYear = d?.enrollments.some(e => e.year === curYear?.id);
   const assignment = useLoad(canManage && current ? `schools/${schoolId}/enrollments/${current.id}/assignment` : "");
   const history = useLoad(canManage && current && showAssignmentHistory
@@ -388,6 +391,14 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
             </>}
           </div>}
         </Card>
+        {d.finance_visible && documentsFor && <Card title="Factures et reçus" icon="file">
+          <label>Inscription <select value={documentsFor.id}
+            onChange={event => setDocumentEnrollment(event.target.value)}>
+            {d.enrollments.map(item => <option key={item.id} value={item.id}>{item.year_name} · {item.classroom_name}</option>)}
+          </select></label>
+          <FinancialDocuments key={schoolId + "/" + (documentsFor.id)} api={req}
+            path={`schools/${schoolId}/finance/enrollments/${documentsFor.id}/documents`}/>
+        </Card>}
         {d.finance_visible && <Card title="Paiements" icon="wallet" subtitle={current ? `${current.classroom_name} · ${current.year_name}` : ""}>
           {!f ? <Empty>Aucune inscription, donc aucun frais.</Empty> : <>
             <div className="yd-info-list">
@@ -401,7 +412,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
               <Table className="xs" headers={["Frais", "Échéance", "Montant", "Payé", "Reste"]} rows={f.charges.map(c => [c.label, fmtDate(c.due_date), money(c.amount, c.currency), money(c.paid, c.currency), <b>{money(c.balance, c.currency)}</b>])}/>}
             <h3 className="yf-sub">Historique des paiements</h3>
             {f.payments.length === 0 ? <Empty>Aucun paiement enregistré.</Empty> :
-              <Table className="xs" headers={["Date", "Frais", "Montant", "Moyen", "Reçu"]} rows={f.payments.map(p => [fmtDate(p.paid_on), p.label, p.voided ? <s>{money(p.amount, p.currency)}</s> : money(p.amount, p.currency), <>{methodLabel(p.method)}{p.reference && <small className="yf-ref"> · {p.reference}</small>}</>, p.voided ? <Status tone="gray">Annulé</Status> : <a className="yd-link" href={`/api/v1/schools/${schoolId}/finance/payments/${p.id}/receipt`} target="_blank" rel="noreferrer">R-{p.id.slice(0, 8).toUpperCase()}</a>])}/>}
+              <Table className="xs" headers={["Date", "Frais", "Montant", "Moyen", "Reçu"]} rows={f.payments.map(p => [fmtDate(p.paid_on), p.label, p.voided ? <s>{money(p.amount, p.currency)}</s> : money(p.amount, p.currency), <>{methodLabel(p.method)}{p.reference && <small className="yf-ref"> · {p.reference}</small>}</>, p.voided ? <Status tone="gray">Annulé</Status> : <PdfLinks url={`/api/v1/schools/${schoolId}/finance/payments/${p.id}/receipt`} label={`Reçu ${p.id.slice(0, 8).toUpperCase()}`}/>])}/>}
           </>}
         </Card>}
       </div>

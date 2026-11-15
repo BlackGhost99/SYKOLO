@@ -168,6 +168,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/finance/payments/<uuid:payment_id>/void", finance_views.void_payment),
     path("schools/<uuid:school_id>/finance/payments/<uuid:payment_id>/receipt", finance_views.receipt),
     path("schools/<uuid:school_id>/finance/enrollments/<uuid:enrollment_id>/statement", finance_views.statement),
+    path("schools/<uuid:school_id>/finance/enrollments/<uuid:enrollment_id>/documents", finance_parent_documents.staff_documents),
     path("schools/<uuid:school_id>/council-choices", council_views.council_choices),
     path("schools/<uuid:school_id>/councils", council_views.councils),
     path("schools/<uuid:school_id>/councils/<uuid:council_id>", council_views.council_detail),

@@ -5,6 +5,7 @@ Images are read from the school's already validated private branding record.
 """
 import re
 from decimal import Decimal
+from functools import wraps
 from html import escape
 from io import BytesIO
 from pathlib import Path
@@ -31,6 +32,18 @@ MUTED = colors.HexColor("#64748B")
 BORDER = colors.HexColor("#DCE3E8")
 PAPER = colors.HexColor("#F4F7F8")
 ZERO = Decimal("0.00")
+
+
+def previewable_pdf(view):
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        response = view(request, *args, **kwargs)
+        disposition = response.get("Content-Disposition", "")
+        if request.GET.get("preview") == "1" and disposition.startswith("attachment;"):
+            response["Content-Disposition"] = "inline" + disposition[len("attachment"):]
+        return response
+
+    return wrapped
 
 
 def payment_evidence(method, charge_label):

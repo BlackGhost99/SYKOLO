@@ -1,3 +1,4 @@
+import {PdfLinks} from "./FinancialDocuments.jsx";
 import React, {useEffect, useMemo, useRef, useState} from "react";
 import "./parent-discovery.css";
 import SingPayPayment from "./SingPayPayment.jsx";
@@ -290,9 +291,9 @@ export default function ParentDiscovery({embedded=false, activeSection}) {
             tarif_non_configure:"Aucune exonération : l'établissement doit définir les frais d'admission pour cette année et ce niveau.",
             aucun_paiement_exige:"L'établissement ne demande pas de frais d'admission pour ce dossier.",
           })[a.payment_status]||"Règlement à vérifier auprès de l'école."}</p>
-          {a.cash_receipt_url&&<a href={a.cash_receipt_url} target="_blank" rel="noreferrer">
-            {a.is_demo_cash?"Télécharger le document de simulation PDF":"Télécharger mon reçu de paiement PDF"}
-          </a>}
+          {a.cash_receipt_url&&<p>{a.is_demo_cash?"Document de simulation PDF":"Reçu de paiement PDF"} ·{" "}
+            <PdfLinks url={a.cash_receipt_url} label={a.is_demo_cash?"Document de simulation":"Reçu de paiement"}/>
+          </p>}
         </div>}
         <ParentAdmissionDocuments application={a} api={api}/>
         {a.payment_choice==="online"&&a.admission_due_xaf>0&&<SingPayPayment kind="admission" objectId={a.id} api={api}/>}

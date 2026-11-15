@@ -1,6 +1,7 @@
 """Regression coverage for consolidated school receipts and transaction rollback."""
 import json
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
@@ -378,6 +379,40 @@ class MultiFeeReceiptTests(TestCase):
             self.base + "charges/" + str(uuid.uuid4()) + "/invoice"
         ).status_code, 404)
 
+    def test_historical_documents_can_be_opened_and_downloaded_without_writes(self):
+        unit = FeePayment.objects.create(
+            school=self.school, charge=self.charges[0], amount=Decimal("5000.00"),
+            currency="XAF", method="cash", paid_on=timezone.localdate() - timedelta(days=31),
+            recorded_by=self.cashier, idempotency_key=uuid.uuid4(),
+        )
+        payload = self.payload()
+        payload["paid_on"] = (timezone.localdate() - timedelta(days=30)).isoformat()
+        batch_response = self.send(payload)
+        self.assertEqual(batch_response.status_code, 201, batch_response.content)
+        batch_id = batch_response.json()["id"]
+        listing_url = self.base + f"enrollments/{self.enrollment.pk}/documents"
+        before = list(FeePayment.objects.order_by("pk").values())
+        listing = self.client.get(listing_url)
+        self.assertEqual(listing.status_code, 200, listing.content)
+        documents = listing.json()
+        self.assertEqual([r["id"] for r in documents["receipts"]], [str(unit.pk)])
+        self.assertEqual([r["id"] for r in documents["grouped_receipts"]], [batch_id])
+        self.assertEqual(len(documents["invoices"]), 3)
+        for group in documents.values():
+            for document in group:
+                for query, mode in (("?preview=1", "inline"), ("", "attachment")):
+                    with self.subTest(url=document["url"], mode=mode):
+                        response = self.client.get(document["url"] + query)
+                        self.assertEqual(response.status_code, 200, response.content[:200])
+                        self.assertEqual(response["Content-Type"], "application/pdf")
+                        self.assertTrue(response["Content-Disposition"].startswith(mode + ";"))
+                        self.assertEqual(response["Cache-Control"], "private, no-store")
+                        self.assertTrue(response.content.startswith(b"%PDF-"))
+                        self.assertTrue(response.content.rstrip().endswith(b"%%EOF"))
+        self.assertEqual(list(FeePayment.objects.order_by("pk").values()), before)
+        self.login(self.teacher)
+        self.assertEqual(self.client.get(listing_url).status_code, 403)
+
     def test_pdf_receipt_and_invoice_names_and_amounts(self):
         from .finance_document_pdf import amount_in_words, _amount
         self.assertEqual(_amount("30000.00", "XAF"), "30 000 FCFA")
@@ -423,6 +458,11 @@ class MultiFeeReceiptTests(TestCase):
             r = self.client.get(url)
             self.assertEqual(r.status_code, 200, r.content[:300])
             self.assertTrue(r.content.startswith(b"%PDF-"))
+            self.assertTrue(r["Content-Disposition"].startswith("attachment;"))
+            preview = self.client.get(url + "?preview=1")
+            self.assertEqual(preview.status_code, 200)
+            self.assertTrue(preview.content.startswith(b"%PDF-"))
+            self.assertTrue(preview["Content-Disposition"].startswith("inline;"))
         self.login(outsider)
         self.assertEqual(self.client.get(root).status_code, 404)
         self.assertEqual(self.client.get(

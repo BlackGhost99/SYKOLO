@@ -21,6 +21,8 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from accounts.views import authorized
 
+from .finance_document_pdf import previewable_pdf
+
 from .admission_models import AdmissionEvent, AdmissionApplication
 from .admission_scholarship_amounts import admission_due, admission_gross
 from .admission_finance import current_scholarship, full_admission_waiver, GovernmentScholarship
@@ -322,6 +324,7 @@ def render_receipt(cash):
 @never_cache
 @require_GET
 @authorized
+@previewable_pdf
 def parent_receipt(request, application_id):
     cash = AdmissionCashReceipt.objects.select_related(
         "school", "request__application__year", "request__application__classroom",
@@ -334,6 +337,7 @@ def parent_receipt(request, application_id):
 @never_cache
 @require_GET
 @authorized
+@previewable_pdf
 def staff_receipt(request, school_id, application_id):
     school, error = access(request, school_id)
     if error is not None:
