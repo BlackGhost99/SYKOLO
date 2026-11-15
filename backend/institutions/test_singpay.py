@@ -190,6 +190,15 @@ class SingPayTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertFalse(response.json()["enabled"])
         self.assertNotIn("fake-secret", response.content.decode())
+        with patch("institutions.singpay_service._request", return_value={"id": self.merchant.wallet_id, "merchant_msisdn": "private"}) as provider:
+            checked = self.write(path + "/verify", {})
+        self.assertEqual(checked.status_code, 200, checked.content)
+        self.assertEqual(checked.json(), {"verified": True, "revision": 2})
+        self.assertEqual(provider.call_args.args[1:], ("GET", f"/portefeuille/api/{self.merchant.wallet_id}"))
+        self.assertEqual(provider.call_args.kwargs, {"include_wallet_header": False})
+        with patch("institutions.singpay_service._request", return_value={"id": "other-wallet"}):
+            self.assertEqual(self.write(path + "/verify", {}).status_code, 502)
+        self.assertFalse(SingPayIntent.objects.exists())
 
     def test_changed_merchant_cannot_reconcile_old_payment(self):
         self.start();intent=SingPayIntent.objects.get()
