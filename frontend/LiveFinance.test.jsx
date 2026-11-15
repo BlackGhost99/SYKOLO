@@ -3,7 +3,7 @@ import React from "react";
 import {afterEach,expect,test,vi} from "vitest";
 import {cleanup,render,screen,waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {LivePayments,fmtMoney} from "./LiveScreens.jsx";
+import {LiveArrears,LivePayments,fmtMoney} from "./LiveScreens.jsx";
 vi.mock("./CashClosingPanel.jsx",()=>({default:()=>null}));
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 test("cashier selection never adds EUR and XAF balances",async()=>{
@@ -60,3 +60,25 @@ test.each([["50000","50000.00"],["10000","10000.00"]])(
     expect((await screen.findByRole("link",{name:/Télécharger le reçu groupé/})).getAttribute("href")).toBe("/recu");
   },
 );
+
+test("WhatsApp prepares a reminder for the selected family alongside the YEM action", async () => {
+  const report = {
+    currency:"XAF", outstanding:"1350000", overdue_total:"300000", families_late:2,
+    month:{total:"0", previous:"0"}, arrears_by_class:[],
+    arrears:[
+      {enrollment:"e1", student:"Élève A", guardian:"Responsable A", phone:"077 12 34 56", amount_due:"300000", due_date:"2026-10-05"},
+      {enrollment:"e2", student:"Élève B", phone:"", amount_due:"150000"},
+    ],
+  };
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json(report)));
+  render(<LiveArrears schoolId="school" canRemind/>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", {name:"Élève A"}));
+  const url = new URL(screen.getByRole("link", {name:"Préparer la relance WhatsApp"}).href);
+  expect(url.origin + url.pathname).toBe("https://wa.me/24177123456");
+  expect(url.searchParams.get("text")).toContain("300 000 FCFA");
+  expect(url.searchParams.get("text")).toContain("plus ancienne échéance");
+  expect(screen.getByRole("button", {name:"Envoyer la relance dans YEM"}).disabled).toBe(false);
+  await user.click(screen.getByRole("button", {name:"Élève B"}));
+  expect(screen.getByRole("button", {name:"Préparer la relance WhatsApp"}).disabled).toBe(true);
+});
