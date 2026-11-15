@@ -1,0 +1,77 @@
+/* Scoped to the authenticated school workspace. Preview and official brand remain unchanged. */
+.yd-operational-compact .yd-topbar {gap:8px;padding-inline:20px;}
+.yd-operational-compact .yd-topbar-sep {margin-inline:6px;}
+.yd-operational-compact .yd-topbar-sep.small {margin-inline:6px;}
+.yd-operational-compact .yd-school-select-wrap {flex:0 1 285px;min-width:200px;}
+.yd-operational-compact .yd-school-select {height:36px;padding:0 9px;gap:8px;}
+.yd-operational-compact .yd-school-select select {font-size:15px;}
+.yd-operational-compact .yd-topbar .yd-bell {margin-left:0;flex:0 0 40px;}
+.yd-operational-compact .yd-fixed-banner {height:76px;position:relative;isolation:isolate;flex:1 1 0;min-width:0;overflow:hidden;border-radius:9px;background:linear-gradient(120deg,#e5eee2,#d0e1d1);color:var(--yd-green-dark);}
+.yd-fixed-banner-spacer {flex:1 1 0;}
+.yd-operational-compact .yd-fixed-banner.has-image {background:var(--yd-green-dark);color:white;}
+.yd-fixed-banner-art {position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;z-index:-2;}
+.yd-fixed-banner.has-image::after {content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 45%,rgba(12,29,17,.18) 64%,rgba(12,29,17,.8) 100%);z-index:-1;}
+.yd-fixed-banner-mark {position:absolute;right:14px;top:0;bottom:0;display:flex;align-items:center;gap:10px;max-width:45%;}
+.yd-fixed-banner:not(.has-image) .yd-fixed-banner-mark {right:14px;max-width:calc(100% - 28px);}
+.yd-fixed-banner-mark img {height:60px;width:60px;object-fit:contain;flex:0 0 60px;background:transparent;border:0;border-radius:0;padding:0;}
+.yd-fixed-banner-mark span {min-width:0;display:grid;gap:3px;border-left:1px solid currentColor;padding-left:10px;}
+.yd-fixed-banner-mark strong {font-size:15px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.yd-fixed-banner-mark small {font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.yd-header-search {position:relative;flex:0 0 auto;}
+.yd-header-search-toggle {width:42px;height:42px;border:1px solid var(--yd-line);border-radius:7px;background:#fff;color:var(--yd-text);display:grid;place-items:center;cursor:pointer;}
+.yd-header-search-panel {position:absolute;top:calc(100% + 10px);right:0;width:min(360px,calc(100vw - 24px));padding:14px;background:white;border:1px solid var(--yd-line);border-radius:10px;box-shadow:0 10px 36px #152f2026;z-index:40;}
+.yd-header-search-panel form {display:grid;gap:8px;margin-bottom:8px;}
+.yd-header-search-panel input {width:100%;min-width:0;box-sizing:border-box;padding:9px;border:1px solid var(--yd-line);border-radius:6px;}
+.yd-search-results {max-height:min(320px,50vh);overflow-y:auto;display:grid;gap:4px;}
+.yd-search-result {width:100%;min-height:40px;display:flex;align-items:center;gap:8px;border:0;background:transparent;color:var(--yd-text);text-align:left;padding:8px;border-radius:6px;cursor:pointer;overflow-wrap:anywhere;}
+.yd-search-result:hover,.yd-header-search-toggle:hover {background:var(--yd-green-softer);}
+.yd-header-search button:focus-visible,.yd-dashboard-shortcuts button:focus-visible {outline:2px solid var(--yd-green);outline-offset:2px;}
+.yd-operational-compact .yd-content {padding-top:14px;}
+.yd-operational-compact .yd-school-code-compact {margin-bottom:10px;padding:12px 16px;}
+.yd-school-code-compact .yd-card-title {margin-bottom:6px;}
+.yd-school-code-row {display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;}
+.yd-school-code-row .field {flex:1 1 230px;min-width:0;margin:0;}
+.yd-school-code-row .field input {width:100%;min-width:0;}
+.yd-school-code-row button {margin:0;flex:0 0 auto;}
+.yd-dashboard-toolbar {display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;}
+.yd-dashboard-toolbar .yd-view-filters {flex:0 1 360px;margin:0;display:flex;gap:8px;align-items:stretch;}
+.yd-dashboard-toolbar .yd-view-filters label {display:grid;gap:4px;flex:1 1 140px;font-size:12px;}
+.yd-dashboard-toolbar .yd-view-filters select {width:100%;min-width:0;min-height:34px;font-size:13px;}
+.yd-dashboard-shortcuts {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:8px;flex:1 1 580px;min-width:0;}
+.yd-dashboard-shortcuts button {display:flex;align-items:center;gap:8px;min-width:0;min-height:60px;padding:8px 9px;text-align:left;border:1px solid var(--yd-line);border-radius:9px;background:linear-gradient(#fff,var(--yd-green-softer));box-shadow:var(--yd-shadow);cursor:pointer;color:var(--yd-ink);}
+.yd-dashboard-shortcuts button:hover {border-color:var(--yd-green);}
+.yd-dashboard-shortcuts button>.yd-icon {flex:0 0 auto;color:var(--yd-green);}
+.yd-dashboard-shortcuts span {display:grid;gap:3px;min-width:0;}
+.yd-dashboard-shortcuts strong {font-size:13px;line-height:1.2;overflow-wrap:anywhere;}
+.yd-dashboard-shortcuts small {font-size:11px;line-height:1.25;color:var(--yd-muted);}
+.yd-operational-compact .yd-hero.nobanner {min-height:0;margin-bottom:10px;align-items:center;}
+.yd-operational-compact .yd-hero.nobanner .yd-hero-text {padding:5px 0;}
+.yd-operational-compact .yd-hero.nobanner h1 {margin-bottom:4px;}
+.yd-dashboard-compact .yd-metrics,.yd-dashboard-compact .yd-grid {gap:12px;margin-bottom:12px;}
+.yd-dashboard-compact .yd-metric {min-height:94px;padding:13px 10px 12px 14px;gap:12px;}
+.yd-dashboard-compact .dash-main {align-items:stretch;}
+.yd-dashboard-compact .dash-main .yd-card {min-height:0;padding:14px;}
+@media screen and (min-width:761px) and (max-width:1200px) {
+  .yd-operational-compact .yd-topbar {padding-inline:12px;gap:6px;}
+  .yd-operational-compact .yd-topbar-sep {margin-inline:3px;}
+  .yd-operational-compact .yd-school-select-wrap {min-width:145px;flex-basis:210px;}
+  .yd-fixed-banner-mark {max-width:64%;right:7px;}
+  .yd-fixed-banner-mark img {width:48px;height:48px;flex-basis:48px;}
+  .yd-fixed-banner-mark strong {font-size:13px;}
+}
+@media screen and (max-width:760px) {
+  .yd-operational-compact header.yd-topbar {position:sticky;top:0;z-index:30;display:flex;gap:6px;padding:8px 10px;justify-content:space-between;}
+  .yd-operational-compact .yd-school-select-wrap {order:5;flex:1 1 100%;min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;}
+  .yd-operational-compact .yd-fixed-banner {order:6;flex-basis:100%;height:56px;}
+  .yd-fixed-banner-mark img {width:42px;height:42px;flex-basis:42px;}
+  .yd-fixed-banner-mark {max-width:55%;right:8px;gap:5px;}
+  .yd-fixed-banner-mark strong {font-size:12px;}
+  .yd-fixed-banner-mark small {font-size:10px;}
+  .yd-header-search-panel {position:fixed;top:68px;right:12px;max-height:70vh;overflow:auto;}
+  .yd-operational-compact .yd-school-code-row {display:grid;}
+  .yd-dashboard-toolbar .yd-view-filters,.yd-dashboard-shortcuts {flex-basis:100%;}
+  .yd-dashboard-shortcuts {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .yd-dashboard-shortcuts button {min-height:64px;}
+  .yd-dashboard-shortcuts button>.yd-icon {width:22px;height:22px;}
+}
+@media print { .yd-dashboard-toolbar,.yd-school-code-compact {display:none!important;} }
