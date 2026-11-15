@@ -60,7 +60,7 @@ export default function PedagogicalCalendar({
   const [periodDraft,setPeriodDraft]=useState(null);
   const [eventDraft,setEventDraft]=useState(null);
   const [version,setVersion]=useState(0);
-  const [cycleId,setCycleId]=useState("");
+  const [cycleId,setCycleId]=useState(null);
   const [profileDraft,setProfileDraft]=useState(null);
   const selectedYear=snapshot?.year;
   const canEdit=Boolean(snapshot?.can_edit_year);
@@ -78,7 +78,7 @@ export default function PedagogicalCalendar({
       let events=calendarUrl ? await calendarRequest(calendarUrl) : null;
       const activeCycles=events?.cycles?.filter(c=>c.active)||[];
       const selected=events?.cycles?.find(c=>c.id===cycleId) ||
-        (activeCycles.length===1 ? activeCycles[0] : null);
+        (cycleId!=="" && activeCycles.length===1 ? activeCycles[0] : null);
       if(selected) events=await calendarRequest(calendarUrl+"&cycle="+encodeURIComponent(selected.id));
       if (!alive) return;
       setSnapshot(annual);setCatalog(events);
@@ -254,7 +254,7 @@ export default function PedagogicalCalendar({
         <Card title="Périodes pédagogiques" icon="calendar">
           {!!catalog?.cycles?.length&&<label className="field">Cycle pédagogique
             <select value={selectedCycle?.id||""} onChange={e=>setCycleId(e.target.value)}>
-              {catalog.cycles.filter(c=>c.active).length!==1&&<option value="">Périodes communes historiques</option>}
+              <option value="">Périodes communes historiques</option>
               {catalog.cycles.map(c=><option key={c.id} value={c.id}>{c.name}{c.active?"":" (archivé)"}</option>)}
             </select>
           </label>}

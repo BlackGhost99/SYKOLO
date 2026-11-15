@@ -157,3 +157,27 @@ test("le sélecteur change le calendrier et conserve un profil à zéro palier",
   expect(screen.getByText(/Objectif du profil · 0 paliers/)).toBeTruthy();
   expect(screen.queryByText("Palier primaire")).toBeNull();
 });
+
+
+test("une école mono-cycle garde accès à l’édition des périodes historiques ouvertes",async()=>{
+  const year={id:"annee",name:"Année scolaire",code:"annee",start_date:"2026-09-01",
+    end_date:"2027-07-31",revision:1,active:true,status:"current"};
+  const cycle={id:"primary",code:"primaire",name:"Primaire",active:true};
+  const historical={id:"legacy",name:"Trimestre historique",historical:true,revision:1,
+    active:true,start_date:"2026-09-01",end_date:"2026-12-01"};
+  vi.stubGlobal("fetch",vi.fn(async url=>{
+    const path=String(url);
+    if(!path.includes("pedagogical-calendar")) {
+      return makeResponse({year,years:[year],can_edit_year:true,periods:[],classes:[],stats:{}});
+    }
+    return makeResponse({cycles:[cycle],events:[],kinds:[],scopes:[],periods:[historical],
+      can_manage_periods:true,profile_scope:path.includes("&cycle=")?{cycle:cycle.code,year:year.code}:null,
+    });
+  }));
+  render(<PedagogicalCalendar schoolId="school" workingYearId="annee"/>);
+  const selector=await screen.findByLabelText("Cycle pédagogique");
+  expect(selector.value).toBe("primary");
+  expect(screen.queryByRole("button",{name:"Modifier",exact:true})).toBeNull();
+  await userEvent.setup().selectOptions(selector,"");
+  expect(await screen.findByRole("button",{name:"Modifier",exact:true})).toBeTruthy();
+});
