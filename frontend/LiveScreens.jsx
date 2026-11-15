@@ -363,7 +363,7 @@ export function LiveArrears({ schoolId, schoolName, tabs, workingYearId = "", on
 }
 
 /* ---------- Tableau de bord ---------- */
-export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange }) {
+export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange, shortcuts }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
@@ -376,7 +376,7 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
   const monthTotal = Number(d?.month.total || 0);
   const share = v => monthTotal ? `${Math.round(v / monthTotal * 100)} %` : "0 %";
   return <>
-    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
+    <div className="yd-dashboard-toolbar"><CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>{shortcuts}</div>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName} — ${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`} badge={roleLabel || "Membre"} badgeIcon="crown"/>
     {tabs}
     <Loading state={fin}>{d && <>
