@@ -23,7 +23,7 @@ from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid
 from .finance_cash_policy import cash_closed_for_recorder
 from .models import School
 from .student_models import Enrollment
-from .services import has_permission
+from .services import has_permission, can_configure_tariffs, platform_tariff_intervention
 from .views import access, refuse, parse_body, log_event
 
 
@@ -174,17 +174,28 @@ def schedule_fields(data, updating=False):
     return result
 
 
+def tariff_gate(request, school_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return None, error
+    if request.method == "GET":
+        allowed = has_permission(request.user, school, "school.finance.read") or platform_tariff_intervention(request, school)
+    else:
+        allowed = can_configure_tariffs(request, school)
+    return (school, None) if allowed else (None, refuse())
+
+
 @require_http_methods(["GET", "POST"])
 @authorized
 def schedules(request, school_id):
-    school, error = gate(request, school_id, "school.finance.read" if request.method == "GET" else "school.finance.manage")
+    school, error = tariff_gate(request, school_id)
     if error is not None:
         return error
     if request.method == "GET":
         rows = FeeSchedule.objects.filter(school=school).order_by("year__start_date", "label")[:500]
         result = {"schedules": [schedule_data(row) for row in rows]}
         if request.GET.get("choices") == "1":
-            if not has_permission(request.user, school, "school.finance.manage"):
+            if not can_configure_tariffs(request, school):
                 return refuse()
             years = AcademicYear.objects.filter(school=school, active=True).order_by("-start_date")
             classes = AcademicClass.objects.filter(school=school, year__active=True, active=True).order_by("name", "pk")
@@ -224,7 +235,7 @@ def schedules(request, school_id):
 @require_http_methods(["GET", "PATCH"])
 @authorized
 def schedule_detail(request, school_id, schedule_id):
-    school, error = gate(request, school_id, "school.finance.read" if request.method == "GET" else "school.finance.manage")
+    school, error = tariff_gate(request, school_id)
     if error is not None:
         return error
     if request.method == "GET":

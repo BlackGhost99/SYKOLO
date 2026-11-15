@@ -31,7 +31,7 @@ from .parent_payment_service import (
     gateway_configured, paycentral_request, verified_money, verified_transaction,
     webhook_signature_ok, TRANSACTION_ID,
 )
-from .services import has_permission
+from .services import has_permission, can_configure_tariffs
 from .views import access, log_event, parse_body, refuse
 
 
@@ -154,7 +154,7 @@ def school_admission_fees(request, school_id):
     school, error = access(request, school_id)
     if error is not None:
         return error
-    if not has_permission(request.user, school, "school.finance.manage"):
+    if not can_configure_tariffs(request, school):
         return refuse()
     if request.method == "GET":
         rows = SchoolAdmissionFee.objects.filter(school=school).order_by("year_id", "level_id")

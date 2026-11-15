@@ -51,7 +51,9 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const [message, setMessage] = useState("");
   const [allowed, setAllowed] = useState(true);
   const [permissions, setPermissions] = useState([]);
+  const [tariffIntervention, setTariffIntervention] = useState(false);
   const canManage = permissions.includes("school.finance.manage");
+  const canConfigureTariffs = canManage || (settings && tariffIntervention);
   const canReceive = permissions.includes("school.finance.receive");
   const canReverse = permissions.includes("school.finance.reverse");
   useEffect(()=>{
@@ -64,9 +66,13 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   useEffect(() => {
     let active = true;
     setPermissions([]);
+    setTariffIntervention(false);
     financeApi(root+"my-access").then(access => {
-      if (active) setPermissions(access.permissions || []);
-    }).catch(() => { if (active) setPermissions([]); });
+      if (active) {
+        setPermissions(access.permissions || []);
+        setTariffIntervention(access.platform_tariff_intervention === true);
+      }
+    }).catch(() => { if (active) {setPermissions([]);setTariffIntervention(false);} });
     return () => { active = false; };
   }, [schoolId]);
 
@@ -141,7 +147,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
 
   return <section className="card" aria-label="Frais scolaires et caisse" style={{marginTop:"1rem"}}>
     <h2>{settings ? "Tarifs et échéances" : "Frais scolaires et caisse"}</h2>
-    {canManage && mode !== "daily" && <>
+    {canConfigureTariffs && mode !== "daily" && <>
     <h3>Configurer les frais d'une année</h3>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       await financeApi(finance+"schedules",{

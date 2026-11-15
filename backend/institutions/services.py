@@ -226,6 +226,22 @@ def platform_only(request):
     return bool(request.user.is_superuser and request.session.get("mfa_verified", False))
 
 
+def platform_tariff_intervention(request, school):
+    """Permit tariff configuration only in the explicitly opened MFA school session."""
+    return (
+        platform_only(request)
+        and request.session.get("platform_tariff_school_id") == str(school.pk)
+        and SchoolMember.objects.filter(
+            school=school, user=request.user, active=True,
+            role__school=school, role__code="direction", access_cycle_ids__isnull=True,
+        ).exists()
+    )
+
+
+def can_configure_tariffs(request, school):
+    return has_permission(request.user, school, "school.finance.manage") or platform_tariff_intervention(request, school)
+
+
 def school_access(user, school_id):
     if not user.is_authenticated or not user.is_active:
         return None
