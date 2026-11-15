@@ -56,13 +56,29 @@ def provider_request(merchant, method, path, payload=None):
     return _request(merchant, method, path, payload)
 
 
+class WalletVerificationError(ProviderError):
+    """A fixed, safe explanation for the owner. Provider payloads stay private."""
+
+
 def verify_wallet_access(merchant):
     if not merchant.encrypted_credentials or not IDENTIFIER.fullmatch(merchant.wallet_id):
-        raise ProviderError("Configuration SingPay incomplète.")
-    wallet = _request(merchant, "GET", f"/portefeuille/api/{merchant.wallet_id}",
-                      include_wallet_header=False)
+        raise WalletVerificationError("Enregistrez un Wallet ID et des identifiants API SingPay valides.")
+    if len(settings.YEM_PAYMENT_ENCRYPTION_KEY) < 32:
+        raise WalletVerificationError("La clé de chiffrement des paiements est absente ou invalide sur YEM.")
+    try:
+        wallet = _request(merchant, "GET", f"/portefeuille/api/{merchant.wallet_id}",
+                          include_wallet_header=False)
+    except HTTPError as exc:
+        exc.close()
+        if exc.code in (401, 403):
+            raise WalletVerificationError("SingPay refuse l’accès. Vérifiez la paire Client ID et Client Secret et ses droits sur ce portefeuille.") from None
+        if exc.code == 404:
+            raise WalletVerificationError("SingPay ne trouve pas ce portefeuille pour ces identifiants.") from None
+        raise WalletVerificationError(f"SingPay a répondu avec le code HTTP {exc.code} lors de la consultation.") from None
+    except ProviderError:
+        raise WalletVerificationError("YEM ne peut pas lire les identifiants enregistrés ou obtenir une réponse exploitable de SingPay.") from None
     if (wallet.get("id") or wallet.get("_id")) != merchant.wallet_id:
-        raise ProviderError("Portefeuille SingPay non confirmé.")
+        raise WalletVerificationError("La réponse SingPay ne confirme pas le Wallet ID enregistré.")
 
 
 def _request(merchant, method, path, payload=None, *, include_wallet_header=True):
@@ -88,7 +104,12 @@ def _request(merchant, method, path, payload=None, *, include_wallet_header=True
         if not isinstance(result, dict):
             raise ValueError()
         return result
-    except (HTTPError, URLError, TimeoutError, OSError, ValueError, UnicodeDecodeError):
+    except HTTPError as exc:
+        if not include_wallet_header:
+            raise
+        exc.close()
+        raise ProviderError("Réponse SingPay incertaine : rapprochement requis, aucun nouvel essai automatique.") from None
+    except (URLError, TimeoutError, OSError, ValueError, UnicodeDecodeError):
         # Even a 4xx is not assumed proof of no debit. Never echo provider body.
         raise ProviderError("Réponse SingPay incertaine : rapprochement requis, aucun nouvel essai automatique.") from None
 

@@ -198,6 +198,13 @@ class SingPayTests(TestCase):
         self.assertEqual(provider.call_args.kwargs, {"include_wallet_header": False})
         with patch("institutions.singpay_service._request", return_value={"id": "other-wallet"}):
             self.assertEqual(self.write(path + "/verify", {}).status_code, 502)
+        from urllib.error import HTTPError
+        with patch("institutions.singpay_service._request",
+                   side_effect=HTTPError("https://example.invalid", 401, "provider-private", {}, None)):
+            refused = self.write(path + "/verify", {})
+        self.assertEqual(refused.status_code, 502)
+        self.assertIn("SingPay refuse l’accès", refused.json()["error"])
+        self.assertNotIn("provider-private", refused.content.decode())
         self.assertFalse(SingPayIntent.objects.exists())
 
     def test_changed_merchant_cannot_reconcile_old_payment(self):
