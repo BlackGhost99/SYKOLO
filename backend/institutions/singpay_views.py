@@ -24,7 +24,7 @@ from .parent_views import guardian_links
 from .services import owns_school, has_permission
 from .singpay_models import SingPayMerchant, SingPayIntent, SingPayEvent, SingPaySettlement
 from .singpay_service import (IDENTIFIER, OPEN_STATES, digest, fee_quote, merchant_ready,
-                              normalize_phone, initiate, reconcile)
+                              normalize_phone, initiate, reconcile, verify_wallet_access)
 from .views import access, parse_body, refuse, log_event
 
 
@@ -102,6 +102,30 @@ def merchant_config(request, school_id):
     except ProviderError:
         return fail("Chiffrement indisponible.", 503)
     return JsonResponse(merchant_view(row))
+
+
+@never_cache
+@require_POST
+@authorized
+def merchant_verify(request, school_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return error
+    if not owns_school(request.user, school):
+        return refuse()
+    merchant = SingPayMerchant.objects.filter(school=school).first()
+    if merchant is None:
+        return fail("Enregistrez d'abord le portefeuille SingPay.", 409)
+    try:
+        verify_wallet_access(merchant)
+    except ProviderError:
+        return fail("Accès au portefeuille non confirmé. Vérifiez le portefeuille et les identifiants SingPay.", 502)
+    with transaction.atomic():
+        current = SingPayMerchant.objects.select_for_update().filter(school=school).first()
+        if current is None or current.revision != merchant.revision:
+            return fail("Configuration modifiée pendant la vérification. Réessayez.", 409)
+        log_event(school, request, "singpay_wallet_access_verified", school.pk)
+    return JsonResponse({"verified": True, "revision": merchant.revision})
 
 
 def owned_obligation(user, kind, object_id, lock=False):

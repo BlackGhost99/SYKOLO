@@ -22,7 +22,7 @@ export default function SingPayControl({schoolId, merchantOnly=false}) {
   },[base,merchantOnly]);
   async function run(action) {
     setBusy(true);setMessage("");
-    try{await action();setMessage("Contrôle enregistré.");if(payments!==null)setPayments((await api(base+"/reconciliation")).payments)}
+    try{const result=await action();setMessage(typeof result==="string"?result:"Contrôle enregistré.");if(payments!==null)setPayments((await api(base+"/reconciliation")).payments)}
     catch(error){setMessage(error.message)}finally{setBusy(false)}
   }
   if(!merchant&&payments===null)return merchantOnly?<p role="status">{message||"Chargement du compte SingPay…"}</p>:null;
@@ -51,6 +51,10 @@ export default function SingPayControl({schoolId, merchantOnly=false}) {
         <button type="submit" disabled={busy}>Enregistrer sans activer les paiements</button>
       </form>
     </details>}
+    {merchant?.configured&&<button type="button" disabled={busy} onClick={()=>run(async()=>{
+      await api(base+"/merchant/verify",{});
+      return "SingPay a confirmé l’accès au portefeuille.";
+    })}>Vérifier la connexion à SingPay</button>}
     {payments!==null&&<>
       <h4>Contrôle des paiements et du règlement marchand</h4>
       {!payments.length&&<p>Aucun paiement SingPay enregistré.</p>}

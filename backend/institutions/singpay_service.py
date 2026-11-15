@@ -53,12 +53,32 @@ class NoRedirect(HTTPRedirectHandler):
 def provider_request(merchant, method, path, payload=None):
     if not merchant_ready(merchant):
         raise ProviderError("SingPay indisponible pour cet établissement.")
-    credentials = json.loads(decrypt_secret(merchant.encrypted_credentials))
+    return _request(merchant, method, path, payload)
+
+
+def verify_wallet_access(merchant):
+    if not merchant.encrypted_credentials or not IDENTIFIER.fullmatch(merchant.wallet_id):
+        raise ProviderError("Configuration SingPay incomplète.")
+    wallet = _request(merchant, "GET", f"/portefeuille/api/{merchant.wallet_id}",
+                      include_wallet_header=False)
+    if (wallet.get("id") or wallet.get("_id")) != merchant.wallet_id:
+        raise ProviderError("Portefeuille SingPay non confirmé.")
+
+
+def _request(merchant, method, path, payload=None, *, include_wallet_header=True):
+    try:
+        credentials = json.loads(decrypt_secret(merchant.encrypted_credentials))
+        headers = {"x-client-id": credentials["client_id"], "x-client-secret": credentials["client_secret"],
+                   "Content-Type": "application/json", "Accept": "application/json"}
+        if not all(isinstance(value, str) and value and "\r" not in value and "\n" not in value
+                   for value in headers.values()):
+            raise ValueError()
+    except (ValueError, TypeError, KeyError):
+        raise ProviderError("Identifiants SingPay invalides.") from None
+    if include_wallet_header:
+        headers["x-wallet"] = merchant.wallet_id
     raw = json.dumps(payload).encode() if payload is not None else None
-    req = Request(BASE+path, data=raw, method=method, headers={
-        "x-client-id": credentials["client_id"], "x-client-secret": credentials["client_secret"],
-        "x-wallet": merchant.wallet_id, "Content-Type": "application/json", "Accept": "application/json",
-    })
+    req = Request(BASE+path, data=raw, method=method, headers=headers)
     try:
         with build_opener(NoRedirect()).open(req, timeout=15) as response:
             body = response.read(65537)
