@@ -519,6 +519,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         <div className="yd-real-body"><StaffDirectory key={chosen} schoolId={chosen}
           canReadDossiers={can("school.staff.dossier.read")} initialStaffId={params?.staffId||""}
           canReadPayroll={can("school.payroll.read")} workingYearId={workingYearId}
+          canManagePayroll={can("school.payroll.manage")} canApprovePayroll={can("school.payroll.approve")}
+          canPayPayroll={can("school.payroll.pay")} canReversePayroll={can("school.payroll.reverse")}
           onAdd={allowed("onboarding")?()=>navigate("staff","onboarding"):undefined}
           onAssign={availableSettings.some(group=>group.items.some(item=>item.id==="staff-setup"))
             ?()=>navigate("settings","staff-setup"):undefined}/></div></>,

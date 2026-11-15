@@ -21,11 +21,11 @@ from .views import access, log_event, parse_body, refuse
 
 
 FIELDS = (
-    "qualification", "specialty", "employment_status", "workload",
+    "category", "qualification", "specialty", "employment_status", "workload",
     "professional_email", "professional_phone",
 )
 LIMITS = {
-    "qualification": 180, "specialty": 180, "employment_status": 100,
+    "category": 100, "qualification": 180, "specialty": 180, "employment_status": 100,
     "workload": 100, "professional_email": 254, "professional_phone": 45,
 }
 
