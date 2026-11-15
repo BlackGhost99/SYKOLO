@@ -169,6 +169,28 @@ class SingPayTests(TestCase):
               "contract_reference":"test-contract","mode":"live","enabled":True,"fee_basis_points":250,"fee_fixed_xaf":25}
         self.assertEqual(self.write(path,body).status_code,409)
 
+    def test_school_owner_can_save_merchant_for_own_school_only(self):
+        from .models import SchoolMember, SchoolRole
+        role, _ = SchoolRole.objects.get_or_create(
+            school=self.school, code="proprietaire", defaults={"label": "Propriétaire"},
+        )
+        SchoolMember.objects.filter(school=self.school, user=self.director).update(
+            role=role, is_school_owner=True,
+        )
+        self.login(self.director)
+        path = f"/api/v1/schools/{self.school.pk}/singpay/merchant"
+        self.assertEqual(self.client.get(path).status_code, 200)
+        foreign_path = f"/api/v1/schools/{self.foreign_school.pk}/singpay/merchant"
+        self.assertIn(self.client.get(foreign_path).status_code, (403, 404))
+        body = {"revision": 1, "wallet_id": "wallet-school-a", "disbursement_id": "destination-a",
+                "client_id": "fake-id", "client_secret": "fake-secret", "beneficiary_name": "École P15",
+                "contract_reference": "test-contract", "mode": "live", "enabled": False,
+                "fee_basis_points": 250, "fee_fixed_xaf": 25}
+        response = self.write(path, body)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(response.json()["enabled"])
+        self.assertNotIn("fake-secret", response.content.decode())
+
     def test_changed_merchant_cannot_reconcile_old_payment(self):
         self.start();intent=SingPayIntent.objects.get()
         self.merchant.wallet_id="other-wallet"

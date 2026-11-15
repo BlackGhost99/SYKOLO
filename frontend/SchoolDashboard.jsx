@@ -20,6 +20,7 @@ import AssessmentPanel from "./AssessmentPanel.jsx";
 import ReportPanel from "./ReportPanel.jsx";
 import CouncilPanel from "./CouncilPanel.jsx";
 import FinancePanel from "./FinancePanel.jsx";
+import SingPayControl from "./SingPayControl.jsx";
 import AttendancePanel from "./AttendancePanel.jsx";
 import TimetablePanel from "./TimetablePanel.jsx";
 import {AdmissionTariffSettings} from "./SchoolPaymentSetup.jsx";
@@ -109,6 +110,7 @@ const settingsSections = [
     {id:"admission-policy", label:"Voies d’admission et fiche publique", need:["school.admissions.read","school.academic.read"], any:["school.admissions.manage","school.admissions.decide"]},
   ]},
   {id:"payments", title:"Paiements", icon:"card", items:[
+    {id:"singpay-merchant", label:"Compte bénéficiaire SingPay", ownerOnly:true},
     {id:"fees", label:"Tarifs et échéances", need:["school.finance.manage","school.finance.read"], tariffIntervention:true},
     {id:"admission-fees", label:"Tarifs d’inscription", need:["school.finance.manage"], tariffIntervention:true},
     {id:"gateway", label:"Paiement des dossiers par Mobile Money", need:["school.admissions.manage","school.finance.manage","school.academic.read"]},
@@ -440,6 +442,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "admission-policy":<AdmissionSettings key={chosen} {...panelProps} canConfigureCatalog={can("school.admissions.manage")}/>,
       fees:<FinancePanel key={chosen} schoolId={chosen} mode="settings" workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
       "admission-fees":<AdmissionTariffSettings key={chosen} schoolId={chosen}/>,
+      "singpay-merchant":<SingPayControl key={chosen} schoolId={chosen} merchantOnly/>,
       gateway:<AdmissionPaymentSettings key={chosen} schoolId={chosen}/>,
       amendments:<CouncilPanel key={chosen} schoolId={chosen} mode="amendments"/>,
       "parent-access":<SchoolParentAccess key={chosen} schoolId={chosen} canAssignRole={canUsers} canReadStudents={can("school.students.profile.read")}/>,

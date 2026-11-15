@@ -10,24 +10,24 @@ async function api(path,body) {
   return response.json();
 }
 
-export default function SingPayControl({schoolId}) {
+export default function SingPayControl({schoolId, merchantOnly=false}) {
   const [merchant,setMerchant]=useState(null),[payments,setPayments]=useState(null);
   const [message,setMessage]=useState(""),[busy,setBusy]=useState(false);
   const base="schools/"+schoolId+"/singpay";
   useEffect(()=>{
     let alive=true;setMerchant(null);setPayments(null);setMessage("");
-    api(base+"/merchant").then(v=>{if(alive&&Number.isInteger(v.revision))setMerchant(v)}).catch(()=>{});
-    api(base+"/reconciliation").then(v=>{if(alive&&Array.isArray(v.payments))setPayments(v.payments)}).catch(()=>{});
+    api(base+"/merchant").then(v=>{if(alive&&Number.isInteger(v.revision))setMerchant(v)}).catch(error=>{if(alive&&merchantOnly)setMessage(error.message)});
+    if(!merchantOnly)api(base+"/reconciliation").then(v=>{if(alive&&Array.isArray(v.payments))setPayments(v.payments)}).catch(()=>{});
     return()=>{alive=false};
-  },[base]);
+  },[base,merchantOnly]);
   async function run(action) {
     setBusy(true);setMessage("");
     try{await action();setMessage("Contrôle enregistré.");if(payments!==null)setPayments((await api(base+"/reconciliation")).payments)}
     catch(error){setMessage(error.message)}finally{setBusy(false)}
   }
-  if(!merchant&&payments===null)return null;
+  if(!merchant&&payments===null)return merchantOnly?<p role="status">{message||"Chargement du compte SingPay…"}</p>:null;
   return <section className="yd-card" style={{padding:"1rem",marginTop:"1rem"}}>
-    <h3>SingPay — compte école et rapprochement</h3>
+    <h3>{merchantOnly?"Compte bénéficiaire SingPay":"SingPay — compte école et rapprochement"}</h3>
     <p>L'activation des paiements reste suspendue à la validation du prestataire. Aucun transfert n'est déclenché ici.</p>
     {merchant&&<details><summary>Préparer le compte marchand de l'établissement</summary>
       <p>Bénéficiaire enregistré : {merchant.beneficiary||"À renseigner"}. Fournissez uniquement les identifiants du compte de cette école et sa distribution autorisée.</p>

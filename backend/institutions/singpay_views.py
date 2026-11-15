@@ -21,7 +21,7 @@ from .parent_admission_models import ParentAdmissionRequest
 from .parent_payment_models import ParentPaymentAttempt
 from .parent_payment_service import encrypt_secret, ProviderError
 from .parent_views import guardian_links
-from .services import owns_organization, has_permission
+from .services import owns_school, has_permission
 from .singpay_models import SingPayMerchant, SingPayIntent, SingPayEvent, SingPaySettlement
 from .singpay_service import (IDENTIFIER, OPEN_STATES, digest, fee_quote, merchant_ready,
                               normalize_phone, initiate, reconcile)
@@ -50,7 +50,7 @@ def merchant_config(request, school_id):
     if error is not None:
         return error
     # Receiving, approving or pricing rights cannot redirect school funds.
-    if not owns_organization(request.user, school.organization):
+    if not owns_school(request.user, school):
         return refuse()
     if request.method == "GET":
         return JsonResponse(merchant_view(SingPayMerchant.objects.filter(school=school).first()))
