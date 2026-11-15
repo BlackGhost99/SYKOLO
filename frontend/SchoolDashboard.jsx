@@ -550,7 +550,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     canAttendance={can("school.attendance.assigned")||can("school.attendance.read")}
     canClasses={can("school.academic.read")}/>;
   else if (perms.includes("school.finance.read")) content=<>
-    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId} shortcuts={dashboardShortcuts} visibleSections={visibleSections}/>
+    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId} shortcuts={dashboardShortcuts} visibleSections={visibleSections} canEnroll={can("school.students.manage")}/>
     <MySchoolFunctions schoolId={chosen}/>
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
