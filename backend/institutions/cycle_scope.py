@@ -8,6 +8,7 @@ from uuid import UUID
 
 from .academic_models import AcademicCycle
 from .models import SchoolMember, OrganizationMember
+from .staff_models import StaffAssignment
 
 
 def scoped_cycle_ids(user, school):
@@ -26,6 +27,29 @@ def scoped_cycle_ids(user, school):
     if member.access_cycle_ids is None:
         return None
     return set(member.access_cycle_ids)
+
+
+def is_calendar_teacher(user, school):
+    return SchoolMember.objects.filter(
+        school=school, user=user, active=True, role__school=school, role__code="enseignant",
+    ).exists()
+
+
+def calendar_assignments(user, school):
+    return StaffAssignment.objects.filter(
+        school=school, staff__school=school, staff__account=user, staff__active=True, active=True,
+        classroom__school=school, classroom__active=True,
+    )
+
+
+def pedagogical_cycle_ids(user, school, year):
+    """Intersect membership scope with active classroom assignments for teachers."""
+    scope = scoped_cycle_ids(user, school)
+    if not is_calendar_teacher(user, school):
+        return scope
+    assignments = calendar_assignments(user, school).filter(year=year)
+    assigned = {str(pk) for pk in assignments.values_list("classroom__level__cycle_id", flat=True)}
+    return assigned if scope is None else assigned & scope
 
 
 def validate_cycle_scope(school, ids, *, allow_global=True):

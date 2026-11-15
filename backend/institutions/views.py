@@ -21,6 +21,7 @@ from .models import (
 from .services import (
     OWNER_ROLE_CODE, PERMISSIONS, has_permission, effective_permissions, key_for_scope,
     owns_school, platform_only, platform_tariff_intervention, resolve_settings, role_available, school_access, school_response,
+    valid_calendar_profile,
     quota_reached, public_role_label, role_templates_for, validate_scope,
 )
 
@@ -529,6 +530,8 @@ def school_settings(request, school_id):
         return JsonResponse({"error": "Valeurs ou version invalides."}, status=422)
     if len(json.dumps(values, ensure_ascii=False)) > 16000:
         return JsonResponse({"error": "Paramètres trop volumineux."}, status=413)
+    if "calendar_profile" in values and not valid_calendar_profile(values["calendar_profile"]):
+        return JsonResponse({"error": "Profil de calendrier invalide."}, status=422)
     key = key_for_scope(scope)
     with transaction.atomic():
         # Year-scoped settings are archived with their school year. Lock the

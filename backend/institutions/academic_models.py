@@ -3,6 +3,7 @@ from datetime import date
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from .models import School
 
 
@@ -138,6 +139,10 @@ class AcademicClass(models.Model):
 
 
 class AcademicPeriod(models.Model):
+    PUBLICATION = "publication"
+    MILESTONE = "milestone"
+    KIND_CHOICES = [(PUBLICATION, "Publication"), (MILESTONE, "Palier")]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="academic_periods")
     year = models.ForeignKey(AcademicYear, on_delete=models.PROTECT, related_name="periods")
@@ -149,19 +154,54 @@ class AcademicPeriod(models.Model):
     active = models.BooleanField(default=True)
     revision = models.PositiveIntegerField(default=1)
 
+    cycle = models.ForeignKey(AcademicCycle, on_delete=models.PROTECT, null=True, blank=True)
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES, default=PUBLICATION)
+    learning_weeks = models.PositiveSmallIntegerField(null=True, blank=True)
+    evaluation_weeks = models.PositiveSmallIntegerField(null=True, blank=True)
+    closed = models.BooleanField(default=False)
+
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["year", "code"], name="unique_academic_period_code")]
+        constraints = [
+            models.UniqueConstraint(fields=["year", "code"], condition=Q(cycle__isnull=True),
+                                    name="unique_legacy_academic_period_code"),
+            models.UniqueConstraint(fields=["year", "cycle", "kind", "code"],
+                                    name="unique_cycle_academic_period_code"),
+            models.CheckConstraint(condition=Q(cycle__isnull=False) | Q(kind="publication"),
+                                   name="academic_milestone_requires_cycle"),
+        ]
+
+    @classmethod
+    def for_classroom(cls, classroom):
+        """Historical publication IDs remain valid for every cycle in their year."""
+        return cls.objects.filter(
+            Q(cycle_id=classroom.level.cycle_id) | Q(cycle__isnull=True),
+            school_id=classroom.school_id, year_id=classroom.year_id, kind=cls.PUBLICATION,
+        )
+
+    def matches_classroom(self, classroom):
+        return (
+            self.kind == self.PUBLICATION and self.school_id == classroom.school_id
+            and self.year_id == classroom.year_id
+            and self.cycle_id in (None, classroom.level.cycle_id)
+        )
 
     def clean(self):
         if self.school_id and self.year_id and self.year.school_id != self.school_id:
             raise ValidationError("L'année appartient à un autre établissement.")
+        if self.cycle_id and self.cycle.school_id != self.school_id:
+            raise ValidationError("Le cycle appartient à un autre établissement.")
+        if self.kind == self.MILESTONE and not self.cycle_id:
+            raise ValidationError("Un palier exige un cycle.")
         if self.start_date and self.end_date:
             if self.start_date > self.end_date:
                 raise ValidationError({"end_date": "La fin précède le début."})
             if self.year_id and not (self.year.start_date <= self.start_date <= self.end_date <= self.year.end_date):
                 raise ValidationError("La période doit rester dans les dates de l'année.")
+            weeks = (self.learning_weeks or 0) + (self.evaluation_weeks or 0)
+            if weeks * 7 > (self.end_date - self.start_date).days + 1:
+                raise ValidationError("Le nombre de semaines dépasse la durée de la période.")
             if self.active and self.year_id and AcademicPeriod.objects.filter(
-                year_id=self.year_id, active=True,
+                year_id=self.year_id, cycle_id=self.cycle_id, kind=self.kind, active=True,
                 start_date__lte=self.end_date, end_date__gte=self.start_date
             ).exclude(pk=self.pk).exists():
                 raise ValidationError("Les périodes actives ne doivent pas se chevaucher.")
@@ -196,7 +236,7 @@ class PedagogicalCalendarEvent(models.Model):
     year = models.ForeignKey(AcademicYear, on_delete=models.PROTECT, related_name="calendar_events")
     title = models.CharField(max_length=160)
     kind = models.CharField(max_length=24, choices=KIND_CHOICES, default="autre")
-    scope = models.CharField(max_length=24, choices=SCOPE_CHOICES, default="all")
+    scope = models.SlugField(max_length=40, default="all")
     start_date = models.DateField()
     end_date = models.DateField()
     description = models.CharField(max_length=500, blank=True, default="")
@@ -222,6 +262,7 @@ class PedagogicalCalendarEvent(models.Model):
                 if not first <= self.start_date <= self.end_date <= last:
                     raise ValidationError("Dates hors de l'année scolaire (marge administrative de 45 jours).")
         if self.scope != "all" and self.school_id and self.scope not in (self.school.education_cycles or []):
-            raise ValidationError("Ce cycle n'est pas ouvert dans l'établissement.")
+            if not AcademicCycle.objects.filter(school_id=self.school_id, code=self.scope).exists():
+                raise ValidationError("Ce cycle n'est pas ouvert dans l'établissement.")
         if self.title and not self.title.strip():
             raise ValidationError({"title": "Le titre est obligatoire."})

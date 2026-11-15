@@ -125,7 +125,8 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
   const [notesPeriod,setNotesPeriod]=useState("");
   const [notesKind,setNotesKind]=useState("");
   const [peerGrades,setPeerGrades]=useState({});
-  const availablePeriods=periods.filter(p=>p.year===yearCourses.find(c=>c.id===course)?.year);
+  const selectedCourse=yearCourses.find(c=>c.id===course);
+  const availablePeriods=periods.filter(p=>p.year===selectedCourse?.year&&(!p.cycle||p.cycle===selectedCourse?.cycle));
   const filteredAssessments=activeAssessments.filter(a=>
     (!notesPeriod||a.period===notesPeriod)&&(!notesKind||a.kind===notesKind));
   // One assessment is edited at a time. Other columns are read-only until selected.

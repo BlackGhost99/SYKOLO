@@ -60,6 +60,8 @@ export default function PedagogicalCalendar({
   const [periodDraft,setPeriodDraft]=useState(null);
   const [eventDraft,setEventDraft]=useState(null);
   const [version,setVersion]=useState(0);
+  const [cycleId,setCycleId]=useState(null);
+  const [profileDraft,setProfileDraft]=useState(null);
   const selectedYear=snapshot?.year;
   const canEdit=Boolean(snapshot?.can_edit_year);
   const canManage=Boolean(catalog?.can_manage);
@@ -68,19 +70,22 @@ export default function PedagogicalCalendar({
 
   useEffect(()=>{
     let alive=true;
-    setLoading(true);setError("");setPeriodDraft(null);setEventDraft(null);setYearDraft(null);
+    setLoading(true);setError("");setPeriodDraft(null);setEventDraft(null);setYearDraft(null);setProfileDraft(null);
     (async()=>{
       const annual=await calendarRequest(prefix+"annual-snapshot"+
         (workingYearId?"?year="+encodeURIComponent(workingYearId):""));
-      const events=annual.year
-        ? await calendarRequest(prefix+"pedagogical-calendar?year="+encodeURIComponent(annual.year.id))
-        : null;
+      const calendarUrl=annual.year && prefix+"pedagogical-calendar?year="+encodeURIComponent(annual.year.id);
+      let events=calendarUrl ? await calendarRequest(calendarUrl) : null;
+      const activeCycles=events?.cycles?.filter(c=>c.active)||[];
+      const selected=events?.cycles?.find(c=>c.id===cycleId) ||
+        (cycleId!=="" && activeCycles.length===1 ? activeCycles[0] : null);
+      if(selected) events=await calendarRequest(calendarUrl+"&cycle="+encodeURIComponent(selected.id));
       if (!alive) return;
       setSnapshot(annual);setCatalog(events);
       if (annual.year && !workingYearId) onWorkingYearChange?.(annual.year.id);
     })().catch(e=>{if(alive)setError(e.message)}).finally(()=>{if(alive)setLoading(false)});
     return()=>{alive=false};
-  },[schoolId,workingYearId,version]);
+  },[schoolId,workingYearId,version,cycleId]);
 
   async function run(task,{refreshYears=false}={}) {
     setBusy(true);setError("");setMessage("");
@@ -121,9 +126,42 @@ export default function PedagogicalCalendar({
          start_date:periodDraft.start_date,end_date:periodDraft.end_date}
       : {code:periodDraft.code,name:periodDraft.name,year:selectedYear.id,
          start_date:periodDraft.start_date,end_date:periodDraft.end_date};
+    if(catalog?.profile_scope && !existing) {
+      body.cycle=selectedCycle.id;
+      body.kind=periodDraft.kind||"publication";
+    }
+    if(periodDraft.learning_weeks!==undefined) body.learning_weeks=periodDraft.learning_weeks;
+    if(periodDraft.evaluation_weeks!==undefined) body.evaluation_weeks=periodDraft.evaluation_weeks;
     const result=await run(()=>calendarRequest(prefix+"periods"+
       (existing?"/"+existing:""),body,existing?"PATCH":"POST"));
     if(result){setPeriodDraft(null);setMessage(existing?"Période mise à jour.":"Période ajoutée.")}
+  }
+
+  async function saveProfile(e) {
+    e.preventDefault();
+    const result=await run(()=>calendarRequest(prefix+"pedagogical-calendar/profile",{
+      year:selectedYear.id,cycle:selectedCycle.id,revision:profileDraft.revision,
+      profile:{
+        milestone_target:profileDraft.milestone_target,
+        publication_target:profileDraft.publication_target,
+      },
+    },"PATCH"));
+    if(result) setMessage("Profil du cycle enregistré.");
+  }
+
+  function editProfile() {
+    setProfileDraft({
+      revision:catalog.profile_revision,
+      milestone_target:catalog.profile?.milestone_target ?? milestoneCount,
+      publication_target:catalog.profile?.publication_target ?? publicationCount,
+    });
+  }
+
+  async function closePeriod(item) {
+    const result=await run(()=>calendarRequest(prefix+"periods/"+item.id,{
+      revision:item.revision,closed:true,
+    },"PATCH"));
+    if(result) setMessage("Période clôturée.");
   }
 
   async function togglePeriod(item) {
@@ -150,7 +188,16 @@ export default function PedagogicalCalendar({
   }
 
   const events=catalog?.events||[];
-  const periods=snapshot?.periods||[];
+  const periods=catalog?.periods||snapshot?.periods||[];
+  const selectedCycle=catalog?.cycles?.find(c=>c.code===catalog.profile_scope?.cycle);
+  const canEditPeriods=catalog?.can_manage_periods ?? canEdit;
+  const canAddPeriod=canEditPeriods&&(selectedCycle||!catalog?.cycles?.some(c=>c.active));
+  const milestoneCount=periods.filter(p=>p.active&&p.kind==="milestone").length;
+  const publicationCount=periods.filter(p=>p.active&&p.cycle===selectedCycle?.id&&p.kind==="publication").length;
+  const secondary=["college","lycee_general","lycee_technique"].includes(selectedCycle?.code);
+  const profileHint=selectedCycle?.code==="primaire" ? "Modèle suggéré · 5 paliers"
+    : secondary ? "Modèle suggéré · 3 trimestres et 0 ou 6 paliers"
+    : selectedCycle?.code==="creche" ? "Modèle suggéré · 0 palier" : "Profil personnalisable";
   return <>
     <PageHeader title="Calendrier pédagogique"
       subtitle="Année en cours, périodes, vacances, évaluations et échéances de l’établissement" banner={false}/>
@@ -205,28 +252,56 @@ export default function PedagogicalCalendar({
         </Card>
 
         <Card title="Périodes pédagogiques" icon="calendar">
-          <p>Trimestres, semestres ou périodes personnalisées. Une année peut avoir son propre découpage ; les périodes actives ne doivent pas se chevaucher.</p>
+          {!!catalog?.cycles?.length&&<label className="field">Cycle pédagogique
+            <select value={selectedCycle?.id||""} onChange={e=>setCycleId(e.target.value)}>
+              <option value="">Périodes communes historiques</option>
+              {catalog.cycles.map(c=><option key={c.id} value={c.id}>{c.name}{c.active?"":" (archivé)"}</option>)}
+            </select>
+          </label>}
+          {selectedCycle&&<>
+            <p>{milestoneCount} {milestoneCount===1?"palier actif":"paliers actifs"} · {publicationCount} {publicationCount===1?"période de publication":"périodes de publication"}</p>
+            <p className="hint">{profileHint}</p>
+            {catalog.profile?.milestone_target!==undefined&&<p>Objectif du profil · {catalog.profile.milestone_target} paliers</p>}
+            {catalog.profile?.publication_target!==undefined&&<p>Objectif du profil · {catalog.profile.publication_target} publications</p>}
+            {catalog.can_manage_profile&&!profileDraft&&<button type="button" onClick={editProfile}>Configurer le profil</button>}
+            {profileDraft&&<form className="yf-form" onSubmit={saveProfile}>
+              <div className="yf-grid">
+                {[["milestone_target","Nombre de paliers"],["publication_target","Nombre de publications"]].map(([field,label])=>
+                  <label key={field} className="field">{label}
+                    <input type="number" min="0" max="32767" required value={profileDraft[field]}
+                      onChange={e=>setProfileDraft(d=>({...d,[field]:e.target.value===""?"":Number(e.target.value)}))}/>
+                  </label>)}
+              </div>
+              <button type="submit" disabled={busy}>Enregistrer le profil</button>{" "}
+              <button type="button" onClick={()=>setProfileDraft(null)}>Annuler</button>
+            </form>}
+          </>}
+          <p>Les périodes de publication et les paliers ont des dates indépendantes.</p>
           {periods.length? <div style={{overflowX:"auto"}}><table className="xs">
             <thead><tr><th>Période</th><th>Dates</th><th>Statut</th><th>Actions</th></tr></thead>
             <tbody>{periods.map(item=><tr key={item.id}>
-              <td><strong>{item.name}</strong></td>
-              <td>{dateLabel(item.start_date)} — {dateLabel(item.end_date)}</td>
-              <td>{item.active?"Active":"Archivée"}</td>
-              <td>{canEdit&&<>
+              <td><strong>{item.name}</strong>{item.historical?" · Période commune historique":item.kind==="milestone"?" · Palier":" · Publication"}
+                {item.learning_weeks!=null&&<div>{item.learning_weeks} sem. d’apprentissage</div>}
+                {item.evaluation_weeks!=null&&<div>{item.evaluation_weeks} sem. d’évaluation</div>}
+              </td>
+              <td>{item.frozen?"Figée":item.active?"Active":"Archivée"}</td>
+              <td>{canEditPeriods&&!item.frozen&&(!selectedCycle||!item.historical)&&<>
                 <button type="button" className="yf-link" disabled={busy} onClick={()=>{setPeriodDraft({...item});setEventDraft(null);}}>Modifier</button>{" "}
                 <button type="button" className="yf-link" disabled={busy} onClick={()=>togglePeriod(item)}>
                   {item.active?"Archiver":"Réactiver"}
-                </button>
+                </button>{" "}
+                {item.cycle&&item.active&&<button type="button" className="yf-link" disabled={busy}
+                  onClick={()=>{if(window.confirm("Clôturer définitivement cette période ?")) closePeriod(item);}}>Clôturer</button>}
               </>}</td>
             </tr>)}</tbody>
-          </table></div>:<p className="hint">Aucune période créée. Vous pouvez commencer par le premier trimestre.</p>}
-          {canEdit&&<div className="yf-inline-form wrap">
+          </table></div>:<p className="hint">Aucune période créée.</p>}
+          {canAddPeriod&&<div className="yf-inline-form wrap">
             <button type="button" disabled={busy} onClick={()=>{setPeriodDraft({...blankPeriod,
               start_date:selectedYear.start_date,end_date:selectedYear.end_date});setEventDraft(null);}}>
               Ajouter une période
             </button>
           </div>}
-          {canEdit&&reference2026&&<details className="yf-details">
+          {canAddPeriod&&reference2026&&(!selectedCycle||secondary)&&<details className="yf-details">
             <summary>Référence du Gabon 2026–2027 : proposer un trimestre</summary>
             <p>Dates indicatives issues du calendrier national. Vérifiez les éventuelles décisions de réaménagement et adaptez-les avant enregistrement.</p>
             <div className="yf-inline-form wrap">{ga2026Periods.map(item=><button type="button" key={item.code}
@@ -235,9 +310,19 @@ export default function PedagogicalCalendar({
             </button>)}</div>
             <a href={officialSource} target="_blank" rel="noreferrer">Consulter la source du calendrier gabonais</a>
           </details>}
-          {canEdit&&periodDraft&&<form className="yf-form" onSubmit={savePeriod}>
+          {canEditPeriods&&periodDraft&&<form className="yf-form" onSubmit={savePeriod}>
             <h4>{periodDraft.id?"Modifier cette période":"Nouvelle période"}</h4>
             <div className="yf-grid">
+              {selectedCycle&&!periodDraft.id&&<label className="field">Type de période
+                <select value={periodDraft.kind||"publication"} onChange={e=>setPeriodDraft(d=>({...d,kind:e.target.value}))}>
+                  <option value="publication">Publication</option><option value="milestone">Palier</option>
+                </select>
+              </label>}
+              {selectedCycle&&[["learning_weeks","Semaines d’apprentissage"],["evaluation_weeks","Semaines d’évaluation"]].map(([field,label])=>
+                <label key={field} className="field">{label}
+                  <input type="number" min="0" max="32767" value={periodDraft[field]??""}
+                    onChange={e=>setPeriodDraft(d=>({...d,[field]:e.target.value===""?null:Number(e.target.value)}))}/>
+                </label>)}
               <label className="field">Nom de la période
                 <input required maxLength={120} value={periodDraft.name}
                   onChange={e=>setPeriodDraft(d=>({...d,name:e.target.value}))}/>
@@ -274,7 +359,7 @@ export default function PedagogicalCalendar({
                 {item.description&&<p>{item.description}</p>}</td>
               <td>{kindLabel(catalog.scopes,item.scope)}</td>
               <td>{item.active?"Actif":"Archivé"}</td>
-              <td>{canManage&&<>
+              <td>{canManage&&(catalog.can_manage_shared_events!==false||item.scope!=="all")&&<>
                 <button type="button" className="yf-link" disabled={busy}
                   onClick={()=>{setEventDraft({...item});setPeriodDraft(null);}}>Modifier</button>{" "}
                 <button type="button" className="yf-link" disabled={busy} onClick={()=>toggleEvent(item)}>
@@ -283,14 +368,14 @@ export default function PedagogicalCalendar({
             </tr>)}</tbody>
           </table></div>:<p className="hint">Aucun événement ajouté pour cette année.</p>}
           {canManage&&<button type="button" disabled={busy}
-            onClick={()=>{setEventDraft({...blankEvent,start_date:selectedYear.start_date,
+            onClick={()=>{setEventDraft({...blankEvent,scope:selectedCycle?.code||catalog.scopes?.[0]?.code||"all",start_date:selectedYear.start_date,
               end_date:selectedYear.start_date});setPeriodDraft(null);}}>Ajouter un événement</button>}
           {canManage&&reference2026&&<details className="yf-details">
             <summary>Référence nationale 2026–2027 : pré-remplir un repère</summary>
             <p>Ces propositions ne sont pas enregistrées tant que vous ne les confirmez pas.</p>
             <div className="yf-inline-form wrap">{ga2026Events.map(item=><button type="button"
               key={item.title} disabled={busy} onClick={()=>{setEventDraft({
-                ...blankEvent,...item,source:"official",source_url:officialSource,
+                ...blankEvent,...item,scope:selectedCycle?.code||item.scope||"all",source:"official",source_url:officialSource,
               });setPeriodDraft(null);}}>
               {item.title} · {dateLabel(item.start_date)}
             </button>)}</div>

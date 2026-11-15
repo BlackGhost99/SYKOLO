@@ -5,15 +5,16 @@ from uuid import UUID
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Exists, OuterRef, Q
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 
 from .academic_models import (
-    AcademicYear, AcademicCycle, AcademicLevel, AcademicTrack, AcademicClass, AcademicPeriod,
+    AcademicYear, AcademicCycle, AcademicLevel, AcademicTrack, AcademicClass, AcademicPeriod, PedagogicalCalendarEvent,
 )
-from .cycle_scope import scoped_cycle_ids
-from .models import School
+from .cycle_scope import calendar_assignments, is_calendar_teacher, pedagogical_cycle_ids, scoped_cycle_ids
+from .models import School, SchoolSetting
 from .services import can_manage_classes, has_permission
 from .student_models import Enrollment
 from .standard_classes import ensure_standard_classes
@@ -25,7 +26,8 @@ RESOURCES = {
     "levels": (AcademicLevel, ("code", "name", "cycle", "order", "active")),
     "tracks": (AcademicTrack, ("code", "name", "level", "order", "active")),
     "classes": (AcademicClass, ("code", "name", "year", "level", "track", "capacity", "active")),
-    "periods": (AcademicPeriod, ("code", "name", "year", "start_date", "end_date", "order", "active")),
+    "periods": (AcademicPeriod, ("code", "name", "year", "start_date", "end_date", "order", "active",
+                                 "cycle", "kind", "learning_weeks", "evaluation_weeks", "closed")),
 }
 RELATIONS = {
     "year": AcademicYear, "cycle": AcademicCycle, "level": AcademicLevel, "track": AcademicTrack,
@@ -38,10 +40,23 @@ REQUIRED = {
     "classes": {"code", "name", "year", "level"},
     "periods": {"code", "name", "year", "start_date", "end_date"},
 }
-IMMUTABLE_RELATIONS = {"year", "cycle", "level", "track"}
+IMMUTABLE_RELATIONS = {"year", "cycle", "level", "track", "kind"}
+
+
+def period_access(user, school):
+    cycles = scoped_cycle_ids(user, school)
+    scoped = Q(cycle_id__in=cycles) if cycles is not None else Q()
+    if is_calendar_teacher(user, school):
+        assignments = calendar_assignments(user, school).filter(
+            classroom__level__cycle_id=OuterRef("cycle_id"), year_id=OuterRef("year_id"),
+        )
+        scoped &= Q(Exists(assignments))
+    return Q(cycle__isnull=True) | scoped if scoped else scoped
 
 
 def scoped_resources(query, resource, user, school):
+    if resource == "periods":
+        return query.filter(period_access(user, school))
     cycles = scoped_cycle_ids(user, school)
     if cycles is None:
         return query
@@ -64,6 +79,8 @@ def describe(obj, fields):
         result[key] = value
     if isinstance(obj, AcademicYear):
         result["status"] = obj.status
+    if isinstance(obj, AcademicClass):
+        result["cycle"] = str(obj.level.cycle_id)
     return result
 
 
@@ -86,6 +103,8 @@ def validate_fields(data, school, resource, *, editing=False):
         if key == "code":
             if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,39}", value):
                 raise ValueError("Code invalide (lettres minuscules, chiffres, _ et -).")
+            if resource == "cycles" and value == "all":
+                raise ValueError("Ce code est réservé aux événements communs.")
         elif key == "name":
             if not isinstance(value, str) or not (1 <= len(value.strip()) <= 120):
                 raise ValueError("Nom invalide.")
@@ -104,6 +123,15 @@ def validate_fields(data, school, resource, *, editing=False):
                 pass
             elif type(value) is not int or not (0 <= value <= 1000 if key == "order" else 1 <= value <= 5000):
                 raise ValueError("Ordre ou capacité invalide.")
+        elif key in ("learning_weeks", "evaluation_weeks"):
+            if value is not None and (type(value) is not int or not 0 <= value <= 32767):
+                raise ValueError("Nombre de semaines invalide.")
+        elif key == "kind":
+            if not isinstance(value, str) or value not in dict(AcademicPeriod.KIND_CHOICES):
+                raise ValueError("Type de période invalide.")
+        elif key == "closed":
+            if not editing or value is not True or set(data) != {"revision", "closed"}:
+                raise ValueError("La clôture doit être une action distincte.")
         elif key == "active":
             if type(value) is not bool:
                 raise ValueError("Statut invalide.")
@@ -157,7 +185,12 @@ def collection(request, school_id, resource):
         return refuse()
     model, fields = RESOURCES[resource]
     if request.method == "GET":
-        rows = scoped_resources(model.objects.filter(school=school), resource, request.user, school).order_by("name", "pk")[:500]
+        query = scoped_resources(model.objects.filter(school=school), resource, request.user, school)
+        if resource == "periods":
+            query = query.filter(kind=AcademicPeriod.PUBLICATION)
+        if resource == "classes":
+            query = query.select_related("level")
+        rows = query.order_by("name", "pk")[:500]
         return JsonResponse({resource: [describe(o, fields) for o in rows]})
     data, error = parse_body(request)
     if error is not None:
@@ -179,7 +212,14 @@ def collection(request, school_id, resource):
             if resource == "periods":
                 # Serialize competing period creations for the same school year.
                 year = AcademicYear.objects.select_for_update().get(school=school, pk=clean["year_id"])
-                if not year.active:
+                cycles = pedagogical_cycle_ids(request.user, school, year)
+                if cycles is not None and str(clean.get("cycle_id")) not in cycles:
+                    return refuse()
+                if clean.get("cycle_id") and not AcademicCycle.objects.filter(
+                    school=school, pk=clean["cycle_id"], active=True,
+                ).exists():
+                    return JsonResponse({"error": "Cycle inactif."}, status=422)
+                if not year.active or year.status == AcademicYear.STATUS_CLOSED:
                     return JsonResponse({"error": "L'année scolaire est archivée."}, status=409)
             if resource == "classes":
                 level = AcademicLevel.objects.select_related("cycle").get(school=school, pk=clean["level_id"])
@@ -254,7 +294,13 @@ def detail(request, school_id, resource, object_id):
         return JsonResponse({"error": "Utilisez l'activation ou la clôture officielle de l'année."}, status=422)
     try:
         with transaction.atomic():
-            obj = model.objects.select_for_update().filter(school=school, pk=object_id).first()
+            query = model.objects.filter(school=school, pk=object_id)
+            if resource == "periods":
+                year_id = query.values_list("year_id", flat=True).first()
+                if year_id:
+                    AcademicYear.objects.select_for_update().get(school=school, pk=year_id)
+                query = scoped_resources(query, resource, request.user, school)
+            obj = query.select_for_update().first()
             if not obj:
                 return JsonResponse({"error": "Objet introuvable."}, status=404)
             if resource == "years" and (obj.status == AcademicYear.STATUS_CLOSED or not obj.active):
@@ -266,6 +312,11 @@ def detail(request, school_id, resource, object_id):
                     return JsonResponse({"error": "Une année porte déjà ce nom dans l'établissement."}, status=409)
             if resource == "classes" and not can_manage_classes(request.user, school, obj.level.cycle.code):
                 return refuse()
+            if resource == "cycles" and "code" in clean and clean["code"] != obj.code:
+                if (obj.levels.exists() or AcademicPeriod.objects.filter(cycle=obj).exists()
+                        or PedagogicalCalendarEvent.objects.filter(school=school, scope=obj.code).exists()
+                        or SchoolSetting.objects.filter(school=school, scope__cycle=obj.code).exists()):
+                    return JsonResponse({"error": "Le code d'un cycle utilisé est stable."}, status=409)
             if resource == "levels" and "code" in clean and clean["code"] != obj.code:
                 # A code is referenced by scope-specific grading/attendance settings
                 # and historical report contexts. Renaming its display label remains safe.
@@ -278,7 +329,16 @@ def detail(request, school_id, resource, object_id):
             if obj.revision != revision:
                 return JsonResponse({"error": "Conflit de version.", "revision": obj.revision}, status=409)
             if resource == "periods":
-                AcademicYear.objects.select_for_update().get(school=school, pk=obj.year_id)
+                cycles = pedagogical_cycle_ids(request.user, school, obj.year)
+                if cycles is not None and str(obj.cycle_id) not in cycles:
+                    return refuse()
+                if obj.closed or obj.reports.filter(status="published").exists():
+                    return JsonResponse({"error": "Cette période est figée."}, status=409)
+                if {"start_date", "end_date"} & clean.keys() and obj.assessments.exclude(
+                    assessment_date__gte=clean.get("start_date", obj.start_date),
+                    assessment_date__lte=clean.get("end_date", obj.end_date),
+                ).exists():
+                    return JsonResponse({"error": "Des évaluations sont hors de ces dates."}, status=409)
             if resource == "years" and {"start_date", "end_date"} & clean.keys():
                 School.objects.select_for_update().get(pk=school.pk)
                 start = clean.get("start_date", obj.start_date)
