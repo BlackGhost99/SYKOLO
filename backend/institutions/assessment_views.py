@@ -392,23 +392,24 @@ def course_averages(request, school_id, course_id):
             return JsonResponse({"error": "Période hors du cours."}, status=422)
     else:
         period_key = None
-    assessments = list(Assessment.objects.filter(
-        school=school, course=course, active=True,
-    ).filter(**({"period_id": period_key} if period_key else {})).order_by(
-        "assessment_date", "pk",
-    )[:300])
+    assessment_query = Assessment.objects.filter(school=school, course=course, active=True)
+    if period_key:
+        assessment_query = assessment_query.filter(period_id=period_key)
+    weights = dict(assessment_query.values_list("pk", "weight"))
+    assessment_count = len(weights)
     enrollments = list(Enrollment.objects.select_related("student").filter(
         school=school, year=course.year, classroom=course.classroom,
         active=True, student__active=True,
     ).order_by("student__last_name", "student__first_name", "pk")[:500])
-    assessed = {a.pk: a for a in assessments}
     points = {}
     for grade in AssessmentGrade.objects.filter(
-        school=school, assessment_id__in=assessed,
+        school=school, assessment__in=assessment_query,
         enrollment_id__in=[e.pk for e in enrollments],
         status="calculated", percent__isnull=False,
     ):
-        weight = assessed[grade.assessment_id].weight
+        weight = weights.get(grade.assessment_id)
+        if weight is None:
+            continue
         item = points.setdefault(grade.enrollment_id, [Decimal("0"), Decimal("0"), 0])
         item[0] += grade.percent * weight
         item[1] += weight
@@ -441,8 +442,8 @@ def course_averages(request, school_id, course_id):
             "first_name": enrollment.student.first_name,
             "last_name": enrollment.student.last_name,
             "evaluated": value[2] if value else 0,
-            "expected": len(assessments),
-            "complete": bool(value and len(assessments) and value[2] == len(assessments)),
+            "expected": assessment_count,
+            "complete": bool(value and value[2] == assessment_count),
             "average_percent": str(avg.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if avg is not None else None,
             "average": result(avg),
             "average_on_20": str(on_twenty) if on_twenty is not None else None,
@@ -454,7 +455,7 @@ def course_averages(request, school_id, course_id):
     class_percent = sum(percentages) / len(percentages) if percentages else None
     return JsonResponse({
         "course": str(course.pk), "period": str(period_key) if period_key else None,
-        "assessment_count": len(assessments), "student_count": len(output),
+        "assessment_count": assessment_count, "student_count": len(output),
         "class_average_on_20": str(class_average) if class_average is not None else None,
         "scale": policy["scale"] if policy else None,
         "class_average": result(class_percent),

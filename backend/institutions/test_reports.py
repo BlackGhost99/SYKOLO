@@ -200,3 +200,58 @@ class SchoolReportTests(TestCase):
         saved = self.client.get(self.base + "reports/" + report["id"]).json()
         self.assertEqual(saved["snapshot"], report["snapshot"])
         self.assertEqual(saved["period"], str(self.period.pk))
+
+
+    def test_mixed_scales_and_coefficients_from_grade_entry_through_publication(self):
+        entries = [
+            (self.math, "numeric-10", 7, "1"),
+            (self.math, "competency", "Acquis", "3"),
+            (self.french, "numeric-20", 19, "1"),
+        ]
+        for course, grading, score, weight in entries:
+            self.configure(preset(grading))
+            assessment = self.write(f"courses/{course.pk}/assessments", {
+                "name": grading, "assessment_date": "2026-10-20",
+                "weight": weight, "period": str(self.period.pk),
+            })
+            self.assertEqual(assessment.status_code, 201, assessment.content)
+            assessment_id = assessment.json()["id"]
+            grade = self.write(f"assessments/{assessment_id}/grades/batch", {
+                "grades": [{"enrollment": str(self.enrollment.pk), "revision": 0, "score": score}],
+            })
+            self.assertEqual(grade.status_code, 200, grade.content)
+            published = self.write(f"assessments/{assessment_id}/publish", {"revision": 1})
+            self.assertEqual(published.status_code, 200, published.content)
+
+        self.configure(preset("competency"), {**self.config, "show_score": False})
+        created = self.create_report()
+        self.assertEqual(created.status_code, 201, created.content)
+        report = created.json()
+        snapshot = report["snapshot"]
+        results = {item["subject"]: item["result"] for item in snapshot["subjects"]}
+        self.assertEqual(results["Mathématiques"]["percent"], "77.50")
+        self.assertEqual(results["Français"]["percent"], "95.00")
+        self.assertEqual(snapshot["overall"]["percent"], "83.33")
+        self.assertEqual(snapshot["overall"]["label"], "Acquis")
+        self.assertIsNone(snapshot["overall"]["score"])
+        self.assertEqual(len(snapshot["sources"]), 3)
+        response = self.write(f"reports/{report['id']}/publish", {"revision": 1})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.configure(preset("numeric-10"))
+        self.assertEqual(self.client.get(self.base + f"reports/{report['id']}").json()["snapshot"], snapshot)
+        self.assertEqual(self.client.get(self.base + f"reports/{report['id']}/pdf").status_code, 200)
+
+    def test_averages_include_recent_assessments_after_previous_calculation_caps(self):
+        Assessment.objects.bulk_create([
+            Assessment(school=self.school, course=self.math, period=self.period,
+                       name="Évaluation antérieure", assessment_date="2026-10-01",
+                       policy_snapshot=self.grading, published=True)
+            for _ in range(300)
+        ])
+        self.assessment(self.math, 90)
+        averages = self.client.get(self.base + f"courses/{self.math.pk}/averages").json()
+        self.assertEqual(averages["assessment_count"], 301)
+        self.assertEqual(averages["students"][0]["average_percent"], "90.00")
+        report = self.create_report().json()["snapshot"]
+        self.assertEqual(len(report["sources"]), 301)
+        self.assertEqual(report["overall"]["percent"], "90.00")
