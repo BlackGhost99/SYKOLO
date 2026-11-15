@@ -22,7 +22,8 @@ from accounts.views import authorized
 
 from .academic_models import AcademicYear, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid
-from .finance_cash_policy import cash_closed_for_recorder
+from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
+from .finance_evidence import classify_payment
 from .models import School
 from .student_models import Enrollment
 from .services import has_permission, can_configure_tariffs, platform_tariff_intervention
@@ -125,8 +126,10 @@ def charge_data(row):
 
 
 def payment_data(row):
+    evidence = classify_payment(row.method, row.charge.label)
     return {
         "id": str(row.pk), "charge": str(row.charge_id),
+        "evidence_class": evidence,
         "amount": str(row.amount), "currency": row.currency,
         "method": row.method, "reference": row.reference,
         "paid_on": row.paid_on.isoformat(), "recorded_at": row.created_at.isoformat(),
@@ -456,7 +459,9 @@ def payments(request, school_id):
             return JsonResponse({"error": "Identifiant du frais requis."}, status=422)
         if not FeeCharge.objects.filter(school=school, pk=charge_id).exists():
             return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
-        rows = FeePayment.objects.filter(school=school, charge_id=charge_id).order_by("created_at", "pk")[:500]
+        rows = FeePayment.objects.select_related("charge").filter(
+            school=school, charge_id=charge_id
+        ).order_by("created_at", "pk")[:500]
         return JsonResponse({"payments": [payment_data(row) for row in rows]})
     data, error = parse_body(request)
     if error is not None:
@@ -469,6 +474,8 @@ def payments(request, school_id):
     reference = data["reference"]
     if method == "singpay":
         return JsonResponse({"error": "SingPay est réservé aux confirmations serveur du prestataire."}, status=422)
+    if method in ("cash", "simulation"):
+        return JsonResponse({"error": "Code historique ou fictif interdit pour un nouvel encaissement. Choisissez « especes » pour des espèces réellement reçues."}, status=422)
     if charge_id is None or idem is None or not isinstance(method, str) or not CODE_PATTERN.fullmatch(method):
         return JsonResponse({"error": "Frais, moyen ou identifiant d'opération invalide."}, status=422)
     if not isinstance(reference, str) or len(reference) > 100:
@@ -482,13 +489,15 @@ def payments(request, school_id):
         return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
-            if method == "especes":
+            if method in CASH_METHODS:
                 # Lock order matches the cash-closing endpoint, avoiding a race
                 # between a cashier's last payment and the end-of-day snapshot.
                 School.objects.select_for_update().get(pk=school.pk)
             charge = FeeCharge.objects.select_for_update().filter(school=school, pk=charge_id).first()
             if charge is None:
                 return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
+            if classify_payment(method, charge.label) == "simulation":
+                return JsonResponse({"error": "Paiement sur un frais explicitement DÉMO interdit en caisse réelle."}, status=422)
             previous = FeePayment.objects.filter(school=school, idempotency_key=idem).first()
             if previous:
                 same = (previous.charge_id == charge.pk and previous.amount == amount
@@ -497,7 +506,7 @@ def payments(request, school_id):
                 if same:
                     return JsonResponse(payment_data(previous), status=200)
                 return JsonResponse({"error": "Clé d'opération réutilisée avec des données différentes."}, status=409)
-            if method == "especes" and cash_closed_for_recorder(
+            if method in CASH_METHODS and cash_closed_for_recorder(
                 school=school, day=paid_on, currency=charge.currency, user=request.user,
             ):
                 return JsonResponse({"error": "Caisse du jour déjà déclarée par ce caissier."}, status=409)
@@ -538,7 +547,7 @@ def void_payment(request, school_id, payment_id):
             return JsonResponse({"error": "Paiement prestataire : remboursement et rapprochement requis, annulation manuelle interdite."}, status=409)
         if row.recorded_by_id == request.user.pk:
             return JsonResponse({"error": "Un autre agent doit autoriser cette annulation."}, status=403)
-        if row.method == "especes" and cash_closed_for_recorder(school=school, day=row.paid_on, currency=row.currency, user=row.recorded_by):
+        if row.method in CASH_METHODS and cash_closed_for_recorder(school=school, day=row.paid_on, currency=row.currency, user=row.recorded_by):
             return JsonResponse({"error": "Caisse déclarée : annulation bloquée pour préserver le contrôle."}, status=409)
         FeeCharge.objects.select_for_update().get(pk=row.charge_id, school=school)
         if FeePaymentVoid.objects.filter(school=school, payment=row).exists():
@@ -604,7 +613,7 @@ def receipt(request, school_id, payment_id):
     evidence = payment_evidence(payment.method, charge.label)
     remaining = (charge.amount - charge.scholarship_discount - cleared_total(charge))
     cashier = payment.recorded_by.get_username() if payment.recorded_by else ""
-    return render_school_financial_pdf(
+    response = render_school_financial_pdf(
         school=school, title="Reçu de paiement", receipt=True,
         reference="REC-" + payment.paid_on.strftime("%Y") + "-" + payment.pk.hex.upper(),
         issued_on=payment.created_at,
@@ -620,6 +629,8 @@ def receipt(request, school_id, payment_id):
         review_required=evidence == "legacy_unverified",
         filename=f"yem-recu-{payment.pk}.pdf",
     )
+    response["X-YEM-Receipt-Class"] = classify_payment(payment.method, charge.label)
+    return response
 
 
 @require_GET
