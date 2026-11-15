@@ -378,6 +378,20 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     subtitle:"Réglages de l’établissement", modules:[], lives:[],
   };
   const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]);
+  const hasTab=(page,key)=>Boolean(visibleSections[page]?.modules.includes(key) ||
+    visibleSections[page]?.lives.some(l=>l.key===key));
+  const shortcuts=[
+    ["admissions","admissions","adduser","Admissions","Inscriptions / Concours",hasTab("admissions","admissions")],
+    ["payments","live","wallet","Paiements","Encaissements / Reçus",hasTab("payments","live")],
+    ["bulletins","assessments","barchart","Évaluations","Notes / Moyennes",hasTab("bulletins","assessments")],
+    ["settings","timetable","calendar","Emplois du temps","Classes / Enseignants",availableSettings.some(g=>g.items.some(i=>i.id==="timetable"))],
+    ["bulletins","reports","file","Bulletins","Génération / Consultation",hasTab("bulletins","reports")],
+  ].filter(item=>item[5]);
+  const dashboardShortcuts=shortcuts.length>0?<nav className="yd-dashboard-shortcuts" aria-label="Raccourcis du tableau de bord">
+    {shortcuts.map(([page,tab,icon,label,description])=><button type="button" key={page+tab} onClick={()=>navigate(page,tab)}>
+      <Icon name={icon} size={27}/><span><strong>{label}</strong><small>{description}</small></span>
+    </button>)}
+  </nav>:null;
   function navigate(id,subTab="",extra=null){
     setPage(id);setSub(subTab);setParams(extra);setMessage("");setSettingsReturn(null);
     if(id==="settings"){
@@ -540,7 +554,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     canAttendance={can("school.attendance.assigned")||can("school.attendance.read")}
     canClasses={can("school.academic.read")}/>;
   else if (perms.includes("school.finance.read")) content=<>
-    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>
+    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId} shortcuts={dashboardShortcuts}/>
     <MySchoolFunctions schoolId={chosen}/>
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
@@ -552,7 +566,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   </>;
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
   return <BrandContext.Provider value={{
-    name:schoolName,city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
+    fixedHeader:true, name:schoolName,city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
     logo:schoolBranding?.logo_url||"",banner:schoolBranding?.banner_url||"",
   }}><Shell nav={nav} active={page} onNavigate={navigate} notifications={inboxCount}
     onNotifications={can("school.parents.manage")?()=>navigate("notifications","inbox"):undefined} schoolSelector={selector}
@@ -562,16 +576,18 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
        photoUrl={myPhotoUrl?myPhotoUrl+"?rev="+photoRevision:undefined}
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
     {message&&<p role="status" className="pc-alert">{message}</p>}
-    {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school">
-      <label className="field">Code à communiquer au personnel
-        <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
-      </label>
-      <Button type="button" onClick={async()=>{
-        try {await navigator.clipboard.writeText(schoolCode);setMessage("Code établissement copié.");}
-        catch {setMessage("Sélectionnez le code puis copiez-le.");}
-      }}>Copier le code</Button>
+    {page==="dashboard"&&schoolCode&&canUsers&&<Card className="yd-school-code-compact" title="Code de connexion de l’établissement" icon="school">
+      <div className="yd-school-code-row">
+        <label className="field">Code à communiquer au personnel
+          <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
+        </label>
+        <Button type="button" onClick={async()=>{
+          try {await navigator.clipboard.writeText(schoolCode);setMessage("Code établissement copié.");}
+          catch {setMessage("Sélectionnez le code puis copiez-le.");}
+        }}>Copier le code</Button>
+      </div>
     </Card>}
-    {content}
+        {content}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
   </Shell></BrandContext.Provider>;
 }
