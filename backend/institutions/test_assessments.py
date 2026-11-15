@@ -187,3 +187,22 @@ class AssessmentTests(TestCase):
         self.assertEqual(self.write("assessments/"+first["id"]+"/grades/batch",{
             "grades":[{"enrollment":str(self.enrollment.pk),"revision":1,"score":10}]
         }).status_code,404)
+
+
+    def test_mixed_assessment_snapshots_render_as_competency(self):
+        self.configure(policy("numeric-10"))
+        self.login(self.teacher)
+        numerical = self.add_assessment().json()
+        self.configure(policy("competency"))
+        qualitative = self.add_assessment().json()
+        for assessment, score in [(numerical, 9), (qualitative, "Acquis")]:
+            response = self.write("assessments/" + assessment["id"] + "/grades/batch", {
+                "grades": [{"enrollment": str(self.enrollment.pk), "revision": 0, "score": score}],
+            })
+            self.assertEqual(response.status_code, 200, response.content)
+        average = self.client.get(self.base + "courses/" + str(self.course.pk) + "/averages").json()
+        self.assertEqual(average["scale"]["kind"], "competency")
+        self.assertEqual(average["students"][0]["average_percent"], "85.00")
+        self.assertEqual(average["students"][0]["average"]["label"], "Acquis")
+        self.assertIsNone(average["students"][0]["average"]["score"])
+        self.assertEqual(average["class_average"]["label"], "Acquis")

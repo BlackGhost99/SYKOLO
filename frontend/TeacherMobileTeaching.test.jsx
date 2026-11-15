@@ -130,3 +130,20 @@ test("moyennes : le barème du cycle remplace la conversion historique à l’é
   expect(await screen.findAllByText("9 / 10")).toHaveLength(4);
   expect(screen.queryByText("18 / 20")).toBeNull();
 });
+
+
+test("moyennes : un cycle qualitatif affiche des compétences sans classement",async()=>{
+  apiMock({
+    student_count:1,assessment_count:2,calculated_count:1,
+    scale:{kind:"competency",max:100},class_average:{label:"Acquis",score:null},
+    students:[{enrollment:"enrol1",first_name:"Eva",last_name:"Mba",evaluated:2,expected:2,
+      average:{label:"Acquis",score:null},average_percent:"85.00",complete:true}],
+  });
+  render(<TeacherMobileGrades schoolId="lycee" courses={[course]} classes={[classA]}
+    subjects={subjects} periods={[]} yearId="2026" mode="moyennes"/>);
+  await userEvent.setup().selectOptions(await screen.findByRole("combobox",{name:"Matière enseignée"}),"math");
+  const results=await screen.findByRole("region",{name:"Résultats des élèves"});
+  expect(within(results).getByText("Acquis")).toBeTruthy();
+  expect(within(screen.getByRole("region",{name:"Répartition des moyennes"})).getByText("Acquis")).toBeTruthy();
+  expect(screen.queryByText("Classement des élèves")).toBeNull();
+});

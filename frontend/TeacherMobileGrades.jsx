@@ -152,7 +152,10 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
   const progressTotal=roster.length*columns.length;
   const percent=progressTotal?Math.round(100*progressSaved/progressTotal):0;
   const scoreOf=s=>s.average_percent ?? (s.average_on_20==null?null:Number(s.average_on_20)*5);
-  const ranked=[...(means?.students||[])].sort((a,b)=>(scoreOf(b)??-1)-(scoreOf(a)??-1));
+  const qualitative=["letters","appreciation","competency"].includes(means?.scale?.kind);
+  const ranked=[...(means?.students||[])].sort((a,b)=>qualitative
+    ? a.last_name.localeCompare(b.last_name)||a.first_name.localeCompare(b.first_name)
+    : (scoreOf(b)??-1)-(scoreOf(a)??-1));
   const calculated=ranked.filter(s=>scoreOf(s)!=null);
   const meanValues=calculated.map(s=>Number(scoreOf(s)));
   const coverage=means?.student_count?Math.round(100*(means.calculated_count||0)/means.student_count):0;
@@ -160,6 +163,11 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
     {label:"< 50 %",min:0,max:50},{label:"50 – 60 %",min:50,max:60},{label:"60 – 70 %",min:60,max:70},
     {label:"70 – 80 %",min:70,max:80},{label:"≥ 80 %",min:80,max:Infinity},
   ];
+  const chartBins=qualitative
+    ? [...new Set(calculated.map(s=>s.average?.label).filter(Boolean))].map(label=>({
+        label,count:calculated.filter(s=>s.average?.label===label).length,
+      }))
+    : buckets.map(b=>({label:b.label,count:meanValues.filter(x=>x>=b.min&&x<b.max).length}));
   function formatAverage(result, legacy, percent) {
     if (!means) return "—";
     if (!Object.hasOwn(means,"scale")) return legacy==null?"—":displayNumber(legacy)+" / 20";
@@ -295,16 +303,17 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
           Pondérations et barèmes issus de YEM.</p>
         <div className="ym-stats-four">
           <div><span>Moyenne de la classe</span><strong>{formatAverage(means.class_average,means.class_average_on_20,means.class_average_percent)}</strong></div>
-          <div><span>Meilleure moyenne</span><strong>{studentAverage(calculated[0])}</strong></div>
-          <div><span>Plus faible moyenne</span><strong>{studentAverage(calculated.at(-1))}</strong></div>
+          {!qualitative&&<>
+            <div><span>Meilleure moyenne</span><strong>{studentAverage(calculated[0])}</strong></div>
+            <div><span>Plus faible moyenne</span><strong>{studentAverage(calculated.at(-1))}</strong></div>
+          </>}
           <div><span>Moyennes calculées</span><strong>{coverage} %</strong><small>({means.calculated_count} sur {means.student_count})</small></div>
         </div>
         <section className="ym-chart-card" aria-label="Répartition des moyennes">
           <h2>Répartition des moyennes</h2>
           {meanValues.length===0?<p className="ym-empty">Aucune moyenne à représenter.</p>:
-          <div className="ym-chart-bars">{buckets.map(b=>{
-            const count=meanValues.filter(x=>x>=b.min&&x<b.max).length;
-            const percentage=Math.round(100*count/meanValues.length);
+          <div className="ym-chart-bars">{chartBins.map(b=>{
+            const percentage=Math.round(100*b.count/meanValues.length);
             return <div className="ym-chart-bin" key={b.label}>
               <strong>{percentage} %</strong><div className="ym-chart-bar-shell">
                 <div style={{height:percentage+"%"}} className="ym-chart-bar"/></div>
@@ -312,11 +321,11 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
             </div>;
           })}</div>}
         </section>
-        <section className="ym-ranking" aria-label="Classement des élèves">
-          <h2>Classement des élèves</h2>
+        <section className="ym-ranking" aria-label={qualitative?"Résultats des élèves":"Classement des élèves"}>
+          <h2>{qualitative?"Résultats des élèves":"Classement des élèves"}</h2>
           {!ranked.length&&<p className="ym-empty">Aucun élève dans cette classe.</p>}
           {ranked.map((s,index)=><div className="ym-ranking-row" key={s.enrollment}>
-            <span className="ym-rank">{scoreOf(s)==null?"—":index+1}</span>
+            <span className="ym-rank">{qualitative||scoreOf(s)==null?"—":index+1}</span>
             <span className="ym-ranking-name"><strong>{s.last_name} {s.first_name}</strong>
               <small>{s.evaluated}/{s.expected} évaluation(s) {s.complete?"· complet":"· incomplet"}</small></span>
             <strong className="ym-ranking-mark">{studentAverage(s)}</strong>
