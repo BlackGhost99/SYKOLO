@@ -196,8 +196,21 @@ class SingPayTests(TestCase):
         self.assertEqual(checked.json(), {"verified": True, "revision": 2})
         self.assertEqual(provider.call_args.args[1:], ("GET", f"/portefeuille/api/{self.merchant.wallet_id}"))
         self.assertEqual(provider.call_args.kwargs, {"include_wallet_header": False})
-        with patch("institutions.singpay_service._request", return_value={"id": "other-wallet"}):
-            self.assertEqual(self.write(path + "/verify", {}).status_code, 502)
+        for payload in (
+            {"portefeuille": {"_id": self.merchant.wallet_id}},
+            {"data": {"wallet": {"id": self.merchant.wallet_id}}},
+        ):
+            with self.subTest(payload=payload), patch("institutions.singpay_service._request", return_value=payload):
+                self.assertEqual(self.write(path + "/verify", {}).status_code, 200)
+        for payload in (
+            {"id": "other-wallet"},
+            {"data": {"id": "other-wallet"}},
+            {"data": {"unrelated": {"id": self.merchant.wallet_id}}},
+            {"success": False, "data": {"id": self.merchant.wallet_id}},
+            {"id": "other-wallet", "data": {"id": self.merchant.wallet_id}},
+        ):
+            with self.subTest(payload=payload), patch("institutions.singpay_service._request", return_value=payload):
+                self.assertEqual(self.write(path + "/verify", {}).status_code, 502)
         from urllib.error import HTTPError
         with patch("institutions.singpay_service._request",
                    side_effect=HTTPError("https://example.invalid", 401, "provider-private", {}, None)):
