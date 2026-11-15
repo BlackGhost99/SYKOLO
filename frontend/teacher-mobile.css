@@ -88,7 +88,7 @@
 .ym-notice{background:var(--ym-soft);color:var(--ym-green)}
 .ym-prof-footer{text-align:center;padding:12px;color:var(--ym-muted);font-size:10px}
 .ym-prof-nav{position:fixed;z-index:24;bottom:0;left:0;right:0;display:grid;
-  grid-template-columns:repeat(6,minmax(0,1fr));gap:2px;background:#fff;
+  grid-template-columns:repeat(var(--ym-nav-items,6),minmax(0,1fr));gap:2px;background:#fff;
   border-top:1px solid var(--ym-line);padding:6px 6px calc(5px + env(safe-area-inset-bottom));
   box-shadow:0 -2px 12px #13241912}
 .ym-prof-nav button{display:flex;flex-direction:column;align-items:center;justify-content:center;

@@ -58,7 +58,7 @@ class SchoolCycleBoundaryMiddleware:
     _UUID = r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
     _ALLOW_GET = (
         r"my-access",
-        r"academic/(?:years|cycles|levels|tracks|classes|periods|annual-snapshot|pedagogical-calendar)",
+        r"academic/(?:years|cycles|levels|tracks|classes|periods|annual-snapshot|pedagogical-calendar|preschool-followup)",
         rf"academic/(?:years|cycles|levels|tracks|classes|periods)/{_UUID}",
         r"students",
         rf"students/{_UUID}",
@@ -70,7 +70,7 @@ class SchoolCycleBoundaryMiddleware:
         r"staff/me/dossier",
         r"organization/my-appointments",
     )
-    _ALLOW_POST = (r"staff/onboard", r"academic/(?:periods|pedagogical-calendar)")
+    _ALLOW_POST = (r"staff/onboard", r"academic/(?:periods|pedagogical-calendar|preschool-followup)")
     _ALLOW_PATCH = (rf"academic/(?:periods|pedagogical-calendar)/{_UUID}",
                     r"academic/pedagogical-calendar/profile")
 
