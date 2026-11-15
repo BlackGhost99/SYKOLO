@@ -5,8 +5,9 @@ from django.test import TestCase
 
 from .academic_models import AcademicClass, AcademicCycle, AcademicLevel, AcademicYear
 from .models import Organization, School, SchoolMember, SchoolRole
+from .parent_models import GuardianAccountLink
 from .staff_models import StaffAssignment, StaffRecord
-from .student_models import Enrollment, Student
+from .student_models import Enrollment, Student, StudentGuardian
 
 
 class PreschoolFollowupTests(TestCase):
@@ -91,3 +92,55 @@ class PreschoolFollowupTests(TestCase):
         self.assertEqual(result["students"][0]["observation"], self.payload["observation"])
         self.assertFalse(result["students"][0]["current"])
         self.assertEqual(self.save(revision=1).status_code, 404)
+
+    def action(self, action, **fields):
+        return self.client.post(self.url, {
+            "action": action, "classroom": str(self.rooms[0].pk), "day": self.day, **fields,
+        }, content_type="application/json")
+
+    def test_reference_is_level_scoped_and_marks_are_versioned(self):
+        self.assertEqual(self.action("reference", label="Écouter une histoire").status_code, 403)
+        director = get_user_model().objects.create_user(username="direction")
+        role = SchoolRole.objects.create(
+            school=self.school, code="direction", label="Direction",
+            permissions=["school.academic.read", "school.academic.manage"],
+        )
+        SchoolMember.objects.create(school=self.school, role=role, user=director)
+        self.client.force_login(director)
+        reference = self.action("reference", label="Écouter une histoire")
+        self.assertEqual(reference.status_code, 201, reference.content)
+        self.client.force_login(self.user)
+        fields = {"enrollment": str(self.enrollments[0].pk), "competency": reference.json()["id"],
+                  "stage": "developing", "revision": 0}
+        self.assertEqual(self.action("mark", **fields).status_code, 201)
+        self.assertEqual(self.action("mark", **fields).status_code, 409)
+        self.assertEqual(self.action("mark", **{**fields, "stage": "unknown"}).status_code, 422)
+        result = self.client.get(self.url, {"classroom": self.rooms[0].pk, "day": self.day}).json()
+        self.assertEqual(result["students"][0]["marks"][0]["stage"], "developing")
+        self.assertEqual(result["competencies"][0]["label"], "Écouter une histoire")
+
+    def test_liaison_only_shares_publications_with_verified_guardian(self):
+        self.assertEqual(self.save(observation="Note interne").status_code, 201)
+        entry = self.action("liaison", enrollment=str(self.enrollments[0].pk), message="Lecture vendredi.")
+        self.assertEqual(entry.status_code, 201, entry.content)
+        replay = self.action("liaison", enrollment=str(self.enrollments[0].pk), message="Lecture vendredi.")
+        self.assertEqual(replay.status_code, 200, replay.content)
+        self.assertEqual(replay.json()["id"], entry.json()["id"])
+        parent = get_user_model().objects.create_user(username="parent")
+        role = SchoolRole.objects.create(school=self.school, code="parent", label="Parent", permissions=["school.view"])
+        SchoolMember.objects.create(school=self.school, role=role, user=parent)
+        first_child, second_child = (row.student for row in self.enrollments)
+        guardian = StudentGuardian.objects.create(school=self.school, student=first_child, full_name="Parent un")
+        link = GuardianAccountLink.objects.create(school=self.school, guardian=guardian, user=parent)
+        self.client.force_login(parent)
+        def url(child):
+            return f"/api/v1/parents/children/{child.pk}/liaison"
+        response = self.client.get(url(first_child), {"year": self.year.pk})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([item["message"] for item in response.json()["messages"]], ["Lecture vendredi."])
+        self.assertNotContains(response, "Note interne")
+        self.assertEqual(self.client.get(url(second_child)).status_code, 404)
+        self.assertEqual(self.client.get(self.url, {"year": self.year.pk}).status_code, 403)
+        link.active = False
+        link.save(update_fields=["active"])
+        self.assertEqual(self.client.get(url(first_child)).status_code, 404)

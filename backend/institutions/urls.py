@@ -90,6 +90,7 @@ urlpatterns = [
     path("parents/children", parent_views.children),
     path("parents/children/<uuid:student_id>/enrollments", parent_views.child_enrollments),
     path("parents/children/<uuid:student_id>/grades", parent_views.child_grades),
+    path("parents/children/<uuid:student_id>/liaison", preschool_followup_views.child_liaison),
     path("parents/children/<uuid:student_id>/reports", parent_views.child_reports),
     path("parents/children/<uuid:student_id>/reports/<uuid:report_id>", parent_views.child_report_detail),
     path("parents/children/<uuid:student_id>/reports/<uuid:report_id>/pdf", parent_views.child_report_pdf),

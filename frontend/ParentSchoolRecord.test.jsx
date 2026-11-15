@@ -77,3 +77,22 @@ test("un compte sans enfant ouvre directement les profils et garde les démarche
   await user.click(screen.getByRole("button",{name:"Mes demandes"}));
   expect(screen.getByRole("button",{name:"Mes demandes"}).getAttribute("aria-pressed")).toBe("true");
 });
+
+
+test("la famille retrouve les messages publiés dans le carnet de liaison", async () => {
+  const path = "/api/v1/parents/children";
+  const child = path + "/child-1";
+  renderPortal({
+    [path]:{children:[{student:"child-1",first_name:"Lina",last_name:"Nkomo",school_name:"École",student_code:"001"}]},
+    [child+"/enrollments"]:{enrollments:[
+      {id:"en-1",year:"2026-2027",year_id:"year-1",year_status:"current",
+       classroom:"Crèche A",class_size:12,active:true,status:"inscrit",preschool_liaison:true},
+    ]},
+    [child+"/liaison?year=year-1"]:{messages:[{id:"entry",day:"2026-10-01",message:"Lecture vendredi."}]},
+  });
+  const user=userEvent.setup();
+  await screen.findByText("Crèche A");
+  await user.click(within(screen.getByRole("navigation",{name:"Navigation YEM Familles"})).getByRole("button",{name:"Scolarité"}));
+  await user.click(screen.getByRole("button",{name:"Carnet de liaison"}));
+  expect(await screen.findByText("Lecture vendredi.")).toBeTruthy();
+});

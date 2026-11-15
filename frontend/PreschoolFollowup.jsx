@@ -15,16 +15,35 @@ function DailyRoster({path,classroom,day}){
     return()=>{alive=false;};
   },[path,classroom,day]);
 
-  async function save(event,row){
+  async function save(event,row,action="observation"){
     event.preventDefault();
-    setBusy(row.enrollment);setError("");setNotice("");
+    setBusy(row?.enrollment||"reference");setError("");setNotice("");
+    const form=event.currentTarget;
     try{
-      const body={classroom,day,enrollment:row.enrollment,revision:row.revision,
-        observation:new FormData(event.currentTarget).get("observation")};
+      const fields=Object.fromEntries(new FormData(form));
+      const body={classroom,day,action,...fields};
+      if(row)body.enrollment=row.enrollment;
+      if(action==="observation")body.revision=row.revision;
+      if(action==="mark"){
+        body.revision=row.marks.find(mark=>mark.competency===fields.competency)?.revision||0;
+      }
       const saved=await teacherRequest(path,body);
-      setData(previous=>({...previous,students:previous.students.map(student=>
-        student.enrollment===row.enrollment?{...student,...saved}:student)}));
-      setNotice("Observation enregistrée.");
+      if(action==="reference"){
+        setData(previous=>({...previous,competencies:[
+          ...previous.competencies.filter(item=>item.id!==saved.id),saved,
+        ].sort((a,b)=>a.label.localeCompare(b.label))}));
+      }else{
+        setData(previous=>({...previous,students:previous.students.map(student=>{
+          if(student.enrollment!==row.enrollment)return student;
+          if(action==="mark")return {...student,marks:[...student.marks.filter(
+            mark=>mark.competency!==saved.competency),saved]};
+          if(action==="liaison")return {...student,liaison:[...student.liaison.filter(item=>item.id!==saved.id),saved]};
+          return {...student,...saved};
+        })}));
+      }
+      if(action==="liaison"||action==="reference")form.reset();
+      setNotice({observation:"Observation enregistrée.",reference:"Compétence ajoutée.",
+        mark:"Compétence évaluée.",liaison:"Message publié dans le carnet de liaison."}[action]);
     }catch(e){setError(e.message);}
     finally{setBusy("");}
   }
@@ -33,15 +52,56 @@ function DailyRoster({path,classroom,day}){
     {error&&<p role="alert">{error}</p>}
     {notice&&<p role="status">{notice}</p>}
     {!data&&!error&&<p role="status">Chargement du groupe…</p>}
+    {data?.can_manage_reference&&<form className="yf-form" onSubmit={e=>save(e,null,"reference")}>
+      <label className="field">Nouvelle compétence pour ce niveau
+        <input name="label" maxLength={120} required/>
+      </label>
+      <button type="submit" disabled={Boolean(busy)}>Ajouter au référentiel</button>
+    </form>}
     {data?.students.length===0&&<p>Aucun enfant inscrit à cette date.</p>}
-    {data?.students.map(row=><form className="yf-form" key={row.enrollment+":"+row.revision}
-      onSubmit={e=>save(e,row)}>
+    {data?.students.map(row=><section key={row.enrollment}>
+    <form className="yf-form" key={row.revision} onSubmit={e=>save(e,row)}>
       <label className="field">Observation de {row.name}
         <textarea name="observation" defaultValue={row.observation} rows={2} maxLength={600}
           required readOnly={!data.editable||!row.current} disabled={Boolean(busy)}/>
       </label>
       {data.editable&&row.current&&<button type="submit" disabled={Boolean(busy)}>Enregistrer</button>}
-    </form>)}
+    </form>
+    <details>
+      <summary>Compétences · {row.name}</summary>
+      {!!row.marks?.length&&<ul>{row.marks.map(mark=><li key={mark.competency}>
+        {data.competencies.find(item=>item.id===mark.competency)?.label} · {data.stages[mark.stage]}
+      </li>)}</ul>}
+      {data.editable&&row.current&&!!data.competencies?.length&&
+        <form className="yf-form" onSubmit={e=>save(e,row,"mark")}>
+          <div className="yf-grid">
+            <label className="field">Compétence de {row.name}
+              <select name="competency" required defaultValue="">
+                <option value="">Choisir une compétence</option>
+                {data.competencies.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
+            </label>
+            <label className="field">Niveau observé pour {row.name}
+              <select name="stage" required defaultValue="">
+                <option value="">Choisir un niveau</option>
+                {Object.entries(data.stages).map(([id,label])=><option key={id} value={id}>{label}</option>)}
+              </select>
+            </label>
+          </div>
+          <button type="submit" disabled={Boolean(busy)}>Enregistrer la compétence</button>
+        </form>}
+    </details>
+    <details>
+      <summary>Carnet de liaison · {row.name}</summary>
+      {!!row.liaison?.length&&<ul>{row.liaison.map(item=><li key={item.id}>{item.message}</li>)}</ul>}
+      {data.editable&&row.current&&<form className="yf-form" onSubmit={e=>save(e,row,"liaison")}>
+        <label className="field">Message à la famille de {row.name}
+          <textarea name="message" required maxLength={600} rows={2}/>
+        </label>
+        <button type="submit" disabled={Boolean(busy)}>Publier dans le carnet de liaison</button>
+      </form>}
+    </details>
+    </section>)}
   </>;
 }
 

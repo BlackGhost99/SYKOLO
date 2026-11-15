@@ -28,6 +28,6 @@ test("enregistre une observation dans le groupe et la journée sélectionnés",a
   await screen.findByText("Observation enregistrée.");
   const [,request]=fetchMock.mock.calls.find(([,options])=>options?.method==="POST");
   expect(JSON.parse(request.body)).toEqual({
-    classroom:"a",day:"2026-10-01",enrollment:"1",revision:0,observation:"Lecture",
+    classroom:"a",day:"2026-10-01",action:"observation",enrollment:"1",revision:0,observation:"Lecture",
   });
 });
