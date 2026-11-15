@@ -382,7 +382,8 @@ class MultiFeeReceiptTests(TestCase):
     def test_historical_documents_can_be_opened_and_downloaded_without_writes(self):
         unit = FeePayment.objects.create(
             school=self.school, charge=self.charges[0], amount=Decimal("5000.00"),
-            currency="XAF", method="cash", paid_on=timezone.localdate() - timedelta(days=31), recorded_by=self.cashier,
+            currency="XAF", method="cash", paid_on=timezone.localdate() - timedelta(days=31),
+            recorded_by=self.cashier, idempotency_key=uuid.uuid4(),
         )
         payload = self.payload()
         payload["paid_on"] = (timezone.localdate() - timedelta(days=30)).isoformat()
