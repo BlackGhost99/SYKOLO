@@ -15,7 +15,7 @@ const subjects=[{id:"math-subject",name:"Mathématiques"}];
 const assessment={id:"devoir1",active:true,name:"Devoir 1",assessment_date:"2026-10-22",revision:1,
   published:false,weight:"2",policy:{name:"Barème numérique",scale:{kind:"numeric",max:20}}};
 const student={enrollment_id:"enrol1",last_name:"Mba",first_name:"Eva",student_code:"Y-1"};
-function apiMock(){
+function apiMock(averages){
   const fetchMock=vi.fn(async (url,options={})=>{
     const path=String(url).replace(/^\/api\/v1\//,"");
     if(path==="auth/csrf")return Response.json({});
@@ -23,7 +23,7 @@ function apiMock(){
     if(path===root+"assessments/devoir1/roster")return Response.json({students:[student]});
     if(path===root+"assessments/devoir1/grades")return Response.json({grades:[]});
     if(path===root+"assessments/devoir1/grades/batch")return Response.json({saved:1,grades:[]});
-    if(path===root+"courses/math/averages")return Response.json({
+    if(path===root+"courses/math/averages")return Response.json(averages??{
       student_count:1,assessment_count:1,calculated_count:1,class_average_on_20:"17.50",
       students:[{enrollment:"enrol1",first_name:"Eva",last_name:"Mba",evaluated:1,expected:1,
         average_on_20:"17.50",complete:true}],
@@ -79,7 +79,7 @@ test("moyennes : la vue indique le caractère provisoire et le barème normalis�
   render(<TeacherMobileGrades schoolId="lycee" courses={[course]} classes={[classA]}
     subjects={subjects} periods={[]} yearId="2026" mode="moyennes"/>);
   await user.selectOptions(await screen.findByRole("combobox",{name:"Matière enseignée"}),"math");
-  expect(await screen.findByText("17,5 / 20")).toBeTruthy();
+  expect(await screen.findAllByText("17,5 / 20")).not.toHaveLength(0);
   expect(screen.getByText(/Résultats provisoires/)).toBeTruthy();
   expect(screen.getByText(/incomplet|complet/)).toBeTruthy();
 });
@@ -115,4 +115,18 @@ test("l'accueil mobile conserve les couleurs YEM et la navigation PWA par profes
   await user.click(screen.getByText("Ouvrir les paramètres de sécurité"));
   expect(screen.getByText("Paramètres du mot de passe")).toBeTruthy();
   expect(screen.getByRole("button",{name:"Retour à l'espace établissement"})).toBeTruthy();
+});
+
+test("moyennes : le barème du cycle remplace la conversion historique à l’écran",async()=>{
+  apiMock({
+    student_count:1, assessment_count:1, calculated_count:1,
+    scale:{kind:"numeric",max:10}, class_average:{score:"9.00"}, class_average_on_20:"18.00",
+    students:[{enrollment:"enrol1",first_name:"Eva",last_name:"Mba",evaluated:1,expected:1,
+      average:{score:"9.00"},average_percent:"90.00",average_on_20:"18.00",complete:true}],
+  });
+  render(<TeacherMobileGrades schoolId="lycee" courses={[course]} classes={[classA]}
+    subjects={subjects} periods={[]} yearId="2026" mode="moyennes"/>);
+  await userEvent.setup().selectOptions(await screen.findByRole("combobox",{name:"Matière enseignée"}),"math");
+  expect(await screen.findAllByText("9 / 10")).toHaveLength(4);
+  expect(screen.queryByText("18 / 20")).toBeNull();
 });

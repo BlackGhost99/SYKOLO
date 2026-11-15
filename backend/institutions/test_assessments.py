@@ -176,6 +176,10 @@ class AssessmentTests(TestCase):
         }).status_code,200)
         avg=self.client.get(self.base+"courses/"+str(self.course.pk)+"/averages")
         self.assertEqual(avg.json()["students"][0]["average_on_20"],"18.00")
+        self.assertEqual(avg.json()["scale"]["max"],10)
+        self.assertEqual(avg.json()["class_average"]["score"],"9.00")
+        self.assertEqual(avg.json()["students"][0]["average"]["score"],"9.00")
+
         self.assertEqual(self.client.get(self.base+"courses/"+str(self.other_course.pk)+"/averages").status_code,404)
         self.assertEqual(self.client.get(self.base+"courses/"+str(self.course.pk)+"/averages?period=not-uuid").status_code,422)
         self.login(self.stranger)
