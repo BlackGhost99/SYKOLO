@@ -169,6 +169,25 @@ class SingPayTests(TestCase):
               "contract_reference":"test-contract","mode":"live","enabled":True,"fee_basis_points":250,"fee_fixed_xaf":25}
         self.assertEqual(self.write(path,body).status_code,409)
 
+    def test_verify_wallet_uses_read_only_endpoint_even_when_payments_disabled(self):
+        self.merchant.enabled = False
+        self.merchant.save(update_fields=["enabled"])
+        path = f"/api/v1/schools/{self.school.pk}/singpay/merchant/verify"
+        self.login(self.director)
+        self.assertEqual(self.write(path, {}).status_code, 403)
+        OrganizationMember.objects.create(organization=self.school.organization, user=self.director, role="founder")
+        with patch("institutions.singpay_service._request", return_value={"id": self.merchant.wallet_id, "merchant_msisdn": "private"}) as provider:
+            response = self.write(path, {})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json(), {"verified": True, "revision": self.merchant.revision})
+        self.assertEqual(provider.call_args.args[1:], ("GET", f"/portefeuille/api/{self.merchant.wallet_id}"))
+        self.assertEqual(provider.call_args.kwargs, {"include_wallet_header": False})
+        with patch("institutions.singpay_service._request", return_value={"id": "other-wallet"}):
+            self.assertEqual(self.write(path, {}).status_code, 502)
+        self.assertFalse(SingPayIntent.objects.exists())
+        self.merchant.refresh_from_db()
+        self.assertFalse(self.merchant.enabled)
+
     def test_changed_merchant_cannot_reconcile_old_payment(self):
         self.start();intent=SingPayIntent.objects.get()
         self.merchant.wallet_id="other-wallet"
