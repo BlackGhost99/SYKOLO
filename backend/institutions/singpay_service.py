@@ -77,8 +77,19 @@ def verify_wallet_access(merchant):
         raise WalletVerificationError(f"SingPay a répondu avec le code HTTP {exc.code} lors de la consultation.") from None
     except ProviderError:
         raise WalletVerificationError("YEM ne peut pas lire les identifiants enregistrés ou obtenir une réponse exploitable de SingPay.") from None
-    if (wallet.get("id") or wallet.get("_id")) != merchant.wallet_id:
-        raise WalletVerificationError("La réponse SingPay ne confirme pas le Wallet ID enregistré.")
+    if wallet.get("error") or wallet.get("success") is False:
+        raise WalletVerificationError("SingPay a signalé un échec dans sa réponse à la consultation.")
+    # A wallet may be sent directly or wrapped in a response object. Match the
+    # wallet object only, never an ID found elsewhere in the payload.
+    candidates = [wallet.get("portefeuille"), wallet.get("wallet"), wallet.get("data")]
+    if isinstance(wallet.get("data"), dict):
+        candidates.extend([wallet["data"].get("portefeuille"), wallet["data"].get("wallet")])
+    records = [record for record in [wallet, *candidates]
+               if isinstance(record, dict) and ("id" in record or "_id" in record)]
+    if not records:
+        raise WalletVerificationError("SingPay a répondu sans identifiant de portefeuille reconnu.")
+    if any((record.get("id") or record.get("_id")) != merchant.wallet_id for record in records):
+        raise WalletVerificationError("SingPay a renvoyé un Wallet ID différent de celui enregistré dans YEM.")
 
 
 def _request(merchant, method, path, payload=None, *, include_wallet_header=True):
