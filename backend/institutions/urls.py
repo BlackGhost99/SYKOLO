@@ -35,6 +35,7 @@ urlpatterns = [
     path("parents/singpay/payments/<uuid:intent_id>/refresh", singpay_views.refresh),
     path("parents/singpay/payments/<uuid:intent_id>/receipt", singpay_views.receipt),
     path("schools/<uuid:school_id>/singpay/merchant", singpay_views.merchant_config),
+    path("schools/<uuid:school_id>/singpay/merchant/verify", singpay_views.merchant_verify),
     path("schools/<uuid:school_id>/singpay/reconciliation", singpay_views.staff_reconciliation),
     path("schools/<uuid:school_id>/singpay/payments/<uuid:intent_id>/settlement", singpay_views.settlement),
     path("schools/<uuid:school_id>/functions", delegation_views.functions),
