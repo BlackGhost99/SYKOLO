@@ -202,4 +202,5 @@ def platform_assume_school_administration(request, school_id):
             defaults={"role": role, "active": True, "access_cycle_ids": None}
         )
         log_event(school, request, "platform_admin_school_access", str(request.user.pk))
+    request.session["platform_tariff_school_id"] = str(school.pk)
     return JsonResponse({"school_id": str(school.id), "access": "direction"})

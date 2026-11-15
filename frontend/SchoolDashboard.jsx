@@ -109,8 +109,8 @@ const settingsSections = [
     {id:"admission-policy", label:"Voies d’admission et fiche publique", need:["school.admissions.read","school.academic.read"], any:["school.admissions.manage","school.admissions.decide"]},
   ]},
   {id:"payments", title:"Paiements", icon:"card", items:[
-    {id:"fees", label:"Tarifs et échéances", need:["school.finance.manage","school.finance.read"]},
-    {id:"admission-fees", label:"Tarifs d’inscription", need:["school.finance.manage"]},
+    {id:"fees", label:"Tarifs et échéances", need:["school.finance.manage","school.finance.read"], tariffIntervention:true},
+    {id:"admission-fees", label:"Tarifs d’inscription", need:["school.finance.manage"], tariffIntervention:true},
     {id:"gateway", label:"Paiement des dossiers par Mobile Money", need:["school.admissions.manage","school.finance.manage","school.academic.read"]},
   ]},
   {id:"attendance", title:"Absences et retards", icon:"calendar", items:[
@@ -365,6 +365,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const availableSettings = restricted ? [] : settingsSections.map(section => ({
     ...section, items: section.items.filter(item =>
       item.ownerOnly ? isOwner :
+        (item.tariffIntervention && access?.platform_tariff_intervention === true) ||
         (item.owner && isOwner) || (item.need.every(can) && (!item.any || item.any.some(can)))),
   })).filter(section => section.items.length);
   const visibleSections = restricted

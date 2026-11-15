@@ -22,6 +22,7 @@ from .report_models import SchoolReport
 from .attendance_models import AttendanceMark
 from .admission_models import AdmissionApplication
 from .finance_models import FeeCharge, FeePayment
+from .finance_evidence import evidence_totals
 from .models import SchoolAudit, SchoolMember
 from .organization_models import SchoolAppointment
 from .services import owns_school
@@ -137,11 +138,12 @@ def owner_overview(request, school_id):
             school=school, enrollment__school=school, enrollment__year=selected,
         ).annotate(
             received=Sum("payments__amount", filter=Q(payments__void__isnull=True))
-        ).values_list("currency", "amount", "due_date", "received")
-        for currency, amount, due_date, received in charges.iterator():
+        ).values_list("currency", "amount", "scholarship_discount", "due_date", "received")
+        for currency, amount, scholarship_discount, due_date, received in charges.iterator():
             section = finance_totals[currency]
-            outstanding = max(ZERO, amount - (received or ZERO))
-            section["billed"] += amount
+            net_due = amount - (scholarship_discount or ZERO)
+            outstanding = max(ZERO, net_due - (received or ZERO))
+            section["billed"] += net_due
             section["paid"] += (received or ZERO)
             section["outstanding"] += outstanding
             if due_date and due_date < today:
@@ -161,6 +163,7 @@ def owner_overview(request, school_id):
         ):
             finance_totals[row["currency"]]["paid_today"] = row["total"] or ZERO
             finance_totals[row["currency"]]["payments_today"] = row["count"]
+        financial_evidence = evidence_totals(payments)
         monthly_payments = [
             {"month": record["month"].strftime("%Y-%m"),
              "currency": record["currency"], "total": _money(record["total"])}
@@ -172,6 +175,7 @@ def owner_overview(request, school_id):
             ).order_by("month", "currency")
         ]
     else:
+        financial_evidence = {}
         monthly_payments = []
 
     financial_rows = [{
@@ -182,6 +186,11 @@ def owner_overview(request, school_id):
         "paid_this_month": _money(totals["paid_this_month"]),
         "paid_today": _money(totals["paid_today"]),
         "payments_today": totals["payments_today"],
+        "evidence": financial_evidence.get(currency, {
+            "explicit_demo": "0.00",
+            "legacy_cash_unverified": "0.00",
+            "other_declared": "0.00",
+        }),
     } for currency, totals in sorted(finance_totals.items())]
 
     # Tableau d'activité agrégé, sans identifiant, nom, sujet ou détail d'audit.
@@ -241,7 +250,10 @@ def owner_overview(request, school_id):
         "finance": {
             "currencies": financial_rows,
             "monthly": monthly_payments,
-            "note": "Encaissements enregistrés, hors reçus annulés ; montants distincts par devise.",
+            "note": ("Écritures comptables enregistrées (y compris anciennes opérations à rapprocher), "
+                     "hors annulations. Aucun chiffre ne constitue une recette certifiée. "
+                     "Les montants DÉMO et cash historiques sont isolés dans la colonne de contrôle."),
+            "revenue_certified": False,
         },
         "activity": {
             "total_30d": sum(activities.values()),

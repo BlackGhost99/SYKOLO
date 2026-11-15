@@ -138,6 +138,30 @@ class OwnerOverviewTests(TestCase):
                         "077123456","Très confidentiel","Adresse privée"):
             self.assertNotIn(private,text)
 
+    def test_owner_finance_separates_unverified_cash_and_uses_net_scholarship_amount(self):
+        billed = FeeCharge.objects.get(school=self.school, currency="XAF")
+        FeeCharge.objects.filter(pk=billed.pk).update(scholarship_discount=Decimal("10000.00"))
+        for method, amount in (("cash", "20000"), ("simulation", "5000")):
+            FeePayment.objects.create(
+                school=self.school, charge=billed, method=method,
+                amount=Decimal(amount), currency="XAF",
+                paid_on=timezone.localdate(), idempotency_key=uuid4(),
+                recorded_by=self.director,
+            )
+        self.client.force_login(self.owner)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200, response.content)
+        finance = next(x for x in response.json()["finance"]["currencies"] if x["currency"] == "XAF")
+        self.assertEqual(finance["billed"], "110000.00")
+        self.assertEqual(finance["paid"], "75000.00")
+        self.assertEqual(finance["outstanding"], "35000.00")
+        self.assertEqual(finance["evidence"], {
+            "explicit_demo": "5000.00",
+            "legacy_cash_unverified": "20000.00",
+            "other_declared": "50000.00",
+        })
+        self.assertFalse(response.json()["finance"]["revenue_certified"])
+
     def test_real_founder_without_director_role_may_monitor(self):
         self.client.force_login(self.founder)
         response=self.client.get(self.url)

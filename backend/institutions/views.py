@@ -20,7 +20,7 @@ from .models import (
 )
 from .services import (
     OWNER_ROLE_CODE, PERMISSIONS, has_permission, effective_permissions, key_for_scope,
-    owns_school, platform_only, resolve_settings, role_available, school_access, school_response,
+    owns_school, platform_only, platform_tariff_intervention, resolve_settings, role_available, school_access, school_response,
     quota_reached, public_role_label, role_templates_for, validate_scope,
 )
 
@@ -302,6 +302,7 @@ def my_school_access(request, school_id):
         "is_owner": owner,
         "roles": [member.role.code, *member.additional_roles.filter(school=school).values_list("code", flat=True)] if member else [],
         "permissions": allowed_school_permissions(permitted,cycle_ids),
+        "platform_tariff_intervention": cycle_ids is None and platform_tariff_intervention(request, school),
         "cycle_scope_restricted": cycle_ids is not None,
         "access_cycle_ids": sorted(cycle_ids) if cycle_ids is not None else None,
         "access_cycles": [{"id": str(row["id"]), "name": row["name"]} for row in scoped_cycles],

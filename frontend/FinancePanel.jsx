@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from "react";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
+import MonthlyTariffSetup from "./MonthlyTariffSetup.jsx";
 
 async function financeApi(url, body, method) {
   if (body !== undefined) await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
@@ -29,12 +30,16 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const [payments, setPayments] = useState([]);
   const [statement, setStatement] = useState(null);
   const [onlineAdmissions,setOnlineAdmissions] = useState([]);
+  const [financeQuality,setFinanceQuality] = useState(null);
+  const [qualityRevision,setQualityRevision] = useState(0);
   const [selectedYear, setSelectedYear] = useState(workingYearId);
-  useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");setSelectedSchedule("");setSelectedCharge("");},[workingYearId,schoolId]);
+  const [dateEdit, setDateEdit] = useState(null);
+  useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");setSelectedSchedule("");setSelectedCharge("");setAmountEdit(null);setDateEdit(null);},[workingYearId,schoolId]);
   const [selectedClass, setSelectedClass] = useState("");
   const [feeCode, setFeeCode] = useState("");
   const [feeLabel, setFeeLabel] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
+  const [amountEdit, setAmountEdit] = useState(null);
   const [currency, setCurrency] = useState("XAF");
   const [dueDate, setDueDate] = useState("");
   const [selectedStudent, setSelectedStudent] = useState("");
@@ -51,9 +56,20 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const [message, setMessage] = useState("");
   const [allowed, setAllowed] = useState(true);
   const [permissions, setPermissions] = useState([]);
+  const [tariffIntervention, setTariffIntervention] = useState(false);
   const canManage = permissions.includes("school.finance.manage");
+  const canConfigureTariffs = canManage || (settings && tariffIntervention);
   const canReceive = permissions.includes("school.finance.receive");
   const canReverse = permissions.includes("school.finance.reverse");
+  useEffect(()=>{
+    if (settings) {setFinanceQuality(null);return;}
+    let active=true;
+    const param=workingYearId ? "?year="+encodeURIComponent(workingYearId) : "";
+    setFinanceQuality(null);
+    financeApi(finance+"quality"+param).then(report=>{if(active)setFinanceQuality(report);})
+      .catch(()=>{if(active)setFinanceQuality(null);});
+    return ()=>{active=false;};
+  },[finance,settings,workingYearId,qualityRevision]);
   useEffect(()=>{
     if(settings)return;
     let live=true;
@@ -64,15 +80,20 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   useEffect(() => {
     let active = true;
     setPermissions([]);
+    setTariffIntervention(false);
     financeApi(root+"my-access").then(access => {
-      if (active) setPermissions(access.permissions || []);
-    }).catch(() => { if (active) setPermissions([]); });
+      if (active) {
+        setPermissions(access.permissions || []);
+        setTariffIntervention(access.platform_tariff_intervention === true);
+      }
+    }).catch(() => { if (active) {setPermissions([]);setTariffIntervention(false);} });
     return () => { active = false; };
   }, [schoolId]);
 
   async function refresh() {
+    setQualityRevision(value=>value+1);
     if (settings) {
-      setSchedules((await financeApi(finance+"schedules")).schedules || []);
+      setSchedules((await financeApi(finance+"schedules?choices=1")).schedules || []);
       return;
     }
     const [ys, cs, roster, fs, ch] = await Promise.all([
@@ -141,7 +162,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
 
   return <section className="card" aria-label="Frais scolaires et caisse" style={{marginTop:"1rem"}}>
     <h2>{settings ? "Tarifs et échéances" : "Frais scolaires et caisse"}</h2>
-    {canManage && mode !== "daily" && <>
+    {canConfigureTariffs && mode !== "daily" && <>
     <h3>Configurer les frais d'une année</h3>
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       await financeApi(finance+"schedules",{
@@ -183,13 +204,85 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
       <button disabled={busy||!selectedYear} type="submit">Créer le tarif</button>
     </form>
     </>}
+    {settings && canConfigureTariffs && <MonthlyTariffSetup key={schoolId+selectedYear}
+      classes={classes.filter(x=>x.active&&x.year===selectedYear)} year={selectedYear} busy={busy}
+      onGenerate={payload=>run(async()=>{
+        const result=await financeApi(finance+"schedules/monthly",payload);
+        setMessage(result.created+" mensualité(s) créée(s), "+result.unchanged+" déjà présente(s). Aucun frais élève modifié.");
+      })}/>}
     {settings ? <div>
       <h3>Tarifs enregistrés</h3>
       {schedules.length === 0 && <p>Aucun tarif configuré.</p>}
-      {schedules.map(item => <p key={item.id}><strong>{item.label}</strong> · {item.amount} {item.currency} · {
-        years.find(year => year.id === item.year)?.name
-      } · {classes.find(room => room.id === item.classroom)?.name || "Toutes les classes"}</p>)}
+      {schedules.filter(item=>!selectedYear||item.year===selectedYear).map(item => <div key={item.id}>
+        <p><strong>{item.label}</strong> · {item.amount} {item.currency} · {
+          years.find(year => year.id === item.year)?.name || "Année archivée"
+        } · {item.classroom ? classes.find(room => room.id === item.classroom)?.name || "Classe archivée" : "Toutes les classes"} · {item.due_date ? "Échéance : "+item.due_date : "Sans échéance"}</p>
+        {canConfigureTariffs && years.some(year=>year.id===item.year&&year.active) &&
+          (amountEdit?.id===item.id ? <form onSubmit={event=>{
+            event.preventDefault();
+            if(busy)return;
+            run(async()=>{
+              await financeApi(finance+"schedules/"+item.id,{
+                revision:amountEdit.revision, amount:amountEdit.amount,
+              },"PATCH");
+              setAmountEdit(null);
+              setMessage("Montant modifié pour les futures affectations. Les frais déjà affectés restent inchangés.");
+            });
+          }}>
+            <label className="field">Nouveau montant ({item.currency})
+              <input required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" disabled={busy}
+                value={amountEdit.amount} onChange={event=>setAmountEdit({...amountEdit,amount:event.target.value})}/>
+            </label>
+            <p className="hint">Seules les futures affectations utilisent le nouveau tarif. Les frais déjà affectés et leurs paiements restent inchangés.</p>
+            <div className="actions">
+              <button type="submit" disabled={busy}>Enregistrer le montant</button>
+              <button type="button" disabled={busy} onClick={()=>setAmountEdit(null)}>Annuler</button>
+            </div>
+          </form> : <button type="button" disabled={busy}
+            onClick={()=>{setDateEdit(null);setAmountEdit({id:item.id,revision:item.revision,amount:String(item.amount)});}}>
+            Modifier le montant
+          </button>)}
+        {canConfigureTariffs && years.some(year=>year.id===item.year&&year.active) &&
+          (dateEdit?.id===item.id ? <form onSubmit={event=>{
+            event.preventDefault();
+            if(busy)return;
+            run(async()=>{
+              await financeApi(finance+"schedules/"+item.id,{
+                revision:dateEdit.revision, due_date:dateEdit.date||null,
+              },"PATCH");
+              setDateEdit(null);
+              setMessage("Échéance du tarif modifiée. Les frais déjà affectés restent inchangés.");
+            });
+          }}>
+            <label className="field">Nouvelle date d’échéance
+              <input type="date" disabled={busy} value={dateEdit.date}
+                onChange={event=>setDateEdit({...dateEdit,date:event.target.value})}/>
+            </label>
+            <p className="hint">Cette date s’applique uniquement aux futures affectations. Aucun frais déjà affecté n’est modifié automatiquement.</p>
+            <div className="actions">
+              <button type="submit" disabled={busy}>Enregistrer l’échéance</button>
+              <button type="button" disabled={busy} onClick={()=>setDateEdit(null)}>Annuler</button>
+            </div>
+          </form> : <button type="button" disabled={busy}
+            onClick={()=>{setAmountEdit(null);setDateEdit({id:item.id,revision:item.revision,date:item.due_date||""});}}>
+            Modifier l’échéance
+          </button>)}
+      </div>)}
     </div> : <>
+    {financeQuality && <aside className="hint" aria-label="Contrôle de qualité des écritures financières" style={{marginBottom:"1rem"}}>
+      <strong>Contrôle des écritures — rapprochement requis</strong>
+      <p>Les sommes affichées dans les états historiques sont des écritures enregistrées, pas une certification d'argent réellement reçu. Les simulations restent conservées pour audit.</p>
+      {Object.entries(financeQuality.currencies||{}).map(([unit,categories])=>{
+        const legacy=categories.legacy_cash_unverified;
+        const simulated=categories.explicit_demo_payments;
+        const demos=categories.explicit_demo_charges;
+        return <p key={unit}>
+          {unit} : {legacy?.count||0} paiement(s) sous code ancien « cash » à vérifier ({legacy?.amount||"0.00"} {unit}) ;
+          {" "}{simulated?.count||0} paiement(s) explicitement fictif(s) ({simulated?.amount||"0.00"} {unit}) ;
+          {" "}{demos?.count||0} ligne(s) de frais marquée(s) DÉMO ({demos?.net_amount||"0.00"} {unit}).
+        </p>;
+      })}
+    </aside>}
     <h3>1. Admissions acceptées — relais de paiement</h3>
     <p className="hint">La candidature est examinée dans Admissions ; ici, la caisse confirme les espèces nettes après bourse. Une inscription officielle ne sera possible qu’après validation des conditions financières.</p>
     <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive} onUpdated={refresh}/>
@@ -266,7 +359,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
     {current&&<>
       <h3>Historique des encaissements</h3>
       {payments.length===0?<p className="hint">Aucun encaissement pour ce frais.</p>:payments.map(p=><p key={p.id}>
-        <strong>{p.amount} {p.currency}</strong> · {p.paid_on} · {p.method} · {p.voided?"Annulé":"Enregistré"} ·
+        <strong>{p.amount} {p.currency}</strong> · {p.paid_on} · {p.method} · {p.voided?"Annulé":p.evidence_class==="simulation"?"SIMULATION — aucune recette":p.evidence_class==="legacy_unverified"?"À rapprocher — paiement historique non vérifié":"Enregistré (déclaratif)"} ·
         {" "}<a href={"/api/v1/"+finance+"payments/"+p.id+"/receipt"}>Reçu PDF</a>
         {canReverse&&!p.voided&&<button type="button" disabled={busy} style={{marginLeft:"0.5rem"}} onClick={()=>{setCancelPayment(p.id);setCancelReason("");}}>Demander une annulation</button>}
       </p>)}

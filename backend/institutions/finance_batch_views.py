@@ -26,7 +26,8 @@ from .finance_views import (
     payment_data, cleared_total, uid,
 )
 from .models import School
-from .finance_cash_policy import cash_closed_for_recorder
+from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
+from .finance_evidence import classify_payment, classify_batch
 from .views import log_event, parse_body
 
 
@@ -61,6 +62,8 @@ def create_batch(request, school_id):
     method, reference = data["method"], data["reference"]
     if method == "singpay":
         return JsonResponse({"error": "SingPay est réservé aux confirmations serveur du prestataire."}, status=422)
+    if method in ("cash", "simulation"):
+        return JsonResponse({"error": "Code historique ou fictif interdit pour un nouvel encaissement. Choisissez « especes » pour des espèces réellement reçues."}, status=422)
     if enrollment_id is None or idem is None or not isinstance(method, str) or not CODE_PATTERN.fullmatch(method):
         return JsonResponse({"error": "Inscription, méthode ou clé d'opération invalide."}, status=422)
     if not isinstance(reference, str) or len(reference) > 100:
@@ -114,10 +117,13 @@ def create_batch(request, school_id):
             ).order_by("pk"))
             if len(charges) != len(entries):
                 return JsonResponse({"error": "Frais ou inscription introuvable dans cette école."}, status=404)
+            if any(classify_payment(method, charge.label) == "simulation"
+                   for charge in charges):
+                return JsonResponse({"error": "Paiement sur un frais explicitement DÉMO interdit en caisse réelle."}, status=422)
             currency = charges[0].currency
             if any(charge.currency != currency for charge in charges):
                 return JsonResponse({"error": "Plusieurs devises : effectuez des paiements séparés."}, status=422)
-            if method == "especes" and cash_closed_for_recorder(
+            if method in CASH_METHODS and cash_closed_for_recorder(
                 school=school, day=paid_on, currency=currency, user=request.user,
             ):
                 return JsonResponse({"error": "Caisse du jour déjà déclarée par ce caissier."}, status=409)
@@ -187,14 +193,16 @@ def batch_receipt(request, school_id, batch_id):
         (p.charge.amount - p.charge.scholarship_discount - cleared_total(p.charge)
          for p in payments), Decimal("0.00")
     )
-    return render_school_financial_pdf(
+    response = render_school_financial_pdf(
         school=school, title="Reçu groupé de paiement", receipt=True,
         reference="REG-" + batch.paid_on.strftime("%Y") + "-" + batch.pk.hex.upper(),
         issued_on=batch.created_at,
         student_name=f"{student.first_name} {student.last_name}".strip(),
         matricule=student.student_code, classroom=enrollment.classroom.name,
         year=enrollment.year.name, payer=school_guardian(student),
-        rows=[(p.charge.label + (" — ANNULÉ" if hasattr(p, "void") else ""), p.amount)
+        rows=[(p.charge.label + (" — ANNULÉ" if hasattr(p, "void") else "") +
+               (" — SIMULATION" if payment_evidence(p.method, p.charge.label) == "simulation" else
+                " — À RAPPROCHER" if payment_evidence(p.method, p.charge.label) == "legacy_unverified" else ""), p.amount)
               for p in payments],
         currency=batch.currency, total=batch.total, balance=balance,
         method=batch.method, external_reference=batch.reference,
@@ -205,3 +213,5 @@ def batch_receipt(request, school_id, batch_id):
         cancelled=cancelled, demo=simulated, review_required=review,
         filename=f"yem-recu-groupe-{batch.pk}.pdf",
     )
+    response["X-YEM-Receipt-Class"] = classify_batch(evidence)
+    return response

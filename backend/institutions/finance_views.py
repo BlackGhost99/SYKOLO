@@ -1,6 +1,8 @@
 """Module 11: recorded school fees and manual receipts only; no payment gateway."""
 import re
+from calendar import monthrange
 from datetime import date
+from unicodedata import normalize
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from html import escape
@@ -9,7 +11,7 @@ from uuid import UUID
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from reportlab.lib.pagesizes import A4
@@ -20,10 +22,11 @@ from accounts.views import authorized
 
 from .academic_models import AcademicYear, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid
-from .finance_cash_policy import cash_closed_for_recorder
+from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
+from .finance_evidence import classify_payment
 from .models import School
 from .student_models import Enrollment
-from .services import has_permission
+from .services import has_permission, can_configure_tariffs, platform_tariff_intervention
 from .views import access, refuse, parse_body, log_event
 
 
@@ -123,8 +126,10 @@ def charge_data(row):
 
 
 def payment_data(row):
+    evidence = classify_payment(row.method, row.charge.label)
     return {
         "id": str(row.pk), "charge": str(row.charge_id),
+        "evidence_class": evidence,
         "amount": str(row.amount), "currency": row.currency,
         "method": row.method, "reference": row.reference,
         "paid_on": row.paid_on.isoformat(), "recorded_at": row.created_at.isoformat(),
@@ -174,23 +179,38 @@ def schedule_fields(data, updating=False):
     return result
 
 
+def tariff_gate(request, school_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return None, error
+    if request.method == "GET":
+        allowed = has_permission(request.user, school, "school.finance.read") or platform_tariff_intervention(request, school)
+    else:
+        allowed = can_configure_tariffs(request, school)
+    return (school, None) if allowed else (None, refuse())
+
+
 @require_http_methods(["GET", "POST"])
 @authorized
 def schedules(request, school_id):
-    school, error = gate(request, school_id, "school.finance.read" if request.method == "GET" else "school.finance.manage")
+    school, error = tariff_gate(request, school_id)
     if error is not None:
         return error
     if request.method == "GET":
-        rows = FeeSchedule.objects.filter(school=school).order_by("year__start_date", "label")[:500]
+        rows = FeeSchedule.objects.filter(school=school).order_by("year__start_date", "label", "pk")
+        # The settings catalog must include every generated tariff; a monthly
+        # setup can legitimately contain more than 500 class/month entries.
         result = {"schedules": [schedule_data(row) for row in rows]}
         if request.GET.get("choices") == "1":
-            if not has_permission(request.user, school, "school.finance.manage"):
+            if not can_configure_tariffs(request, school):
                 return refuse()
             years = AcademicYear.objects.filter(school=school, active=True).order_by("-start_date")
-            classes = AcademicClass.objects.filter(school=school, year__active=True, active=True).order_by("name", "pk")
+            classes = AcademicClass.objects.filter(school=school, year__active=True, active=True).select_related("level__cycle").order_by("name", "pk")
             result["years"] = list(years.values("id", "name", "active"))
             result["classes"] = [
-                {"id": room.pk, "name": room.name, "year": room.year_id, "active": room.active}
+                {"id": room.pk, "name": room.name, "year": room.year_id, "active": room.active,
+                 "cycle": room.level.cycle_id, "cycle_name": room.level.cycle.name,
+                 "level": room.level_id, "level_name": room.level.name}
                 for room in classes
             ]
         return JsonResponse(result)
@@ -221,10 +241,116 @@ def schedules(request, school_id):
     return JsonResponse(schedule_data(row), status=201)
 
 
+def monthly_dates(first, last, day):
+    if (not isinstance(first, str) or not isinstance(last, str)
+            or not re.fullmatch(r"[0-9]{4}-[0-9]{2}", first)
+            or not re.fullmatch(r"[0-9]{4}-[0-9]{2}", last)
+            or type(day) is not int or not 1 <= day <= 31):
+        raise ValueError("Mois ou jour d’échéance invalide.")
+    start = date.fromisoformat(first + "-01")
+    end = date.fromisoformat(last + "-01")
+    count = (end.year - start.year) * 12 + end.month - start.month + 1
+    if not 1 <= count <= 24:
+        raise ValueError("Sélectionnez une période de 1 à 24 mois.")
+    result = []
+    for offset in range(count):
+        y, m = divmod(start.year * 12 + start.month - 1 + offset, 12)
+        result.append(date(y, m + 1, min(day, monthrange(y, m + 1)[1])))
+    return result
+
+
+def tuition_like(row):
+    text = normalize("NFKD", row.code + " " + row.label).encode("ascii", "ignore").decode().lower()
+    return any(word in text for word in ("scolarite", "mensualite", "tuition"))
+
+
+@require_POST
+@authorized
+def generate_monthly_schedules(request, school_id):
+    """Generate price schedules only; never create a student's charges or payment."""
+    school, error = tariff_gate(request, school_id)
+    if error is not None:
+        return error
+    data, error = parse_body(request)
+    if error is not None:
+        return error
+    try:
+        if set(data) != {"year", "classrooms", "amount", "first_month", "last_month", "due_day"}:
+            raise ValueError("Paramètres de génération incomplets.")
+        ids = data["classrooms"]
+        if not isinstance(ids, list) or not 1 <= len(ids) <= 100:
+            raise ValueError("Sélectionnez entre 1 et 100 classes.")
+        selected = [uid(value) for value in ids]
+        if None in selected or len(set(selected)) != len(selected):
+            raise ValueError("Sélection de classes invalide ou répétée.")
+        year_id = uid(data["year"])
+        if year_id is None:
+            raise ValueError("Année invalide.")
+        amount = money(data["amount"])
+        if amount != amount.to_integral_value():
+            raise ValueError("Saisissez un montant en francs CFA entiers.")
+        dates = monthly_dates(data["first_month"], data["last_month"], data["due_day"])
+        if len(selected) * len(dates) > 1200:
+            raise ValueError("Limitez une génération à 1 200 tarifs.")
+        with transaction.atomic():
+            # The school lock serializes concurrent bulk generation requests.
+            School.objects.select_for_update().get(pk=school.pk)
+            year = AcademicYear.objects.select_for_update().filter(
+                pk=year_id, school=school, active=True,
+            ).exclude(status=AcademicYear.STATUS_CLOSED).first()
+            if year is None:
+                raise ValueError("Année scolaire inactive, clôturée ou étrangère.")
+            if any(day < year.start_date or day > year.end_date for day in dates):
+                raise ValueError("Toutes les échéances doivent être comprises dans l’année scolaire.")
+            rooms = AcademicClass.objects.filter(
+                school=school, year=year, pk__in=selected, active=True,
+                level__active=True, level__cycle__active=True,
+            )
+            if rooms.count() != len(selected):
+                raise ValueError("Une classe est inactive ou n’appartient pas à cette année.")
+            # Canonical codes are stable per calendar month; never overwrite a
+            # modified, inactive or conflicting existing schedule during a retry.
+            codes = ["scolarite-" + day.strftime("%Y-%m") for day in dates]
+            existing = list(FeeSchedule.objects.select_for_update().filter(
+                school=school, year=year,
+            ).filter(Q(classroom__isnull=True) | Q(classroom_id__in=selected)))
+            by_key = {(row.classroom_id, row.code): row for row in existing}
+            other_tuition = [row for row in existing if tuition_like(row) and row.code not in codes and row.active]
+            if any(row.due_date is None or any(
+                (row.due_date.year, row.due_date.month) == (day.year, day.month) for day in dates
+            ) for row in other_tuition):
+                return JsonResponse({"error": "Des tarifs de scolarité existants se chevauchent. Vérifiez-les avant de générer."}, status=409)
+            pending = []
+            unchanged = 0
+            for classroom_id in selected:
+                for day, code in zip(dates, codes):
+                    row = by_key.get((classroom_id, code))
+                    if by_key.get((None, code)) is not None:
+                        return JsonResponse({"error": "Une mensualité générale existe déjà pour cette période."}, status=409)
+                    if row is not None:
+                        if not row.active or row.amount != amount or row.currency != "XAF" or row.due_date != day:
+                            return JsonResponse({"error": "Une mensualité existe avec une autre configuration. Modifiez-la séparément."}, status=409)
+                        unchanged += 1
+                        continue
+                    pending.append(FeeSchedule(school=school, year=year, classroom_id=classroom_id,
+                        scope_key=str(classroom_id), code=code, label="Scolarité — " + day.strftime("%m/%Y"),
+                        amount=amount, currency="XAF", due_date=day))
+            FeeSchedule.objects.bulk_create(pending)
+            if pending:
+                log_event(school, request, "monthly_fee_schedules_generated", year.pk,
+                    {"classes": len(selected), "months": codes, "created": len(pending), "amount_xaf": str(amount)})
+        return JsonResponse({"created": len(pending), "unchanged": unchanged,
+            "due_dates": [day.isoformat() for day in dates]}, status=201 if pending else 200)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+    except IntegrityError:
+        return JsonResponse({"error": "Un tarif a été créé simultanément. Actualisez avant de réessayer."}, status=409)
+
+
 @require_http_methods(["GET", "PATCH"])
 @authorized
 def schedule_detail(request, school_id, schedule_id):
-    school, error = gate(request, school_id, "school.finance.read" if request.method == "GET" else "school.finance.manage")
+    school, error = tariff_gate(request, school_id)
     if error is not None:
         return error
     if request.method == "GET":
@@ -239,11 +365,17 @@ def schedule_detail(request, school_id, schedule_id):
         return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
-            row = FeeSchedule.objects.select_for_update().filter(school=school, pk=schedule_id).first()
+            row = FeeSchedule.objects.select_for_update().select_related("year").filter(school=school, pk=schedule_id).first()
             if row is None:
                 return JsonResponse({"error": "Frais introuvable."}, status=404)
             if row.revision != data["revision"]:
                 return JsonResponse({"error": "Conflit de version.", "revision": row.revision}, status=409)
+            if not row.year.active or row.year.status == AcademicYear.STATUS_CLOSED:
+                return JsonResponse({"error": "Année scolaire inactive ou clôturée."}, status=409)
+            if "due_date" in changes and changes["due_date"] is not None and not (
+                row.year.start_date <= changes["due_date"] <= row.year.end_date
+            ):
+                return JsonResponse({"error": "L’échéance doit être comprise dans l’année scolaire."}, status=422)
             for key, value in changes.items():
                 setattr(row, key, value)
             row.full_clean()
@@ -327,7 +459,9 @@ def payments(request, school_id):
             return JsonResponse({"error": "Identifiant du frais requis."}, status=422)
         if not FeeCharge.objects.filter(school=school, pk=charge_id).exists():
             return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
-        rows = FeePayment.objects.filter(school=school, charge_id=charge_id).order_by("created_at", "pk")[:500]
+        rows = FeePayment.objects.select_related("charge").filter(
+            school=school, charge_id=charge_id
+        ).order_by("created_at", "pk")[:500]
         return JsonResponse({"payments": [payment_data(row) for row in rows]})
     data, error = parse_body(request)
     if error is not None:
@@ -340,6 +474,8 @@ def payments(request, school_id):
     reference = data["reference"]
     if method == "singpay":
         return JsonResponse({"error": "SingPay est réservé aux confirmations serveur du prestataire."}, status=422)
+    if method in ("cash", "simulation"):
+        return JsonResponse({"error": "Code historique ou fictif interdit pour un nouvel encaissement. Choisissez « especes » pour des espèces réellement reçues."}, status=422)
     if charge_id is None or idem is None or not isinstance(method, str) or not CODE_PATTERN.fullmatch(method):
         return JsonResponse({"error": "Frais, moyen ou identifiant d'opération invalide."}, status=422)
     if not isinstance(reference, str) or len(reference) > 100:
@@ -353,13 +489,15 @@ def payments(request, school_id):
         return JsonResponse({"error": str(exc)}, status=422)
     try:
         with transaction.atomic():
-            if method == "especes":
+            if method in CASH_METHODS:
                 # Lock order matches the cash-closing endpoint, avoiding a race
                 # between a cashier's last payment and the end-of-day snapshot.
                 School.objects.select_for_update().get(pk=school.pk)
             charge = FeeCharge.objects.select_for_update().filter(school=school, pk=charge_id).first()
             if charge is None:
                 return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
+            if classify_payment(method, charge.label) == "simulation":
+                return JsonResponse({"error": "Paiement sur un frais explicitement DÉMO interdit en caisse réelle."}, status=422)
             previous = FeePayment.objects.filter(school=school, idempotency_key=idem).first()
             if previous:
                 same = (previous.charge_id == charge.pk and previous.amount == amount
@@ -368,7 +506,7 @@ def payments(request, school_id):
                 if same:
                     return JsonResponse(payment_data(previous), status=200)
                 return JsonResponse({"error": "Clé d'opération réutilisée avec des données différentes."}, status=409)
-            if method == "especes" and cash_closed_for_recorder(
+            if method in CASH_METHODS and cash_closed_for_recorder(
                 school=school, day=paid_on, currency=charge.currency, user=request.user,
             ):
                 return JsonResponse({"error": "Caisse du jour déjà déclarée par ce caissier."}, status=409)
@@ -409,7 +547,7 @@ def void_payment(request, school_id, payment_id):
             return JsonResponse({"error": "Paiement prestataire : remboursement et rapprochement requis, annulation manuelle interdite."}, status=409)
         if row.recorded_by_id == request.user.pk:
             return JsonResponse({"error": "Un autre agent doit autoriser cette annulation."}, status=403)
-        if row.method == "especes" and cash_closed_for_recorder(school=school, day=row.paid_on, currency=row.currency, user=row.recorded_by):
+        if row.method in CASH_METHODS and cash_closed_for_recorder(school=school, day=row.paid_on, currency=row.currency, user=row.recorded_by):
             return JsonResponse({"error": "Caisse déclarée : annulation bloquée pour préserver le contrôle."}, status=409)
         FeeCharge.objects.select_for_update().get(pk=row.charge_id, school=school)
         if FeePaymentVoid.objects.filter(school=school, payment=row).exists():
@@ -475,7 +613,7 @@ def receipt(request, school_id, payment_id):
     evidence = payment_evidence(payment.method, charge.label)
     remaining = (charge.amount - charge.scholarship_discount - cleared_total(charge))
     cashier = payment.recorded_by.get_username() if payment.recorded_by else ""
-    return render_school_financial_pdf(
+    response = render_school_financial_pdf(
         school=school, title="Reçu de paiement", receipt=True,
         reference="REC-" + payment.paid_on.strftime("%Y") + "-" + payment.pk.hex.upper(),
         issued_on=payment.created_at,
@@ -491,6 +629,8 @@ def receipt(request, school_id, payment_id):
         review_required=evidence == "legacy_unverified",
         filename=f"yem-recu-{payment.pk}.pdf",
     )
+    response["X-YEM-Receipt-Class"] = classify_payment(payment.method, charge.label)
+    return response
 
 
 @require_GET

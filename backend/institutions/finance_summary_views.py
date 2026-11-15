@@ -15,6 +15,7 @@ from accounts.views import authorized
 from .academic_models import AcademicYear
 from .finance_models import FeeCharge, FeePayment
 from .finance_views import gate, uid
+from .finance_evidence import evidence_totals
 from .student_access import can_read_finance
 from .student_models import Enrollment
 from .views import refuse
@@ -73,11 +74,17 @@ def summary(request, school_id):
     for item in by_method:
         totals[item["currency"]]["by_method"][item["method"]] = as_money(item["total"] or ZERO)
 
+    evidence = evidence_totals(payments)
     return JsonResponse({
         "school": str(school.pk),
         "year": str(year_id) if year_id else None,
         "as_of": today.isoformat(),
         "basis": "encaissements_manuels",
+        "revenue_certified": False,
+        "note": ("Les totaux historiques billed/paid/balance correspondent aux écritures "
+                 "comptables, et ne constituent ni des recettes certifiées ni une preuve bancaire. "
+                 "Consultez evidence pour distinguer les simulations et les écritures cash non rapprochées."),
+        "evidence": evidence,
         "currencies": {
             currency: {
                 "billed": as_money(data["billed"]),

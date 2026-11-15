@@ -3,7 +3,7 @@ from conduct import views as conduct_views
 from . import import_views
 from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
-from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views
+from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
 from . import annual_views
 from . import class_assignment_views
 from . import calendar_views
@@ -146,6 +146,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/payroll/runs/<uuid:run_id>/payments", payroll_views.pay),
     path("schools/<uuid:school_id>/payroll/payments/<uuid:payment_id>/void", payroll_views.void),
     path("schools/<uuid:school_id>/finance/schedules", finance_views.schedules),
+    path("schools/<uuid:school_id>/finance/schedules/monthly", finance_views.generate_monthly_schedules),
     path("schools/<uuid:school_id>/finance/schedules/<uuid:schedule_id>", finance_views.schedule_detail),
     path("schools/<uuid:school_id>/finance/charges", finance_views.charges),
     path("schools/<uuid:school_id>/finance/charges/<uuid:charge_id>", finance_views.charge_detail),
@@ -153,6 +154,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/finance/enrollments/<uuid:enrollment_id>/notice", finance_extra_documents.staff_notice),
     path("schools/<uuid:school_id>/finance/payments/<uuid:payment_id>/cancellation-pdf", finance_extra_documents.staff_void_document),
     path("schools/<uuid:school_id>/finance/summary", finance_summary_views.summary),
+    path("schools/<uuid:school_id>/finance/quality", finance_quality_views.quality),
     path("schools/<uuid:school_id>/finance/roster", finance_summary_views.finance_roster),
     path("schools/<uuid:school_id>/finance/payments", finance_views.payments),
     path("schools/<uuid:school_id>/finance/cash/closings/<uuid:closing_id>/transfers", finance_cash_views.cash_transfer),
