@@ -136,3 +136,20 @@ class PlatformTariffInterventionTests(TestCase):
             "amount": "25000", "currency": "XAF", "due_date": "2026-10-05"}).status_code, 201)
         self.assertEqual(self.post("finance/schedules/monthly", payload).status_code, 409)
         self.assertEqual(FeeSchedule.objects.filter(school=self.school).count(), 1)
+
+    def test_change_deadline_rejects_outside_year_and_stale_revision(self):
+        payload = self.monthly_payload()
+        self.assertEqual(self.open_school(self.school).status_code, 200)
+        self.assertEqual(self.post("finance/schedules/monthly", payload).status_code, 201)
+        row = FeeSchedule.objects.filter(school=self.school).order_by("due_date").first()
+        path = self.base + "finance/schedules/" + str(row.pk)
+        def patch(data):
+            return self.client.patch(path, json.dumps(data), content_type="application/json")
+        self.assertEqual(patch({"revision": row.revision, "due_date": "2026-08-15"}).status_code, 422)
+        self.assertEqual(patch({"revision": row.revision, "due_date": "2026-10-15"}).status_code, 200)
+        self.assertEqual(patch({"revision": row.revision, "due_date": "2026-10-16"}).status_code, 409)
+        row.refresh_from_db()
+        self.assertEqual(row.due_date.isoformat(), "2026-10-15")
+        self.year.status = AcademicYear.STATUS_CLOSED
+        self.year.save(update_fields=["status"])
+        self.assertEqual(patch({"revision": row.revision, "due_date": "2026-10-20"}).status_code, 409)

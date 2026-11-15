@@ -78,3 +78,26 @@ test('tariff intervention does not expose billing controls in the full finance v
   expect(screen.queryByRole('button',{name:'Créer le tarif'})).toBeNull();
   expect(screen.queryByRole('button',{name:'Affecter ce frais'})).toBeNull();
 });
+
+test('tariff settings edit the deadline without rescheduling existing student charges',async()=>{
+  let schedule={id:'schedule',year:'year',classroom:null,label:'Mensualité',amount:'25000.00',currency:'XAF',revision:4,due_date:'2026-10-05'};
+  const fetchMock=vi.fn(async (path,options)=>({ok:true,headers:{get:()=> 'application/json'},json:async()=>{
+    if(String(path).endsWith('my-access'))return {permissions:['school.finance.read'],platform_tariff_intervention:true};
+    if(options?.method==='PATCH'){
+      const data=JSON.parse(options.body);
+      expect(data).toEqual({revision:4,due_date:'2026-10-10'});
+      schedule={...schedule,...data,revision:5};
+      return schedule;
+    }
+    return {years:[{id:'year',name:'Année',active:true}],classes:[],schedules:[schedule]};
+  }}));
+  vi.stubGlobal('fetch',fetchMock);
+  render(<FinancePanel schoolId='school' mode='settings' workingYearId='year'/>);
+  const user=userEvent.setup();
+  await user.click(await screen.findByRole('button',{name:'Modifier l’échéance'}));
+  const field=screen.getByLabelText('Nouvelle date d’échéance');
+  await user.clear(field);
+  await user.type(field,'2026-10-10');
+  await user.click(screen.getByRole('button',{name:'Enregistrer l’échéance'}));
+  expect(await screen.findByText(/Échéance : 2026-10-10/)).toBeTruthy();
+});

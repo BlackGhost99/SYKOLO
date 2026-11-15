@@ -31,7 +31,8 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const [statement, setStatement] = useState(null);
   const [onlineAdmissions,setOnlineAdmissions] = useState([]);
   const [selectedYear, setSelectedYear] = useState(workingYearId);
-  useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");setSelectedSchedule("");setSelectedCharge("");setAmountEdit(null);},[workingYearId,schoolId]);
+  const [dateEdit, setDateEdit] = useState(null);
+  useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");setSelectedSchedule("");setSelectedCharge("");setAmountEdit(null);setDateEdit(null);},[workingYearId,schoolId]);
   const [selectedClass, setSelectedClass] = useState("");
   const [feeCode, setFeeCode] = useState("");
   const [feeLabel, setFeeLabel] = useState("");
@@ -80,7 +81,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
 
   async function refresh() {
     if (settings) {
-      setSchedules((await financeApi(finance+"schedules")).schedules || []);
+      setSchedules((await financeApi(finance+"schedules?choices=1")).schedules || []);
       return;
     }
     const [ys, cs, roster, fs, ch] = await Promise.all([
@@ -203,7 +204,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
       {schedules.filter(item=>!selectedYear||item.year===selectedYear).map(item => <div key={item.id}>
         <p><strong>{item.label}</strong> · {item.amount} {item.currency} · {
           years.find(year => year.id === item.year)?.name || "Année archivée"
-        } · {item.classroom ? classes.find(room => room.id === item.classroom)?.name || "Classe archivée" : "Toutes les classes"}</p>
+        } · {item.classroom ? classes.find(room => room.id === item.classroom)?.name || "Classe archivée" : "Toutes les classes"} · {item.due_date ? "Échéance : "+item.due_date : "Sans échéance"}</p>
         {canConfigureTariffs && years.some(year=>year.id===item.year&&year.active) &&
           (amountEdit?.id===item.id ? <form onSubmit={event=>{
             event.preventDefault();
@@ -226,8 +227,33 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
               <button type="button" disabled={busy} onClick={()=>setAmountEdit(null)}>Annuler</button>
             </div>
           </form> : <button type="button" disabled={busy}
-            onClick={()=>setAmountEdit({id:item.id,revision:item.revision,amount:String(item.amount)})}>
+            onClick={()=>{setDateEdit(null);setAmountEdit({id:item.id,revision:item.revision,amount:String(item.amount)});}}>
             Modifier le montant
+          </button>)}
+        {canConfigureTariffs && years.some(year=>year.id===item.year&&year.active) &&
+          (dateEdit?.id===item.id ? <form onSubmit={event=>{
+            event.preventDefault();
+            if(busy)return;
+            run(async()=>{
+              await financeApi(finance+"schedules/"+item.id,{
+                revision:dateEdit.revision, due_date:dateEdit.date||null,
+              },"PATCH");
+              setDateEdit(null);
+              setMessage("Échéance du tarif modifiée. Les frais déjà affectés restent inchangés.");
+            });
+          }}>
+            <label className="field">Nouvelle date d’échéance
+              <input type="date" disabled={busy} value={dateEdit.date}
+                onChange={event=>setDateEdit({...dateEdit,date:event.target.value})}/>
+            </label>
+            <p className="hint">Cette date s’applique uniquement aux futures affectations. Aucun frais déjà affecté n’est modifié automatiquement.</p>
+            <div className="actions">
+              <button type="submit" disabled={busy}>Enregistrer l’échéance</button>
+              <button type="button" disabled={busy} onClick={()=>setDateEdit(null)}>Annuler</button>
+            </div>
+          </form> : <button type="button" disabled={busy}
+            onClick={()=>{setAmountEdit(null);setDateEdit({id:item.id,revision:item.revision,date:item.due_date||""});}}>
+            Modifier l’échéance
           </button>)}
       </div>)}
     </div> : <>
