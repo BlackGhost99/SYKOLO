@@ -312,6 +312,22 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
 }
 
 /* ---------- Impayés & relances ---------- */
+function whatsappReminderLink(row, currency) {
+  const phone = (row.phone || "").trim().replace(/[\s.()\-]/g, "");
+  const international = /^0\d{8}$/.test(phone) ? "+241" + phone.slice(1)
+    : /^\d{8}$/.test(phone) ? "+241" + phone
+    : phone.replace(/^00/, "+");
+  if (!/^\+[1-9]\d{7,14}$/.test(international)) return "";
+
+  const oldest = row.due_date ? ` La plus ancienne échéance impayée date du ${fmtDate(row.due_date)}.` : "";
+  const message = [
+    `Bonjour${row.guardian ? " " + row.guardian : ""},`,
+    `Le solde total en retard pour ${row.student} est de ${fmtMoney(row.amount_due, currency)}.${oldest}`,
+    "Vous pouvez consulter le détail et le solde à jour dans YEM, sous Mes enfants → Frais.",
+  ].join("\n\n");
+  return `${waLink(international)}?text=${encodeURIComponent(message)}`;
+}
+
 export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onWorkingYearChange }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
@@ -322,6 +338,7 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
   const [feedback, setFeedback] = useState("");
   const d = fin.data;
   const a = d?.arrears.find(row => row.enrollment === selected);
+  const whatsappHref = canRemind && a && !fin.loading ? whatsappReminderLink(a, d.currency) : "";
   async function sendReminder() {
     if (!a || sending || fin.loading) return;
     setSending(true);
@@ -375,6 +392,11 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
             {canRemind && <>
               <p>La relance informe les responsables vérifiés et les invite à consulter le relevé à jour dans YEM.</p>
               <Button primary icon="send" disabled={sending || fin.loading} onClick={sendReminder}>Envoyer la relance dans YEM</Button>
+              {whatsappHref ? <a className="yd-btn" href={whatsappHref} target="_blank" rel="noopener noreferrer">
+                <Icon name="whatsapp" size={20}/><span>Préparer la relance WhatsApp</span>
+              </a> : <Button icon="whatsapp" disabled>Préparer la relance WhatsApp</Button>}
+              {!whatsappHref && !fin.loading && <p className="yd-card-sub">Le numéro du responsable doit être accessible et valide pour préparer la relance WhatsApp.</p>}
+
             </>}
           </> : <Empty>Sélectionnez un élève pour consulter ses échéances.</Empty>}
           {feedback && <p role="status">{feedback}</p>}
