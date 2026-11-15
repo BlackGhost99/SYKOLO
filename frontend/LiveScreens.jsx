@@ -364,7 +364,7 @@ export function LiveArrears({ schoolId, schoolName, tabs, workingYearId = "", on
 }
 
 /* ---------- Tableau de bord ---------- */
-export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange, shortcuts=[], visibleSections }) {
+export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange, shortcuts=[], visibleSections, canEnroll=true }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
@@ -399,7 +399,7 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
         <Card title="Actions rapides" icon="bolt" className="quick">
           {canReceive && canOpen("payments","live") && <Button primary icon="card" onClick={() => onNavigate("payments", "live")}>Nouvel encaissement</Button>}
           {canOpen("arrears")&&<Button icon="mail" onClick={() => onNavigate("arrears")}>Préparer les relances</Button>}
-          {canOpen("students")&&(!visibleSections||visibleSections.students?.hidden?.new)&&<Button icon="adduser" onClick={() => onNavigate("students", "new")}>Inscrire un élève</Button>}
+          {canOpen("students")&&canEnroll&&<Button icon="adduser" onClick={() => onNavigate("students", "new")}>Inscrire un élève</Button>}
           {canOpen("students","byclass")&&<Button icon="users" onClick={() => onNavigate("students", "byclass")}>Inscriptions par classe</Button>}
           {canOpen("bulletins","reports")&&<Button icon="file" onClick={() => onNavigate("bulletins","reports")}>Générer les bulletins</Button>}
         </Card>
