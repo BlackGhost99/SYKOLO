@@ -358,6 +358,22 @@
 
 /* ---------- Impayés ---------- */
 .arrears-layout { grid-template-columns: minmax(0, 1fr) 342px; }
+.yd-arrears-rail { scroll-margin-top: 104px; }
+.yd-arrears-actions { display: grid; gap: 8px; }
+.yd-arrears-actions .yd-btn { white-space: normal; padding: 6px 10px; text-align: center; }
+.yd-arrears-actions .yd-btn svg { flex-shrink: 0; }
+@media (min-width: 1201px) {
+  .yd-arrears-rail {
+    position: sticky;
+    top: 104px;
+    max-height: calc(100dvh - 120px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .yd-arrears-rail > * { flex-shrink: 0; }
+  .yd-arrears-installments { max-height: clamp(60px, calc(100dvh - 525px), 260px); overflow-y: auto; }
+}
+
 .arrears-layout .yd-metric { padding: 16px 12px 12px 14px; gap: 12px; }
 .arrears-layout .yd-metric-label { font-size: 15px; }
 .arrears-layout .yd-metric strong { text-align: center; }

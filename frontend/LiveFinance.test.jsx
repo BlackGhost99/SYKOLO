@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import {afterEach,expect,test,vi} from "vitest";
-import {cleanup,render,screen,waitFor} from "@testing-library/react";
+import {cleanup,render,screen,waitFor,within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {LiveArrears,LivePayments,fmtMoney} from "./LiveScreens.jsx";
 vi.mock("./CashClosingPanel.jsx",()=>({default:()=>null}));
@@ -73,12 +73,15 @@ test("WhatsApp prepares a reminder for the selected family alongside the YEM act
   vi.stubGlobal("fetch", vi.fn(async () => Response.json(report)));
   render(<LiveArrears schoolId="school" canRemind/>);
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", {name:"Élève A"}));
+  const row = await screen.findByRole("row", {name:/Élève A/});
+  await user.click(within(row).getByRole("cell", {name:"300 000 FCFA"}));
+  expect(within(row).getByRole("button", {name:"Élève A"}).getAttribute("aria-pressed")).toBe("true");
   const url = new URL(screen.getByRole("link", {name:"Préparer la relance WhatsApp"}).href);
   expect(url.origin + url.pathname).toBe("https://wa.me/24177123456");
   expect(url.searchParams.get("text")).toContain("300 000 FCFA");
   expect(url.searchParams.get("text")).toContain("plus ancienne échéance");
   expect(screen.getByRole("button", {name:"Envoyer la relance dans YEM"}).disabled).toBe(false);
-  await user.click(screen.getByRole("button", {name:"Élève B"}));
+  screen.getByRole("button", {name:"Élève B"}).focus();
+  await user.keyboard("{Enter}");
   expect(screen.getByRole("button", {name:"Préparer la relance WhatsApp"}).disabled).toBe(true);
 });
