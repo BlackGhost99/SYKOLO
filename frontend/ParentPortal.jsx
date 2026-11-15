@@ -129,10 +129,12 @@ function ChildSchoolSection({base, tab, year}) {
     <p>Relevé des encaissements de l'établissement. Les paiements SingPay nécessitent une confirmation serveur du prestataire.</p>
     {Object.entries(detail.totals || {}).map(([currency, value]) => <p key={currency}>
       {currency} · Facturé : <strong>{value.billed}</strong> · Payé : <strong>{value.paid}</strong>
-      {" "}· Restant : <strong>{value.balance}</strong>
+      {" "}· Restant dû sur l’année : <strong>{value.balance}</strong>
+      {" "}· À payer aujourd’hui : <strong>{value.due_today}</strong>
+      {" "}· En retard : <strong>{value.overdue}</strong>
     </p>)}
     {(detail.charges || []).map(charge => <div key={charge.id}><p>{charge.label} · {charge.amount} {charge.currency}
-      {" "}· Solde {charge.balance}{charge.due_date ? " · Échéance " + charge.due_date : ""}</p>
+      {" "}· Solde {charge.balance}{charge.due_date ? " · Échéance " + charge.due_date : ""} · {charge.status}</p>
       {charge.currency === "XAF" && <SingPayPayment kind="charge" objectId={charge.id} api={portalApi} partial/>}
     </div>)}
     {!detail.charges?.length && <p>Aucun frais affecté.</p>}

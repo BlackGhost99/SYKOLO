@@ -312,28 +312,41 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
 }
 
 /* ---------- Impayés & relances ---------- */
-export function LiveArrears({ schoolId, schoolName, tabs, workingYearId = "", onWorkingYearChange }) {
+export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onWorkingYearChange }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
-  const [selected, setSelected] = useState(0);
-  const [channel, setChannel] = useState("WhatsApp");
+  const [selected, setSelected] = useState("");
+  const [sending, setSending] = useState(false);
+  const [feedback, setFeedback] = useState("");
   const d = fin.data;
-  const a = d?.arrears[selected] || d?.arrears[0];
-  const text = a ? `Bonjour ${a.guardian || "Madame, Monsieur"},\n\nNous vous rappelons que les frais de scolarité de votre enfant ${a.student} (${a.classroom}) s’élèvent à ${fmtMoney(a.amount_due, d.currency)}, échus le ${fmtDate(a.due_date)}.\n\nNous vous invitons à régulariser cette situation dans les meilleurs délais.\n\n${schoolName} vous remercie pour votre diligence.` : "";
-  const digits = (a?.phone || "").replace(/[^\d+]/g, "");
-  const sendHref = !a ? "" : channel === "WhatsApp" ? (waLink(a.phone) ? `${waLink(a.phone)}?text=${encodeURIComponent(text)}` : "") : channel === "SMS" ? (digits ? `sms:${digits}?body=${encodeURIComponent(text)}` : "") : `mailto:?subject=${encodeURIComponent("Rappel de frais de scolarité")}&body=${encodeURIComponent(text)}`;
+  const a = d?.arrears.find(row => row.enrollment === selected);
+  async function sendReminder() {
+    if (!a || sending || fin.loading) return;
+    setSending(true);
+    setFeedback("");
+    try {
+      const result = await api(`schools/${schoolId}/finance/enrollments/${a.enrollment}/reminder`, {currency:d.currency});
+      setFeedback(result.sent
+        ? `Relance déposée dans YEM pour ${result.sent} compte(s) responsable(s).`
+        : "Les responsables ont déjà reçu cette relance aujourd’hui.");
+    } catch (error) {
+      setFeedback(error.message);
+      fin.reload();
+    } finally {
+      setSending(false);
+    }
+  }
   function exportCsv() {
-    const lines = [["Élève", "Classe", "Responsable", "Téléphone", "Échéance", "Montant dû", "Dernier paiement"], ...d.arrears.map(x => [x.student, x.classroom, x.guardian, x.phone, x.due_date || "", x.amount_due, x.last_payment || ""])];
+    const lines = [["Élève", "Classe", "Responsable", "Téléphone", "Plus ancienne échéance impayée", "Total en retard", "Dernier paiement"], ...d.arrears.map(x => [x.student, x.classroom, x.guardian, x.phone, x.due_date || "", x.amount_due, x.last_payment || ""])];
     const blob = new Blob(["﻿" + lines.map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n")], { type: "text/csv;charset=utf-8" });
     const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "impayes.csv"; link.click(); URL.revokeObjectURL(link.href);
   }
   return <>
     <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
     <PageHeader banner={false} title="Impayés & relances" subtitle="Suivi des échéances, retards et messages aux familles" actions={d && <>
-      {sendHref ? <a className="yd-btn primary" href={sendHref} target="_blank" rel="noreferrer"><Icon name="send" size={20}/><span>Envoyer la relance</span></a> : <Button primary icon="send" disabled>Envoyer la relance</Button>}
-      <Button icon="whatsapp" onClick={() => setChannel("WhatsApp")}>WhatsApp</Button><Button icon="message" onClick={() => setChannel("SMS")}>SMS</Button><Button icon="download" disabled={!d.arrears.length} onClick={exportCsv}>Exporter</Button></>}/>
+      <Button icon="download" disabled={!d.arrears.length} onClick={exportCsv}>Exporter</Button></>}/>
     {tabs}
     <Loading state={fin}>{d && <div className="yd-grid arrears-layout">
       <div className="yd-stack">
@@ -345,15 +358,26 @@ export function LiveArrears({ schoolId, schoolName, tabs, workingYearId = "", on
         </div>
         <Card title="Liste des familles en impayé" count={`(${d.families_late})`} icon="users">
           {d.arrears.length === 0 ? <Empty>Aucune famille en retard de paiement.</Empty> :
-            <TableScroll label="Impayés par élève"><table className="xs clickable"><thead><tr>{["", "Élève", "Classe", "Responsable", "Échéance", "Montant dû", <>Dernier<br/>paiement</>, "Canal", "Statut"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-              <tbody>{d.arrears.map((x, i) => <tr key={x.enrollment} className={a === x ? "selected" : ""} onClick={() => setSelected(i)}><td>{i + 1}</td><td className="nowrap"><b>{x.student}</b></td><td>{x.classroom}</td><td>{x.guardian || "—"}</td><td className="nowrap">{fmtDate(x.due_date)}</td><td className="nowrap"><b>{fmtMoney(x.amount_due, d.currency)}</b></td><td className="nowrap">{fmtDate(x.last_payment)}</td>
-                <td>{waLink(x.phone) ? <Icon name="whatsapp" size={22} className="channel"/> : "—"}</td><td><Status tone={x.last_payment ? "yellow" : "red"}>{x.last_payment ? "À relancer" : "En retard"}</Status></td></tr>)}</tbody></table></TableScroll>}
+            <TableScroll label="Impayés par élève"><table className="xs clickable"><thead><tr>{["", "Élève", "Classe", "Responsable", "Plus ancienne échéance impayée", "Total en retard", <>Dernier<br/>paiement</>, "Statut"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+              <tbody>{d.arrears.map((x, i) => <tr key={x.enrollment} className={a === x ? "selected" : ""}><td>{i + 1}</td><td className="nowrap"><button type="button" className="yd-link" aria-pressed={a === x} disabled={sending} onClick={() => {setSelected(x.enrollment);setFeedback("");}}>{x.student}</button></td><td>{x.classroom}</td><td>{x.guardian || "—"}</td><td className="nowrap">{fmtDate(x.due_date)}</td><td className="nowrap"><b>{fmtMoney(x.amount_due, d.currency)}</b></td><td className="nowrap">{fmtDate(x.last_payment)}</td>
+                <td><Status tone={x.last_payment ? "yellow" : "red"}>{x.last_payment ? "À relancer" : "En retard"}</Status></td></tr>)}</tbody></table></TableScroll>}
         </Card>
       </div>
       <div className="yd-stack">
-        <Card title="Aperçu du message" icon="message">
-          <div className="yd-channel-tabs" role="tablist">{[["WhatsApp", "whatsapp"], ["SMS", "message"], ["Email", "mail"]].map(([c, ic]) => <button type="button" role="tab" aria-selected={channel === c} key={c} className={channel === c ? "active" : ""} onClick={() => setChannel(c)}><Icon name={ic} size={18}/>{c}</button>)}</div>
-          {a ? <div className="yd-message-preview">{text.split("\n\n").map((p, i) => <p key={i}>{p}</p>)}<small>{a.phone || "Aucun numéro enregistré"}</small></div> : <Empty>Aucune relance à préparer.</Empty>}
+        <Card title="Détail des échéances" icon="file">
+          {a ? <>
+            <p><strong>{a.student}</strong> · {a.classroom}</p>
+            <p>À payer aujourd’hui <strong>{fmtMoney(a.due_today, d.currency)}</strong></p>
+            <p>Total en retard <strong>{fmtMoney(a.amount_due, d.currency)}</strong></p>
+            <p>Restant dû sur l’année <strong>{fmtMoney(a.remaining, d.currency)}</strong></p>
+            <Table headers={["Frais", "Date", "Solde en retard"]}
+              rows={(a.overdue_items || []).map(item => [item.label, fmtDate(item.date), fmtMoney(item.balance, d.currency)])}/>
+            {canRemind && <>
+              <p>La relance informe les responsables vérifiés et les invite à consulter le relevé à jour dans YEM.</p>
+              <Button primary icon="send" disabled={sending || fin.loading} onClick={sendReminder}>Envoyer la relance dans YEM</Button>
+            </>}
+          </> : <Empty>Sélectionnez un élève pour consulter ses échéances.</Empty>}
+          {feedback && <p role="status">{feedback}</p>}
         </Card>
         <Card title="Répartition des impayés par classe" icon="barchart">
           {d.arrears_by_class.length ? <BarList items={d.arrears_by_class.map(c => [c.classroom, c.families])}/> : <Empty>Aucun impayé.</Empty>}
@@ -406,7 +430,7 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
       </div>
       <div className="yd-grid dash-bottom">
         <Card title="Retardataires prioritaires" icon="users">
-          {d.arrears.length ? <Table align={{ 1: "nowrap", 3: "nowrap" }} headers={["#", "Élève", "Classe", "Montant dû", "Statut"]} rows={d.arrears.slice(0, 5).map((a, i) => [i + 1, a.student, a.classroom, fmtMoney(a.amount_due, d.currency), <Status tone={a.last_payment ? "yellow" : "red"}>{a.last_payment ? "À relancer" : "En retard"}</Status>])}/> : <Empty>Aucune famille en retard.</Empty>}
+          {d.arrears.length ? <Table align={{ 1: "nowrap", 3: "nowrap" }} headers={["#", "Élève", "Classe", "Total en retard", "Statut"]} rows={d.arrears.slice(0, 5).map((a, i) => [i + 1, a.student, a.classroom, fmtMoney(a.amount_due, d.currency), <Status tone={a.last_payment ? "yellow" : "red"}>{a.last_payment ? "À relancer" : "En retard"}</Status>])}/> : <Empty>Aucune famille en retard.</Empty>}
         </Card>
         <Card title="Derniers paiements du jour" icon="receipt">
           {d.today.payments.length ? <Table className="nowrap" headers={["Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.slice(0, 5).map(p => [p.student, p.classroom, fmtMoney(p.amount, d.currency), methodLabel(p.method), fmtTime(p.recorded_at)])}/> : <Empty>Aucun paiement enregistré aujourd’hui.</Empty>}

@@ -10,7 +10,7 @@ from uuid import UUID
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Exists, F, OuterRef, Q
+from django.db.models import Count, Exists, F, OuterRef, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -23,8 +23,7 @@ from .academic_models import AcademicYear
 from .assessment_models import AssessmentGrade
 from .attendance_models import AttendanceMark
 from .council_models import ReportAmendment
-from .finance_models import FeeCharge
-from .finance_views import cleared_total
+from .finance_models import FeeCharge, FeePayment
 from .models import SchoolMember, School, SchoolRole
 from .parent_models import GuardianAccountLink
 from .parent_existing_models import ExistingStudentLinkRequest
@@ -529,6 +528,10 @@ def child_finance(request, student_id):
     student, year_id, error = child_scope(request, student_id)
     if error is not None:
         return error
+    if not year_id:
+        from .overview_views import current_year
+        year = current_year(student.school)
+        year_id = year.pk if year else None
     charges = FeeCharge.objects.filter(
         school_id=student.school_id, enrollment__student=student,
     )
@@ -541,20 +544,37 @@ def child_finance(request, student_id):
     from decimal import Decimal
     totals = {}
     items = []
-    for row in charges.order_by("created_at", "pk")[:200]:
-        paid = cleared_total(row)
-        currency = row.currency
-        amounts = totals.setdefault(currency, {
-            "billed": Decimal("0.00"), "paid": Decimal("0.00"), "balance": Decimal("0.00"),
-        })
-        amounts["billed"] += row.amount
+    today = timezone.localdate()
+    paid_by_charge = dict(
+        FeePayment.objects.filter(
+            school_id=student.school_id, charge__in=charges, void__isnull=True,
+        ).values("charge_id").annotate(total=Sum("amount")).values_list("charge_id", "total")
+    )
+    for row in charges.select_related("enrollment__year").order_by("due_date", "pk"):
+        paid = paid_by_charge.get(row.pk, Decimal("0.00"))
+        net = row.amount - row.scholarship_discount
+        balance = net - paid
+        amounts = totals.setdefault(row.currency, dict.fromkeys(
+            ("billed", "paid", "balance", "due_today", "overdue"), Decimal("0.00"),
+        ))
+        amounts["billed"] += net
         amounts["paid"] += paid
-        amounts["balance"] += row.amount - paid
+        amounts["balance"] += balance
+        status = "Réglé"
+        if balance > 0:
+            if row.due_date and row.due_date < today:
+                amounts["overdue"] += balance
+                status = "En retard"
+            elif row.due_date == today:
+                amounts["due_today"] += balance
+                status = "À payer aujourd’hui"
+            else:
+                status = "À venir" if row.due_date else "Sans échéance"
         items.append({
-            "id": str(row.pk), "label": row.label, "amount": str(row.amount),
-            "currency": currency, "paid": str(paid),
-            "balance": str(row.amount - paid),
+            "id": str(row.pk), "label": row.label, "amount": str(net),
+            "currency": row.currency, "paid": str(paid), "balance": str(balance),
             "due_date": row.due_date.isoformat() if row.due_date else None,
+            "year": row.enrollment.year.name, "status": status,
         })
     from .admission_finance import scholarship_for_enrollment
     current_enrollment = enrollments.order_by("-year__start_date").first()
