@@ -15,6 +15,7 @@ from .services import has_permission, resolve_settings
 from .curriculum_models import CourseOffering, CourseInstructor
 from .academic_models import AcademicPeriod
 from .student_models import Enrollment
+from .report_engine import display_result
 from .assessment_models import Assessment, AssessmentGrade
 
 
@@ -412,10 +413,27 @@ def course_averages(request, school_id, course_id):
         item[0] += grade.percent * weight
         item[1] += weight
         item[2] += 1
+    level = course.classroom.level
+    context = {"year": course.year.code, "cycle": level.cycle.code,
+               "level": level.code, "class": course.classroom.code}
+    policy = resolve_settings(school, context)[0].get("grading")
+    try:
+        validate_policy(policy)
+    except (PolicyError, TypeError, KeyError, AttributeError):
+        policy = None
+
+    def result(percent):
+        if policy is not None:
+            return display_result(percent, policy, int(policy["precision"]))
+        return {"score": None, "label": None}
+
+    percentages = []
     output = []
     for enrollment in enrollments:
         value = points.get(enrollment.pk)
         avg = (value[0] / value[1]) if value and value[1] else None
+        if avg is not None:
+            percentages.append(avg)
         on_twenty = (avg / Decimal("5")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if avg is not None else None
         output.append({
             "enrollment": str(enrollment.pk),
@@ -426,16 +444,23 @@ def course_averages(request, school_id, course_id):
             "expected": len(assessments),
             "complete": bool(value and len(assessments) and value[2] == len(assessments)),
             "average_percent": str(avg.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if avg is not None else None,
+            "average": result(avg),
             "average_on_20": str(on_twenty) if on_twenty is not None else None,
         })
     values = [Decimal(row["average_on_20"]) for row in output if row["average_on_20"] is not None]
     class_average = (sum(values) / len(values)).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP,
     ) if values else None
+    class_percent = sum(percentages) / len(percentages) if percentages else None
     return JsonResponse({
         "course": str(course.pk), "period": str(period_key) if period_key else None,
         "assessment_count": len(assessments), "student_count": len(output),
         "class_average_on_20": str(class_average) if class_average is not None else None,
+        "scale": policy["scale"] if policy else None,
+        "class_average": result(class_percent),
+        "class_average_percent": str(class_percent.quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP,
+        )) if class_percent is not None else None,
         "calculated_count": len(values),
         "students": output,
         "provisional": True,

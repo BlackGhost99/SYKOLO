@@ -151,21 +151,30 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
     (valuesByAssessment[a.id]||[]).filter(g=>g.status==="calculated").length,0);
   const progressTotal=roster.length*columns.length;
   const percent=progressTotal?Math.round(100*progressSaved/progressTotal):0;
-  const meanValues=(means?.students||[]).filter(s=>s.average_on_20!==null).map(s=>Number(s.average_on_20));
-  const lowest=meanValues.length?Math.min(...meanValues):null;
-  const highest=meanValues.length?Math.max(...meanValues):null;
+  const scoreOf=s=>s.average_percent ?? (s.average_on_20==null?null:Number(s.average_on_20)*5);
+  const ranked=[...(means?.students||[])].sort((a,b)=>(scoreOf(b)??-1)-(scoreOf(a)??-1));
+  const calculated=ranked.filter(s=>scoreOf(s)!=null);
+  const meanValues=calculated.map(s=>Number(scoreOf(s)));
   const coverage=means?.student_count?Math.round(100*(means.calculated_count||0)/means.student_count):0;
   const buckets=[
-    {label:"< 10",min:0,max:10},{label:"10 – 12",min:10,max:12},{label:"12 – 14",min:12,max:14},
-    {label:"14 – 16",min:14,max:16},{label:"≥ 16",min:16,max:Infinity},
+    {label:"< 50 %",min:0,max:50},{label:"50 – 60 %",min:50,max:60},{label:"60 – 70 %",min:60,max:70},
+    {label:"70 – 80 %",min:70,max:80},{label:"≥ 80 %",min:80,max:Infinity},
   ];
-  const ranked=[...(means?.students||[])].sort((a,b)=>
-    (b.average_on_20===null?-1:a.average_on_20===null?1:Number(b.average_on_20)-Number(a.average_on_20)));
+  function formatAverage(result, legacy, percent) {
+    if (!means) return "—";
+    if (!Object.hasOwn(means,"scale")) return legacy==null?"—":displayNumber(legacy)+" / 20";
+    if (result?.score!=null) {
+      const suffix=means.scale?.kind==="percentage"?"%":`/ ${displayNumber(means.scale?.max)}`;
+      return displayNumber(result.score)+" "+suffix;
+    }
+    return result?.label || (means.scale==null&&percent!=null?displayNumber(percent)+" %":"—");
+  }
+  const studentAverage=s=>s?formatAverage(s.average,s.average_on_20,s.average_percent):"—";
   function exportAverages(){
     if(!means)return;
     const escape=value=>'"'+String(value??"").replaceAll('"','""')+'"';
-    const rows=[["Élève","Matricule","Moyenne indicative sur 20","Évaluations saisies","Évaluations prévues"],
-      ...ranked.map(s=>[s.last_name+" "+s.first_name,s.student_code||"",s.average_on_20??"",
+    const rows=[["Élève","Matricule","Moyenne provisoire","Évaluations saisies","Évaluations prévues"],
+      ...ranked.map(s=>[s.last_name+" "+s.first_name,s.student_code||"",studentAverage(s),
         s.evaluated,s.expected])];
     const text="\uFEFF"+rows.map(r=>r.map(escape).join(";")).join("\r\n");
     const url=URL.createObjectURL(new Blob([text],{type:"text/csv;charset=utf-8"}));
@@ -285,9 +294,9 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
         <p className="ym-hint">Résultats provisoires calculés pour cette matière · {means.assessment_count} évaluation(s).
           Pondérations et barèmes issus de YEM.</p>
         <div className="ym-stats-four">
-          <div><span>Moyenne de la classe</span><strong>{displayNumber(means.class_average_on_20)+" / 20"}</strong></div>
-          <div><span>Meilleure moyenne</span><strong>{displayNumber(highest)} <small>/ 20</small></strong></div>
-          <div><span>Plus faible moyenne</span><strong>{displayNumber(lowest)} <small>/ 20</small></strong></div>
+          <div><span>Moyenne de la classe</span><strong>{formatAverage(means.class_average,means.class_average_on_20,means.class_average_percent)}</strong></div>
+          <div><span>Meilleure moyenne</span><strong>{studentAverage(calculated[0])}</strong></div>
+          <div><span>Plus faible moyenne</span><strong>{studentAverage(calculated.at(-1))}</strong></div>
           <div><span>Moyennes calculées</span><strong>{coverage} %</strong><small>({means.calculated_count} sur {means.student_count})</small></div>
         </div>
         <section className="ym-chart-card" aria-label="Répartition des moyennes">
@@ -307,15 +316,15 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
           <h2>Classement des élèves</h2>
           {!ranked.length&&<p className="ym-empty">Aucun élève dans cette classe.</p>}
           {ranked.map((s,index)=><div className="ym-ranking-row" key={s.enrollment}>
-            <span className="ym-rank">{s.average_on_20===null?"—":index+1}</span>
+            <span className="ym-rank">{scoreOf(s)==null?"—":index+1}</span>
             <span className="ym-ranking-name"><strong>{s.last_name} {s.first_name}</strong>
               <small>{s.evaluated}/{s.expected} évaluation(s) {s.complete?"· complet":"· incomplet"}</small></span>
-            <strong className="ym-ranking-mark">{displayNumber(s.average_on_20)} <small>/20</small></strong>
+            <strong className="ym-ranking-mark">{studentAverage(s)}</strong>
           </div>)}
         </section>
         <Button icon="file" className="ym-full-btn" onClick={exportAverages}>Exporter les moyennes</Button>
         <p className="ym-hint">Les notes manquantes ne sont pas transformées en zéros.
-          Cet affichage sur 20 est indicatif : la validation officielle des bulletins reste réservée aux responsables habilités.</p>
+          La validation des bulletins reste réservée aux responsables habilités.</p>
       </>}
     </section>}
   </div>;
