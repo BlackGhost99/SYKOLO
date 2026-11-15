@@ -830,3 +830,84 @@ button.ycl-tile:hover, button.ycl-tile:focus-visible { border-color: var(--yd-gr
   .ym-burger { flex: 0 0 auto; place-items: center; min-width: 44px; min-height: 44px; margin-left: 0; }
   .ym-tabs button { flex-wrap: wrap; white-space: normal; }
 }
+
+/* School workspace only — approved fixed identity and compact dashboard.
+   The demo, family and teacher-specific shells retain their existing layout. */
+.yd-school-fixed .yd-topbar { gap: 10px; padding-inline: 18px; }
+.yd-school-fixed .yd-topbar-sep { margin-inline: 4px; }
+.yd-school-fixed .yd-topbar-sep.small { margin-inline: 2px; }
+.yd-school-fixed .yd-school-select-wrap { flex: 0 1 290px; min-width: 180px; }
+.yd-school-fixed .yd-school-select { height: 36px; min-width: 0; padding-inline: 10px; gap: 8px; }
+.yd-school-fixed .yd-topbar .yd-bell { margin-left: 0; flex: 0 0 40px; }
+.yd-school-fixed .yd-fixed-school-banner {
+  display: block; flex: 1 1 400px; height: 76px; min-width: 0;
+  margin-left: 0; border-radius: 8px; background: linear-gradient(125deg,#1f5a36,#183e2a);
+}
+.yd-school-fixed .yd-fixed-school-banner::before {
+  background: linear-gradient(90deg,transparent 38%,rgba(8,34,22,.72) 100%);
+}
+.yd-school-fixed .yd-fixed-school-banner .yd-fixed-banner-art { object-fit: cover; object-position: center; }
+.yd-school-fixed .yd-fixed-school-banner .yd-school-banner-identity {
+  right: 10px; top: 0; bottom: 0; padding: 0; max-width: 42%;
+  background: transparent; text-shadow: 0 1px 3px rgba(0,0,0,.9);
+}
+.yd-school-fixed .yd-fixed-school-banner .yd-school-banner-identity img.yd-school-identity-logo {
+  width: 64px; height: 64px; padding: 0; background: transparent; border: 0; border-radius: 0;
+  object-fit: contain;
+}
+.yd-school-fixed .yd-school-banner-identity strong { font-size: clamp(12px,1.1vw,17px); }
+.yd-school-fixed .yd-school-banner-identity small { font-size: 12px; }
+.yd-school-fixed .yd-compact-search { position: relative; flex: 0 0 auto; }
+.yd-school-fixed .yd-search-trigger { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--yd-line); background: white; border-radius: 7px; color: var(--yd-ink); cursor: pointer; }
+.yd-school-fixed .yd-compact-search-panel { position: absolute; top: calc(100% + 8px); right: 0; width: min(340px,calc(100vw - 24px)); padding: 12px; z-index: 45; background: white; box-shadow: 0 8px 24px #12271e25; border: 1px solid var(--yd-line); border-radius: 10px; }
+.yd-school-fixed .yd-compact-search-panel .yd-search { width: 100%; min-width: 0; }
+.yd-school-fixed .yd-compact-search-panel input { min-width: 0; width: 100%; }
+.yd-compact-search-results { display: grid; gap: 3px; margin-top: 8px; max-height: 280px; overflow-y: auto; }
+.yd-school-fixed .yd-compact-search-results button { text-align: left; display: flex; align-items: center; gap: 8px; padding: 9px; color: var(--yd-ink); border: 0; background: transparent; border-radius: 6px; cursor: pointer; }
+.yd-school-fixed .yd-compact-search-results button:hover { background: var(--yd-green-soft); }
+.yd-school-fixed .yd-content { padding-top: 12px; }
+.yd-school-fixed .yd-hero.nobanner { min-height: 0; align-items: center; margin: 0 0 12px; }
+.yd-school-fixed .yd-hero.nobanner .yd-hero-text { padding: 0 0 0 8px; }
+.yd-school-fixed .yd-school-code-compact { padding: 12px 16px; margin-bottom: 10px; }
+.yd-school-fixed .yd-school-code-compact .yd-card-title { margin-bottom: 6px; }
+.yd-school-code-row { display: flex; align-items: flex-end; gap: 12px; }
+.yd-school-code-row .field { flex: 0 1 490px; min-width: 0; margin: 0; }
+.yd-school-code-row .field input { width: 100%; min-width: 0; }
+.yd-school-code-row .yd-btn { flex-shrink: 0; }
+.yd-dashboard-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 12px; margin: 0 0 12px; }
+.yd-dashboard-toolbar .yd-view-filters { margin: 0; flex: 0 1 auto; gap: 8px 12px; }
+.yd-dashboard-toolbar .yd-view-filters label { display: grid; gap: 4px; font-size: 13px; }
+.yd-dashboard-toolbar .yd-view-filters select { max-width: 230px; min-width: 0; }
+.yd-dashboard-shortcuts { flex: 1 1 640px; display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,128px),1fr)); gap: 8px; min-width: 0; }
+.yd-dashboard-shortcuts button { display: flex; align-items: center; gap: 8px; padding: 8px; text-align: left; min-width: 0; min-height: 54px; color: var(--yd-ink); background: linear-gradient(180deg,#fff,var(--yd-green-softer,#f1f5ef)); border: 1px solid var(--yd-line); border-radius: 8px; box-shadow: var(--yd-shadow); cursor: pointer; }
+.yd-dashboard-shortcuts button:hover { background: var(--yd-green-soft); }
+.yd-dashboard-shortcuts .yd-icon { flex: 0 0 auto; color: var(--yd-green); }
+.yd-dashboard-shortcuts span { display: grid; min-width: 0; gap: 3px; }
+.yd-dashboard-shortcuts strong { font-size: 13px; line-height: 1.2; overflow-wrap: anywhere; }
+.yd-dashboard-shortcuts small { font-size: 11px; line-height: 1.2; color: var(--yd-muted); }
+.yd-school-fixed .yd-sidebar { padding-top: 16px; }
+@media screen and (min-width: 761px) and (max-width: 1200px) {
+  .yd-school-fixed .yd-topbar { gap: 6px; padding-inline: 10px; }
+  .yd-school-fixed .yd-topbar-sep { margin: 0; }
+  .yd-school-fixed .yd-school-select-wrap { flex-basis: 220px; min-width: 140px; }
+  .yd-school-fixed .yd-topbar .yd-logo span { display: none; }
+  .yd-school-fixed .yd-fixed-school-banner .yd-school-banner-identity { max-width: 70%; }
+  .yd-school-fixed .yd-fixed-school-banner .yd-school-banner-identity img.yd-school-identity-logo { width: 48px; height: 48px; }
+}
+@media screen and (max-width: 760px) {
+  .yd-school-fixed .yd-topbar { position: sticky; top: 0; gap: 8px; padding: 8px 12px; }
+  .yd-school-fixed .yd-school-select-wrap { flex: 1 1 100%; order: 3; }
+  .yd-school-fixed .yd-fixed-school-banner { order: 4; flex: 1 1 100%; height: 64px; }
+  .yd-school-fixed .yd-fixed-school-banner .yd-school-banner-identity img.yd-school-identity-logo { width: 48px; height: 48px; }
+  .yd-school-fixed .yd-fixed-school-banner .yd-school-banner-identity { max-width: 58%; }
+  .yd-school-fixed .yd-compact-search-panel { position: fixed; top: 64px; right: 12px; }
+  .yd-school-fixed .yd-topbar .yd-bell { flex-basis: 32px; }
+  .yd-dashboard-toolbar .yd-view-filters { flex: 1 1 100%; }
+  .yd-dashboard-toolbar .yd-view-filters label { flex: 1 1 130px; }
+  .yd-dashboard-toolbar .yd-view-filters select { max-width: 100%; width: 100%; }
+  .yd-dashboard-shortcuts { grid-template-columns: repeat(auto-fit,minmax(min(100%,145px),1fr)); }
+  .yd-school-code-row { flex-wrap: wrap; }
+  .yd-school-code-row .field { flex: 1 1 100%; }
+  .yd-school-fixed .yd-hero.nobanner .yd-hero-text { padding: 0; }
+}
+@media print { .yd-dashboard-shortcuts, .yd-school-code-compact { display: none !important; } }
