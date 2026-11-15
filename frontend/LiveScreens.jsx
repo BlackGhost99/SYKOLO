@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import CashClosingPanel from "./CashClosingPanel.jsx";
+import {DashboardShortcuts} from "./SchoolDashboardHeader.jsx";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
 import SingPayControl from "./SingPayControl.jsx";
 import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
@@ -66,12 +67,12 @@ function scale(values) {
 function Empty({ children }) { return <p className="yd-card-sub yd-empty">{children}</p>; }
 
 /* ---------- Élèves ---------- */
-export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange }) {
+export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange, initialQuery = "" }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
   const state = useData(`schools/${schoolId}/overview/students?currency=${viewCurrency}&year=${viewYear}`);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [klass, setKlass] = useState("");
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState(null);
@@ -363,7 +364,7 @@ export function LiveArrears({ schoolId, schoolName, tabs, workingYearId = "", on
 }
 
 /* ---------- Tableau de bord ---------- */
-export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange }) {
+export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange, shortcuts=[], visibleSections, canEnroll=true }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
@@ -375,8 +376,9 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
   const methods = METHODS.map(([k, l]) => [l, Number(byMethod[k] || 0)]);
   const monthTotal = Number(d?.month.total || 0);
   const share = v => monthTotal ? `${Math.round(v / monthTotal * 100)} %` : "0 %";
-  return <>
-    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
+  const canOpen=(id,tab)=>!visibleSections||Boolean(visibleSections[id]&&(!tab||visibleSections[id].modules.includes(tab)||visibleSections[id].lives.some(l=>l.key===tab)));
+  return <div className="yd-dashboard-compact">
+    <div className="yd-dashboard-toolbar"><CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/><DashboardShortcuts items={shortcuts} onNavigate={onNavigate}/></div>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName} — ${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`} badge={roleLabel || "Membre"} badgeIcon="crown"/>
     {tabs}
     <Loading state={fin}>{d && <>
@@ -395,11 +397,11 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
           <Donut size={160} values={methods.map(m => m[1])} centerTop={num(monthTotal)} centerBottom={`${cur(d.currency)}\nencaissés`} legend={methods.map(([l, v]) => [`${l} : ${share(v)}`, `(${fmtMoney(v, d.currency)})`])}/>
         </Card>
         <Card title="Actions rapides" icon="bolt" className="quick">
-          {canReceive && <Button primary icon="card" onClick={() => onNavigate("payments", "live")}>Nouvel encaissement</Button>}
-          <Button icon="mail" onClick={() => onNavigate("arrears")}>Préparer les relances</Button>
-          <Button icon="adduser" onClick={() => onNavigate("students", "new")}>Inscrire un élève</Button>
-          <Button icon="users" onClick={() => onNavigate("students", "byclass")}>Inscriptions par classe</Button>
-          <Button icon="file" onClick={() => onNavigate("bulletins")}>Générer les bulletins</Button>
+          {canReceive && canOpen("payments","live") && <Button primary icon="card" onClick={() => onNavigate("payments", "live")}>Nouvel encaissement</Button>}
+          {canOpen("arrears")&&<Button icon="mail" onClick={() => onNavigate("arrears")}>Préparer les relances</Button>}
+          {canOpen("students")&&canEnroll&&<Button icon="adduser" onClick={() => onNavigate("students", "new")}>Inscrire un élève</Button>}
+          {canOpen("students","byclass")&&<Button icon="users" onClick={() => onNavigate("students", "byclass")}>Inscriptions par classe</Button>}
+          {canOpen("bulletins","reports")&&<Button icon="file" onClick={() => onNavigate("bulletins","reports")}>Générer les bulletins</Button>}
         </Card>
       </div>
       <div className="yd-grid dash-bottom">
@@ -411,5 +413,5 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
         </Card>
       </div>
     </>}</Loading>
-  </>;
+  </div>;
 }

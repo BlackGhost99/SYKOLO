@@ -34,7 +34,9 @@ import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens
 import ClassWorkspace from "./ClassWorkspace.jsx";
 import {StudentForm,StudentFile,ClassEnrollments,ClassSetup,FormSettings,PaymentTracking,ImportStudents} from "./EnrollmentScreens.jsx";
 import {Shell,NAV,PageHeader,Card,Icon,Button,BrandContext} from "./yem-ui.jsx";
+import {SchoolHeaderBanner,SchoolHeaderSearch} from "./SchoolDashboardHeader.jsx";
 import "./yem-desktop.css";
+import "./school-dashboard-compact.css";
 
 /* Espace réel connecté : mêmes cadre, menu et en-têtes que les maquettes (docs/maquettes),
    chaque entrée du menu ouvrant les modules existants autorisés pour le rôle du compte. */
@@ -378,6 +380,14 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     subtitle:"Réglages de l’établissement", modules:[], lives:[],
   };
   const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]);
+  const hasTab=(id,tab)=>Boolean(visibleSections[id]?.modules.includes(tab)||visibleSections[id]?.lives.some(l=>l.key===tab));
+  const dashboardShortcuts=[
+    hasTab("admissions","admissions")&&{id:"admissions",tab:"admissions",icon:"adduser",title:"Admissions",subtitle:"Inscriptions / Concours"},
+    hasTab("payments","live")&&{id:"payments",tab:"live",icon:"wallet",title:"Paiements",subtitle:"Encaissements / Reçus"},
+    hasTab("bulletins","assessments")&&{id:"bulletins",tab:"assessments",icon:"barchart",title:"Évaluations",subtitle:"Notes / Moyennes"},
+    availableSettings.some(g=>g.items.some(i=>i.id==="timetable"))&&{id:"settings",tab:"timetable",icon:"calendar",title:"Emplois du temps",subtitle:"Classes / Enseignants"},
+    hasTab("bulletins","reports")&&{id:"bulletins",tab:"reports",icon:"file",title:"Bulletins",subtitle:"Génération / Consultation"},
+  ].filter(Boolean);
   function navigate(id,subTab="",extra=null){
     setPage(id);setSub(subTab);setParams(extra);setMessage("");setSettingsReturn(null);
     if(id==="settings"){
@@ -481,7 +491,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     const k=chosen+JSON.stringify(params);
     content={
       "students:cycle-list":<CycleWorkspace key={chosen} schoolId={chosen} access={access}/>,
-      "students:live":<LiveStudents key={chosen} {...props}/>,
+      "students:live":<LiveStudents key={chosen+":"+(params?.query||"")} {...props} initialQuery={params?.query||""}/>,
       "students:byclass":<ClassEnrollments key={chosen} {...props}/>,
       "students:new":<StudentForm key={k} {...props}/>,
       "students:fiche":<StudentFile key={k} {...props}/>,
@@ -540,7 +550,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     canAttendance={can("school.attendance.assigned")||can("school.attendance.read")}
     canClasses={can("school.academic.read")}/>;
   else if (perms.includes("school.finance.read")) content=<>
-    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>
+    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId} shortcuts={dashboardShortcuts} visibleSections={visibleSections} canEnroll={can("school.students.manage")}/>
     <MySchoolFunctions schoolId={chosen}/>
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
@@ -551,10 +561,11 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
-  return <BrandContext.Provider value={{
-    name:schoolName,city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
-    logo:schoolBranding?.logo_url||"",banner:schoolBranding?.banner_url||"",
-  }}><Shell nav={nav} active={page} onNavigate={navigate} notifications={inboxCount}
+  const brand={name:chosen?schoolName:"",city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
+    logo:schoolBranding?.logo_url||"",banner:schoolBranding?.banner_url||"",fixedHeader:true};
+  return <BrandContext.Provider value={brand}><Shell className="yd-operational-compact" nav={nav} active={page} onNavigate={navigate} notifications={inboxCount}
+    headerBanner={<SchoolHeaderBanner brand={brand}/>}
+    search={<SchoolHeaderSearch key={chosen} nav={nav} canSearchStudents={hasTab("students","live")} onNavigate={navigate}/>}
     onNotifications={can("school.parents.manage")?()=>navigate("notifications","inbox"):undefined} schoolSelector={selector}
     userMenu={<UserMenu user={user} roleLabel={roleLabel} onAccount={()=>navigate("account")}
        onTeacherWorkspace={mobileTeacher&&teacherEligible?()=>setTeacherViewRequested(true):undefined}
@@ -562,14 +573,14 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
        photoUrl={myPhotoUrl?myPhotoUrl+"?rev="+photoRevision:undefined}
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
     {message&&<p role="status" className="pc-alert">{message}</p>}
-    {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school">
-      <label className="field">Code à communiquer au personnel
+    {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school" className="yd-school-code-compact">
+      <div className="yd-school-code-row"><label className="field">Code à communiquer au personnel
         <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
       </label>
       <Button type="button" onClick={async()=>{
         try {await navigator.clipboard.writeText(schoolCode);setMessage("Code établissement copié.");}
         catch {setMessage("Sélectionnez le code puis copiez-le.");}
-      }}>Copier le code</Button>
+      }}>Copier le code</Button></div>
     </Card>}
     {content}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
