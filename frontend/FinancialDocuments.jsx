@@ -1,0 +1,56 @@
+import React, {useEffect, useState} from "react";
+
+export function PdfLinks({url, label, openText = "Ouvrir", downloadText = "Télécharger", openLabel, downloadLabel}) {
+  const preview = url + (url.includes("?") ? "&" : "?") + "preview=1";
+  return <>
+    <a className="yd-link" href={preview} target="_blank" rel="noreferrer"
+      aria-label={openLabel ?? `Ouvrir le PDF · ${label}`}>{openText}</a>{" · "}
+    <a className="yd-link" href={url} aria-label={downloadLabel ?? `Télécharger le PDF · ${label}`}>{downloadText}</a>
+  </>;
+}
+
+function DocumentRows({title, items, type}) {
+  if (!items.length) return null;
+  return <>
+    <h4>{title}</h4>
+    <ul>
+      {items.map(item => {
+        const reference = item.id.slice(0, 8).toUpperCase();
+        const label = item.label ? `${item.label} · ${reference}` : `${type} · ${reference}`;
+        const date = item.date && new Date(item.date + "T12:00:00").toLocaleDateString("fr-FR");
+        const amount = item.amount != null
+          && new Intl.NumberFormat("fr-FR", {style:"currency", currency:item.currency}).format(item.amount);
+        return <li key={item.id}>
+          <strong>{label}</strong>{date && ` · ${date}`}{amount && ` · ${amount}`}
+          {item.voided && " · Annulé"}{" · "}<PdfLinks url={item.url} label={label}/>
+        </li>;
+      })}
+    </ul>
+  </>;
+}
+
+export default function FinancialDocuments({api, path, revision = 0}) {
+  const [state, setState] = useState(null);
+  useEffect(() => {
+    let active = true;
+    setState(null);
+    api(path).then(data => {
+      if (active) setState({data});
+    }).catch(error => {
+      if (active) setState({error: error.message});
+    });
+    return () => { active = false; };
+  }, [api, path, revision]);
+
+  if (!state) return <p role="status">Chargement des documents…</p>;
+  if (state.error) return <p role="alert">Documents indisponibles. {state.error}</p>;
+  const {invoices = [], receipts = [], grouped_receipts = []} = state.data;
+  if (!invoices.length && !receipts.length && !grouped_receipts.length) {
+    return <p>Aucune facture ni aucun reçu disponible.</p>;
+  }
+  return <>
+    <DocumentRows title="Factures scolaires" items={invoices} type="Facture"/>
+    <DocumentRows title="Reçus de paiement" items={receipts} type="Reçu"/>
+    <DocumentRows title="Reçus groupés" items={grouped_receipts} type="Reçu groupé"/>
+  </>;
+}

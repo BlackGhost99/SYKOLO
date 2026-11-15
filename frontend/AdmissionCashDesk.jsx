@@ -1,3 +1,4 @@
+import {PdfLinks} from "./FinancialDocuments.jsx";
 import React,{useEffect,useState} from "react";
 
 async function cashApi(path,body){
@@ -120,9 +121,10 @@ export default function AdmissionCashDesk({schoolId,canReceive=false,application
         dispense_bourse:"Frais pris en charge par bourse",
         inscription_deja_finalisee:"Inscription déjà définitive — pas de nouveau règlement",
       })[row.payment_status]||row.payment_status}</strong></p>
-      {row.receipt_url&&<a href={row.receipt_url} target="_blank" rel="noreferrer">
-        {row.is_demo?"Document de simulation PDF":"Reçu de caisse PDF"}
-      </a>}
+      {row.receipt_url&&<p>{row.is_demo?"Document de simulation PDF":"Reçu de caisse PDF"} ·{" "}
+        <PdfLinks url={row.receipt_url} label={row.is_demo?"Document de simulation":"Reçu de caisse"}
+          downloadLabel={row.is_demo?"Document de simulation PDF":"Reçu de caisse PDF"}/>
+      </p>}
       {receiveAllowed&&row.can_pay!==false&&row.admission_status!=="rejected"&&row.admission_status!=="enrolled"&&row.payment_status==="a_regler_sur_place"&&Boolean(row.amount_xaf)&&<>
         <label className="yp-field">Référence de caisse
           <input maxLength={100} value={reference[row.request]||""}

@@ -20,6 +20,8 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 
 from accounts.views import authorized
+
+from .finance_document_pdf import previewable_pdf
 from .finance_models import FeeCharge, FeePayment, FeePaymentBatch
 from .finance_views import (
     CODE_PATTERN, MAX_MONEY, gate, iso_day, model_error, money,
@@ -171,6 +173,7 @@ def batch_detail(request, school_id, batch_id):
 
 @require_GET
 @authorized
+@previewable_pdf
 def batch_receipt(request, school_id, batch_id):
     school, error = gate(request, school_id, "school.finance.read")
     if error is not None:

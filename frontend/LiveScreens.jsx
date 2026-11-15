@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CashClosingPanel from "./CashClosingPanel.jsx";
 import {DashboardShortcuts} from "./SchoolDashboardHeader.jsx";
+import FinancialDocuments, {PdfLinks} from "./FinancialDocuments.jsx";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
 import SingPayControl from "./SingPayControl.jsx";
 import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
@@ -241,7 +242,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   const share = v => total ? `${(v / total * 100).toFixed(1).replace(".", ",")} %` : "0,0 %";
   const donutRows = METHODS.map(([k, l]) => [l, Number(byMethod[k] || 0)]);
   return <>
-    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);setEnrollment("");setAmount(null);setMessage("");onWorkingYearChange?.(value)}}/>
+    <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);setEnrollment("");setAmount(null);setMessage("");setReceiptUrl("");onWorkingYearChange?.(value)}}/>
     <PageHeader title="Encaissements et caisse journalière" subtitle="Suivi des paiements, reçus et méthodes d’encaissement" badge="Économe" badgeIcon="coins" actions={advancedSettings}/>
     {tabs}
     <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive} onUpdated={fin.reload}/>
@@ -255,13 +256,13 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
       </div>
       <div className="yd-grid payments-grid">
         <Card title="Nouvel encaissement" subtitle="Frais scolaires d’un élève déjà inscrit" icon="card" className="payment-form">
-          {!canReceive ? <Empty>Votre rôle ne permet pas d’enregistrer des encaissements.</Empty> : <>
             <label className="yd-label" htmlFor="pay-student">Élève <i>*</i></label>
-            <div className="yd-input"><Icon name="user" size={20}/><select id="pay-student" disabled={busy} value={enrollment} onChange={e => { setEnrollment(e.target.value); setLoadedEnrollment(""); setAmount(null); setChargeError(""); setMessage(""); }}><option value="">Choisir un élève…</option>{enrolled.map(s => <option key={s.enrollment.id} value={s.enrollment.id}>{s.last_name} {s.first_name} — {s.enrollment.classroom.name}</option>)}</select></div>
+            <div className="yd-input"><Icon name="user" size={20}/><select id="pay-student" disabled={busy} value={enrollment} onChange={e => { setEnrollment(e.target.value); setLoadedEnrollment(""); setAmount(null); setChargeError(""); setMessage(""); setReceiptUrl(""); }}><option value="">Choisir un élève…</option>{enrolled.map(s => <option key={s.enrollment.id} value={s.enrollment.id}>{s.last_name} {s.first_name} — {s.enrollment.classroom.name}</option>)}</select></div>
+            {roster.error && <p role="alert">Liste des élèves indisponible. {roster.error}</p>}
+            {!canReceive ? <Empty>Votre rôle ne permet pas d’enregistrer des encaissements.</Empty> : <>
             <label className="yd-label">Parent <i>*</i></label>
             <div className="yd-input"><Icon name="users" size={20}/><span>{student?.guardian ? `${student.guardian.full_name}${student.guardian.relationship ? ` (${student.guardian.relationship})` : ""}` : "—"}</span>{student?.guardian?.phone && <em><Icon name="phone" size={16}/>{student.guardian.phone}</em>}</div>
             <label className="yd-label">Impayés sélectionnés <i>*</i></label>
-            {roster.error && <p role="alert">Liste des élèves indisponible. {roster.error}</p>}
             {chargeError && <p role="alert">{chargeError}</p>}
             <div className="yd-debts">{openCharges.length === 0 ? <Empty>{
               !enrollment ? "Choisissez d’abord un élève." : chargeError ? "Frais indisponibles." :
@@ -270,14 +271,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
               setAmount(null);
               setPicked(p => selected.some(row => row.currency !== c.currency) ? {[c.id]:true} : ({ ...p, [c.id]: !p[c.id] }));
             }}><Check on={!!picked[c.id]}/><span>{c.label}{c.due_date ? ` · échéance ${fmtDate(c.due_date)}` : ""}</span><b>{fmtMoney(c.balance, c.currency)}</b></button>)}</div>
-            {issuedCharges.length > 0 && <div className="yd-card-sub" aria-label="Factures scolaires">
-              <strong>Factures scolaires :</strong>{" "}
-              {issuedCharges.map(c => <a key={c.id}
-                href={`/api/v1/schools/${schoolId}/finance/charges/${c.id}/invoice`}
-                target="_blank" rel="noreferrer" className="yd-link"
-                style={{display:"inline-block",marginRight:12}}>
-                {c.label} (PDF)
-              </a>)}
+            {issuedCharges.length > 0 && <div className="yd-card-sub" aria-label="Avis d’échéance">
               <span> Avis d’échéance : </span>
               {Array.from(new Set(issuedCharges.map(c => c.currency))).map(code =>
                 <a key={code} href={`/api/v1/schools/${schoolId}/finance/enrollments/${enrollment}/notice?currency=${code}`}
@@ -299,14 +293,19 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
               : enteredCents < dueCents ? "Paiement partiel." : "Paiement intégral des frais sélectionnés."}</p>
             <div className="yd-balance"><span><Icon name="coins" size={22}/>Solde après paiement</span><strong>{fmtMoney(Math.max(remaining, 0), currency)}</strong></div>
             {message && <p role="status" className="yd-form-msg">{message}</p>}
-            {receiptUrl && <p><a className="yd-link" href={receiptUrl} target="_blank" rel="noreferrer">Télécharger le reçu groupé PDF</a></p>}
+            {receiptUrl && <p>Reçu groupé · <PdfLinks url={receiptUrl} label="Reçu groupé" downloadLabel="Télécharger le reçu groupé PDF"/></p>}
             <Button primary icon="check" className="wide" disabled={busy || !selected.length || !validAmount} onClick={submit}>Valider le paiement</Button>
           </>}
         </Card>
         <div className="yd-stack">
+          <Card title="Factures et reçus" icon="file">
+            {student ? <FinancialDocuments key={schoolId + "/" + enrollment} api={api} revision={chargeVersion}
+              path={`schools/${schoolId}/finance/enrollments/${enrollment}/documents`}/>
+              : <Empty>Choisissez un élève pour consulter ses documents.</Empty>}
+          </Card>
           <Card title="Derniers paiements du jour" icon="receipt">
             {d.today.payments.length === 0 ? <Empty>Aucun paiement enregistré aujourd’hui.</Empty> :
-              <Table className="nowrap xs" headers={["# Reçu", "Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.map(p => [<a href={`/api/v1/schools/${schoolId}/finance/payments/${p.id}/receipt`} target="_blank" rel="noreferrer" className="yd-link">R-{p.id.slice(0, 8).toUpperCase()}</a>, p.student, p.classroom, fmtMoney(p.amount, d.currency), <span className="yd-mode"><Icon name={methodIcon(p.method)} size={18}/>{methodLabel(p.method)}</span>, fmtTime(p.recorded_at)])}/>}
+              <Table className="nowrap xs" headers={["# Reçu", "Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.map(p => [<PdfLinks url={`/api/v1/schools/${schoolId}/finance/payments/${p.id}/receipt`} label={`Reçu ${p.id.slice(0, 8).toUpperCase()}`} openText={`R-${p.id.slice(0, 8).toUpperCase()}`} openLabel={`R-${p.id.slice(0, 8).toUpperCase()}`}/>, p.student, p.classroom, fmtMoney(p.amount, d.currency), <span className="yd-mode"><Icon name={methodIcon(p.method)} size={18}/>{methodLabel(p.method)}</span>, fmtTime(p.recorded_at)])}/>}
           </Card>
           <Card title="Caisse du jour" icon="layers">
             <div className="cash-row">

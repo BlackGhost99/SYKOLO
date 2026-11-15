@@ -4,14 +4,18 @@ These are not public URLs and no document lookup uses a self-asserted school ID.
 """
 from decimal import Decimal
 
+from django.db.models import Exists, OuterRef
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 from accounts.views import authorized
 
+from .finance_document_pdf import previewable_pdf
+
 from .finance_document_pdf import render_school_financial_pdf, school_guardian, payment_evidence
 from .finance_models import FeeCharge, FeePayment, FeePaymentBatch, FeePaymentVoid
-from .finance_views import cleared_total
+from .finance_views import cleared_total, gate
+from .student_models import Enrollment
 from .parent_views import permitted_child
 
 
@@ -23,31 +27,66 @@ def list_documents(request, student_id):
     if error is not None:
         return error
     root = f"/api/v1/parents/children/{student.pk}/finance/documents"
-    charges = FeeCharge.objects.filter(
-        school_id=student.school_id, enrollment__student_id=student.pk,
-    ).order_by("-created_at")[:200]
-    payments = FeePayment.objects.filter(
-        school_id=student.school_id, charge__enrollment__student_id=student.pk,
-        batch__isnull=True,
-    ).order_by("-created_at")[:200]
-    batches = FeePaymentBatch.objects.filter(
-        school_id=student.school_id, enrollment__student_id=student.pk,
-    ).order_by("-created_at")[:200]
+    enrollments = Enrollment.objects.filter(school_id=student.school_id, student=student)
     return JsonResponse({
         "student": str(student.pk),
-        "invoices": [{"id": str(x.pk), "label": x.label, "currency": x.currency,
-                      "url": f"{root}/invoice/{x.pk}/pdf"} for x in charges],
-        "receipts": [{"id": str(x.pk), "amount": str(x.amount), "currency": x.currency,
-                      "voided": FeePaymentVoid.objects.filter(payment=x).exists(),
-                      "url": f"{root}/receipt/{x.pk}/pdf"} for x in payments],
-        "grouped_receipts": [{"id": str(x.pk), "amount": str(x.total), "currency": x.currency,
-                             "url": f"{root}/batch/{x.pk}/pdf"} for x in batches],
+        **document_list(enrollments, student.school_id, lambda kind, pk: f"{root}/{kind}/{pk}/pdf"),
     })
+
+
+def document_list(enrollments, school_id, url):
+    charges = FeeCharge.objects.filter(
+        school_id=school_id, enrollment__in=enrollments,
+    ).order_by("-created_at", "pk")
+    payments = FeePayment.objects.filter(
+        school_id=school_id, charge__enrollment__in=enrollments, batch__isnull=True,
+    ).annotate(is_voided=Exists(FeePaymentVoid.objects.filter(payment_id=OuterRef("pk"))))
+    batches = FeePaymentBatch.objects.filter(
+        school_id=school_id, enrollment__in=enrollments,
+    ).annotate(is_voided=Exists(FeePaymentVoid.objects.filter(payment__batch_id=OuterRef("pk"))))
+    return {
+        "invoices": [
+            {"id": str(x.pk), "label": x.label, "currency": x.currency,
+             "date": x.created_at.date(), "url": url("invoice", x.pk)}
+            for x in charges
+        ],
+        "receipts": [
+            {"id": str(x.pk), "amount": str(x.amount), "currency": x.currency,
+             "date": x.paid_on, "voided": x.is_voided, "url": url("receipt", x.pk)}
+            for x in payments.order_by("-paid_on", "-created_at", "pk")
+        ],
+        "grouped_receipts": [
+            {"id": str(x.pk), "amount": str(x.total), "currency": x.currency,
+             "date": x.paid_on, "voided": x.is_voided, "url": url("batch", x.pk)}
+            for x in batches.order_by("-paid_on", "-created_at", "pk")
+        ],
+    }
 
 
 @never_cache
 @require_GET
 @authorized
+def staff_documents(request, school_id, enrollment_id):
+    school, error = gate(request, school_id, "school.finance.read")
+    if error is not None:
+        return error
+    enrollments = Enrollment.objects.filter(school=school, pk=enrollment_id)
+    if not enrollments.exists():
+        return JsonResponse({"error": "Inscription introuvable."}, status=404)
+    root = f"/api/v1/schools/{school.pk}/finance"
+    segments = {"invoice": ("charges", "invoice"), "receipt": ("payments", "receipt"),
+                "batch": ("batches", "receipt")}
+
+    def url(kind, pk):
+        collection, endpoint = segments[kind]
+        return f"{root}/{collection}/{pk}/{endpoint}"
+
+    return JsonResponse(document_list(enrollments, school.pk, url))
+
+@never_cache
+@require_GET
+@authorized
+@previewable_pdf
 def document_pdf(request, student_id, kind, document_id):
     student, error = permitted_child(request.user, student_id)
     if error is not None:

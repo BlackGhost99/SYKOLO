@@ -20,6 +20,8 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from accounts.views import authorized
 
+from .finance_document_pdf import previewable_pdf
+
 from .academic_models import AcademicYear, AcademicClass
 from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid
 from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
@@ -595,6 +597,7 @@ def statement(request, school_id, enrollment_id):
 
 @require_GET
 @authorized
+@previewable_pdf
 def receipt(request, school_id, payment_id):
     school, error = gate(request, school_id, "school.finance.read")
     if error is not None:
@@ -635,6 +638,7 @@ def receipt(request, school_id, payment_id):
 
 @require_GET
 @authorized
+@previewable_pdf
 def invoice(request, school_id, charge_id):
     """Invoice of one actually-assessed school fee, never a payment receipt.
 
