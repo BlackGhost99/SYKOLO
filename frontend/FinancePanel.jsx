@@ -30,11 +30,12 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
   const [statement, setStatement] = useState(null);
   const [onlineAdmissions,setOnlineAdmissions] = useState([]);
   const [selectedYear, setSelectedYear] = useState(workingYearId);
-  useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");setSelectedSchedule("");setSelectedCharge("");},[workingYearId,schoolId]);
+  useEffect(()=>{setSelectedYear(workingYearId);setSelectedClass("");setSelectedSchedule("");setSelectedCharge("");setAmountEdit(null);},[workingYearId,schoolId]);
   const [selectedClass, setSelectedClass] = useState("");
   const [feeCode, setFeeCode] = useState("");
   const [feeLabel, setFeeLabel] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
+  const [amountEdit, setAmountEdit] = useState(null);
   const [currency, setCurrency] = useState("XAF");
   const [dueDate, setDueDate] = useState("");
   const [selectedStudent, setSelectedStudent] = useState("");
@@ -192,9 +193,36 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
     {settings ? <div>
       <h3>Tarifs enregistrés</h3>
       {schedules.length === 0 && <p>Aucun tarif configuré.</p>}
-      {schedules.map(item => <p key={item.id}><strong>{item.label}</strong> · {item.amount} {item.currency} · {
-        years.find(year => year.id === item.year)?.name
-      } · {classes.find(room => room.id === item.classroom)?.name || "Toutes les classes"}</p>)}
+      {schedules.filter(item=>!selectedYear||item.year===selectedYear).map(item => <div key={item.id}>
+        <p><strong>{item.label}</strong> · {item.amount} {item.currency} · {
+          years.find(year => year.id === item.year)?.name || "Année archivée"
+        } · {item.classroom ? classes.find(room => room.id === item.classroom)?.name || "Classe archivée" : "Toutes les classes"}</p>
+        {canConfigureTariffs && years.some(year=>year.id===item.year&&year.active) &&
+          (amountEdit?.id===item.id ? <form onSubmit={event=>{
+            event.preventDefault();
+            if(busy)return;
+            run(async()=>{
+              await financeApi(finance+"schedules/"+item.id,{
+                revision:amountEdit.revision, amount:amountEdit.amount,
+              },"PATCH");
+              setAmountEdit(null);
+              setMessage("Montant modifié pour les futures affectations. Les frais déjà affectés restent inchangés.");
+            });
+          }}>
+            <label className="field">Nouveau montant ({item.currency})
+              <input required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" disabled={busy}
+                value={amountEdit.amount} onChange={event=>setAmountEdit({...amountEdit,amount:event.target.value})}/>
+            </label>
+            <p className="hint">Seules les futures affectations utilisent le nouveau tarif. Les frais déjà affectés et leurs paiements restent inchangés.</p>
+            <div className="actions">
+              <button type="submit" disabled={busy}>Enregistrer le montant</button>
+              <button type="button" disabled={busy} onClick={()=>setAmountEdit(null)}>Annuler</button>
+            </div>
+          </form> : <button type="button" disabled={busy}
+            onClick={()=>setAmountEdit({id:item.id,revision:item.revision,amount:String(item.amount)})}>
+            Modifier le montant
+          </button>)}
+      </div>)}
     </div> : <>
     <h3>1. Admissions acceptées — relais de paiement</h3>
     <p className="hint">La candidature est examinée dans Admissions ; ici, la caisse confirme les espèces nettes après bourse. Une inscription officielle ne sera possible qu’après validation des conditions financières.</p>
