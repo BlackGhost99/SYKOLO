@@ -1,6 +1,8 @@
 """Module 11: recorded school fees and manual receipts only; no payment gateway."""
 import re
+from calendar import monthrange
 from datetime import date
+from unicodedata import normalize
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from html import escape
@@ -9,7 +11,7 @@ from uuid import UUID
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from reportlab.lib.pagesizes import A4
@@ -198,10 +200,12 @@ def schedules(request, school_id):
             if not can_configure_tariffs(request, school):
                 return refuse()
             years = AcademicYear.objects.filter(school=school, active=True).order_by("-start_date")
-            classes = AcademicClass.objects.filter(school=school, year__active=True, active=True).order_by("name", "pk")
+            classes = AcademicClass.objects.filter(school=school, year__active=True, active=True).select_related("level__cycle").order_by("name", "pk")
             result["years"] = list(years.values("id", "name", "active"))
             result["classes"] = [
-                {"id": room.pk, "name": room.name, "year": room.year_id, "active": room.active}
+                {"id": room.pk, "name": room.name, "year": room.year_id, "active": room.active,
+                 "cycle": room.level.cycle_id, "cycle_name": room.level.cycle.name,
+                 "level": room.level_id, "level_name": room.level.name}
                 for room in classes
             ]
         return JsonResponse(result)
@@ -230,6 +234,112 @@ def schedules(request, school_id):
     except IntegrityError:
         return JsonResponse({"error": "Frais déjà configuré pour cette portée."}, status=409)
     return JsonResponse(schedule_data(row), status=201)
+
+
+def monthly_dates(first, last, day):
+    if (not isinstance(first, str) or not isinstance(last, str)
+            or not re.fullmatch(r"[0-9]{4}-[0-9]{2}", first)
+            or not re.fullmatch(r"[0-9]{4}-[0-9]{2}", last)
+            or type(day) is not int or not 1 <= day <= 31):
+        raise ValueError("Mois ou jour d’échéance invalide.")
+    start = date.fromisoformat(first + "-01")
+    end = date.fromisoformat(last + "-01")
+    count = (end.year - start.year) * 12 + end.month - start.month + 1
+    if not 1 <= count <= 24:
+        raise ValueError("Sélectionnez une période de 1 à 24 mois.")
+    result = []
+    for offset in range(count):
+        y, m = divmod(start.year * 12 + start.month - 1 + offset, 12)
+        result.append(date(y, m + 1, min(day, monthrange(y, m + 1)[1])))
+    return result
+
+
+def tuition_like(row):
+    text = normalize("NFKD", row.code + " " + row.label).encode("ascii", "ignore").decode().lower()
+    return any(word in text for word in ("scolarite", "mensualite", "tuition"))
+
+
+@require_POST
+@authorized
+def generate_monthly_schedules(request, school_id):
+    """Generate price schedules only; never create a student's charges or payment."""
+    school, error = tariff_gate(request, school_id)
+    if error is not None:
+        return error
+    data, error = parse_body(request)
+    if error is not None:
+        return error
+    try:
+        if set(data) != {"year", "classrooms", "amount", "first_month", "last_month", "due_day"}:
+            raise ValueError("Paramètres de génération incomplets.")
+        ids = data["classrooms"]
+        if not isinstance(ids, list) or not 1 <= len(ids) <= 100:
+            raise ValueError("Sélectionnez entre 1 et 100 classes.")
+        selected = [uid(value) for value in ids]
+        if None in selected or len(set(selected)) != len(selected):
+            raise ValueError("Sélection de classes invalide ou répétée.")
+        year_id = uid(data["year"])
+        if year_id is None:
+            raise ValueError("Année invalide.")
+        amount = money(data["amount"])
+        if amount != amount.to_integral_value():
+            raise ValueError("Saisissez un montant en francs CFA entiers.")
+        dates = monthly_dates(data["first_month"], data["last_month"], data["due_day"])
+        if len(selected) * len(dates) > 1200:
+            raise ValueError("Limitez une génération à 1 200 tarifs.")
+        with transaction.atomic():
+            # The school lock serializes concurrent bulk generation requests.
+            School.objects.select_for_update().get(pk=school.pk)
+            year = AcademicYear.objects.select_for_update().filter(
+                pk=year_id, school=school, active=True,
+            ).exclude(status=AcademicYear.STATUS_CLOSED).first()
+            if year is None:
+                raise ValueError("Année scolaire inactive, clôturée ou étrangère.")
+            if any(day < year.start_date or day > year.end_date for day in dates):
+                raise ValueError("Toutes les échéances doivent être comprises dans l’année scolaire.")
+            rooms = AcademicClass.objects.filter(
+                school=school, year=year, pk__in=selected, active=True,
+                level__active=True, level__cycle__active=True,
+            )
+            if rooms.count() != len(selected):
+                raise ValueError("Une classe est inactive ou n’appartient pas à cette année.")
+            # Canonical codes are stable per calendar month; never overwrite a
+            # modified, inactive or conflicting existing schedule during a retry.
+            codes = ["scolarite-" + day.strftime("%Y-%m") for day in dates]
+            existing = list(FeeSchedule.objects.select_for_update().filter(
+                school=school, year=year,
+            ).filter(Q(classroom__isnull=True) | Q(classroom_id__in=selected)))
+            by_key = {(row.classroom_id, row.code): row for row in existing}
+            other_tuition = [row for row in existing if tuition_like(row) and row.code not in codes and row.active]
+            if any(row.due_date is None or any(
+                (row.due_date.year, row.due_date.month) == (day.year, day.month) for day in dates
+            ) for row in other_tuition):
+                return JsonResponse({"error": "Des tarifs de scolarité existants se chevauchent. Vérifiez-les avant de générer."}, status=409)
+            pending = []
+            unchanged = 0
+            for classroom_id in selected:
+                for day, code in zip(dates, codes):
+                    row = by_key.get((classroom_id, code))
+                    if by_key.get((None, code)) is not None:
+                        return JsonResponse({"error": "Une mensualité générale existe déjà pour cette période."}, status=409)
+                    if row is not None:
+                        if not row.active or row.amount != amount or row.currency != "XAF" or row.due_date != day:
+                            return JsonResponse({"error": "Une mensualité existe avec une autre configuration. Modifiez-la séparément."}, status=409)
+                        unchanged += 1
+                        continue
+                    pending.append(FeeSchedule(school=school, year=year, classroom_id=classroom_id,
+                        scope_key=str(classroom_id), code=code, label="Scolarité — " + day.strftime("%m/%Y"),
+                        amount=amount, currency="XAF", due_date=day))
+            FeeSchedule.objects.bulk_create(pending)
+            if pending:
+                log_event(school, request, "monthly_fee_schedules_generated", year.pk,
+                    {"classes": len(selected), "months": codes, "created": len(pending), "amount_xaf": str(amount)})
+        return JsonResponse({"created": len(pending), "unchanged": unchanged,
+            "due_dates": [day.isoformat() for day in dates]}, status=201 if pending else 200)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+    except IntegrityError:
+        return JsonResponse({"error": "Un tarif a été créé simultanément. Actualisez avant de réessayer."}, status=409)
 
 
 @require_http_methods(["GET", "PATCH"])

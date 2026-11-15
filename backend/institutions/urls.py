@@ -146,6 +146,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/payroll/runs/<uuid:run_id>/payments", payroll_views.pay),
     path("schools/<uuid:school_id>/payroll/payments/<uuid:payment_id>/void", payroll_views.void),
     path("schools/<uuid:school_id>/finance/schedules", finance_views.schedules),
+    path("schools/<uuid:school_id>/finance/schedules/monthly", finance_views.generate_monthly_schedules),
     path("schools/<uuid:school_id>/finance/schedules/<uuid:schedule_id>", finance_views.schedule_detail),
     path("schools/<uuid:school_id>/finance/charges", finance_views.charges),
     path("schools/<uuid:school_id>/finance/charges/<uuid:charge_id>", finance_views.charge_detail),

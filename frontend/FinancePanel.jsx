@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from "react";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
+import MonthlyTariffSetup from "./MonthlyTariffSetup.jsx";
 
 async function financeApi(url, body, method) {
   if (body !== undefined) await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
@@ -190,6 +191,12 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
       <button disabled={busy||!selectedYear} type="submit">Créer le tarif</button>
     </form>
     </>}
+    {settings && canConfigureTariffs && <MonthlyTariffSetup key={schoolId+selectedYear}
+      classes={classes.filter(x=>x.active&&x.year===selectedYear)} year={selectedYear} busy={busy}
+      onGenerate={payload=>run(async()=>{
+        const result=await financeApi(finance+"schedules/monthly",payload);
+        setMessage(result.created+" mensualité(s) créée(s), "+result.unchanged+" déjà présente(s). Aucun frais élève modifié.");
+      })}/>}
     {settings ? <div>
       <h3>Tarifs enregistrés</h3>
       {schedules.length === 0 && <p>Aucun tarif configuré.</p>}
