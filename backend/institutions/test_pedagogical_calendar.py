@@ -231,3 +231,100 @@ class PedagogicalCalendarTests(TestCase):
         })
         self.assertEqual(overlap.status_code, 422)
         self.assertEqual(AcademicPeriod.objects.filter(school=self.school, year=self.year).count(), 1)
+
+
+    def test_complex_cycles_keep_independent_calendars_and_legacy_ids(self):
+        secondary = AcademicCycle.objects.create(school=self.school, code="college", name="Collège")
+        payload = {
+            "year": str(self.year.pk), "cycle": str(self.cycle.pk), "code": "p1",
+            "name": "Première période", "start_date": "2026-09-07", "end_date": "2026-11-01",
+            "learning_weeks": 6, "evaluation_weeks": 1,
+        }
+        primary = self.post("periods", payload)
+        college = self.post("periods", dict(payload, cycle=str(secondary.pk), learning_weeks=7))
+        milestone = self.post("periods", dict(payload, kind="milestone", name="Premier palier"))
+        legacy = self.post("periods", {k: v for k, v in payload.items() if k != "cycle"})
+        for item in (primary, college, milestone, legacy):
+            self.assertEqual(item.status_code, 201, item.content)
+        self.assertEqual(self.post("periods", dict(payload, code="overlap")).status_code, 422)
+        self.assertEqual(self.post("periods", dict(payload, code="outside", start_date="2026-08-31")).status_code, 422)
+        self.assertEqual(self.post("periods", dict(payload, code="weeks", learning_weeks=20)).status_code, 422)
+
+        prefix = self.prefix + "pedagogical-calendar?year=" + str(self.year.pk) + "&cycle="
+        primary_id, college_id, milestone_id, legacy_id = [
+            response.json()["id"] for response in (primary, college, milestone, legacy)
+        ]
+        college_periods = self.client.get(prefix + str(secondary.pk)).json()["periods"]
+        self.assertEqual({p["id"] for p in college_periods}, {college_id, legacy_id})
+        self.assertFalse(any(p["kind"] == "milestone" for p in college_periods))
+        self.assertEqual(AcademicPeriod.for_classroom(self.classroom).count(), 2)
+        self.assertEqual({str(p.pk) for p in AcademicPeriod.for_classroom(self.classroom)}, {primary_id, legacy_id})
+
+        director = SchoolMember.objects.get(school=self.school, user=self.director)
+        director.access_cycle_ids = [str(self.cycle.pk)]
+        director.save(update_fields=["access_cycle_ids"])
+        self.assertEqual(self.client.get(prefix + str(secondary.pk)).status_code, 404)
+        self.assertEqual(self.client.get(self.prefix + "periods/" + college_id).status_code, 404)
+        self.assertEqual(self.patch("periods/" + college_id, {"revision": 1, "name": "Forbidden"}).status_code, 404)
+        self.assertEqual(self.patch("periods/" + legacy_id, {"revision": 1, "name": "Forbidden"}).status_code, 403)
+        foreign = School.objects.create(organization=self.school.organization, name="École indépendante")
+        foreign_cycle = AcademicCycle.objects.create(school=foreign, code="primaire", name="Primaire")
+        self.assertEqual(self.client.get(prefix + str(foreign_cycle.pk)).status_code, 404)
+        self.assertEqual(self.post("periods", dict(payload, cycle=str(foreign_cycle.pk))).status_code, 422)
+        self.assertEqual(self.patch("periods/" + milestone_id, {"revision": 2, "closed": True}).status_code, 409)
+        self.assertEqual(self.patch("periods/" + milestone_id, {"revision": 1, "closed": True}).status_code, 200)
+        self.assertEqual(self.patch("periods/" + milestone_id, {"revision": 2, "active": False}).status_code, 409)
+        if connection.vendor == "postgresql":
+            with self.assertRaisesMessage(IntegrityError, "Période pédagogique figée"), transaction.atomic():
+                AcademicPeriod.objects.filter(pk=milestone_id).update(active=False)
+
+
+    def test_teacher_sees_only_cycle_with_active_assignment(self):
+        from .staff_models import StaffAssignment, StaffRecord
+
+        secondary = AcademicCycle.objects.create(school=self.school, code="college", name="Collège")
+        staff = StaffRecord.objects.create(
+            school=self.school, account=self.teacher, first_name="Anne", last_name="Titulaire",
+        )
+        assignment = StaffAssignment.objects.create(
+            school=self.school, staff=staff, year=self.year, classroom=self.classroom,
+        )
+        for cycle in (self.cycle, secondary):
+            response = self.post("periods", {
+                "year": str(self.year.pk), "cycle": str(cycle.pk), "code": "t1", "name": cycle.name,
+                "start_date": "2026-09-07", "end_date": "2026-11-01",
+            })
+            self.assertEqual(response.status_code, 201, response.content)
+        self.login(self.teacher)
+        periods = self.client.get(self.prefix + "periods").json()["periods"]
+        self.assertEqual([p["cycle"] for p in periods], [str(self.cycle.pk)])
+        response = self.client.get(self.prefix + "pedagogical-calendar", {"year": self.year.pk})
+        self.assertEqual([c["id"] for c in response.json()["cycles"]], [str(self.cycle.pk)])
+        assignment.active = False
+        assignment.save(update_fields=["active"])
+        self.assertEqual(self.client.get(self.prefix + "periods").json()["periods"], [])
+
+
+    def test_profiles_are_versioned_per_cycle_and_allow_zero_milestones(self):
+        secondary = AcademicCycle.objects.create(school=self.school, code="college", name="Collège")
+        profile_url = "pedagogical-calendar/profile"
+        for cycle, target in ((self.cycle, 5), (secondary, 0)):
+            body = {"year": str(self.year.pk), "cycle": str(cycle.pk), "revision": 0,
+                    "profile": {"milestone_target": target}}
+            response = self.patch(profile_url, body)
+            self.assertEqual(response.status_code, 200, response.content)
+            self.assertEqual(self.patch(profile_url, body).status_code, 409)
+            catalog = self.client.get(
+                self.prefix + "pedagogical-calendar", {"year": self.year.pk, "cycle": cycle.pk},
+            ).json()
+            self.assertEqual(catalog["profile"]["milestone_target"], target)
+            self.assertEqual(catalog["periods"], [])
+
+        director = SchoolMember.objects.get(school=self.school, user=self.director)
+        director.access_cycle_ids = [str(self.cycle.pk)]
+        director.save(update_fields=["access_cycle_ids"])
+        body = {"year": str(self.year.pk), "cycle": str(secondary.pk), "revision": 1,
+                "profile": {"milestone_target": 6}}
+        self.assertEqual(self.patch(profile_url, body).status_code, 404)
+        body["cycle"] = str(self.cycle.pk)
+        self.assertEqual(self.patch(profile_url, body).status_code, 200)

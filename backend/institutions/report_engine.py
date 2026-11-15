@@ -51,6 +51,8 @@ def report_configuration(values,grading):
 
 def calculate_report(school,enrollment,period):
     classroom=enrollment.classroom
+    if period is not None and not period.matches_classroom(classroom):
+        raise ValueError("Période hors du cycle de la classe.")
     level=classroom.level
     context={"year":enrollment.year.code,"cycle":level.cycle.code,"level":level.code,"class":classroom.code}
     settings,layers=resolve_settings(school,context)
@@ -116,7 +118,10 @@ def calculate_report(school,enrollment,period):
                    "first_name":enrollment.student.first_name,"last_name":enrollment.student.last_name},
         "class":{"id":str(classroom.pk),"name":classroom.name},
         "year":{"id":str(enrollment.year_id),"name":enrollment.year.name},
-        "period":{"id":str(period.pk),"name":period.name} if period else None,
+        "period":{
+            "id":str(period.pk),"name":period.name,"revision":period.revision,
+            "cycle":str(period.cycle_id) if period.cycle_id else None,
+        } if period else None,
         "subjects":subjects,
         "overall":display_result(overall_percent,grading,precision),
         "policy_snapshot":grading,

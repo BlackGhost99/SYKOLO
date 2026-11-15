@@ -316,6 +316,14 @@ def school_response(school):
     }
 
 
+def valid_calendar_profile(value):
+    return (
+        isinstance(value, dict)
+        and not (set(value) - {"milestone_target", "publication_target"})
+        and all(type(count) is int and 0 <= count <= 32767 for count in value.values())
+    )
+
+
 def validate_scope(scope):
     if not isinstance(scope, dict) or set(scope) - set(SCOPE_FIELDS):
         raise ValueError("Portée invalide.")

@@ -30,7 +30,8 @@ def object_output(obj):
     if isinstance(obj,Subject):
         d.update(code=obj.code,name=obj.name,description=obj.description)
     elif isinstance(obj,CourseOffering):
-        d.update(year=str(obj.year_id),classroom=str(obj.classroom_id),subject=str(obj.subject_id),coefficient=str(obj.coefficient))
+        d.update(year=str(obj.year_id),classroom=str(obj.classroom_id),subject=str(obj.subject_id),coefficient=str(obj.coefficient),
+                 cycle=str(obj.classroom.level.cycle_id))
     elif isinstance(obj,CourseUnit):
         d.update(course=str(obj.course_id),code=obj.code,title=obj.title,objectives=obj.objectives,order=obj.order)
     elif isinstance(obj,CourseInstructor):
@@ -134,7 +135,7 @@ def courses(request,school_id):
     school,error=access_to(request,school_id,"school.curriculum.read" if request.method=="GET" else "school.curriculum.manage")
     if error is not None:return error
     if request.method=="GET":
-        return JsonResponse({"courses":[object_output(s) for s in CourseOffering.objects.filter(school=school).order_by("subject__name","pk")[:500]]})
+        return JsonResponse({"courses":[object_output(s) for s in CourseOffering.objects.filter(school=school).select_related("classroom__level").order_by("subject__name","pk")[:500]]})
     body,error=parse_body(request)
     if error is not None:return error
     return mutate(request,school,CourseOffering,body,
@@ -159,7 +160,7 @@ def my_courses(request, school_id):
         instructors__staff_assignment__active=True,
         instructors__staff_assignment__staff__active=True,
         instructors__staff_assignment__staff__account=request.user,
-    ).distinct().order_by("year_id", "classroom_id", "subject__name")
+    ).select_related("classroom__level").distinct().order_by("year_id", "classroom_id", "subject__name")
     return JsonResponse({"courses": [object_output(row) for row in rows[:300]]})
 
 

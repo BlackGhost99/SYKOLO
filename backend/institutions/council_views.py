@@ -104,7 +104,7 @@ def councils(request,school_id):
     if classroom is None:return JsonResponse({"error":"Classe introuvable."},status=404)
     period=None
     if data["period"] is not None:
-        period=AcademicPeriod.objects.filter(school=school,year=classroom.year,pk=uid(data["period"])).first()
+        period=AcademicPeriod.for_classroom(classroom).filter(pk=uid(data["period"])).first()
         if period is None:return JsonResponse({"error":"Période non rattachée à cette année."},status=422)
     title=data["title"]
     if not isinstance(title,str) or not 1<=len(title.strip())<=140:

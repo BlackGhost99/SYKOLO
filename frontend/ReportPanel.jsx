@@ -78,7 +78,7 @@ export default function ReportPanel({schoolId, canPrepare = true, canPublish = t
 
   if(loadError)return <p role="alert">{loadError}</p>;
   const activeEnrollment=pupils.find(e=>e.id===selectedEnrollment);
-  const applicablePeriods=periods.filter(p=>p.year===activeEnrollment?.year);
+  const applicablePeriods=periods.filter(p=>p.year===activeEnrollment?.year&&(!p.cycle||p.cycle===classes.find(c=>c.id===room)?.cycle));
   const current=reports.find(r=>r.enrollment===selectedEnrollment&&r.period===(selectedPeriod||null));
   const snapshot=preview?.snapshot;
 

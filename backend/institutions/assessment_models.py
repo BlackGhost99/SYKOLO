@@ -37,7 +37,7 @@ class Assessment(models.Model):
             if self.assessment_date and not (year.start_date<=self.assessment_date<=year.end_date):
                 raise ValidationError("Date d'évaluation hors de l'année scolaire.")
         if self.period_id and self.course_id and (
-            self.period.school_id!=self.school_id or self.period.year_id!=self.course.year_id
+            not self.period.matches_classroom(self.course.classroom)
         ):
             raise ValidationError("La période doit appartenir à la même année et école.")
         if self.period_id and self.assessment_date and not (

@@ -128,7 +128,7 @@ export default function CouncilPanel({schoolId, mode = "daily", canManage = true
         <label className="field">Période
           <select value={selectedPeriod} onChange={e=>setSelectedPeriod(e.target.value)}>
             <option value="">Année entière</option>
-            {periods.filter(p=>p.year===classroom?.year).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            {periods.filter(p=>p.year===classroom?.year&&(!p.cycle||p.cycle===classroom?.cycle)).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </label>
         <label className="field">Intitulé du conseil

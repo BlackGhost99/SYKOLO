@@ -174,3 +174,29 @@ class SchoolReportTests(TestCase):
         self.assertEqual(self.client.post(self.base+"reports",json.dumps({"enrollment":str(self.enrollment.id),"revision":1}),content_type="application/json").status_code,403)
         self.assertEqual(self.create_report(revision=0).status_code,409)
         self.assertEqual(SchoolReport.objects.count(),1)
+
+
+    def test_cycle_period_filters_and_preserves_published_historical_report(self):
+        self.assessment(self.math,80)
+        report = self.create_report().json()
+        self.assertEqual(self.write("reports/" + report["id"] + "/publish", {"revision": 1}).status_code, 200)
+        foreign_cycle = AcademicCycle.objects.create(school=self.school, code="college", name="Collège")
+        for kind, cycle in (
+            (AcademicPeriod.PUBLICATION, foreign_cycle),
+            (AcademicPeriod.MILESTONE, self.classroom.level.cycle),
+        ):
+            period = AcademicPeriod.objects.create(
+                school=self.school, year=self.year, cycle=cycle, kind=kind, code="p1",
+                name="Période hors du bulletin", start_date=self.period.start_date, end_date=self.period.end_date,
+            )
+            response = self.write("reports", {
+                "enrollment":str(self.enrollment.pk),"period":str(period.pk),"revision":0,
+            })
+            self.assertEqual(response.status_code,422,response.content)
+        renamed = self.write("academic/periods/" + str(self.period.pk), {
+            "revision": 1, "name": "Période modifiée",
+        }, method="patch")
+        self.assertEqual(renamed.status_code,409,renamed.content)
+        saved = self.client.get(self.base + "reports/" + report["id"]).json()
+        self.assertEqual(saved["snapshot"], report["snapshot"])
+        self.assertEqual(saved["period"], str(self.period.pk))

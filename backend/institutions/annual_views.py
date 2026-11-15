@@ -12,7 +12,7 @@ from accounts.views import authorized
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction, connection
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
@@ -23,7 +23,7 @@ from .models import School
 from .report_models import SchoolReport
 from .staff_models import StaffAssignment
 from .student_models import Enrollment
-from .cycle_scope import scoped_cycle_ids
+from .cycle_scope import pedagogical_cycle_ids, scoped_cycle_ids
 from .year_closure import annual_closure_checks, annual_closure_snapshot, closure_fingerprint
 from .services import has_permission
 from .views import access, log_event, parse_body, refuse
@@ -134,11 +134,15 @@ def annual_snapshot(request, school_id):
         "assessments": assessments.get(room.pk) if can_assess else None,
     } for room in rooms]
 
+    periods = AcademicPeriod.objects.filter(school=school, year=year, kind=AcademicPeriod.PUBLICATION)
+    period_scope = pedagogical_cycle_ids(request.user, school, year)
+    if period_scope is not None:
+        periods = periods.filter(Q(cycle__isnull=True) | Q(cycle_id__in=period_scope))
     result["periods"] = [{
         "id": str(p.pk), "revision": p.revision, "code": p.code, "name": p.name,
         "start_date": p.start_date.isoformat(), "end_date": p.end_date.isoformat(),
-        "active": p.active,
-    } for p in AcademicPeriod.objects.filter(school=school, year=year).order_by("order", "start_date")]
+        "active": p.active, "closed": p.closed, "cycle": str(p.cycle_id) if p.cycle_id else None,
+    } for p in periods.order_by("order", "start_date", "pk")]
     result["stats"] = {
         "classes": len(rooms),
         "periods": len(result["periods"]),

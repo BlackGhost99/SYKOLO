@@ -37,7 +37,7 @@ class SchoolReport(models.Model):
         if self.enrollment_id and self.year_id and self.enrollment.year_id!=self.year_id:
             raise ValidationError("Inscription d'une autre année.")
         if self.period_id and self.year_id and (
-            self.period.school_id!=self.school_id or self.period.year_id!=self.year_id
+            not self.period.matches_classroom(self.enrollment.classroom)
         ):
             raise ValidationError("Période d'un autre établissement ou année.")
         if self.period_key != (str(self.period_id) if self.period_id else ""):

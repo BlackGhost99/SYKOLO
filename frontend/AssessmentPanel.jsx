@@ -152,7 +152,7 @@ export default function AssessmentPanel({schoolId, canEdit = true, canPublish = 
           <label className="field">Période (facultative)
             <select value={period} onChange={e=>setPeriod(e.target.value)}>
               <option value="">Sans période particulière</option>
-              {periods.filter(p=>p.active&&p.year===currentCourse?.year).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              {periods.filter(p=>p.active&&!p.closed&&p.year===currentCourse?.year&&(!p.cycle||p.cycle===currentCourse?.cycle)).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>
         </div>

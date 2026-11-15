@@ -46,11 +46,11 @@ def load_enrollment(school,data):
     return enrollment
 
 
-def load_period(school,year,data):
+def load_period(classroom,data):
     if data.get("period") is None:return None
     try:uid=UUID(data["period"])
     except (TypeError,ValueError,AttributeError):raise ValueError("Période invalide.") from None
-    period=AcademicPeriod.objects.filter(school=school,year=year,pk=uid).first()
+    period=AcademicPeriod.for_classroom(classroom).filter(pk=uid).first()
     if period is None:raise ValueError("Période inconnue dans l'année scolaire.")
     return period
 
@@ -116,7 +116,7 @@ def reports(request,school_id):
     if type(rev) is not int or rev<0:return JsonResponse({"error":"Révision attendue."},status=422)
     try:
         enrollment=load_enrollment(school,data)
-        period=load_period(school,enrollment.year,data)
+        period=load_period(enrollment.classroom,data)
         key=str(period.pk) if period else ""
         with transaction.atomic():
             existing=SchoolReport.objects.select_for_update().filter(
@@ -162,9 +162,13 @@ def publish_report(request,school_id,report_id):
     if error is not None:return error
     if set(data)!={"revision"} or type(data["revision"]) is not int:return JsonResponse({"error":"Révision requise."},status=422)
     with transaction.atomic():
+        period = AcademicPeriod.objects.select_for_update().get(pk=r.period_id, school=school) if r.period_id else None
         r=SchoolReport.objects.select_for_update().get(school=school,pk=report_id)
         if r.status=="published":return JsonResponse({"error":"Bulletin déjà publié."},status=409)
         if r.revision!=data["revision"]:return JsonResponse({"error":"Conflit de version.","revision":r.revision},status=409)
+        period_revision = (r.snapshot.get("period") or {}).get("revision")
+        if period and period_revision is not None and period_revision != period.revision:
+            return JsonResponse({"error":"La période a changé. Actualisez le brouillon."}, status=409)
         if r.snapshot.get("recorded_grade_count",0)<1 or r.snapshot.get("overall",{}).get("status")!="calculated":
             return JsonResponse({"error":"Aucun résultat calculé, publication impossible."},status=422)
         r.status="published";r.published_at=timezone.now();r.revision+=1;r.save(update_fields=["status","published_at","revision"])

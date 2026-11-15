@@ -58,8 +58,8 @@ class SchoolCycleBoundaryMiddleware:
     _UUID = r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
     _ALLOW_GET = (
         r"my-access",
-        r"academic/(?:years|cycles|levels|tracks|classes)",
-        rf"academic/(?:years|cycles|levels|tracks|classes)/{_UUID}",
+        r"academic/(?:years|cycles|levels|tracks|classes|periods|annual-snapshot|pedagogical-calendar)",
+        rf"academic/(?:years|cycles|levels|tracks|classes|periods)/{_UUID}",
         r"students",
         rf"students/{_UUID}",
         rf"students/{_UUID}/guardians",
@@ -70,7 +70,9 @@ class SchoolCycleBoundaryMiddleware:
         r"staff/me/dossier",
         r"organization/my-appointments",
     )
-    _ALLOW_POST = (r"staff/onboard",)
+    _ALLOW_POST = (r"staff/onboard", r"academic/(?:periods|pedagogical-calendar)")
+    _ALLOW_PATCH = (rf"academic/(?:periods|pedagogical-calendar)/{_UUID}",
+                    r"academic/pedagogical-calendar/profile")
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -88,9 +90,8 @@ class SchoolCycleBoundaryMiddleware:
             school = school_access(request.user, match.group(1))
             if school is not None and scoped_cycle_ids(request.user, school) is not None:
                 suffix = (match.group(2) or "").rstrip("/")
-                patterns = self._ALLOW_GET if request.method == "GET" else (
-                    self._ALLOW_POST if request.method == "POST" else ()
-                )
+                patterns = {"GET": self._ALLOW_GET, "POST": self._ALLOW_POST,
+                            "PATCH": self._ALLOW_PATCH}.get(request.method, ())
                 if not any(re.fullmatch(pattern, suffix) for pattern in patterns):
                     return JsonResponse({
                         "error": "Ce module n'est pas encore sécurisé pour l'accès limité par cycle."

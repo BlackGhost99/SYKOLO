@@ -137,8 +137,6 @@ def assessments(request,school_id,course_id):
         if not course.active:raise ValueError("Le cours est archivé.")
         if not course.year.active or not course.classroom.active:raise ValueError("Année ou classe inactive.")
         period=values.get("period_id")
-        if period is not None and not AcademicPeriod.objects.filter(school=school,year=course.year,pk=period,active=True).exists():
-            raise ValueError("Période introuvable dans cette année.")
         level=course.classroom.level
         context={"year":course.year.code,"cycle":level.cycle.code,"level":level.code,"class":course.classroom.code}
         settings, layers=resolve_settings(school,context)
@@ -147,6 +145,10 @@ def assessments(request,school_id,course_id):
         try:validate_policy(policy)
         except (PolicyError,TypeError,KeyError,AttributeError):raise ValueError("Le barème configuré est invalide.") from None
         with transaction.atomic():
+            if period is not None and not AcademicPeriod.for_classroom(course.classroom).select_for_update().filter(
+                pk=period, active=True, closed=False,
+            ).first():
+                raise ValueError("Période active introuvable dans le cycle du cours.")
             assessment=Assessment(school=school,course=course,policy_snapshot=policy,policy_layers=layers,**values)
             assessment.full_clean();assessment.save()
             log_event(school,request,"assessment_created",assessment.pk)
@@ -167,6 +169,8 @@ def assessment_detail(request,school_id,assessment_id):
     except ValueError as exc:return JsonResponse({"error":str(exc)},status=422)
     try:
         with transaction.atomic():
+            if obj.period_id:
+                AcademicPeriod.objects.select_for_update().get(pk=obj.period_id, school=school)
             obj=Assessment.objects.select_for_update().get(school=school,pk=assessment_id)
             if obj.published:return JsonResponse({"error":"Évaluation publiée et verrouillée."},status=409)
             if obj.revision!=data["revision"]:return JsonResponse({"error":"Conflit de version.","revision":obj.revision},status=409)
@@ -383,9 +387,7 @@ def course_averages(request, school_id, course_id):
             period_key = UUID(period_id)
         except (ValueError, AttributeError, TypeError):
             return JsonResponse({"error": "Période invalide."}, status=422)
-        if not AcademicPeriod.objects.filter(
-            school=school, year=course.year, pk=period_key,
-        ).exists():
+        if not AcademicPeriod.for_classroom(course.classroom).filter(pk=period_key).exists():
             return JsonResponse({"error": "Période hors du cours."}, status=422)
     else:
         period_key = None

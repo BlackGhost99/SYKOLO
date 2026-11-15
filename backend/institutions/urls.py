@@ -241,6 +241,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/academic/annual-snapshot", annual_views.annual_snapshot),
     path("schools/<uuid:school_id>/academic/pedagogical-calendar", calendar_views.events),
     path("schools/<uuid:school_id>/academic/pedagogical-calendar/<uuid:event_id>", calendar_views.event_detail),
+    path("schools/<uuid:school_id>/academic/pedagogical-calendar/profile", calendar_views.update_profile),
     path("schools/<uuid:school_id>/academic/years/<uuid:year_id>/activate", annual_views.activate_year),
     path("schools/<uuid:school_id>/academic/years/<uuid:year_id>/closure-review", annual_views.closure_review),
     path("schools/<uuid:school_id>/academic/years/<uuid:year_id>/close", annual_views.close_year),
