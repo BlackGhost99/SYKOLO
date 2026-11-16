@@ -169,9 +169,12 @@ class FamilyDiscoveryTests(TestCase):
         self.assertEqual(old.status_code, 409, old.content)
         self.assertFalse(ParentAdmissionRequest.objects.exists())
 
-    def test_directory_is_opt_in_and_public_only(self):
+    def test_directory_is_public_by_default_and_public_only(self):
         anon = Client()
-        self.assertEqual(anon.get("/api/v1/parents/catalog").json()["schools"], [])
+        auto = anon.get("/api/v1/parents/catalog").json()["schools"]
+        self.assertEqual([row["id"] for row in auto], [str(self.school.pk)])
+        self.assertEqual(auto[0]["classes"][0]["id"], str(self.classroom.pk))
+        self.assertFalse(SchoolPublicListing.objects.exists())
         self.setup_listing()
         response = anon.get("/api/v1/parents/catalog")
         self.assertEqual(response.status_code, 200)
@@ -183,6 +186,30 @@ class FamilyDiscoveryTests(TestCase):
         self.assertEqual(school["classes"][0]["remaining"], 1)
         self.assertFalse(school["online_payment_available"])
         self.assertEqual(len(response.json()["schools"]), 1)
+
+    def test_automatic_publication_supports_admissions_and_explicit_hiding(self):
+        self.login(self.parent)
+        child_id = self.create_child()
+        self.assertEqual(self.application(child_id).status_code, 201)
+        self.assertFalse(SchoolPublicListing.objects.exists())
+        self.login(self.director)
+        settings = self.client.get(f"/api/v1/schools/{self.school.pk}/parent-listing").json()
+        self.assertTrue(settings["published"])
+        settings["published"] = False
+        self.assertEqual(self.post(f"schools/{self.school.pk}/parent-listing", settings).status_code, 200)
+        self.assertEqual(Client().get("/api/v1/parents/catalog").json()["schools"], [])
+        self.login(self.parent)
+        self.assertEqual(self.application(child_id).status_code, 404)
+
+    def test_automatic_publication_requires_active_class_and_school(self):
+        self.classroom.active = False
+        self.classroom.save(update_fields=["active"])
+        self.assertEqual(Client().get("/api/v1/parents/catalog").json()["schools"], [])
+        self.classroom.active = True
+        self.classroom.save(update_fields=["active"])
+        self.school.is_active = False
+        self.school.save(update_fields=["is_active"])
+        self.assertEqual(Client().get("/api/v1/parents/catalog").json()["schools"], [])
 
     def test_archived_class_or_track_cannot_be_selected_by_parent(self):
         from .academic_models import AcademicTrack

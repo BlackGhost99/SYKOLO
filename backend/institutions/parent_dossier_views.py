@@ -16,6 +16,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 
 from accounts.views import authorized
 from .academic_models import AcademicClass
+from .parent_listing_policy import public_classrooms
 from .admission_models import AdmissionDocument, AdmissionEvent
 from .admission_policy import DOCUMENT_CODE, ROUTES, effective_policy, required_for_route
 from .enrollment_form import BASE_FIELDS, load_config
@@ -130,10 +131,8 @@ def school_form(request):
         return problem("Classe invalide.")
     if route not in ROUTES:
         return problem("Voie d'admission invalide.")
-    row = AcademicClass.objects.select_related("school", "year", "level").filter(
-        pk=classroom_id, active=True, school__is_active=True, year__active=True,
-        level__active=True, level__cycle__active=True,
-        school__public_listing__published=True,
+    row = public_classrooms().select_related("school", "year", "level").filter(
+        pk=classroom_id,
     ).first()
     if not row:
         return problem("Classe indisponible.", 404)

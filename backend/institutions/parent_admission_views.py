@@ -1,6 +1,6 @@
 """School directory and safe family-initiated admissions.
 
-Public listings are opt-in. Families may submit to the existing staff review
+Configured active schools are public by default; explicit opt-outs are respected. Families may submit to the existing staff review
 workflow but gain NO read permission to the school's student files as a result.
 """
 from datetime import date
@@ -16,6 +16,8 @@ from django.views.decorators.http import require_GET, require_http_methods
 
 from accounts.views import authorized
 from .academic_models import AcademicClass
+from .models import School
+from .parent_listing_policy import active_classrooms, public_classrooms
 from .admission_models import AdmissionApplication, AdmissionEvent, AdmissionPolicy
 from .admission_policy import ROUTES, effective_policy, required_for_route
 from .parent_admission_models import FamilyChild, ParentAdmissionRequest, SchoolPublicListing
@@ -86,25 +88,25 @@ def class_public_data(row, occupied, policy, fee, online_available, demo_amount_
 @never_cache
 @require_GET
 def directory(request):
-    """Only opted-in schools. Related data fetched per school, not per class."""
+    """Automatic publication for configured schools, without writing on GET."""
     query = request.GET.get("q", "").strip()[:80]
     city = request.GET.get("city", "").strip()[:80]
-    rows = SchoolPublicListing.objects.select_related("school").filter(
-        published=True, school__is_active=True,
+    rows = School.objects.select_related("public_listing").filter(is_active=True).filter(
+        Q(public_listing__published=True) |
+        Q(public_listing__isnull=True, pk__in=active_classrooms().values("school_id"))
     )
     if city:
-        rows = rows.filter(city__icontains=city)
+        rows = rows.filter(public_listing__city__icontains=city)
     if query:
-        rows = rows.filter(school__name__icontains=query)
+        rows = rows.filter(name__icontains=query)
     result = []
-    for listing in rows.order_by("school__name")[:100]:
-        classes = list(AcademicClass.objects.select_related(
+    for school in rows.order_by("name", "pk")[:100]:
+        listing = getattr(school, "public_listing", None) or SchoolPublicListing(school=school, published=True)
+        classes = list(active_classrooms().select_related(
             "school", "year", "level__cycle", "track",
-        ).filter(school=listing.school, active=True, year__active=True,
-                 level__active=True, level__cycle__active=True
-                 ).filter(Q(track__isnull=True) | Q(track__active=True)).order_by(
-                     "year__start_date", "level__order", "name",
-                 )[:150])
+        ).filter(school=school).order_by(
+            "year__start_date", "level__order", "name",
+        )[:150])
         class_ids = [row.pk for row in classes]
         occupied = {
             r["classroom_id"]: r["total"]
@@ -162,7 +164,7 @@ def listing_settings(request, school_id):
     if request.method == "GET":
         row = SchoolPublicListing.objects.filter(school=school).first()
         return JsonResponse({
-            "published": row.published if row else False,
+            "published": row.published if row else True,
             "city": row.city if row else "",
             "district": row.district if row else "",
             "description": row.description if row else "",
@@ -329,15 +331,13 @@ def family_applications(request):
         with transaction.atomic():
             # PostgreSQL interdit FOR UPDATE sur la partie nullable (filière facultative).
             # Verrouiller uniquement la classe, pas les jointures de lecture.
-            classroom = AcademicClass.objects.select_for_update(of=("self",)).select_related(
+            classroom = public_classrooms().select_for_update(of=("self",)).select_related(
                 "school", "year", "level",
-            ).filter(pk=class_id, active=True, school__is_active=True,
-                     year__active=True, level__active=True, level__cycle__active=True,
-                     school__public_listing__published=True).filter(
-                         Q(track__isnull=True) | Q(track__active=True)).first()
+            ).filter(pk=class_id).first()
             if classroom is None:
                 return error("Classe non publiée ou indisponible.", 404)
-            listing = SchoolPublicListing.objects.get(school=classroom.school)
+            listing = (SchoolPublicListing.objects.filter(school=classroom.school).first()
+                       or SchoolPublicListing(school=classroom.school, published=True))
             fee, online_available = public_payment_availability(classroom.school, classroom.year, classroom.level)
             if payment_choice == "cash" and not listing.cash_at_school:
                 return error("L'établissement n'accepte pas le règlement sur place.", 409)
