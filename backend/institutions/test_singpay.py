@@ -146,6 +146,18 @@ class SingPayTests(TestCase):
                     reconcile(intent,self.merchant)
                 self.assertFalse(FeePayment.objects.exists())
 
+    def test_reconciliation_rechecks_provider_id_against_current_locked_row(self):
+        self.start()
+        stale = SingPayIntent.objects.get()
+        # Another verification has already bound a different provider ID.
+        SingPayIntent.objects.filter(pk=stale.pk).update(transaction_id="provider-bound-id")
+        with patch("institutions.singpay_service.provider_request", return_value=self.evidence(stale)):
+            result = reconcile(stale, self.merchant)
+        self.assertEqual(result.state, "review")
+        self.assertEqual(result.transaction_id, "provider-bound-id")
+        self.assertFalse(FeePayment.objects.exists())
+        self.assertTrue(SingPayEvent.objects.filter(intent=stale, kind="mismatch").exists())
+
     def test_manual_payment_race_preserves_unallocated_provider_money(self):
         self.start();intent=SingPayIntent.objects.get()
         FeePayment.objects.create(school=self.school,charge=self.charge,idempotency_key=uuid.uuid4(),

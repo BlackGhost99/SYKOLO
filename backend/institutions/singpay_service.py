@@ -190,16 +190,18 @@ def reconcile(intent, merchant):
             or merchant.mode != intent.mode or merchant.revision != intent.merchant_revision):
         raise ProviderError("Configuration marchande modifiée : rapprochement spécialisé requis.")
     response = provider_request(merchant, "GET", "/transaction/api/search/by-reference/"+intent.reference)
-    verified = verified_transaction(intent, response)
     with transaction.atomic():
         # Lock in the same order as initiation, manual payments and reversals.
-        if intent.charge_id:
-            School.objects.select_for_update(no_key=True).get(pk=intent.school_id)
+        School.objects.select_for_update(no_key=True).get(pk=intent.school_id)
         charge = FeeCharge.objects.select_for_update().get(pk=intent.charge_id) if intent.charge_id else None
+        admission = None
         if intent.admission_id:
             from .parent_admission_models import ParentAdmissionRequest
-            ParentAdmissionRequest.objects.select_for_update().get(pk=intent.admission_id)
+            admission = ParentAdmissionRequest.objects.select_for_update().get(pk=intent.admission_id)
         row = SingPayIntent.objects.select_for_update().get(pk=intent.pk)
+        # Recheck the provider identity against the locked, current row, not
+        # the stale object used for the network GET.
+        verified = verified_transaction(row, response)
         row.checked_at = timezone.now()
         SingPayEvent.objects.create(intent=row, kind="verified" if verified else "mismatch", evidence_hash=digest(response))
         if row.payment_id or row.state in ("success", "test_success", "refund_review"):
@@ -231,7 +233,9 @@ def reconcile(intent, merchant):
                     row.state = "test_success"  # Test wallets never reduce real debt.
                 elif charge:
                     from .finance_views import cleared_total
-                    if (cleared_total(charge) + row.amount_xaf > charge.amount - charge.scholarship_discount
+                    if (charge.school_id != row.school_id or charge.currency != "XAF"
+                            or charge.enrollment.year.status == "closed"
+                            or cleared_total(charge) + row.amount_xaf > charge.amount - charge.scholarship_discount
                             or payment_order_error([charge], {})):
                         row.state = "review"  # Money received, allocation conflict: preserve evidence.
                     else:
@@ -242,7 +246,13 @@ def reconcile(intent, merchant):
                         )
                 else:
                     # Admission evidence stays separate from official enrollment/tuition.
-                    if ParentPaymentAttempt.objects.filter(request_id=row.admission_id, state="success", provider_mode="live").exists():
+                    from .admission_scholarship_amounts import admission_due
+                    app = admission.application
+                    if (app.school_id != row.school_id or app.year.status == "closed"
+                            or app.status in ("rejected", "enrolled")
+                            or admission.payment_choice != "online"
+                            or admission_due(app) != row.amount_xaf
+                            or ParentPaymentAttempt.objects.filter(request_id=row.admission_id, state="success", provider_mode="live").exists()):
                         row.state = "review"
         row.save()
         return row
