@@ -219,3 +219,5 @@ from .primary_models import PrimaryMastery  # noqa: E402,F401
 from .preschool_followup_models import (  # noqa: E402,F401
     PreschoolCompetency, PreschoolCompetencyMark, PreschoolLiaisonMessage, PreschoolObservation,
 )
+
+from .parent_push_models import ParentPushDevice  # noqa: E402,F401

@@ -10,7 +10,7 @@ from . import calendar_views, primary_views, preschool_followup_views
 from . import secondary_views
 from . import demo_payment_views, admission_cash_views, admission_finance_views
 from . import parent_existing_views
-from . import family_notification_views
+from . import family_notification_views, parent_push_views
 from . import parent_dossier_views
 from . import staff_onboarding_views, staff_profile_views, staff_dossier_views
 from . import school_branding_views
@@ -53,6 +53,7 @@ urlpatterns = [
     path("platform/schools/<uuid:school_id>/admin-access", platform_views.platform_assume_school_administration),
     path("parents/paycentral/webhook", parent_payment_views.paycentral_webhook),
     path("parents/notifications", parent_payment_views.family_notifications),
+    path("parents/push-device", parent_push_views.push_device),
     path("parents/notification-messages", family_notification_views.parent_message),
     path("parents/notification-messages/<uuid:notice_id>", family_notification_views.parent_notice_detail),
     path("parents/applications/<uuid:application_id>/payments", parent_payment_views.parent_payment_status),
