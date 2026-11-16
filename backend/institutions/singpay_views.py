@@ -16,6 +16,7 @@ from .finance_models import FeeCharge
 from .admission_finance import current_scholarship
 from .admission_scholarship_amounts import admission_due
 from .finance_views import cleared_total
+from .finance_payment_order import payment_order_error
 from .models import School, SchoolAudit
 from .parent_admission_models import ParentAdmissionRequest
 from .parent_payment_models import ParentPaymentAttempt
@@ -168,7 +169,9 @@ def quote(request, kind, object_id):
     merchant = SingPayMerchant.objects.filter(school_id=school_id).first()
     intents = SingPayIntent.objects.filter(**{kind: row}, payer=request.user).order_by("-created_at")[:20]
     balance = (row.amount-row.scholarship_discount-cleared_total(row)) if kind == "charge" else admission_due(row.application)
+    order_error = payment_order_error([row], {}) if kind == "charge" else ""
     return JsonResponse({"merchant": merchant_view(merchant), "balance_xaf": str(balance),
+                         "payment_order_error": order_error,
                          "payments": [intent_view(i) for i in intents]})
 
 
@@ -209,6 +212,10 @@ def pay(request, kind, object_id):
                 return fail("Bourse gouvernementale couvrant entièrement les frais d'inscription : aucun paiement SingPay requis.", 409)
             if SingPayIntent.objects.filter(**{kind: row}, state__in=OPEN_STATES).exists():
                 return fail("Un paiement est ouvert : vérifiez-le avant un nouvel essai.", 409)
+            if kind == "charge":
+                order_error = payment_order_error([row], {})
+                if order_error:
+                    return fail(order_error, 409)
             merchant = SingPayMerchant.objects.filter(school=school).first()
             if not merchant_ready(merchant):
                 return fail("SingPay n'est pas encore activé pour cet établissement.", 503)

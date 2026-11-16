@@ -41,6 +41,15 @@ function useData(path, deps = []) {
 const nf = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const num = v => nf.format(Math.round(Number(v) || 0)).replace(/ | /g, " ");
 const cur = c => (!c || c === "XAF" || c === "XOF") ? "FCFA" : c;
+const openFeesByDate = charges => charges.filter(c => Number(c.balance) > 0).sort(
+  (a, b) => (a.due_date || "9999").localeCompare(b.due_date || "9999"),
+);
+
+function earlierMonthlyFees(charge, openCharges) {
+  return charge.monthly ? openCharges.filter(row => row.monthly &&
+    row.due_date.slice(0, 7) < charge.due_date.slice(0, 7)) : [];
+}
+
 export const fmtMoney = (v, c) => `${new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(Number(v) || 0).replace(/ | /g, " ")} ${cur(c)}`;
 const pct = (now, before) => { const a = Number(now) || 0, b = Number(before) || 0; if (!b) return null; const p = (a - b) / b * 100; return `${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(1).replace(".", ",")} %`; };
 const fmtDate = iso => iso ? new Date(iso + (iso.length === 10 ? "T00:00:00" : "")).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
@@ -186,7 +195,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
     setChargeError("");
     api(`schools/${schoolId}/finance/charges?enrollment=${enrollment}`).then(r => {
       if (!live) return;
-      const open = r.charges.filter(c => Number(c.balance) > 0);
+      const open = openFeesByDate(r.charges);
       setCharges(r.charges);
       setPicked(open.length ? { [open[0].id]: true } : {});
       setLoadedEnrollment(enrollment);
@@ -194,7 +203,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
     return () => { live = false; };
   }, [schoolId, enrollment, canReceive, chargeVersion]);
   const issuedCharges = loadedEnrollment === enrollment ? charges : [];
-  const openCharges = issuedCharges.filter(c => Number(c.balance) > 0);
+  const openCharges = openFeesByDate(issuedCharges);
   const selected = openCharges.filter(c => picked[c.id]);
   const dueCents = selected.reduce((total, charge) => total + Math.round(Number(charge.balance) * 100), 0);
   const defaultAmount = new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(dueCents / 100).replace(/ | /g, " ");
@@ -267,10 +276,29 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
             <div className="yd-debts">{openCharges.length === 0 ? <Empty>{
               !enrollment ? "Choisissez d’abord un élève." : chargeError ? "Frais indisponibles." :
               loadedEnrollment !== enrollment ? "Chargement des frais…" : "Aucun frais restant dû pour cet élève."
-            }</Empty> : openCharges.map(c => <button type="button" key={c.id} disabled={busy} className={picked[c.id] ? "active" : ""} onClick={() => {
-              setAmount(null);
-              setPicked(p => selected.some(row => row.currency !== c.currency) ? {[c.id]:true} : ({ ...p, [c.id]: !p[c.id] }));
-            }}><Check on={!!picked[c.id]}/><span>{c.label}{c.due_date ? ` · échéance ${fmtDate(c.due_date)}` : ""}</span><b>{fmtMoney(c.balance, c.currency)}</b></button>)}</div>
+            }</Empty> : openCharges.map(c => {
+              const earlier = earlierMonthlyFees(c, openCharges);
+              const otherCurrency = earlier.find(row => row.currency !== c.currency);
+              return <button type="button" key={c.id} disabled={busy || !!otherCurrency}
+                className={picked[c.id] ? "active" : ""} onClick={() => {
+                  setAmount(null);
+                  setPicked(previous => {
+                    const next = selected.some(row => row.currency !== c.currency) ? {} : {...previous};
+                    if (next[c.id]) {
+                      delete next[c.id];
+                      for (const row of openCharges) {
+                        if (earlierMonthlyFees(row, openCharges).includes(c)) delete next[row.id];
+                      }
+                    } else {
+                      next[c.id] = true;
+                      for (const row of earlier) next[row.id] = true;
+                    }
+                    return next;
+                  });
+                }}><Check on={!!picked[c.id]}/><span>{c.label}{c.due_date ? ` · échéance ${fmtDate(c.due_date)}` : ""}
+                  {otherCurrency && ` · régler d’abord ${otherCurrency.label}`}</span><b>{fmtMoney(c.balance, c.currency)}</b></button>;
+            })}</div>
+            {openCharges.some(c => c.monthly) && <p className="hint">Les mensualités sont réglées de la plus ancienne à la plus récente.</p>}
             {issuedCharges.length > 0 && <div className="yd-card-sub" aria-label="Avis d’échéance">
               <span> Avis d’échéance : </span>
               {Array.from(new Set(issuedCharges.map(c => c.currency))).map(code =>

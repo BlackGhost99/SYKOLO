@@ -15,6 +15,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from .finance_models import FeeCharge, FeePayment
+from .finance_payment_order import payment_order_error
+from .models import School
 from .parent_payment_models import ParentPaymentAttempt
 from .parent_payment_service import decrypt_secret, ProviderError
 from .singpay_models import SingPayIntent, SingPayEvent
@@ -190,7 +192,9 @@ def reconcile(intent, merchant):
     response = provider_request(merchant, "GET", "/transaction/api/search/by-reference/"+intent.reference)
     verified = verified_transaction(intent, response)
     with transaction.atomic():
-        # Lock charge before intent, same order as parent initiation and manual ledger.
+        # Lock in the same order as initiation, manual payments and reversals.
+        if intent.charge_id:
+            School.objects.select_for_update(no_key=True).get(pk=intent.school_id)
         charge = FeeCharge.objects.select_for_update().get(pk=intent.charge_id) if intent.charge_id else None
         if intent.admission_id:
             from .parent_admission_models import ParentAdmissionRequest
@@ -227,7 +231,8 @@ def reconcile(intent, merchant):
                     row.state = "test_success"  # Test wallets never reduce real debt.
                 elif charge:
                     from .finance_views import cleared_total
-                    if cleared_total(charge) + row.amount_xaf > charge.amount:
+                    if (cleared_total(charge) + row.amount_xaf > charge.amount - charge.scholarship_discount
+                            or payment_order_error([charge], {})):
                         row.state = "review"  # Money received, allocation conflict: preserve evidence.
                     else:
                         row.payment = FeePayment.objects.create(
