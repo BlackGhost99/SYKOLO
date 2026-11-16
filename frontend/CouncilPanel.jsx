@@ -16,6 +16,27 @@ async function api(path, data) {
   return result;
 }
 
+function PrimaryPassageEvidence({path,enrollment}){
+  const [evidence,setEvidence]=useState(null);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    let active=true;
+    api(path+"?"+new URLSearchParams({enrollment}))
+      .then(result=>{if(active)setEvidence(result.records||[]);})
+      .catch(failure=>{if(active)setError(failure.message);});
+    return()=>{active=false;};
+  },[path,enrollment]);
+  return <section aria-label="Acquis et remédiations pour le passage">
+    <h4>Acquis et remédiations pour le passage</h4>
+    {error?<p role="alert">{error}</p>:evidence===null?<p role="status">Chargement du suivi…</p>:
+      evidence.length?<ul>{evidence.map(item=><li key={item.id}>
+        <strong>{item.milestone} · {item.criterion}</strong> · {item.stage}
+        {item.remediation&&<> · Remédiation {item.remediation.toLocaleLowerCase("fr")}</>}
+        {item.follow_up&&<p>{item.follow_up}</p>}
+      </li>)}</ul>:<p>Aucun acquis enregistré dans les paliers clôturés avant ce conseil.</p>}
+  </section>;
+}
+
 export default function CouncilPanel({schoolId, mode = "daily", canManage = true, canFinalize = true}) {
   const base = "schools/" + schoolId + "/";
   const needsPupils = canManage || mode==="amendments";
@@ -165,6 +186,9 @@ export default function CouncilPanel({schoolId, mode = "daily", canManage = true
             {pupilList.map(e=><option key={e.id} value={e.id}>{students.find(s=>s.id===e.student)?.last_name||"Élève archivé"}</option>)}
           </select>
         </label>
+        {council.is_primary&&selectedEnrollment&&<PrimaryPassageEvidence
+          key={council.id+":"+selectedEnrollment} path={base+"councils/"+council.id+"/primary-passage-evidence"}
+          enrollment={selectedEnrollment}/>}
         <label className="field">Bulletin publié de la période
           <select required value={selectedReport} onChange={e=>setSelectedReport(e.target.value)}>
             <option value="">Choisir...</option>

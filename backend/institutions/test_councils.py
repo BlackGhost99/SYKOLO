@@ -116,3 +116,40 @@ class CouncilTests(TestCase):
         }), content_type="application/json").status_code, 403)
         self.client.logout()
         self.assertEqual(self.client.get(self.base + "councils").status_code, 401)
+
+
+    def test_primary_passage_reads_only_closed_milestones_before_council(self):
+        from datetime import date
+        from uuid import uuid4
+        from .academic_models import AcademicPeriod
+        from .primary_models import PrimaryMastery
+
+        council = self.council()
+        endpoint = self.base + "councils/" + council["id"] + "/primary-passage-evidence"
+        query = {"enrollment": str(self.enrollment.pk)}
+        for code, label, closed, start, end in (
+            ("closed", "Palier validé", True, date(2026, 9, 1), date(2026, 10, 1)),
+            ("open", "Palier ouvert", False, date(2026, 10, 2), date(2026, 11, 1)),
+            ("future", "Palier ultérieur", True, date(2027, 1, 2), date(2027, 2, 1)),
+        ):
+            period = AcademicPeriod.objects.create(
+                school=self.school, year=self.year, cycle=self.classroom.level.cycle,
+                kind=AcademicPeriod.MILESTONE, code=code, name=label,
+                start_date=start, end_date=end, closed=closed,
+            )
+            criterion = uuid4()
+            PrimaryMastery.objects.create(
+                classroom=self.classroom, milestone=period, enrollment=self.enrollment,
+                criterion_id=criterion, criterion_snapshot={"id": str(criterion), "label": "Lire une phrase"},
+                stage="developing", remediation_status="completed", follow_up="Lecture guidée.",
+            )
+        response = self.client.get(endpoint, query)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([entry["milestone"] for entry in response.json()["records"]], ["Palier validé"])
+        self.assertEqual(response.json()["records"][0]["criterion"], "Lire une phrase")
+        self.assertEqual(CouncilDecision.objects.filter(council_id=council["id"]).count(), 0)
+        self.assertEqual(self.client.get(endpoint, {"enrollment": str(uuid4())}).status_code, 404)
+        self.login(self.secretary)
+        self.assertEqual(self.client.get(endpoint, query).status_code, 403)
+        self.login(self.stranger)
+        self.assertEqual(self.client.get(endpoint, query).status_code, 404)

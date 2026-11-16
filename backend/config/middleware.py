@@ -58,7 +58,7 @@ class SchoolCycleBoundaryMiddleware:
     _UUID = r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
     _ALLOW_GET = (
         r"my-access",
-        r"academic/(?:years|cycles|levels|tracks|classes|periods|annual-snapshot|pedagogical-calendar|primary-criteria)",
+        r"academic/(?:years|cycles|levels|tracks|classes|periods|annual-snapshot|pedagogical-calendar|primary-criteria|primary-mastery)",
         rf"academic/(?:years|cycles|levels|tracks|classes|periods)/{_UUID}",
         r"students",
         rf"students/{_UUID}",
@@ -72,7 +72,7 @@ class SchoolCycleBoundaryMiddleware:
     )
     _ALLOW_POST = (r"staff/onboard", r"academic/(?:periods|pedagogical-calendar)")
     _ALLOW_PATCH = (rf"academic/(?:periods|pedagogical-calendar)/{_UUID}",
-                    r"academic/(?:pedagogical-calendar/profile|primary-criteria)")
+                    r"academic/(?:pedagogical-calendar/profile|primary-criteria|primary-mastery)")
 
     def __init__(self, get_response):
         self.get_response = get_response

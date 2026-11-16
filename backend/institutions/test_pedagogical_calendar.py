@@ -376,3 +376,49 @@ class PedagogicalCalendarTests(TestCase):
         self.year.save(update_fields=["status", "active"])
         self.assertFalse(self.client.get(url, query).json()["editable"])
         self.assertEqual(self.patch("primary-criteria", {**body, "revision": 2}).status_code, 409)
+
+
+    def test_primary_mastery_uses_milestones_preserves_history_and_checks_assignment(self):
+        from uuid import uuid4
+        from .staff_models import StaffAssignment, StaffRecord
+
+        criterion_id = str(uuid4())
+        reference = {"year": str(self.year.pk), "level": str(self.level.pk), "revision": 0,
+                     "criteria": [{"id": criterion_id, "label": "Lire une phrase", "remediation": "Lire à deux"}]}
+        self.assertEqual(self.patch("primary-criteria", reference).status_code, 200)
+        period = AcademicPeriod.objects.create(
+            school=self.school, year=self.year, cycle=self.cycle, kind=AcademicPeriod.MILESTONE,
+            code="p1", name="Premier palier", start_date=date(2026, 9, 1), end_date=date(2026, 10, 30),
+        )
+        publication = AcademicPeriod.objects.create(
+            school=self.school, year=self.year, cycle=self.cycle, kind=AcademicPeriod.PUBLICATION,
+            code="t1", name="Publication", start_date=period.start_date, end_date=period.end_date,
+        )
+        pupil = Student.objects.create(school=self.school, first_name="Enfant", last_name="Test")
+        row = Enrollment.objects.create(
+            school=self.school, student=pupil, year=self.year, classroom=self.classroom, enrolled_on=period.start_date,
+        )
+        roster = {"year": str(self.year.pk), "classroom": str(self.classroom.pk), "milestone": str(period.pk)}
+        write = {**roster, "enrollment": str(row.pk), "criterion": criterion_id, "revision": 0,
+                 "stage": "developing", "remediation_status": "ongoing", "follow_up": "Lecture guidée."}
+        self.login(self.teacher)
+        self.assertEqual(self.patch("primary-mastery", write).status_code, 404)
+        staff = StaffRecord.objects.create(
+            school=self.school, account=self.teacher, staff_code="enseignant", first_name="Test", last_name="Test",
+        )
+        StaffAssignment.objects.create(school=self.school, staff=staff, year=self.year, classroom=self.classroom)
+        self.assertEqual(self.patch("primary-mastery", {**write, "milestone": str(publication.pk)}).status_code, 404)
+        created = self.patch("primary-mastery", write)
+        self.assertEqual(created.status_code, 201, created.content)
+        self.assertEqual(self.patch("primary-mastery", write).status_code, 409)
+        result = self.client.get(self.prefix + "primary-mastery", roster).json()
+        self.assertEqual(result["students"][0]["marks"][0]["follow_up"], "Lecture guidée.")
+
+        self.login(self.director)
+        self.assertEqual(self.patch("primary-criteria", {**reference, "revision": 1, "criteria": []}).status_code, 200)
+        saved = self.client.get(self.prefix + "primary-mastery", roster).json()
+        self.assertEqual(saved["criteria"], [])
+        self.assertEqual(saved["students"][0]["marks"][0]["snapshot"]["label"], "Lire une phrase")
+        self.assertEqual(self.patch("periods/" + str(period.pk), {"revision": 1, "closed": True}).status_code, 200)
+        self.assertFalse(self.client.get(self.prefix + "primary-mastery", roster).json()["editable"])
+        self.assertEqual(self.patch("primary-mastery", {**write, "revision": 1}).status_code, 409)
