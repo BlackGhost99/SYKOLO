@@ -372,6 +372,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   })).filter(section => section.items.length);
   const visibleSections = restricted
     ? Object.fromEntries([
+        ...(can("school.academic.read")&&access?.school?.education_cycles?.includes("primaire")
+          ? [["calendar",sections.calendar]] : []),
         ...(can("school.students.profile.read")?[["students",{...sections.students,modules:[],lives:[{key:"cycle-list",label:"Élèves autorisés",need:[]}]}]]:[]),
         ...(can("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],lives:[]}]]:[]),
         ...(ownCourseAssessment?[["bulletins",{...sections.bulletins,modules:["assessments"],lives:[]}]]:[]),

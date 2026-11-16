@@ -328,3 +328,51 @@ class PedagogicalCalendarTests(TestCase):
         self.assertEqual(self.patch(profile_url, body).status_code, 404)
         body["cycle"] = str(self.cycle.pk)
         self.assertEqual(self.patch(profile_url, body).status_code, 200)
+
+
+    def test_primary_criteria_permissions_versions_year_and_level(self):
+        from uuid import uuid4
+
+        secondary = AcademicCycle.objects.create(school=self.school, code="college", name="Collège")
+        secondary_level = AcademicLevel.objects.create(school=self.school, cycle=secondary, code="6e", name="6e")
+        other_primary_level = AcademicLevel.objects.create(school=self.school, cycle=self.cycle, code="2e", name="2e")
+        query = {"year": str(self.year.pk), "level": str(self.level.pk)}
+        url = self.prefix + "primary-criteria"
+        body = {**query, "revision": 0,
+                "criteria": [{"id": str(uuid4()), "label": "Lire une phrase", "remediation": "Relire à deux."}]}
+
+        response = self.patch("primary-criteria", body)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["criteria"], body["criteria"])
+        self.assertEqual(self.patch("primary-criteria", body).status_code, 409)
+        self.assertEqual(self.client.get(url, {**query, "level": secondary_level.pk}).status_code, 404)
+        self.assertEqual(self.client.get(url, {**query, "level": other_primary_level.pk}).json()["criteria"], [])
+        external = School.objects.create(organization=self.school.organization, name="Autre école")
+        foreign_year = AcademicYear.objects.create(
+            school=external, code="2026", name="Année", start_date=self.year.start_date, end_date=self.year.end_date,
+        )
+        self.assertEqual(self.client.get(url, {**query, "year": foreign_year.pk}).status_code, 404)
+        self.login(self.teacher)
+        self.assertEqual(self.client.get(url, query).status_code, 404)
+        self.assertEqual(self.patch("primary-criteria", {**body, "revision": 1}).status_code, 403)
+        from .staff_models import StaffAssignment, StaffRecord
+        staff = StaffRecord.objects.create(
+            school=self.school, account=self.teacher, staff_code="primaire", first_name="Équipe", last_name="Test",
+        )
+        StaffAssignment.objects.create(school=self.school, staff=staff, year=self.year, classroom=self.classroom)
+        self.assertEqual(self.client.get(url, query).json()["criteria"], body["criteria"])
+        self.assertEqual(self.client.get(url, {**query, "level": other_primary_level.pk}).status_code, 404)
+
+        self.login(self.director)
+        member = SchoolMember.objects.get(school=self.school, user=self.director)
+        member.access_cycle_ids = [str(secondary.pk)]
+        member.save(update_fields=["access_cycle_ids"])
+        self.assertEqual(self.client.get(url, query).status_code, 404)
+        member.access_cycle_ids = [str(self.cycle.pk)]
+        member.save(update_fields=["access_cycle_ids"])
+        self.assertEqual(self.patch("primary-criteria", {**body, "revision": 1, "criteria": []}).status_code, 200)
+        self.year.status = AcademicYear.STATUS_CLOSED
+        self.year.active = False
+        self.year.save(update_fields=["status", "active"])
+        self.assertFalse(self.client.get(url, query).json()["editable"])
+        self.assertEqual(self.patch("primary-criteria", {**body, "revision": 2}).status_code, 409)
