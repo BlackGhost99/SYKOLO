@@ -48,6 +48,19 @@ class TenantFunctionTests(TestCase):
         self.assertEqual(ca.get("/api/v1/auth/me").json()["user"]["username"],"directeur1")
         self.assertEqual(self.send("/api/v1/auth/login",dict(username=a.username,password=self.password),client=Client()).status_code,401)
 
+    def test_revoked_school_membership_invalidates_existing_session(self):
+        user = self.create(self.school)
+        client = Client()
+        self.assertEqual(self.signin(client, self.school).status_code, 200)
+        self.assertEqual(client.get(self.base+"my-access").status_code, 200)
+        SchoolMember.objects.filter(school=self.school, user=user).update(active=False)
+        self.assertEqual(client.get(self.base+"my-access").status_code, 401)
+        self.assertNotIn("school_id", client.session)
+        self.assertFalse(effective_permissions(user, self.school))
+        from .services import school_access
+        self.assertIsNone(school_access(user, self.school.pk))
+        self.assertIsNone(school_access(user, self.other.pk))
+
     def test_multiple_functions_without_posts_and_no_title_permissions(self):
         user=self.create(self.school,functions=["censeur_etudes","censeur_vie_scolaire"])
         member=SchoolMember.objects.get(school=self.school,user=user)

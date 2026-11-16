@@ -26,7 +26,20 @@ def scoped_cycle_ids(user, school):
         return set()
     if member.access_cycle_ids is None:
         return None
-    return set(member.access_cycle_ids)
+    # Revalidate persisted scope on every request. Archived or foreign cycles
+    # must not continue granting access; malformed legacy JSON fails closed.
+    ids = member.access_cycle_ids
+    if not isinstance(ids, list) or not 1 <= len(ids) <= 20:
+        return set()
+    try:
+        normalized = {str(UUID(value)) for value in ids if isinstance(value, str)}
+    except (ValueError, TypeError, AttributeError):
+        return set()
+    if len(normalized) != len(ids):
+        return set()
+    return {str(pk) for pk in AcademicCycle.objects.filter(
+        school=school, active=True, pk__in=normalized,
+    ).values_list("pk", flat=True)}
 
 
 def is_calendar_teacher(user, school):
