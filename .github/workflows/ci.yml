@@ -63,6 +63,7 @@ jobs:
           curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/readyz
           curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/healthz
           curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/ > /dev/null
+          curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/parents-app/ > /dev/null
           login_styles=$(find dist/assets -maxdepth 1 -name 'index-*.css' -print -quit)
           test -n "$login_styles"
           curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:8000/${login_styles#dist/}" -o "$RUNNER_TEMP/yem-styles.css"
