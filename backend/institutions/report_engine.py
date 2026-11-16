@@ -68,14 +68,14 @@ def calculate_report(school,enrollment,period):
     recorded_grades=0
     qs=CourseOffering.objects.select_related("subject").filter(
         school=school,year=enrollment.year,classroom=classroom
-    ).order_by("subject__name","pk")[:250]
+    ).order_by("subject__name","pk")
     for course in qs:
         assessments=Assessment.objects.filter(
             school=school,course=course,published=True,
         )
         if period is not None:
             assessments=assessments.filter(period=period)
-        assessments=list(assessments.order_by("assessment_date","pk")[:250])
+        assessments=assessments.order_by("assessment_date","pk")
         if not assessments:
             continue
         grades={g.assessment_id:g for g in AssessmentGrade.objects.filter(
