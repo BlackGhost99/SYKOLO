@@ -39,6 +39,7 @@ public final class MainActivity extends Activity {
     private TextView errorText;
     private ProgressBar progress;
     private boolean mainFailed;
+    private FamilyAlerts alerts;
     private static final int PICK_FILE = 41, SAVE_PDF = 42;
     private static final long MAX_PDF = 15L * 1024 * 1024;
     private ValueCallback<Uri[]> pendingUpload;
@@ -77,6 +78,11 @@ public final class MainActivity extends Activity {
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
         layout.addView(progress, new LinearLayout.LayoutParams(-1, 6));
+        alerts = new FamilyAlerts(this, "https://" + HOST);
+        Button alertSettings = new Button(this);
+        alertSettings.setText("Alertes : activer / désactiver");
+        alertSettings.setOnClickListener(v -> alerts.toggle());
+        layout.addView(alertSettings, new LinearLayout.LayoutParams(-1, -2));
         error = new LinearLayout(this);
         error.setOrientation(LinearLayout.VERTICAL);
         error.setPadding(24, 24, 24, 24);
@@ -279,7 +285,18 @@ public final class MainActivity extends Activity {
         else super.onBackPressed();
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        if (alerts != null) alerts.resume();
+    }
+
+    @Override protected void onPause() {
+        if (alerts != null) alerts.pause();
+        super.onPause();
+    }
+
     @Override protected void onDestroy() {
+        if (alerts != null) alerts.destroy();
         if (pendingUpload != null) { pendingUpload.onReceiveValue(null); pendingUpload = null; }
         clearPdf();
         documents.shutdownNow();
