@@ -27,3 +27,13 @@ test("le bouton démonstration ouvre un parcours fictif isolé",async()=>{
   expect(await screen.findByRole("button",{name:/MODE DÉMONSTRATION/})).toBeTruthy();
   expect(await screen.findByRole("heading",{name:"Tableau de bord"})).toBeTruthy();
 });
+
+
+test("l'entrée dédiée aux familles ignore le hash démonstration et masque la gestion",async()=>{
+ window.history.replaceState(null,"","/?app=parents#/demo");
+ vi.stubGlobal("fetch",vi.fn(async(url)=>({ok:true,status:200,headers:new Headers({"content-type":"application/json"}),json:async()=>url.endsWith("/me")?{authenticated:false}:{email_registration_available:false}})));
+ render(<App/>);
+ expect(await screen.findByRole("heading",{name:"Espace parents"})).toBeTruthy();
+ expect(screen.queryByRole("navigation",{name:"Mode d'application YEM"})).toBeNull();
+ expect(screen.queryByRole("group",{name:"Choisir votre espace de connexion"})).toBeNull();
+});

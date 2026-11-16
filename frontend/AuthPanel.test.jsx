@@ -8,9 +8,9 @@ vi.mock("./SchoolDashboard.jsx",()=>({default:()=> <p>Espace scolaire ouvert</p>
 vi.mock("./PlatformConsole.jsx",()=>({default:()=> <p>Console plateforme ouverte</p>}));
 vi.mock("./ParentPortal.jsx",()=>({FamilyWorkspace:()=> <p>Espace famille ouvert</p>}));
 afterEach(()=>{cleanup();vi.unstubAllGlobals();window.history.replaceState(null,"","/");});
-function setup(registrationStatus = {email_registration_available: false}, loginStatus = 200) {
+function setup(registrationStatus = {email_registration_available: false}, loginStatus = 200, initialSession = {authenticated:false}) {
   const calls = [];
-  let session = {authenticated: false};
+  let session = initialSession;
   vi.stubGlobal("fetch", vi.fn(async (url, options = {}) => {
     calls.push([url, options]);
     let status = 200;
@@ -27,6 +27,7 @@ function setup(registrationStatus = {email_registration_available: false}, login
       }
       data = status === 200 ? {authenticated: true} : {error: "Identifiants invalides."};
     }
+    if (url.endsWith("/logout")) session = {authenticated:false};
     if (url.endsWith("/me")) data = session;
     return {ok: status === 200, status, headers: new Headers({"content-type": "application/json"}), json: async () => data};
   }));
@@ -137,4 +138,30 @@ it("rétablit le formulaire initial et garde la récupération dans le même cad
   expect(screen.getByRole("region", {name: "Sécurité du compte"})).toBe(card);
   await ui.click(screen.getByRole("button", {name: "Connexion", exact: true}));
   expect(screen.getByLabelText("Mot de passe", {exact: true})).toBeTruthy();
+});
+
+
+it("verrouille le point d'entrée famille sur la connexion parent",async()=>{
+ const calls=setup();
+ window.history.replaceState(null,"","/?app=parents#/admin");
+ render(<AuthPanel parentOnly/>);
+ const ui=userEvent.setup();
+ expect(await screen.findByRole("heading",{name:"Espace parents"})).toBeTruthy();
+ expect(screen.queryByRole("group",{name:"Choisir votre espace de connexion"})).toBeNull();
+ expect(screen.queryByLabelText("Code de l'établissement")).toBeNull();
+ await ui.type(screen.getByLabelText("Identifiant"),"famille");
+ await ui.type(screen.getByLabelText("Mot de passe",{exact:true}),"secret");
+ await ui.click(screen.getByRole("button",{name:"Se connecter",exact:true}));
+ expect(await screen.findByText("Espace famille ouvert")).toBeTruthy();
+ expect(JSON.parse(calls.find(([url])=>url.endsWith("/login"))[1].body).scope).toBe("parent");
+});
+it("refuse une session de gestion préexistante dans l'entrée familles",async()=>{
+ const calls=setup(undefined,200,{authenticated:true,login_scope:"platform",user:{username:"admin",is_platform_admin:true}});
+ render(<AuthPanel parentOnly/>);
+ expect(await screen.findByRole("heading",{name:"Session non compatible"})).toBeTruthy();
+ expect(screen.queryByText("Console plateforme ouverte")).toBeNull();
+ expect(screen.queryByText("Espace scolaire ouvert")).toBeNull();
+ await userEvent.setup().click(screen.getByRole("button",{name:"Se déconnecter"}));
+ expect(await screen.findByRole("heading",{name:"Espace parents"})).toBeTruthy();
+ expect(calls.some(([url])=>url.endsWith("/logout"))).toBe(true);
 });

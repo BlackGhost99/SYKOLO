@@ -41,16 +41,19 @@ function RealApp() {
 /* Entrée indépendante : ne monte jamais AuthPanel ni les requêtes réelles YEM
    lorsque la démo est active, y compris si le visiteur possède une session. */
 export default function App(){
-  const [demo,setDemo]=useState(()=>window.location.hash.startsWith("#/demo"));
+  const parentApp = new URLSearchParams(window.location.search).get("app") === "parents";
+  const [demo,setDemo]=useState(()=>!parentApp && window.location.hash.startsWith("#/demo"));
   useEffect(()=>{
     const onHashChange=()=>{
-      const next=window.location.hash.startsWith("#/demo");
+      const next=!parentApp && window.location.hash.startsWith("#/demo");
       // Détruit le document et ses opérations en cours avant de retrouver l’API réelle.
       if(demo&&!next)window.location.reload();
       else setDemo(next);
     };
     window.addEventListener("hashchange",onHashChange);
     return()=>window.removeEventListener("hashchange",onHashChange);
-  },[demo]);
+  },[demo,parentApp]);
+  // Dedicated family entry, independent of the demonstration and staff UI.
+  if(parentApp) return <div className="yem-live-workspace yem-auth-app"><AuthPanel parentOnly/><footer className="yem-company">YEM · Développé par BWETEK Informatyk</footer></div>;
   return demo?<RealDemoExperience/>:<RealApp/>;
 }

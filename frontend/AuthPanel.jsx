@@ -27,11 +27,11 @@ async function authApi(path, body) {
   return data;
 }
 
-export default function AuthPanel() {
+export default function AuthPanel({parentOnly = false} = {}) {
   const [account, setAccount] = useState(null);
   const [tab, setTab] = useState("login");
   const [loginScope, setLoginScope] = useState(() => (
-    {"#/admin":"platform", "#/parents":"parent"}[window.location.hash] || "school"
+    parentOnly ? "parent" : ({"#/admin":"platform", "#/parents":"parent"}[window.location.hash] || "school")
   ));
   const [schoolCode, setSchoolCode] = useState("");
   const [username, setUsername] = useState("");
@@ -85,9 +85,10 @@ export default function AuthPanel() {
   }
 
   async function signIn(credentials) {
+    if (parentOnly && credentials.scope !== "parent") throw Error("Cette application est réservée aux familles.");
     await authApi("login", credentials);
     const session = await authApi("me");
-    if (!session.authenticated || session.login_scope !== credentials.scope) {
+    if (!session.authenticated || session.login_scope !== credentials.scope || (parentOnly && session.user?.is_platform_admin)) {
       throw Error("La session n’a pas pu s’ouvrir. Réessayez de vous connecter.");
     }
     setAccount(session);
@@ -221,7 +222,7 @@ export default function AuthPanel() {
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               await authApi("parents/verify", { uid: link.get("uid"), token: link.get("token") });
               setTab("login"); setMessage("Compte parent activé. Connectez-vous avec votre identifiant.");
-              window.history.replaceState(null, "", window.location.pathname);
+              window.history.replaceState(null, "", window.location.pathname + window.location.search);
             }); }}>
               <p>Confirmez votre adresse e-mail afin d’activer votre compte YEM Parents.</p>
               <button disabled={busy} type="submit">Activer mon compte</button>
@@ -233,7 +234,7 @@ export default function AuthPanel() {
               });
               setMessage("Mot de passe modifié. Vous pouvez vous connecter.");
               setTab("login"); setNewPassword("");
-              window.history.replaceState(null, "", window.location.pathname);
+              window.history.replaceState(null, "", window.location.pathname + window.location.search);
             }); }}>
               <label className="field">Nouveau mot de passe
                 <input type="password" autoComplete="new-password" minLength={12} required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
@@ -280,11 +281,11 @@ export default function AuthPanel() {
               setMessage("Connexion réussie.");
             }); }}>
               <h3>{loginScope === "platform" ? "Administration YEM" : loginScope === "parent" ? "Espace parents" : "Connexion établissement"}</h3>
-              <div className="actions yem-login-scopes" role="group" aria-label="Choisir votre espace de connexion">
+              {!parentOnly && <div className="actions yem-login-scopes" role="group" aria-label="Choisir votre espace de connexion">
                 <button type="button" aria-pressed={loginScope === "school"} onClick={()=>{setLoginScope("school");setPassword("");setCode("");window.history.replaceState(null,"","#/ecole");}}>Établissement</button>
                 <button type="button" aria-pressed={loginScope === "parent"} onClick={()=>{setLoginScope("parent");setPassword("");setCode("");window.history.replaceState(null,"","#/parents");}}>Parents</button>
                 <button type="button" aria-pressed={loginScope === "platform"} onClick={()=>{setLoginScope("platform");setPassword("");setCode("");window.history.replaceState(null,"","#/admin");}}>Administration plateforme</button>
-              </div>
+              </div>}
               {loginScope === "school" && <label className="field">Code de l'établissement
                 <input required value={schoolCode} onChange={e=>setSchoolCode(e.target.value)} placeholder="Code fourni par votre établissement" autoComplete="organization"/>
               </label>}
@@ -306,6 +307,12 @@ export default function AuthPanel() {
     </section>
   );
 
+  if (parentOnly && account?.authenticated && (account.login_scope !== "parent" || account.user?.is_platform_admin)) {
+    return <div className="yem-login-screen"><header className="yem-login-brand"><img src={brand} alt="Logo officiel YEM"/><div><strong>YEM Parents</strong><span>Espace familles</span></div></header>
+      <section className="card pc-account-card"><h2>Session non compatible</h2><p>Déconnectez cette session pour accéder à votre compte parent. L'administration reste disponible sur le site web.</p>
+      <button disabled={busy} onClick={()=>run(logout)}>Se déconnecter</button>{message && <p role="status">{message}</p>}</section>
+    </div>;
+  }
   if (account?.authenticated && account.user?.is_platform_admin) {
     return <PlatformConsole user={account.user} mfaEnabled={account.mfa_enabled} accountView={accountCard} onLogout={() => run(logout)}/>;
   }
@@ -315,5 +322,5 @@ export default function AuthPanel() {
   if (account?.authenticated) {
     return <SchoolDashboard user={account.user} initialSchoolId={account.school_id} accountView={accountCard} onLogout={() => run(logout)} />;
   }
-  return <div className="yem-login-screen"><header className="yem-login-brand"><img src={brand} alt="Logo officiel YEM"/><div><strong>YEM</strong><span>Gestion scolaire &amp; universitaire</span></div></header>{accountCard}</div>;
+  return <div className="yem-login-screen"><header className="yem-login-brand"><img src={brand} alt="Logo officiel YEM"/><div><strong>YEM</strong><span>{parentOnly ? "Espace familles" : "Gestion scolaire & universitaire"}</span></div></header>{accountCard}</div>;
 }

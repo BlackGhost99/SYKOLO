@@ -1,0 +1,5 @@
+# YEM Parents — lot Android 1 : entrée famille dédiée
+
+L'entrée HTTPS `/?app=parents#/parents` réutilise la version web et le logo YEM. Elle masque les choix établissement, plateforme et démonstration. Une session de gestion déjà ouverte n'affiche aucun tableau de bord de gestion ; le parent peut la fermer puis se connecter en tant que parent. Les contrôles d'autorisation restent sur le serveur Django : ce paramètre d'interface ne constitue pas une frontière de sécurité. Le site général est inchangé.
+
+Ce lot prépare le futur APK mais ne contient ni binaire APK, ni signature Android, ni notifications push natives. Le choix du conteneur Android doit être validé avec les fonctions de téléchargement PDF, téléversement de pièces, liens de récupération de compte, notifications et navigation externe. Ne pas activer les paiements réels en contournant les gates du serveur. Tester sur Android physique avant publication. Le développement reste sur une branche indépendante jusqu'à sa recette. Aucun changement de base de données.
