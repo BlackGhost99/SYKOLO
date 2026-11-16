@@ -1,6 +1,6 @@
 """School directory and safe family-initiated admissions.
 
-Configured active schools are public by default; explicit opt-outs are respected. Families may submit to the existing staff review
+Configured active schools are public regardless of legacy listing flags. Families may submit to the existing staff review
 workflow but gain NO read permission to the school's student files as a result.
 """
 from datetime import date
@@ -93,7 +93,7 @@ def directory(request):
     city = request.GET.get("city", "").strip()[:80]
     rows = School.objects.select_related("public_listing").filter(is_active=True).filter(
         Q(public_listing__published=True) |
-        Q(public_listing__isnull=True, pk__in=active_classrooms().values("school_id"))
+        Q(pk__in=active_classrooms().values("school_id"))
     )
     if city:
         rows = rows.filter(public_listing__city__icontains=city)
@@ -161,10 +161,11 @@ def listing_settings(request, school_id):
         return failure
     if not has_permission(request.user, school, "school.admissions.manage"):
         return refuse()
+    configured = school.is_active and active_classrooms().filter(school=school).exists()
     if request.method == "GET":
         row = SchoolPublicListing.objects.filter(school=school).first()
         return JsonResponse({
-            "published": row.published if row else True,
+            "published": school.is_active and (configured or bool(row and row.published)),
             "city": row.city if row else "",
             "district": row.district if row else "",
             "description": row.description if row else "",
@@ -181,7 +182,7 @@ def listing_settings(request, school_id):
             or type(data["published"]) is not bool
             or type(data["cash_at_school"]) is not bool):
         return error("Révision ou options invalides.")
-    if data["published"] and (school.school_type == "non_classe" or not school.education_cycles):
+    if data["published"] and not configured and (school.school_type == "non_classe" or not school.education_cycles):
         return error("Classez l’établissement et configurez ses cycles avant publication.", 409)
     try:
         cleaned = {key: clean_text(data[key], length) for key, length in (
@@ -205,7 +206,7 @@ def listing_settings(request, school_id):
         row.full_clean()
         row.save()
         log_event(school, request, "school_listing_updated", school.pk)
-    return JsonResponse({"revision": row.revision, "published": row.published})
+    return JsonResponse({"revision": row.revision, "published": school.is_active and (configured or row.published)})
 
 
 @never_cache
