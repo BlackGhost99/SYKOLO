@@ -380,16 +380,51 @@ function SchoolLife({m}) {
   </div>
  </>;
 }
+function LiaisonBook({api,childBase,year}) {
+ const [messages,setMessages]=useState(null);
+ const [error,setError]=useState("");
+ const [page,setPage]=useState(1);
+ const [hasMore,setHasMore]=useState(false);
+ const [loading,setLoading]=useState(true);
+ useEffect(()=>{
+  let alive=true;
+  const path=childBase+"/liaison?year="+encodeURIComponent(year)+(page===1?"":"&page="+page);
+  api(path).then(result=>{
+   if(!alive)return;
+   setMessages(previous=>{
+    const all=new Map((previous||[]).map(entry=>[entry.id,entry]));
+    for(const entry of result.messages||[])all.set(entry.id,entry);
+    return [...all.values()];
+   });
+   setHasMore(Boolean(result.has_more));
+  }).catch(failure=>{if(alive)setError(failure.message);})
+   .finally(()=>{if(alive)setLoading(false);});
+  return()=>{alive=false;};
+ },[api,childBase,year,page]);
+ return <Section title="Carnet de liaison" icon="document">
+  {error&&<p role="alert">{error}</p>}
+  {loading&&<p role="status">Chargement du carnet…</p>}
+  {messages!==null&&(messages.length?<ul>{messages.map(entry=><li key={entry.id}>
+    <time dateTime={entry.day}>{entry.day}</time><p>{entry.message}</p>
+   </li>)}</ul>:<Empty>Aucun message publié pour cette année.</Empty>)}
+  {hasMore&&!error&&<button type="button" disabled={loading} onClick={()=>{setLoading(true);setPage(page+1);}}>
+   Voir les messages plus anciens
+  </button>}
+ </Section>;
+}
 function School({m}) {
  const tabs=[["grades","Notes"],["attendance","Vie scolaire"],["timetable","Emploi du temps"],["reports","Bulletins"]];
+ if(m.enrollment?.preschool_liaison)tabs.push(["liaison","Carnet de liaison"]);
+ const tab=tabs.some(([key])=>key===m.schoolTab)?m.schoolTab:"grades";
  return <>{!m.child?<section className="yfx-card"><Empty>Les informations scolaires seront disponibles après vérification du rattachement de votre enfant.</Empty></section>:<>
   <div className="yfx-school-tabs" aria-label="Rubriques de la fiche scolaire" role="navigation">
-   {tabs.map(([key,label])=><button key={key} type="button" aria-pressed={m.schoolTab===key}
+   {tabs.map(([key,label])=><button key={key} type="button" aria-pressed={tab===key}
      onClick={()=>m.setSchoolTab(key)}>{label}</button>)}
   </div>
-  {m.dataErrors[m.schoolTab]&&<p role="alert" className="yfx-alert">{m.dataErrors[m.schoolTab]}</p>}
-  {m.schoolTab==="grades"?<SchoolResult m={m}/>:m.schoolTab==="attendance"?<SchoolLife m={m}/>:
-   m.schoolTab==="timetable"?<Section title="Emploi du temps de la classe" icon="calendar">
+  {m.dataErrors[tab]&&<p role="alert" className="yfx-alert">{m.dataErrors[tab]}</p>}
+  {tab==="grades"?<SchoolResult m={m}/>:tab==="attendance"?<SchoolLife m={m}/>:
+   tab==="liaison"?<LiaisonBook key={m.childBase+":"+m.year} api={m.api} childBase={m.childBase} year={m.year}/>:
+   tab==="timetable"?<Section title="Emploi du temps de la classe" icon="calendar">
     {m.data.timetable?.entries?.length?m.data.timetable.entries.map(e=><div className="yfx-timetable-row" key={e.id}>
       <span>{DAYS[e.weekday]||"Jour"} · {e.start} – {e.end}</span><strong>{e.subject}</strong><small>{e.teacher||"Enseignant non communiqué"}</small></div>):
       <Empty>Aucune séance publiée pour cette année.</Empty>}

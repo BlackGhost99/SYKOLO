@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useState} from "react";
 import {YemLogo,Icon,Button,Card} from "./yem-ui.jsx";
 import TeacherMobileGrades from "./TeacherMobileGrades.jsx";
+import PreschoolFollowup from "./PreschoolFollowup.jsx";
 import TeacherMobileAttendance from "./TeacherMobileAttendance.jsx";
 import TeacherProfile from "./TeacherProfile.jsx";
 import PWAInstall from "./PWAInstall.jsx";
@@ -21,7 +22,7 @@ const weekDay=()=>((new Date().getDay()+6)%7);
 const displayClass=(classes,id)=>classes.find(c=>c.id===id)?.name||"Classe";
 
 export default function TeacherMobileWorkspace({
-  schoolId,schoolName,user,permissions=[],workingYearId="",years=[],
+  schoolId,schoolName,user,permissions=[],preschoolEnabled=false,workingYearId="",years=[],
   schools=[],onSchoolChange,onYearChange,onLogout,onExit,accountView,
 }){
   const [tab,setTab]=useState("accueil");
@@ -33,6 +34,7 @@ export default function TeacherMobileWorkspace({
   const [todayCalls,setTodayCalls]=useState(null);
   const hasCurriculum=permissions.includes("school.curriculum.read")&&permissions.includes("school.academic.read");
   const hasAcademic=permissions.includes("school.academic.read");
+  const navigation=preschoolEnabled&&hasAcademic?[...tabs,{id:"preschool",label:"Suivi",icon:"file"}]:tabs;
   const hasTimetable=permissions.includes("school.timetable.read");
   useEffect(()=>{setTab("accueil");},[schoolId]);
   useEffect(()=>{
@@ -183,6 +185,9 @@ export default function TeacherMobileWorkspace({
       {!loading&&tab==="appel"&&<TeacherMobileAttendance
         key={schoolId+":"+workingYearId} schoolId={schoolId} classes={data.classes}
         assignments={data.assignments} workingYearId={workingYearId}/>}
+      {!loading&&tab==="preschool"&&preschoolEnabled&&hasAcademic&&<div className="ym-page">
+        <PreschoolFollowup key={schoolId+":"+workingYearId} schoolId={schoolId} yearId={workingYearId}/>
+      </div>}
       {tab==="profil"&&<div className="ym-page">
         <h1>Mon profil</h1>
         <TeacherProfile schoolId={schoolId}/>
@@ -197,8 +202,8 @@ export default function TeacherMobileWorkspace({
       </div>}
       <footer className="ym-prof-footer">YEM · Développé par BWETEK Informatyk</footer>
     </main>
-    <nav className="ym-prof-nav" aria-label="Navigation de l'espace professeur">
-      {tabs.map(item=><button type="button" key={item.id}
+    <nav className="ym-prof-nav" style={{"--ym-nav-items":navigation.length}} aria-label="Navigation de l'espace professeur">
+      {navigation.map(item=><button type="button" key={item.id}
         aria-current={tab===item.id?"page":undefined}
         className={tab===item.id?"active":""} onClick={()=>open(item.id)}>
         <Icon name={item.icon} size={21}/><span>{item.label}</span>

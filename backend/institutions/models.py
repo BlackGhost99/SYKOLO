@@ -215,3 +215,7 @@ class PermissionDelegation(models.Model):
 from .import_models import StudentImportProfile, StudentImportBatch  # noqa: E402,F401
 
 from .primary_models import PrimaryMastery  # noqa: E402,F401
+
+from .preschool_followup_models import (  # noqa: E402,F401
+    PreschoolCompetency, PreschoolCompetencyMark, PreschoolLiaisonMessage, PreschoolObservation,
+)
