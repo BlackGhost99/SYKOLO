@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {schoolRequest} from "./SchoolSettings.jsx";
 
-const empty = {code:"",name:"",start_date:"",end_date:"",source_year:"",copy_classes:true};
+const empty = {code:"",name:"",start_date:"",end_date:"",source_year:"",copy_classes:true,copy_courses:false};
 const stateLabel = year => ({
   preparation:"En préparation",current:"En cours",closed:"Clôturée",
 })[year?.status] || (year?.active ? "À vérifier" : "Archivée");
@@ -53,7 +53,7 @@ export default function AnnualWorkspace({schoolId,yearId,onYearChange,onPrepared
     setDraft({
       code:suggested,name:suggested,
       start_date:shift(year?.start_date),end_date:shift(year?.end_date),
-      source_year:year?.id||"",copy_classes:Boolean(year?.id),
+      source_year:year?.id||"",copy_classes:Boolean(year?.id),copy_courses:false,
     });
     setMessage("");setPreparing(true);
   }
@@ -63,12 +63,13 @@ export default function AnnualWorkspace({schoolId,yearId,onYearChange,onPrepared
     try {
       const payload={...draft,source_year:draft.source_year||null};
       if(!payload.source_year)payload.copy_classes=false;
+      if(!payload.copy_classes||!data?.can_copy_courses)payload.copy_courses=false;
       const result=await schoolRequest(prefix+"prepare-year",payload);
       setPreparing(false);
       onYearChange(result.year.id);
       await onPrepared?.();
       await load(result.year.id);
-      setMessage(`${result.year.name} prête : ${result.classes_copied} classe(s) reprises. Aucun élève, bulletin, paiement ou emploi du temps copié.`);
+      setMessage(`${result.year.name} prête : ${result.classes_copied} classe(s) reprises, ${result.courses_copied??0} matière(s) par classe. Aucun élève, bulletin, paiement ou emploi du temps copié.`);
     }catch(e){setError(e.message)}
     finally{setBusy(false)}
   }
@@ -226,7 +227,7 @@ export default function AnnualWorkspace({schoolId,yearId,onYearChange,onPrepared
       {data.can_prepare_year&&!preparing&&<button type="button" onClick={startPreparation}>Préparer une nouvelle année scolaire</button>}
       {data.can_prepare_year&&preparing&&<form onSubmit={submit} className="card" style={{marginTop:12}}>
         <h4>Préparer la nouvelle année</h4>
-        <p className="hint">Les dates proposées sont indicatives : ajustez-les au calendrier réel de l'établissement. Seule la structure des classes peut être recopiée.</p>
+        <p className="hint">Les dates proposées sont indicatives : ajustez-les au calendrier réel de l'établissement. La structure des classes et, sur demande, leurs matières et coefficients peuvent être recopiés.</p>
         <div className="two">
           <label className="field">Code d'année
             <input required pattern="[a-z0-9][a-z0-9_-]*" maxLength={40} value={draft.code} placeholder="2027-2028" onChange={e=>setDraft(old=>({...old,code:e.target.value}))}/>
@@ -241,15 +242,19 @@ export default function AnnualWorkspace({schoolId,yearId,onYearChange,onPrepared
             <input type="date" required min={draft.start_date||undefined} value={draft.end_date} onChange={e=>setDraft(old=>({...old,end_date:e.target.value}))}/>
           </label>
           {data.years.length>0&&<label className="field">Année de référence
-            <select value={draft.source_year} onChange={e=>setDraft(old=>({...old,source_year:e.target.value,copy_classes:!!e.target.value}))}>
+            <select value={draft.source_year} onChange={e=>setDraft(old=>({...old,source_year:e.target.value,copy_classes:!!e.target.value,copy_courses:false}))}>
               <option value="">Aucune référence (année vierge)</option>
               {data.years.map(y=><option key={y.id} value={y.id}>{y.name}</option>)}
             </select>
           </label>}
         </div>
         {draft.source_year&&<label style={{display:"flex",alignItems:"center",gap:8}}>
-          <input type="checkbox" checked={draft.copy_classes} onChange={e=>setDraft(old=>({...old,copy_classes:e.target.checked}))}/>
+          <input type="checkbox" checked={draft.copy_classes} onChange={e=>setDraft(old=>({...old,copy_classes:e.target.checked,copy_courses:e.target.checked&&old.copy_courses}))}/>
           Reprendre les classes actives de l'année de référence (noms, niveaux et capacités)
+        </label>}
+        {draft.source_year&&draft.copy_classes&&data.can_copy_courses&&<label style={{display:"flex",alignItems:"center",gap:8}}>
+          <input type="checkbox" checked={draft.copy_courses} onChange={e=>setDraft(old=>({...old,copy_courses:e.target.checked}))}/>
+          Reprendre les matières actives et leurs coefficients
         </label>}
         <p className="hint">Les élèves, enseignants affectés, notes, bulletins, frais, paiements et périodes ne seront jamais reproduits automatiquement.</p>
         <button type="submit" disabled={busy}>{busy?"Préparation…":"Créer l'année scolaire"}</button>

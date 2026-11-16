@@ -1,8 +1,8 @@
 """Annual academic workspace.
 
 A school year is a historical partition, not another instance of YEM.
-Preparing a year may copy class *structure*, never pupils, grades, payments,
-reports, timetables or staff assignments from the source year.
+Preparing a year may copy class and course *structure*, never pupils, grades,
+payments, reports, timetables or staff assignments from the source year.
 """
 import re
 from datetime import date
@@ -19,6 +19,7 @@ from django.views.decorators.http import require_GET, require_POST
 from .academic_models import AcademicYear, AcademicYearClosure, AcademicClass, AcademicPeriod
 from .standard_classes import ensure_standard_classes
 from .assessment_models import Assessment
+from .curriculum_models import CourseOffering
 from .models import School
 from .report_models import SchoolReport
 from .staff_models import StaffAssignment
@@ -71,6 +72,9 @@ def annual_snapshot(request, school_id):
             and has_permission(request.user, school, "school.academic.manage")
             and scoped_cycle_ids(request.user, school) is None),
         "can_prepare_year": has_permission(request.user, school, "school.academic.manage")
+                            and scoped_cycle_ids(request.user, school) is None,
+        "can_copy_courses": has_permission(request.user, school, "school.academic.manage")
+                            and has_permission(request.user, school, "school.curriculum.manage")
                             and scoped_cycle_ids(request.user, school) is None,
         "can_activate_year": bool(
             year is not None and year.active and year.status == AcademicYear.STATUS_PREPARATION
@@ -326,7 +330,7 @@ def prepare_year(request, school_id):
     if error is not None:
         return error
     required = {"code", "name", "start_date", "end_date", "copy_classes", "source_year"}
-    if not isinstance(body, dict) or set(body) != required:
+    if not isinstance(body, dict) or not required <= set(body) <= required | {"copy_courses"}:
         return JsonResponse({"error": "Paramètres de nouvelle année incomplets."}, status=422)
     code, name = body["code"], body["name"]
     if not isinstance(code, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,39}", code):
@@ -335,6 +339,11 @@ def prepare_year(request, school_id):
         return JsonResponse({"error": "Nom de l'année invalide."}, status=422)
     if type(body["copy_classes"]) is not bool:
         return JsonResponse({"error": "Option de reprise des classes invalide."}, status=422)
+    copy_courses = body.get("copy_courses", False)
+    if type(copy_courses) is not bool or (copy_courses and not body["copy_classes"]):
+        return JsonResponse({"error": "La reprise des matières exige la reprise des classes."}, status=422)
+    if copy_courses and not has_permission(request.user, school, "school.curriculum.manage"):
+        return refuse()
     try:
         start, end = date.fromisoformat(body["start_date"]), date.fromisoformat(body["end_date"])
         if (start.isoformat() != body["start_date"] or end.isoformat() != body["end_date"]
@@ -364,6 +373,8 @@ def prepare_year(request, school_id):
             year.full_clean()
             year.save()
             copied = 0
+            courses_copied = 0
+            room_map = {}
             if body["copy_classes"]:
                 for old in AcademicClass.objects.filter(school=school, year=source, active=True):
                     room = AcademicClass(school=school, year=year, code=old.code, name=old.name,
@@ -371,7 +382,20 @@ def prepare_year(request, school_id):
                                          capacity=old.capacity, active=True)
                     room.full_clean()
                     room.save()
+                    room_map[old.pk] = room
                     copied += 1
+            if copy_courses:
+                courses = CourseOffering.objects.select_related("subject").filter(
+                    school=school, year=source, classroom_id__in=room_map,
+                    active=True, subject__school=school, subject__active=True,
+                )
+                for old_course in courses:
+                    course = CourseOffering(school=school, year=year,
+                        classroom=room_map[old_course.classroom_id], subject=old_course.subject,
+                        coefficient=old_course.coefficient)
+                    course.full_clean()
+                    course.save()
+                    courses_copied += 1
             generated = []
             if not body["copy_classes"]:
                 generated = ensure_standard_classes(school, year)
@@ -382,6 +406,7 @@ def prepare_year(request, school_id):
             log_event(school, request, "academic_year_prepared", str(year.pk), {
                 "source_year": str(source.pk) if source else None,
                 "classes_copied": copied, "copy_classes": body["copy_classes"],
+                "courses_copied": courses_copied, "copy_courses": copy_courses,
             })
     except ValidationError as exc:
         return JsonResponse({"error": " ".join(exc.messages)[:500]}, status=422)
@@ -389,5 +414,6 @@ def prepare_year(request, school_id):
         return JsonResponse({"error": "Année ou classe déjà existante."}, status=409)
     return JsonResponse({
         "year": _year_dict(year), "classes_copied": copied, "classes_generated": len(generated),
+        "courses_copied": courses_copied,
         "message": "Année préparée. Les élèves, affectations, évaluations, bulletins, paiements et périodes n'ont pas été copiés.",
     }, status=201)
