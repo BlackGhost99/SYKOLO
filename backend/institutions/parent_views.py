@@ -359,7 +359,14 @@ def child_enrollments(request, student_id):
     student, error = permitted_child(request.user, student_id)
     if error is not None:
         return error
-    rows = list(Enrollment.objects.select_related("year", "classroom").filter(
+    from .preschool_followup_models import PreschoolLiaisonMessage
+
+    published_liaison = PreschoolLiaisonMessage.objects.filter(
+        enrollment_id=OuterRef("pk"), classroom__school_id=student.school_id,
+    )
+    rows = list(Enrollment.objects.select_related("year", "classroom__level__cycle").annotate(
+        has_preschool_liaison=Exists(published_liaison),
+    ).filter(
         school_id=student.school_id, student=student,
         year__school_id=student.school_id, classroom__school_id=student.school_id,
     ).order_by("-year__start_date", "pk")[:100])
@@ -371,6 +378,7 @@ def child_enrollments(request, student_id):
     return JsonResponse({"student": str(student.pk), "enrollments": [{
         "id": str(row.pk), "year": row.year.name, "year_id": str(row.year_id),
         "classroom": row.classroom.name, "classroom_id": str(row.classroom_id),
+        "preschool_liaison": row.classroom.level.cycle.code == "prescolaire" or row.has_preschool_liaison,
         "class_size": counts.get(row.classroom_id, 0), "enrolled_on": row.enrolled_on.isoformat(),
         "year_status": row.year.status,
         "year_in_progress": row.year.active and row.year.start_date <= today <= row.year.end_date,

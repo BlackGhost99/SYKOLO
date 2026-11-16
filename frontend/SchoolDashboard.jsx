@@ -2,6 +2,7 @@ import DelegationManager from "./DelegationManager.jsx";
 import React, {useEffect,useState} from "react";
 import AcademicPanel from "./AcademicPanel.jsx";
 import PedagogicalCalendar from "./PedagogicalCalendar.jsx";
+import PreschoolFollowup from "./PreschoolFollowup.jsx";
 import StaffPanel from "./StaffPanel.jsx";
 import StaffProfessionalDossier from "./StaffProfessionalDossier.jsx";
 import PayrollPanel from "./PayrollPanel.jsx";
@@ -83,7 +84,7 @@ const sections = {
     {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]},
     {key:"payroll",label:"Rémunérations (RH)",need:["school.payroll.read"]}]},
 };
-const schoolNav = [...NAV.slice(0,1), ["notifications","bell","Notifications"], ["owner","barchart","Pilotage propriétaire"], ...NAV.slice(1,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ["expenses","receipt","Dépenses et budgets"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
+const schoolNav = [...NAV.slice(0,1), ["notifications","bell","Notifications"], ["owner","barchart","Pilotage propriétaire"], ...NAV.slice(1,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ["preschool","file","Suivi préscolaire"], ["expenses","receipt","Dépenses et budgets"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
 const sectionIcon=Object.fromEntries(schoolNav.map(([id,icon])=>[id,icon]));
 
 const settingsSections = [
@@ -384,6 +385,10 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   if (availableSettings.length) visibleSections.settings = {
     subtitle:"Réglages de l’établissement", modules:[], lives:[],
   };
+  const preschoolEnabled=Boolean(access?.school?.education_cycles?.includes("prescolaire"));
+  if (preschoolEnabled&&can("school.academic.read")) visibleSections.preschool={
+    title:"Suivi préscolaire",subtitle:"Crèche et préscolaire",modules:[],lives:[{key:"live",label:"Suivi quotidien",need:[]}],
+  };
   const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]);
   const hasTab=(id,tab)=>Boolean(visibleSections[id]?.modules.includes(tab)||visibleSections[id]?.lives.some(l=>l.key===tab));
   const dashboardShortcuts=[
@@ -479,7 +484,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const showTeacherWorkspace=teacherPolicy.show;
   if (showTeacherWorkspace) return <TeacherMobileWorkspace
     key={chosen} schoolId={chosen} schoolName={schoolName} user={user}
-    permissions={perms} years={academicYears} workingYearId={workingYearId}
+    permissions={perms} preschoolEnabled={preschoolEnabled} years={academicYears} workingYearId={workingYearId}
     onYearChange={setWorkingYearId} schools={schools} onSchoolChange={setChosen}
     onExit={()=>setTeacherViewRequested(false)}
     onLogout={onLogout} accountView={accountView}/>;
@@ -503,6 +508,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "students:fiche":<StudentFile key={k} {...props}/>,
       "students:import":<ImportStudents key={chosen} {...props}/>,
       "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.profile.read")} canReadRoster={can("school.students.profile.read")||can("school.attendance.read")||can("school.curriculum.manage")} advancedSettings={advancedSettings} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
+      "preschool:live":<div className="yd-real-body"><PreschoolFollowup key={chosen+":"+workingYearId} schoolId={chosen} yearId={workingYearId}/></div>,
       "calendar:live":<PedagogicalCalendar key={chosen} schoolId={chosen} workingYearId={workingYearId}
         onWorkingYearChange={setWorkingYearId} onYearsUpdated={()=>setYearCatalogVersion(v=>v+1)}/>,
       "payments:live":<LivePayments key={k} {...props}/>,

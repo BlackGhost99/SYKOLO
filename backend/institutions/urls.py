@@ -6,7 +6,7 @@ from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
 from . import annual_views
 from . import class_assignment_views
-from . import calendar_views, primary_views
+from . import calendar_views, primary_views, preschool_followup_views
 from . import secondary_views
 from . import demo_payment_views, admission_cash_views, admission_finance_views
 from . import parent_existing_views
@@ -90,6 +90,7 @@ urlpatterns = [
     path("parents/children", parent_views.children),
     path("parents/children/<uuid:student_id>/enrollments", parent_views.child_enrollments),
     path("parents/children/<uuid:student_id>/grades", parent_views.child_grades),
+    path("parents/children/<uuid:student_id>/liaison", preschool_followup_views.child_liaison),
     path("parents/children/<uuid:student_id>/reports", parent_views.child_reports),
     path("parents/children/<uuid:student_id>/reports/<uuid:report_id>", parent_views.child_report_detail),
     path("parents/children/<uuid:student_id>/reports/<uuid:report_id>/pdf", parent_views.child_report_pdf),
@@ -243,6 +244,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/enrollments/<uuid:enrollment_id>/history", student_views.enrollment_history),
     path("schools/<uuid:school_id>/academic/annual-snapshot", annual_views.annual_snapshot),
     path("schools/<uuid:school_id>/academic/pedagogical-calendar", calendar_views.events),
+    path("schools/<uuid:school_id>/academic/preschool-followup", preschool_followup_views.followup),
     path("schools/<uuid:school_id>/academic/primary-criteria", primary_views.criteria),
     path("schools/<uuid:school_id>/academic/primary-mastery", primary_views.mastery),
     path("schools/<uuid:school_id>/academic/pedagogical-calendar/<uuid:event_id>", calendar_views.event_detail),
