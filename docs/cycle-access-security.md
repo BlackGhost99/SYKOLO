@@ -49,3 +49,7 @@ Un propriétaire peut consulter les comptes dans le formulaire puis modifier leu
 - Manuel : un complexe Maternelle + Primaire, au moins un élève dans chaque cycle, un compte direction restreint au Primaire, un propriétaire et un gestionnaire du personnel.
 - Vérifier : aucune donnée maternelle dans les lectures du primaire ; écriture de classe maternelle ou accès financier refusé ; création d'un compte global par responsable restreint refusée ; changement de périmètre instantané ; tests des droits de la direction globale inchangés.
 - Ne pas fusionner ou déployer avant tests et revue approfondie des restrictions de routes.
+
+## Durcissement de la portée enregistrée
+
+À chaque lecture, les UUID de cycles enregistrés sont revalidés dans l'établissement actif ; les cycles archivés ou étrangers ne confèrent plus de droits. Une liste vide ou malformée est traitée comme un périmètre vide, jamais comme un accès global. Le middleware utilise path_info pour maintenir les contrôles en cas de préfixe de déploiement. La révocation d'un membre invalide la session scolaire existante. Les valeurs historiques NULL sont conservées et nécessitent une revue manuelle ; pas de reclassement automatique des comptes. Les restrictions permission×cycle et les modules non audités restent hors de ce lot.

@@ -4,7 +4,7 @@ import json
 import re
 from itertools import combinations
 
-from django.db.models import Q
+from django.db.models import Q, F
 from django.utils import timezone
 from django.http import JsonResponse
 
@@ -247,7 +247,7 @@ def school_access(user, school_id):
         return None
     return School.objects.filter(
         Q(organization__members__user=user, organization__members__role="founder")
-        | Q(members__user=user, members__active=True),
+        | Q(members__user=user, members__active=True, members__role__school_id=F("pk")),
         pk=school_id, is_active=True,
     ).distinct().first()
 

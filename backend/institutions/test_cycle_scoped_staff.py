@@ -91,6 +91,26 @@ class CycleRestrictedStaffTests(TestCase):
         self.assertEqual([x["name"] for x in self.client.get(self.base+"academic/levels").json()["levels"]],["CP"])
         self.assertEqual(self.client.get(self.base+f"academic/classes/{self.class_pre.id}").status_code,404)
 
+    def test_stale_or_invalid_cycle_scope_fails_closed_without_relogin(self):
+        # A foreign cycle, an archived cycle and malformed saved JSON must
+        # never be interpreted as school-wide permissions.
+        foreign = AcademicCycle.objects.create(school=self.other, code="primaire",
+                                                name="Autre primaire")
+        for invalid in ([str(foreign.pk)], ["invalid-uuid"], {"cycle": str(self.primary.pk)}, []):
+            with self.subTest(scope=invalid):
+                SchoolMember.objects.filter(pk=self.member.pk).update(access_cycle_ids=invalid)
+                response = self.client.get(self.base+"students")
+                self.assertEqual(response.status_code, 200, response.content)
+                self.assertEqual(response.json()["students"], [])
+                self.assertEqual(self.client.get(self.base+f"students/{self.student_pri.pk}").status_code, 404)
+                self.assertEqual(self.client.get(self.base+"finance/summary").status_code, 403)
+        SchoolMember.objects.filter(pk=self.member.pk).update(access_cycle_ids=[str(self.primary.pk)])
+        self.assertEqual(self.client.get(self.base+f"students/{self.student_pri.pk}").status_code, 200)
+        AcademicCycle.objects.filter(pk=self.primary.pk).update(active=False)
+        self.assertEqual(self.client.get(self.base+"students").json()["students"], [])
+        self.assertEqual(self.client.get(self.base+f"students/{self.student_pri.pk}").status_code, 404)
+        self.assertEqual(self.client.get(self.base+"finance/summary").status_code, 403)
+
     def test_matricule_search_respects_cycle_scope(self):
         hidden = self.client.get(self.base + "students", {"matricule": self.student_pre.matricule_yem})
         self.assertEqual(hidden.status_code, 200, hidden.content)

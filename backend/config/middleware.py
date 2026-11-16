@@ -32,8 +32,8 @@ class SchoolSessionMiddleware:
             if not school_access(request.user, tenant):
                 request.session.flush()
                 return JsonResponse({"error": "Accès à l'établissement retiré."}, status=401)
-            match = re.match(r"/api/v1/schools/([^/]+)(?:/|$)", request.path)
-            if (match and match.group(1) != tenant) or request.path.startswith(("/api/v1/platform/", "/api/v1/organizations")):
+            match = re.match(r"/api/v1/schools/([^/]+)(?:/|$)", request.path_info)
+            if (match and match.group(1) != tenant) or request.path_info.startswith(("/api/v1/platform/", "/api/v1/organizations")):
                 return JsonResponse({"error": "Session limitée à l'établissement choisi."}, status=403)
         path = request.path_info.rstrip("/")
         if (path.startswith("/api/v1/parents/") and path not in self._PUBLIC_FAMILY_PATHS
@@ -84,7 +84,7 @@ class SchoolCycleBoundaryMiddleware:
         from institutions.services import school_access
 
         match = re.fullmatch(
-            rf"/api/v1/schools/({self._UUID})(?:/(.*?))?/?", request.path
+            rf"/api/v1/schools/({self._UUID})(?:/(.*?))?/?", request.path_info
         )
         if match and request.user.is_authenticated and request.user.is_active:
             school = school_access(request.user, match.group(1))
