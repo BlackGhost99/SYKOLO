@@ -1,0 +1,15 @@
+[Unit]
+Description=YEM encrypted PostgreSQL backup to two locations
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+User=yem-backup
+Group=yem-backup
+UMask=0077
+EnvironmentFile=/etc/yem/backup.env
+WorkingDirectory=/opt/yem
+ExecStart=/usr/bin/bash /opt/yem/scripts/yem_backup_daily.sh
+NoNewPrivileges=true
+PrivateTmp=true
+TimeoutStartSec=2h
