@@ -21,7 +21,7 @@ test("une nouvelle année reprend seulement la structure choisie et change le co
     if(String(url).includes("/academic/annual-snapshot")){
       const selected=String(url).includes("year-new")?next:old;
       return Response.json({
-        years,year:selected,can_prepare_year:true,can_copy_courses:true,
+        years,year:selected,can_prepare_year:true,can_copy_courses:true,can_copy_tariffs:true,can_copy_pedagogy:true,
         classes:[{id:"class",name:"6e A",level:"6e",cycle:"Collège",active:true,
                   enrolled:selected.id===old.id?24:0,staff_assignments:0,published_reports:0}],
         periods:[],stats:{classes:1,periods:0,enrollments:selected.id===old.id?24:0,
@@ -45,10 +45,16 @@ test("une nouvelle année reprend seulement la structure choisie et change le co
   const subjects=screen.getByRole("checkbox",{name:/Reprendre les matières actives/});
   expect(subjects.checked).toBe(false);
   await user.click(subjects);
+  const tariffs=screen.getByRole("checkbox",{name:/Reprendre les tarifs actifs/});
+  const pedagogy=screen.getByRole("checkbox",{name:/Reprendre les barèmes/});
+  expect(tariffs.checked).toBe(false);
+  expect(pedagogy.checked).toBe(false);
+  await user.click(tariffs);
+  await user.click(pedagogy);
   await user.click(screen.getByRole("button",{name:"Créer l'année scolaire"}));
   await waitFor(()=>expect(screen.getByLabelText("Bilan de l\u0027année").textContent).toContain("0 · Inscriptions"));
   expect(posts).toHaveLength(1);
-  expect(posts[0]).toMatchObject({code:"2027-2028",source_year:"year-old",copy_classes:true,copy_courses:true});
+  expect(posts[0]).toMatchObject({code:"2027-2028",source_year:"year-old",copy_classes:true,copy_courses:true,copy_tariffs:true,copy_pedagogy:true});
   expect(screen.getByLabelText("Année scolaire de travail").value).toBe("year-new");
 });
 

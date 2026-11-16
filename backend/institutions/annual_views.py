@@ -5,6 +5,7 @@ Preparing a year may copy class and course *structure*, never pupils, grades,
 payments, reports, timetables or staff assignments from the source year.
 """
 import re
+from calendar import monthrange
 from datetime import date
 from uuid import UUID
 
@@ -20,13 +21,14 @@ from .academic_models import AcademicYear, AcademicYearClosure, AcademicClass, A
 from .standard_classes import ensure_standard_classes
 from .assessment_models import Assessment
 from .curriculum_models import CourseOffering
-from .models import School
+from .models import School, SchoolSetting
+from .finance_models import FeeSchedule
 from .report_models import SchoolReport
 from .staff_models import StaffAssignment
 from .student_models import Enrollment
 from .cycle_scope import pedagogical_cycle_ids, scoped_cycle_ids
 from .year_closure import annual_closure_checks, annual_closure_snapshot, closure_fingerprint
-from .services import has_permission
+from .services import has_permission, key_for_scope, valid_calendar_profile
 from .views import access, log_event, parse_body, refuse
 
 
@@ -35,6 +37,63 @@ def _year_id(value):
         return UUID(value) if isinstance(value, str) else None
     except ValueError:
         return None
+
+
+def _renew_date(day, source, target):
+    if day is None:
+        return None
+    delta = (target.start_date.year - source.start_date.year) * 12 + target.start_date.month - source.start_date.month
+    index = day.year * 12 + day.month - 1 + delta
+    year, month0 = divmod(index, 12)
+    if not 1 <= year <= 9999:
+        raise ValidationError("Date reconduite invalide.")
+    month = month0 + 1
+    last = monthrange(year, month)[1]
+    result = date(year, month, last if day.day == monthrange(day.year, day.month)[1] else min(day.day, last))
+    if not target.start_date <= result <= target.end_date:
+        raise ValidationError("Une échéance reconduite tombe hors de la nouvelle année. Vérifiez les dates ou créez les tarifs séparément.")
+    return result
+
+
+def _copy_year_tariffs(school, source, target, room_map):
+    count = 0
+    rows = FeeSchedule.objects.filter(school=school, year=source, active=True).filter(
+        Q(classroom__isnull=True) | Q(classroom_id__in=room_map)
+    )
+    for old in rows:
+        room = room_map.get(old.classroom_id)
+        due = _renew_date(old.due_date, source, target)
+        code, label = old.code, old.label
+        if re.fullmatch(r"scolarite-\d{4}-\d{2}", code):
+            if old.due_date is None or code != "scolarite-" + old.due_date.strftime("%Y-%m"):
+                raise ValidationError("Une mensualité de référence doit être vérifiée avant reconduction.")
+            code = "scolarite-" + due.strftime("%Y-%m")
+            label = "Scolarité — " + due.strftime("%m/%Y")
+        row = FeeSchedule(school=school, year=target, classroom=room,
+            scope_key=str(room.pk) if room else "", code=code, label=label,
+            amount=old.amount, currency=old.currency, due_date=due)
+        row.full_clean()
+        row.save()
+        count += 1
+    return count
+
+
+def _copy_year_pedagogy(school, source, target, room_map):
+    # Only known pedagogical settings; never copy arbitrary module settings or dated events.
+    count = 0
+    class_scopes = {(room.level.cycle.code, room.level.code, room.code) for room in room_map.values()}
+    for old in SchoolSetting.objects.filter(school=school, scope__year=source.code):
+        scope = {**old.scope, "year": target.code}
+        if "class" in scope and (scope.get("cycle"), scope.get("level"), scope["class"]) not in class_scopes:
+            continue
+        values = {k: v for k, v in old.values.items() if k in {"grading", "calendar_profile", "primary_mastery_criteria"}}
+        if not values:
+            continue
+        if "calendar_profile" in values and not valid_calendar_profile(values["calendar_profile"]):
+            raise ValidationError("Un profil de calendrier de référence est invalide.")
+        SchoolSetting.objects.create(school=school, scope_key=key_for_scope(scope), scope=scope, values=values)
+        count += 1
+    return count
 
 
 def _year_dict(year):
@@ -76,6 +135,12 @@ def annual_snapshot(request, school_id):
         "can_copy_courses": has_permission(request.user, school, "school.academic.manage")
                             and has_permission(request.user, school, "school.curriculum.manage")
                             and scoped_cycle_ids(request.user, school) is None,
+        "can_copy_tariffs": has_permission(request.user, school, "school.academic.manage")
+                            and has_permission(request.user, school, "school.finance.manage")
+                            and scoped_cycle_ids(request.user, school) is None,
+        "can_copy_pedagogy": has_permission(request.user, school, "school.academic.manage")
+                             and has_permission(request.user, school, "school.settings.write")
+                             and scoped_cycle_ids(request.user, school) is None,
         "can_activate_year": bool(
             year is not None and year.active and year.status == AcademicYear.STATUS_PREPARATION
             and has_permission(request.user, school, "school.academic.manage")
@@ -330,7 +395,7 @@ def prepare_year(request, school_id):
     if error is not None:
         return error
     required = {"code", "name", "start_date", "end_date", "copy_classes", "source_year"}
-    if not isinstance(body, dict) or not required <= set(body) <= required | {"copy_courses"}:
+    if not isinstance(body, dict) or not required <= set(body) <= required | {"copy_courses", "copy_tariffs", "copy_pedagogy"}:
         return JsonResponse({"error": "Paramètres de nouvelle année incomplets."}, status=422)
     code, name = body["code"], body["name"]
     if not isinstance(code, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,39}", code):
@@ -343,6 +408,16 @@ def prepare_year(request, school_id):
     if type(copy_courses) is not bool or (copy_courses and not body["copy_classes"]):
         return JsonResponse({"error": "La reprise des matières exige la reprise des classes."}, status=422)
     if copy_courses and not has_permission(request.user, school, "school.curriculum.manage"):
+        return refuse()
+    copy_tariffs = body.get("copy_tariffs", False)
+    copy_pedagogy = body.get("copy_pedagogy", False)
+    if any(type(option) is not bool for option in (copy_tariffs, copy_pedagogy)) or (
+        (copy_tariffs or copy_pedagogy) and not body["copy_classes"]
+    ):
+        return JsonResponse({"error": "La reconduction exige la reprise des classes."}, status=422)
+    if copy_tariffs and not has_permission(request.user, school, "school.finance.manage"):
+        return refuse()
+    if copy_pedagogy and not has_permission(request.user, school, "school.settings.write"):
         return refuse()
     try:
         start, end = date.fromisoformat(body["start_date"]), date.fromisoformat(body["end_date"])
@@ -396,6 +471,8 @@ def prepare_year(request, school_id):
                     course.full_clean()
                     course.save()
                     courses_copied += 1
+            tariffs_copied = _copy_year_tariffs(school, source, year, room_map) if copy_tariffs else 0
+            pedagogy_copied = _copy_year_pedagogy(school, source, year, room_map) if copy_pedagogy else 0
             generated = []
             if not body["copy_classes"]:
                 generated = ensure_standard_classes(school, year)
@@ -407,6 +484,7 @@ def prepare_year(request, school_id):
                 "source_year": str(source.pk) if source else None,
                 "classes_copied": copied, "copy_classes": body["copy_classes"],
                 "courses_copied": courses_copied, "copy_courses": copy_courses,
+                "tariffs_copied": tariffs_copied, "pedagogy_copied": pedagogy_copied,
             })
     except ValidationError as exc:
         return JsonResponse({"error": " ".join(exc.messages)[:500]}, status=422)
@@ -414,6 +492,7 @@ def prepare_year(request, school_id):
         return JsonResponse({"error": "Année ou classe déjà existante."}, status=409)
     return JsonResponse({
         "year": _year_dict(year), "classes_copied": copied, "classes_generated": len(generated),
-        "courses_copied": courses_copied,
+        "courses_copied": courses_copied, "tariffs_copied": tariffs_copied,
+        "pedagogy_copied": pedagogy_copied,
         "message": "Année préparée. Les élèves, affectations, évaluations, bulletins, paiements et périodes n'ont pas été copiés.",
     }, status=201)

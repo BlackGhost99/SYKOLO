@@ -214,6 +214,50 @@ class AcademicStructureTests(TestCase):
         self.assertEqual(blank.json()["courses_copied"], 0)
         self.assertFalse(CourseOffering.objects.filter(year_id=blank.json()["year"]["id"]).exists())
 
+    def test_prepare_year_renews_tariffs_and_pedagogy_without_charges(self):
+        from .finance_models import FeeSchedule, FeeCharge, FeePayment
+        from .models import SchoolSetting
+        from .services import key_for_scope
+        from datetime import date
+        previous = self.year()
+        cycle = self.make("cycles", {"code": "col", "name": "Collège"})
+        level = self.make("levels", {"code": "six", "name": "Sixième", "cycle": cycle["id"]})
+        room = self.make("classes", {"code": "six-a", "name": "6e A",
+                    "year": previous["id"], "level": level["id"]})
+        old = FeeSchedule.objects.create(school=self.school, year_id=previous["id"],
+            classroom_id=room["id"], scope_key=room["id"], code="scolarite-2027-02",
+            label="Scolarité — 02/2027", amount=50000, currency="XAF", due_date=date(2027, 2, 28))
+        scope = {"year": previous["code"], "cycle": "col"}
+        setting = SchoolSetting.objects.create(school=self.school, scope_key=key_for_scope(scope),
+            scope=scope, values={"calendar_profile": {"publication_target": 3}, "other_module": True})
+        payload = {"code": "2027-2028", "name": "2027-2028",
+            "start_date": "2027-09-01", "end_date": "2028-07-31",
+            "source_year": previous["id"], "copy_classes": True,
+            "copy_tariffs": True, "copy_pedagogy": True}
+        self.assertEqual(self.write("prepare-year", payload).status_code, 403)
+        role = SchoolRole.objects.get(school=self.school, code="direction")
+        role.permissions = list(role.permissions) + ["school.finance.manage"]
+        role.save(update_fields=["permissions"])
+        response = self.write("prepare-year", payload)
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["tariffs_copied"], 1)
+        self.assertEqual(response.json()["pedagogy_copied"], 1)
+        new_year = response.json()["year"]["id"]
+        new = FeeSchedule.objects.get(school=self.school, year_id=new_year)
+        self.assertEqual(new.due_date, date(2028, 2, 29))
+        self.assertEqual(new.code, "scolarite-2028-02")
+        self.assertEqual(new.amount, old.amount)
+        self.assertNotEqual(new.classroom_id, old.classroom_id)
+        self.assertEqual(new.scope_key, str(new.classroom_id))
+        self.assertFalse(FeeCharge.objects.filter(school=self.school).exists())
+        self.assertFalse(FeePayment.objects.filter(school=self.school).exists())
+        copied = SchoolSetting.objects.get(school=self.school, scope__year="2027-2028")
+        self.assertEqual(copied.values, {"calendar_profile": {"publication_target": 3}})
+        setting.refresh_from_db()
+        old.refresh_from_db()
+        self.assertTrue(setting.values["other_module"])
+        self.assertEqual(old.due_date, date(2027, 2, 28))
+
     def test_activate_year_is_audited_and_unique_per_school(self):
         from .models import SchoolAudit
         first = self.year()
