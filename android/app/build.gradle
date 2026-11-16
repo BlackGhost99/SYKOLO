@@ -1,0 +1,25 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.bwetek.yem.parents'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.bwetek.yem.parents'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    sourceSets.main.res.srcDir(layout.buildDirectory.dir("generated/yemRes"))
+}
+
+tasks.register("copyYemLogo", Copy) {
+    from(rootProject.file("../frontend/assets/yem-brand.webp"))
+    into(layout.buildDirectory.dir("generated/yemRes/drawable-nodpi"))
+    rename { "yem_brand.webp" }
+}
+tasks.named("preBuild").configure { dependsOn(tasks.named("copyYemLogo")) }

@@ -41,7 +41,7 @@ function RealApp() {
 /* Entrée indépendante : ne monte jamais AuthPanel ni les requêtes réelles YEM
    lorsque la démo est active, y compris si le visiteur possède une session. */
 export default function App(){
-  const parentApp = new URLSearchParams(window.location.search).get("app") === "parents";
+  const parentApp = window.location.pathname === "/parents-app/" || new URLSearchParams(window.location.search).get("app") === "parents";
   const [demo,setDemo]=useState(()=>!parentApp && window.location.hash.startsWith("#/demo"));
   useEffect(()=>{
     const onHashChange=()=>{

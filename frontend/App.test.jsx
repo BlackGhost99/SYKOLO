@@ -30,7 +30,7 @@ test("le bouton démonstration ouvre un parcours fictif isolé",async()=>{
 
 
 test("l'entrée dédiée aux familles ignore le hash démonstration et masque la gestion",async()=>{
- window.history.replaceState(null,"","/?app=parents#/demo");
+ window.history.replaceState(null,"","/parents-app/#/demo");
  vi.stubGlobal("fetch",vi.fn(async(url)=>({ok:true,status:200,headers:new Headers({"content-type":"application/json"}),json:async()=>url.endsWith("/me")?{authenticated:false}:{email_registration_available:false}})));
  render(<App/>);
  expect(await screen.findByRole("heading",{name:"Espace parents"})).toBeTruthy();
