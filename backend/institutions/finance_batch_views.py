@@ -115,6 +115,9 @@ def create_batch(request, school_id):
                     return JsonResponse({"error": "Clé réutilisée avec une autre opération."}, status=409)
                 return JsonResponse(batch_data(previous))
 
+            if FeePayment.objects.filter(school=school, idempotency_key=idem).exists():
+                return JsonResponse({"error": "Clé déjà utilisée pour un autre encaissement. Consultez son reçu."}, status=409)
+
             charges = list(FeeCharge.objects.select_for_update().filter(
                 school=school, enrollment_id=enrollment_id, pk__in=entries,
             ).order_by("pk"))
