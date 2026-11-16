@@ -10,9 +10,11 @@ from django.db import IntegrityError, transaction
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_GET, require_POST
 from accounts.views import authorized
 
+from .primary_models import PrimaryMastery
 from .academic_models import AcademicClass, AcademicPeriod
 from .council_models import SchoolCouncil, CouncilDecision, ReportAmendment
 from .report_models import SchoolReport
@@ -137,9 +139,45 @@ def council_detail(request,school_id,council_id):
     council=SchoolCouncil.objects.filter(school=school,pk=council_id).first()
     if council is None:return JsonResponse({"error":"Conseil introuvable."},status=404)
     decisions = council.decisions.select_related("enrollment__student").order_by("pk")
-    return JsonResponse({**council_data(council), "decisions": [
+    return JsonResponse({**council_data(council),
+        "is_primary": council.classroom.level.cycle.code == "primaire", "decisions": [
         {**decision_data(row), "student_name": f"{row.enrollment.student.first_name} {row.enrollment.student.last_name}"}
         for row in decisions
+    ]})
+
+
+@never_cache
+@require_GET
+@authorized
+def primary_passage_evidence(request, school_id, council_id):
+    school, error = gate(request, school_id, "school.deliberations.manage")
+    if error is not None:
+        return error
+    council = SchoolCouncil.objects.select_related("classroom__level__cycle").filter(
+        school=school, pk=council_id, classroom__school=school,
+        classroom__level__cycle__code="primaire",
+    ).first()
+    if council is None:
+        return JsonResponse({"error": "Conseil du primaire introuvable."}, status=404)
+    enrollment = Enrollment.objects.filter(
+        school=school, student__school=school, pk=uid(request.GET.get("enrollment")),
+        year_id=council.year_id, classroom_id=council.classroom_id, active=True,
+    ).first()
+    if enrollment is None:
+        return JsonResponse({"error": "Inscription hors classe."}, status=404)
+    records = PrimaryMastery.objects.select_related("milestone").filter(
+        enrollment=enrollment, classroom_id=council.classroom_id,
+        milestone__school=school, milestone__year_id=council.year_id,
+        milestone__cycle_id=council.classroom.level.cycle_id,
+        milestone__kind=AcademicPeriod.MILESTONE, milestone__closed=True,
+        milestone__end_date__lte=council.meeting_date,
+    ).order_by("milestone__start_date", "milestone_id", "criterion_id")
+    return JsonResponse({"records": [
+        {"id": str(record.pk), "milestone": record.milestone.name,
+         "criterion": record.criterion_snapshot.get("label", ""),
+         "stage": record.get_stage_display(), "remediation": record.get_remediation_status_display(),
+         "follow_up": record.follow_up}
+        for record in records
     ]})
 
 

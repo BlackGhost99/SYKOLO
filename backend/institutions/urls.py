@@ -173,6 +173,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/councils", council_views.councils),
     path("schools/<uuid:school_id>/councils/<uuid:council_id>", council_views.council_detail),
     path("schools/<uuid:school_id>/councils/<uuid:council_id>/decisions", council_views.council_decisions),
+    path("schools/<uuid:school_id>/councils/<uuid:council_id>/primary-passage-evidence", council_views.primary_passage_evidence),
     path("schools/<uuid:school_id>/councils/<uuid:council_id>/close", council_views.close_council),
     path("schools/<uuid:school_id>/reports/<uuid:report_id>/amendments", council_views.amendments),
     path("schools/<uuid:school_id>/reports/<uuid:report_id>/amendments/<uuid:amendment_id>", council_views.amendment_detail),
