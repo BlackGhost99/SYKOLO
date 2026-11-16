@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from "react";
 import AnnualWorkspace from "./AnnualWorkspace.jsx";
 import PrimaryCriteria from "./PrimaryCriteria.jsx";
+import PrimaryMastery from "./PrimaryMastery.jsx";
 import {PageHeader, Card} from "./yem-ui.jsx";
 
 const yearState = {preparation:"En préparation",current:"En cours",closed:"Clôturée"};
@@ -348,8 +349,10 @@ export default function PedagogicalCalendar({
           </form>}
         </Card>
 
-        {selectedCycle?.code==="primaire"&&<PrimaryCriteria key={schoolId+":"+selectedYear.id}
-          schoolId={schoolId} yearId={selectedYear.id}/>}
+        {selectedCycle?.code==="primaire"&&<React.Fragment key={schoolId+":"+selectedYear.id}>
+          <PrimaryCriteria schoolId={schoolId} yearId={selectedYear.id}/>
+          <PrimaryMastery schoolId={schoolId} yearId={selectedYear.id}/>
+        </React.Fragment>}
         <Card title="Échéances, congés et examens" icon="calendar">
           <p>Ajoutez les rentrées, vacances, arrêts des notes, remises de bulletins, réunions et examens. Ces repères n'activent pas automatiquement une évaluation ou une clôture comptable.</p>
           {events.length?<div style={{overflowX:"auto"}}><table className="xs">

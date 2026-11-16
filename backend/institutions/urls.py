@@ -243,6 +243,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/academic/annual-snapshot", annual_views.annual_snapshot),
     path("schools/<uuid:school_id>/academic/pedagogical-calendar", calendar_views.events),
     path("schools/<uuid:school_id>/academic/primary-criteria", primary_views.criteria),
+    path("schools/<uuid:school_id>/academic/primary-mastery", primary_views.mastery),
     path("schools/<uuid:school_id>/academic/pedagogical-calendar/<uuid:event_id>", calendar_views.event_detail),
     path("schools/<uuid:school_id>/academic/pedagogical-calendar/profile", calendar_views.update_profile),
     path("schools/<uuid:school_id>/academic/years/<uuid:year_id>/activate", annual_views.activate_year),
