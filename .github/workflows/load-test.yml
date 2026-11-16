@@ -1,0 +1,51 @@
+name: YEM Load Test (synthetic only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/yem_load_test.py"
+      - ".github/workflows/load-test.yml"
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Nombre d'utilisateurs virtuels"
+        type: choice
+        options: ["50", "100", "250", "500"]
+        default: "100"
+permissions:
+  contents: read
+jobs:
+  synthetic-load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: yem_load_test
+          POSTGRES_USER: yem_load
+          POSTGRES_PASSWORD: synthetic-ci-only
+        ports: ["5432:5432"]
+        options: --health-cmd="pg_isready -U yem_load -d yem_load_test" --health-interval=5s --health-timeout=3s --health-retries=10
+    env:
+      APP_ENV: test
+      YEM_LOAD_TEST: synthetic
+      DATABASE_URL: postgres://yem_load:synthetic-ci-only@127.0.0.1:5432/yem_load_test
+      YEM_PAYMENTS_LIVE_ENABLED: "false"
+      YEM_SINGPAY_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r backend/requirements.txt
+      - run: python backend/manage.py migrate --noinput
+      - name: Run isolated HTTP load test
+        env:
+          LEVEL: ${{ inputs.level }}
+        run: |
+          if [ -n "$LEVEL" ]; then
+            python scripts/yem_load_test.py --levels "$LEVEL"
+          else
+            python scripts/yem_load_test.py --levels 50 100
+          fi
