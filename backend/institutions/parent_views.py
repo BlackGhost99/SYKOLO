@@ -550,7 +550,14 @@ def child_finance(request, student_id):
             school_id=student.school_id, charge__in=charges, void__isnull=True,
         ).values("charge_id").annotate(total=Sum("amount")).values_list("charge_id", "total")
     )
-    for row in charges.select_related("enrollment__year").order_by("due_date", "pk"):
+    from .finance_payment_order import monthly_blockers
+    rows = list(charges.select_related("enrollment__year", "schedule").order_by("due_date", "pk"))
+
+    def remaining(row):
+        return row.amount - row.scholarship_discount - paid_by_charge.get(row.pk, Decimal("0.00"))
+
+    blockers = monthly_blockers(rows, remaining)
+    for row in rows:
         paid = paid_by_charge.get(row.pk, Decimal("0.00"))
         net = row.amount - row.scholarship_discount
         balance = net - paid
@@ -575,6 +582,7 @@ def child_finance(request, student_id):
             "currency": row.currency, "paid": str(paid), "balance": str(balance),
             "due_date": row.due_date.isoformat() if row.due_date else None,
             "year": row.enrollment.year.name, "status": status,
+            "payment_blocked_by": blockers.get(row.pk),
         })
     from .admission_finance import scholarship_for_enrollment
     current_enrollment = enrollments.order_by("-year__start_date").first()

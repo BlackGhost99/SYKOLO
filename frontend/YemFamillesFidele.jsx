@@ -240,10 +240,11 @@ function Home({m}) {
  </>;
 }
 function Payments({m}) {
- const {financial,charges,billed,paid,due,currentYearLabel,data,api,activeCharge,setActiveCharge,goDiscovery,child,childBase,enrollment}=m;
+ const {financial,charges,billed,paid,due,currentYearLabel,data,api,activeCharge,setActiveCharge,goDiscovery,child,childBase,enrollment,financeRevision,refreshFinance}=m;
  const [method,setMethod]=useState("airtel");
  const pending=charges.filter(c=>balance(c)>0);
- function payNow(){if(!pending.length)return;setActiveCharge(prev=>prev||pending[0].id);
+ const payable=pending.filter(c=>!c.payment_blocked_by);
+ function payNow(){if(!payable.length)return;setActiveCharge(prev=>payable.some(c=>c.id===prev)?prev:payable[0].id);
   document.getElementById("yfx-payment-form")?.scrollIntoView?.({behavior:"smooth",block:"start"});}
  const methods=[["airtel","Airtel Money"],["moov","Moov Money"],["singpay","SingPay"],["cash","Espèces au guichet"]];
  return <>{!child||!enrollment?<div className="yfx-card"><Empty>Les frais de scolarité officiels seront visibles après l'inscription et le rattachement de votre enfant par l'établissement.</Empty>
@@ -267,7 +268,9 @@ function Payments({m}) {
      <div className="yfx-fee-name"><strong>{c.label}</strong><small>{c.due_date?"Échéance : "+fmt(c.due_date):"Aucune échéance"}</small></div>
      <strong className="yfx-fee-value">{money(c.amount)}</strong>
      <div className="yfx-fee-status"><Badge tone={tone} icon={ic}>{label}</Badge>
-       {balance(c)>0&&<button type="button" className="yfx-link" onClick={()=>setActiveCharge(c.id)}>Payer</button>}</div>
+       {balance(c)>0&&(c.payment_blocked_by
+         ? <small>À régler d’abord : {c.payment_blocked_by}</small>
+         : <button type="button" className="yfx-link" onClick={()=>setActiveCharge(c.id)}>Payer</button>)}</div>
    </div>;}):<Empty>{data.finance?"Aucun frais affecté pour cette année.":"Chargement des frais…"}</Empty>}
  </Section>
  <Section title="Payer en ligne" icon="card" className="yfx-pay-box">
@@ -279,13 +282,13 @@ function Payments({m}) {
    </div>
    {method==="cash"?<p className="yfx-cash-notice">Les espèces se règlent au guichet de l'établissement. Le paiement devient visible après validation par la caisse.</p>:
     <p className="yfx-cash-notice">Airtel Money et Moov Money passent par l'intégration SingPay de l'établissement, uniquement si son compte marchand est activé.</p>}
-   {pending.length>0&&method!=="cash"&&<button className="yfx-primary" type="button" onClick={payNow}><Icon name="card" size={22}/> Payer maintenant</button>}
+   {payable.length>0&&method!=="cash"&&<button className="yfx-primary" type="button" onClick={payNow}><Icon name="card" size={22}/> Payer maintenant</button>}
    {!pending.length&&<Empty>Aucun frais restant à régler.</Empty>}
    {pending.length>0&&method==="cash"&&<button className="yfx-outline" onClick={()=>goDiscovery("requests")}>Consulter les paiements au guichet</button>}
    {activeCharge&&method!=="cash"&&<div className="yfx-payment-form" id="yfx-payment-form">
      <label>Frais à payer <select aria-label="Frais à payer" value={activeCharge} onChange={e=>setActiveCharge(e.target.value)}>
-      {pending.map(c=><option key={c.id} value={c.id}>{c.label} — {money(c.balance)}</option>)}</select></label>
-     <SingPayPayment key={activeCharge} kind="charge" objectId={activeCharge} api={api} partial defaultChannel={method==="moov"?"moov":"airtel"}/>
+      {pending.map(c=><option key={c.id} value={c.id} disabled={!!c.payment_blocked_by}>{c.label} — {money(c.balance)}</option>)}</select></label>
+     <SingPayPayment key={activeCharge} kind="charge" objectId={activeCharge} api={api} partial onPaid={refreshFinance} defaultChannel={method==="moov"?"moov":"airtel"}/>
    </div>}
  </Section>
  <Section title="Historique des paiements / Reçus" icon="receipt" action={<button className="yfx-link" onClick={()=>goDiscovery("requests")}><Icon name="download" size={16}/> Reçus d'admission</button>}>
@@ -296,7 +299,7 @@ function Payments({m}) {
  </Section>
  </>}
  {child && <Section title="Factures et reçus scolaires" icon="receipt">
-  <FinancialDocuments key={childBase} api={api} path={childBase + "/finance/documents"}/>
+  <FinancialDocuments key={childBase} api={api} revision={financeRevision} path={childBase + "/finance/documents"}/>
  </Section>}</>;
 }
 function SchoolResult({m}) {

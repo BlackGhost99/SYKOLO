@@ -53,6 +53,30 @@ class SingPayTests(TestCase):
                 "client_msisdn":intent.phone, "portefeuille":{"id":intent.wallet_id},
                 "isTransfer":False, "status":"Terminate", "result":"Success", **changes}
 
+    def test_parent_cannot_initiate_debit_until_earlier_month_is_paid(self):
+        FeeCharge.objects.filter(pk=self.charge.pk).update(due_date="2026-11-05")
+        schedule = FeeSchedule.objects.create(school=self.school, year=self.year, code="octobre",
+            label="Mensualité octobre", amount=10000, currency="XAF")
+        october = FeeCharge.objects.create(school=self.school, enrollment=self.enrollments[0],
+            schedule=schedule, label=schedule.label, amount=10000, currency="XAF", due_date="2026-10-05")
+        finance = f"/api/v1/parents/children/{october.enrollment.student_id}/finance?year={self.year.pk}"
+        before = {item["id"]: item for item in self.client.get(finance).json()["charges"]}
+        self.assertEqual(before[str(self.charge.pk)]["payment_blocked_by"], october.label)
+        self.assertIn("octobre", self.client.get(self.root+"/quote").json()["payment_order_error"])
+        response, provider = self.start()
+        self.assertEqual(response.status_code, 409, response.content)
+        provider.assert_not_called()
+        self.assertFalse(SingPayIntent.objects.exists())
+
+        FeePayment.objects.create(school=self.school, charge=october, amount=10000, currency="XAF",
+            method="especes", paid_on="2026-10-05", idempotency_key=uuid.uuid4())
+        after = {item["id"]: item for item in self.client.get(finance).json()["charges"]}
+        self.assertIsNone(after[str(self.charge.pk)]["payment_blocked_by"])
+        self.assertEqual(self.client.get(self.root+"/quote").json()["payment_order_error"], "")
+        response, provider = self.start()
+        self.assertEqual(response.status_code, 201, response.content)
+        provider.assert_called_once()
+
     def test_initiation_is_pending_not_credit_and_replay_is_one_debit(self):
         response, provider = self.start()
         self.assertEqual(response.status_code,201,response.content)
@@ -196,8 +220,21 @@ class SingPayTests(TestCase):
         self.assertEqual(checked.json(), {"verified": True, "revision": 2})
         self.assertEqual(provider.call_args.args[1:], ("GET", f"/portefeuille/api/{self.merchant.wallet_id}"))
         self.assertEqual(provider.call_args.kwargs, {"include_wallet_header": False})
-        with patch("institutions.singpay_service._request", return_value={"id": "other-wallet"}):
-            self.assertEqual(self.write(path + "/verify", {}).status_code, 502)
+        for payload in (
+            {"portefeuille": {"_id": self.merchant.wallet_id}},
+            {"data": {"wallet": {"id": self.merchant.wallet_id}}},
+        ):
+            with self.subTest(payload=payload), patch("institutions.singpay_service._request", return_value=payload):
+                self.assertEqual(self.write(path + "/verify", {}).status_code, 200)
+        for payload in (
+            {"id": "other-wallet"},
+            {"data": {"id": "other-wallet"}},
+            {"data": {"unrelated": {"id": self.merchant.wallet_id}}},
+            {"success": False, "data": {"id": self.merchant.wallet_id}},
+            {"id": "other-wallet", "data": {"id": self.merchant.wallet_id}},
+        ):
+            with self.subTest(payload=payload), patch("institutions.singpay_service._request", return_value=payload):
+                self.assertEqual(self.write(path + "/verify", {}).status_code, 502)
         from urllib.error import HTTPError
         with patch("institutions.singpay_service._request",
                    side_effect=HTTPError("https://example.invalid", 401, "provider-private", {}, None)):

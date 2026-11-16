@@ -103,3 +103,34 @@ test("WhatsApp prepares a reminder for the selected family alongside the YEM act
   await user.keyboard("{Enter}");
   expect(screen.getByRole("button", {name:"Préparer la relance WhatsApp"}).disabled).toBe(true);
 });
+
+test("la caisse affecte d’abord le montant à la mensualité la plus ancienne", async () => {
+  const october = {id:"october", label:"Octobre", balance:"10000", currency:"XAF", due_date:"2026-10-05", monthly:true};
+  const january = {id:"january", label:"Janvier", balance:"20000", currency:"XAF", due_date:"2027-01-05", monthly:true};
+  const report = {currency:"XAF", today:{date:"2026-11-15", total:"0", count:0, by_method:{}, payments:[]},
+    yesterday:{total:"0", count:0}};
+  const fetchMock = vi.fn(async (path, options) => {
+    if (path.includes("finance/batches")) return Response.json({id:"batch", total:"15000", currency:"XAF"});
+    if (path.includes("overview/students")) return Response.json({students:[{id:"student", active:true,
+      last_name:"Essai", first_name:"Lina", enrollment:{id:"enrollment", classroom:{name:"CM1"}}}]});
+    if (path.includes("finance/charges")) return Response.json({charges:[january, october]});
+    return Response.json(report);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<LivePayments schoolId="school" canReceive/>);
+  const user = userEvent.setup();
+  await screen.findByRole("option", {name:/Essai Lina/});
+  await user.selectOptions(screen.getByLabelText(/Élève/), "enrollment");
+  const octoberButton = await screen.findByRole("button", {name:/Octobre/});
+  expect(octoberButton.className).toContain("active");
+  await user.click(screen.getByRole("button", {name:/Janvier/}));
+  const amount = screen.getByLabelText(/Montant saisi/);
+  await user.clear(amount);
+  await user.type(amount, "15000");
+  await user.click(screen.getByRole("button", {name:"Valider le paiement"}));
+  const [, request] = fetchMock.mock.calls.find(([path]) => path.includes("finance/batches"));
+  expect(JSON.parse(request.body).lines).toEqual([
+    {charge:"october", amount:"10000.00"},
+    {charge:"january", amount:"5000.00"},
+  ]);
+});

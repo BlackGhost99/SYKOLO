@@ -379,6 +379,33 @@ class MultiFeeReceiptTests(TestCase):
             self.base + "charges/" + str(uuid.uuid4()) + "/invoice"
         ).status_code, 404)
 
+    def test_monthly_payments_must_cover_earlier_months_in_order(self):
+        for charge, label, day in zip(
+            self.charges[:2], ("Scolarité octobre", "Scolarité janvier"), ("2026-10-05", "2027-01-05"),
+        ):
+            FeeCharge.objects.filter(pk=charge.pk).update(label=label, due_date=day)
+        january = str(self.charges[1].pk)
+        single = {"charge": january, "amount": "10000", "method": "virement",
+                  "reference": "", "paid_on": timezone.localdate().isoformat(),
+                  "idempotency_key": str(uuid.uuid4())}
+        response = self.client.post(self.base+"payments", json.dumps(single),
+            content_type="application/json", HTTP_X_CSRFTOKEN=self.token)
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertIn("octobre", response.json()["error"])
+        response = self.send(self.payload(amounts=("49999.99", "20000")))
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertFalse(FeePayment.objects.exists())
+
+        # An advance is allowed once the earlier month's full balance is included.
+        payload = self.payload(amounts=("50000", "20000"))
+        payload["lines"].reverse()
+        response = self.send(payload)
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(self.send(payload).status_code, 200)
+        response = self.client.post(self.base+"payments", json.dumps(single),
+            content_type="application/json", HTTP_X_CSRFTOKEN=self.token)
+        self.assertEqual(response.status_code, 201, response.content)
+
     def test_historical_documents_can_be_opened_and_downloaded_without_writes(self):
         unit = FeePayment.objects.create(
             school=self.school, charge=self.charges[0], amount=Decimal("5000.00"),

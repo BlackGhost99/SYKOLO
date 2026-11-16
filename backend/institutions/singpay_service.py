@@ -15,6 +15,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from .finance_models import FeeCharge, FeePayment
+from .finance_payment_order import payment_order_error
+from .models import School
 from .parent_payment_models import ParentPaymentAttempt
 from .parent_payment_service import decrypt_secret, ProviderError
 from .singpay_models import SingPayIntent, SingPayEvent
@@ -77,8 +79,19 @@ def verify_wallet_access(merchant):
         raise WalletVerificationError(f"SingPay a répondu avec le code HTTP {exc.code} lors de la consultation.") from None
     except ProviderError:
         raise WalletVerificationError("YEM ne peut pas lire les identifiants enregistrés ou obtenir une réponse exploitable de SingPay.") from None
-    if (wallet.get("id") or wallet.get("_id")) != merchant.wallet_id:
-        raise WalletVerificationError("La réponse SingPay ne confirme pas le Wallet ID enregistré.")
+    if wallet.get("error") or wallet.get("success") is False:
+        raise WalletVerificationError("SingPay a signalé un échec dans sa réponse à la consultation.")
+    # A wallet may be sent directly or wrapped in a response object. Match the
+    # wallet object only, never an ID found elsewhere in the payload.
+    candidates = [wallet.get("portefeuille"), wallet.get("wallet"), wallet.get("data")]
+    if isinstance(wallet.get("data"), dict):
+        candidates.extend([wallet["data"].get("portefeuille"), wallet["data"].get("wallet")])
+    records = [record for record in [wallet, *candidates]
+               if isinstance(record, dict) and ("id" in record or "_id" in record)]
+    if not records:
+        raise WalletVerificationError("SingPay a répondu sans identifiant de portefeuille reconnu.")
+    if any((record.get("id") or record.get("_id")) != merchant.wallet_id for record in records):
+        raise WalletVerificationError("SingPay a renvoyé un Wallet ID différent de celui enregistré dans YEM.")
 
 
 def _request(merchant, method, path, payload=None, *, include_wallet_header=True):
@@ -179,7 +192,9 @@ def reconcile(intent, merchant):
     response = provider_request(merchant, "GET", "/transaction/api/search/by-reference/"+intent.reference)
     verified = verified_transaction(intent, response)
     with transaction.atomic():
-        # Lock charge before intent, same order as parent initiation and manual ledger.
+        # Lock in the same order as initiation, manual payments and reversals.
+        if intent.charge_id:
+            School.objects.select_for_update(no_key=True).get(pk=intent.school_id)
         charge = FeeCharge.objects.select_for_update().get(pk=intent.charge_id) if intent.charge_id else None
         if intent.admission_id:
             from .parent_admission_models import ParentAdmissionRequest
@@ -216,7 +231,8 @@ def reconcile(intent, merchant):
                     row.state = "test_success"  # Test wallets never reduce real debt.
                 elif charge:
                     from .finance_views import cleared_total
-                    if cleared_total(charge) + row.amount_xaf > charge.amount:
+                    if (cleared_total(charge) + row.amount_xaf > charge.amount - charge.scholarship_discount
+                            or payment_order_error([charge], {})):
                         row.state = "review"  # Money received, allocation conflict: preserve evidence.
                     else:
                         row.payment = FeePayment.objects.create(

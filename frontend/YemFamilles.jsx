@@ -76,6 +76,7 @@ export default function YemFamilles({api, accountView, onLogout, onSchoolWorkspa
   const [dataErrors, setDataErrors] = useState({});
   const [notifications, setNotifications] = useState(null);
   const [activeCharge, setActiveCharge] = useState("");
+  const [financeRevision, setFinanceRevision] = useState(0);
   const child = children.find(c => c.student === selected);
   const childId = child?.student;
   const childBase = childId ? "parents/children/" + childId : "";
@@ -137,7 +138,7 @@ export default function YemFamilles({api, accountView, onLogout, onSchoolWorkspa
         setData({...EMPTY, ...next});setDataErrors(errors);
       });
     return () => {alive = false;};
-  }, [api, childBase, year]);
+  }, [api, childBase, year, financeRevision]);
 
   const enrollment = enrollments?.find(row => row.year_id === year);
   const gradeRows = data.grades?.grades || [];
@@ -180,6 +181,7 @@ export default function YemFamilles({api, accountView, onLogout, onSchoolWorkspa
     attendancePercent, financial, charges, paid, billed, due,
     reportMean, publishedReport, observations, future, name, child, childBase,
     currentYearLabel, alerts, firstName, feesReady, paymentsAvailable,
-    activeCharge, setActiveCharge, gradeEmpty
+    activeCharge, setActiveCharge, gradeEmpty, financeRevision,
+    refreshFinance: () => setFinanceRevision(revision => revision + 1)
   }}/>;
 }
