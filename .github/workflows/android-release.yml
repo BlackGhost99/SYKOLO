@@ -48,6 +48,7 @@ jobs:
           import json
           from pathlib import Path
           data = json.loads(Path("android/app/google-services.json").read_text())
+          assert data.get("project_info", {}).get("project_id") == "sykolo", "Firebase project does not match YEM"
           assert any(c.get("client_info", {}).get("android_client_info", {}).get("package_name") == "com.bwetek.yem.parents" for c in data["client"]), "Firebase package does not match YEM Parents"
           PY
           gradle -p android :app:assembleRelease :app:lintRelease --no-daemon
