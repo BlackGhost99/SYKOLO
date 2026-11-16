@@ -106,7 +106,7 @@ final class FamilyAlerts {
         if (inFlight || !manager.areNotificationsEnabled()) return;
         if (Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
         String session = sessionCookie(CookieManager.getInstance().getCookie(origin + "/"));
-        if (session == null) { account = null; baseline.clear(); FamilyPush.clearBinding(activity); manager.cancel(NOTIFICATION); return; }
+        if (session == null) { account = null; baseline.clear(); manager.cancel(NOTIFICATION); return; }
         long expected = generation;
         inFlight = true;
         worker.execute(() -> {
@@ -132,7 +132,7 @@ final class FamilyAlerts {
             handler.post(() -> {
                 inFlight = false;
                 if (!visible || !optedIn() || expected != generation || !session.equals(sessionCookie(CookieManager.getInstance().getCookie(origin + "/")))) return;
-                if (!ok) { account = null; baseline.clear(); FamilyPush.clearBinding(activity); manager.cancel(NOTIFICATION); return; }
+                if (!ok) { account = null; baseline.clear(); manager.cancel(NOTIFICATION); return; }
                 if (id.equals(account)) {
                     Set<String> added = new HashSet<>(items);
                     added.removeAll(baseline);

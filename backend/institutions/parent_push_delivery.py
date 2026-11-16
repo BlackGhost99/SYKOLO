@@ -6,26 +6,23 @@ from django.utils.crypto import constant_time_compare
 from .family_notification_models import SchoolFamilyNotification as Notice
 from .parent_push_models import ParentPushDevice, ParentPushDelivery
 from .parent_push_transport import PushError
-from .parent_push_views import push_cipher
+from .parent_push_views import push_cipher, binding_for
 
 
 def active_device(device, now):
-    user, session = device.parent, device.session
-    if not user.is_active or user.is_superuser or session.expire_date <= now:
-        return False
-    data = session.get_decoded()
-    return (data.get("login_scope") == "parent" and not data.get("school_id")
-            and str(data.get("_auth_user_id")) == str(user.pk)
-            and constant_time_compare(data.get("_auth_user_hash", ""), user.get_session_auth_hash()))
+    user = device.parent
+    return bool(user.is_active and not user.is_superuser and device.valid_until
+                and device.valid_until > now and device.auth_binding
+                and constant_time_compare(device.auth_binding, binding_for(user)))
 
 
 def enqueue(limit=200):
     now = timezone.now()
     devices = ParentPushDevice.objects.select_related("parent", "session").filter(
-        session__expire_date__gt=now, parent__is_active=True, parent__is_superuser=False
+        valid_until__gt=now, parent__is_active=True, parent__is_superuser=False
     ).order_by("pk")
     created = 0
-    # Session lifetime is at most eight hours. No historic backlog or inactive school alerts.
+    # Independent notification lease; process only fresh events.
     for device in devices.iterator(chunk_size=100):
         if not active_device(device, now):
             continue

@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 
 /** Optional FCM device registration. No token or credentials are logged. */
 final class FamilyPush {
-    private static final long VALID_MS = 8L * 60 * 60 * 1000;
+    private static final long VALID_MS = 30L * 24 * 60 * 60 * 1000;
     private static final Object LOCK = new Object();
     private static long lastTry;
 
@@ -49,7 +49,7 @@ final class FamilyPush {
         if (!store.getBoolean("family_alerts", false) || store.getLong("bound_until", 0) <= System.currentTimeMillis()) return false;
         try {
             String session = namedCookie(CookieManager.getInstance().getCookie("https://yem-api.onrender.com/"), "sessionid");
-            return session != null && sessionDigest(session).equals(store.getString("bound_session", ""));
+            return session == null || sessionDigest(session).equals(store.getString("bound_session", ""));
         } catch (Exception ignored) { return false; }
     }
 
@@ -64,7 +64,7 @@ final class FamilyPush {
         synchronized (LOCK) {
             long now = System.currentTimeMillis();
             if (now - lastTry < 60_000L) return;
-            if (hasBinding(context) && prefs(context).getLong("bound_until", 0) - now > VALID_MS - 15 * 60_000L) return;
+            if (hasBinding(context) && prefs(context).getLong("bound_until", 0) - now > VALID_MS - 24 * 60 * 60_000L) return;
             lastTry = now;
             try {
                 // Auto-init remains off; request token explicitly after consent.

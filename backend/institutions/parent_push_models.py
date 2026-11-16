@@ -9,7 +9,9 @@ class ParentPushDevice(models.Model):
     token_digest = models.CharField(max_length=64, unique=True)
     encrypted_token = models.TextField()
     parent = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="yem_parent_push")
+    session = models.OneToOneField(Session, on_delete=models.SET_NULL, null=True, blank=True, related_name="yem_parent_push")
+    auth_binding = models.CharField(max_length=64, blank=True, default="")
+    valid_until = models.DateTimeField(null=True, blank=True, db_index=True)
     registered_at = models.DateTimeField(auto_now_add=True)
     refreshed_at = models.DateTimeField(auto_now=True)
 
@@ -25,3 +27,13 @@ class ParentPushDelivery(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["device", "notice"], name="unique_parent_push_delivery")]
         indexes = [models.Index(fields=["state", "next_try"], name="yem_push_due")]
+
+
+from django.contrib.auth.signals import user_logged_out
+from django.dispatch import receiver
+
+
+@receiver(user_logged_out, dispatch_uid="yem_revoke_parent_push_on_logout")
+def revoke_parent_push(sender, request, user, **kwargs):
+    if request is not None and user is not None and request.session.session_key:
+        ParentPushDevice.objects.filter(parent=user, session_id=request.session.session_key).delete()

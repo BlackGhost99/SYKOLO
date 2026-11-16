@@ -2,6 +2,8 @@
 import base64
 import hashlib
 import re
+from datetime import timedelta
+from django.utils.crypto import salted_hmac
 
 from cryptography.fernet import Fernet
 from django.conf import settings
@@ -19,6 +21,10 @@ from .views import parse_body
 
 
 TOKEN = re.compile(r"[A-Za-z0-9_:\-.]{20,4096}\Z")
+
+
+def binding_for(user):
+    return salted_hmac("yem-parent-push-lease-v1", user.get_session_auth_hash(), algorithm="sha256").hexdigest()
 
 
 def push_cipher():
@@ -51,29 +57,38 @@ def push_device(request):
     encrypted = push_cipher().encrypt(token.encode()).decode()
     try:
         with transaction.atomic():
-            get_user_model().objects.select_for_update().get(pk=request.user.pk, is_active=True)
+            user = get_user_model().objects.select_for_update().get(pk=request.user.pk, is_active=True)
+            now = timezone.now()
+            until = now + timedelta(days=30)
+            binding = binding_for(user)
             if not Session.objects.select_for_update().filter(session_key=session_key, expire_date__gt=timezone.now()).exists():
                 return JsonResponse({"error": "Session expirée."}, status=401)
             existing = ParentPushDevice.objects.select_for_update().filter(token_digest=digest).first()
+            if existing and existing.valid_until is not None and existing.valid_until <= now:
+                existing.delete()
+                existing = None
             if existing and existing.parent_id != request.user.pk:
                 # A different account must explicitly revoke the old registration first.
                 # Avoid allowing a stolen token to displace another family.
                 return JsonResponse({"error": "Appareil déjà associé à un autre compte."}, status=409)
             current = ParentPushDevice.objects.filter(session_id=session_key, parent=request.user).first()
-            if existing and current and existing.pk == current.pk:
-                existing.encrypted_token = encrypted
-                existing.save(update_fields=["encrypted_token", "refreshed_at"])
-                return JsonResponse({"registered": True})
-            live = ParentPushDevice.objects.filter(parent=request.user, session__expire_date__gt=timezone.now()).exclude(session_id=session_key)
+            if current and existing and current.pk != existing.pk:
+                current.delete()
+                current = None
             if existing:
-                live = live.exclude(pk=existing.pk)
+                existing.session_id = session_key
+                existing.encrypted_token = encrypted
+                existing.auth_binding = binding
+                existing.valid_until = until
+                existing.save(update_fields=["session", "encrypted_token", "auth_binding", "valid_until", "refreshed_at"])
+                return JsonResponse({"registered": True})
+            live = ParentPushDevice.objects.filter(parent=request.user, valid_until__gt=now).exclude(session_id=session_key)
             if live.count() >= 10:
                 return JsonResponse({"error": "Limite d'appareils atteinte."}, status=409)
             if current:
                 current.delete()
-            if existing:
-                existing.delete()
-            ParentPushDevice.objects.create(parent=request.user, session_id=session_key, token_digest=digest, encrypted_token=encrypted)
+            ParentPushDevice.objects.create(parent=request.user, session_id=session_key, token_digest=digest,
+                encrypted_token=encrypted, auth_binding=binding, valid_until=until)
     except (IntegrityError, get_user_model().DoesNotExist):
         return JsonResponse({"error": "Session ou appareil modifié. Réessayez."}, status=409)
     return JsonResponse({"registered": True}, status=201)

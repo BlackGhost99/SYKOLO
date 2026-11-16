@@ -6,7 +6,7 @@ from django.utils import timezone
 from .models import Organization, School
 from .family_notification_models import SchoolFamilyNotification as Notice
 from .parent_push_models import ParentPushDevice, ParentPushDelivery
-from .parent_push_views import push_cipher
+from .parent_push_views import push_cipher, binding_for
 from .parent_push_delivery import enqueue, deliver
 from .parent_push_transport import PushError
 
@@ -24,7 +24,8 @@ class ParentPushDeliveryTests(TestCase):
         session.save()
         self.device = ParentPushDevice.objects.create(
             parent=self.parent, session_id=session.session_key, token_digest="synthetic",
-            encrypted_token=push_cipher().encrypt(b"fake-fcm-device-token").decode())
+            encrypted_token=push_cipher().encrypt(b"fake-fcm-device-token").decode(),
+            auth_binding=binding_for(self.parent), valid_until=timezone.now()+timedelta(days=30))
         self.transport = Mock()
 
     def notice(self, parent=None, destination=Notice.TO_PARENT):
@@ -85,5 +86,22 @@ class ParentPushDeliveryTests(TestCase):
         enqueue()
         self.parent.set_password("different-password-after-registration")
         self.parent.save()
+        self.assertEqual(deliver(self.transport)["skipped"], 1)
+        self.transport.send.assert_not_called()
+
+
+    def test_notification_lease_survives_expired_session_cleanup(self):
+        from django.contrib.sessions.models import Session
+        Session.objects.filter(pk=self.device.session_id).update(expire_date=timezone.now()-timedelta(seconds=1))
+        Session.objects.filter(pk=self.device.session_id).delete()
+        self.device.refresh_from_db()
+        self.assertIsNone(self.device.session_id)
+        self.notice()
+        self.assertEqual(enqueue(), 1)
+        self.assertEqual(deliver(self.transport)["accepted"], 1)
+        self.transport.reset_mock()
+        self.notice()
+        enqueue()
+        ParentPushDevice.objects.filter(pk=self.device.pk).update(valid_until=timezone.now()-timedelta(seconds=1))
         self.assertEqual(deliver(self.transport)["skipped"], 1)
         self.transport.send.assert_not_called()
