@@ -1,5 +1,16 @@
 plugins { id 'com.android.application' }
 
+// Firebase configuration has project identifiers, not service-account credentials.
+// Builds without it remain usable for foreground alerts and web functionality.
+if (file('google-services.json').isFile()) {
+    apply plugin: 'com.google.gms.google-services'
+}
+
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:35.2.0')
+    implementation 'com.google.firebase:firebase-messaging'
+}
+
 android {
     namespace 'com.bwetek.yem.parents'
     compileSdk 35

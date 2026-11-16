@@ -52,16 +52,17 @@ final class FamilyAlerts {
     }
 
     private boolean optedIn() {
-        return activity.getPreferences(Activity.MODE_PRIVATE).getBoolean("family_alerts", false);
+        return FamilyPush.prefs(activity).getBoolean("family_alerts", false);
     }
 
     void toggle() {
         boolean enabled = !optedIn();
-        activity.getPreferences(Activity.MODE_PRIVATE).edit().putBoolean("family_alerts", enabled).apply();
+        FamilyPush.prefs(activity).edit().putBoolean("family_alerts", enabled).apply();
+        if (!enabled) FamilyPush.disable(activity, origin);
         reset();
         if (enabled && Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             activity.requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 71);
-        Toast.makeText(activity, enabled ? "Alertes activées si autorisées par Android, pendant l’utilisation de YEM." : "Alertes désactivées.", Toast.LENGTH_LONG).show();
+        Toast.makeText(activity, enabled ? "Alertes activées si autorisées par Android. Les push dépendent de la configuration YEM." : "Alertes désactivées.", Toast.LENGTH_LONG).show();
         if (visible && enabled) handler.post(tick);
     }
 
@@ -105,7 +106,7 @@ final class FamilyAlerts {
         if (inFlight || !manager.areNotificationsEnabled()) return;
         if (Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
         String session = sessionCookie(CookieManager.getInstance().getCookie(origin + "/"));
-        if (session == null) { account = null; baseline.clear(); manager.cancel(NOTIFICATION); return; }
+        if (session == null) { account = null; baseline.clear(); FamilyPush.clearBinding(activity); manager.cancel(NOTIFICATION); return; }
         long expected = generation;
         inFlight = true;
         worker.execute(() -> {
@@ -117,6 +118,7 @@ final class FamilyAlerts {
                 JSONObject user = me.optJSONObject("user");
                 if (me.optBoolean("authenticated") && "parent".equals(me.optString("login_scope")) && user != null && !user.optBoolean("is_platform_admin")) {
                     identity = user.getString("id");
+                    FamilyPush.refresh(activity, origin, session);
                     JSONArray rows = get("/api/v1/parents/notifications", session).getJSONArray("notifications");
                     for (int i = 0; i < rows.length(); i++) {
                         JSONObject row = rows.getJSONObject(i);
@@ -130,11 +132,11 @@ final class FamilyAlerts {
             handler.post(() -> {
                 inFlight = false;
                 if (!visible || !optedIn() || expected != generation || !session.equals(sessionCookie(CookieManager.getInstance().getCookie(origin + "/")))) return;
-                if (!ok) { account = null; baseline.clear(); manager.cancel(NOTIFICATION); return; }
+                if (!ok) { account = null; baseline.clear(); FamilyPush.clearBinding(activity); manager.cancel(NOTIFICATION); return; }
                 if (id.equals(account)) {
                     Set<String> added = new HashSet<>(items);
                     added.removeAll(baseline);
-                    if (!added.isEmpty()) notifyUpdate();
+                    if (!added.isEmpty() && !FamilyPush.hasBinding(activity)) notifyUpdate();
                 }
                 // First reading or changed account is a silent baseline.
                 account = id;
