@@ -160,6 +160,34 @@ class MultiFeeReceiptTests(TestCase):
         self.assertEqual(FeePaymentBatch.objects.count(), 1)
         self.assertEqual(FeePayment.objects.count(), 2)
 
+    def test_operation_key_cannot_be_reused_across_single_and_batch_endpoints(self):
+        def single(key):
+            body = {"charge": str(self.charges[0].pk), "amount": "1000",
+                    "method": "especes", "reference": "CAISSE-GABON-001",
+                    "paid_on": timezone.localdate().isoformat(), "idempotency_key": key}
+            return self.client.post(self.base + "payments", json.dumps(body),
+                content_type="application/json", HTTP_X_CSRFTOKEN=self.token)
+
+        batch_key = str(uuid.uuid4())
+        batch = self.send(self.payload(("1000", "2000"), idem=batch_key))
+        self.assertEqual(batch.status_code, 201, batch.content)
+        self.assertEqual(single(batch_key).status_code, 409)
+        # The derived key of a batch line cannot be replayed via the single route.
+        line = FeePayment.objects.get(batch_id=batch.json()["id"], charge=self.charges[0])
+        self.assertEqual(single(str(line.idempotency_key)).status_code, 409)
+        self.assertEqual(FeePayment.objects.count(), 2)
+        self.assertEqual(self.send(self.payload(("1000", "2000"), idem=batch_key)).status_code, 200)
+
+        single_key = str(uuid.uuid4())
+        first = single(single_key)
+        self.assertEqual(first.status_code, 201, first.content)
+        self.assertEqual(self.send(self.payload(("1000", "2000"), idem=single_key)).status_code, 409)
+        replay = single(single_key)
+        self.assertEqual(replay.status_code, 200, replay.content)
+        self.assertEqual(first.json()["id"], replay.json()["id"])
+        self.assertEqual(FeePaymentBatch.objects.count(), 1)
+        self.assertEqual(FeePayment.objects.count(), 3)
+
     def test_cross_school_enrollment_and_mixed_currency_rejected(self):
         cross_school = self.payload()
         cross_school["lines"][1]["charge"] = str(uuid.uuid4())

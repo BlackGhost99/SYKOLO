@@ -22,7 +22,7 @@ from accounts.views import authorized
 from .finance_document_pdf import previewable_pdf
 
 from .academic_models import AcademicYear, AcademicClass
-from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid
+from .finance_models import FeeSchedule, FeeCharge, FeePayment, FeePaymentVoid, FeePaymentBatch
 from .finance_cash_policy import CASH_METHODS, cash_closed_for_recorder
 from .finance_evidence import classify_payment
 from .finance_payment_order import monthly_blockers, monthly_charge, payment_order_error, tuition_like
@@ -499,8 +499,12 @@ def payments(request, school_id):
                 return JsonResponse({"error": "Frais affecté introuvable."}, status=404)
             if classify_payment(method, charge.label) == "simulation":
                 return JsonResponse({"error": "Paiement sur un frais explicitement DÉMO interdit en caisse réelle."}, status=422)
+            if FeePaymentBatch.objects.filter(school=school, idempotency_key=idem).exists():
+                return JsonResponse({"error": "Clé déjà utilisée pour un encaissement groupé. Consultez son reçu."}, status=409)
             previous = FeePayment.objects.filter(school=school, idempotency_key=idem).first()
             if previous:
+                if previous.batch_id is not None or previous.method == "singpay":
+                    return JsonResponse({"error": "Clé réservée à une autre opération de paiement."}, status=409)
                 same = (previous.charge_id == charge.pk and previous.amount == amount
                     and previous.method == method and previous.reference == reference.strip()
                     and previous.paid_on == paid_on)
