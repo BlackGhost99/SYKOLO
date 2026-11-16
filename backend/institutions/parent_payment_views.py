@@ -541,9 +541,12 @@ def family_notifications(request):
     messages.extend(unpaid_tuition_notifications(request.user))
     from .family_notification_models import SchoolFamilyNotification
     from .family_notification_views import notice_output
-    inbox = SchoolFamilyNotification.objects.select_related("school", "parent").filter(
+    from .pedagogical_family_notices import visible_notices
+    inbox = visible_notices(request.user, SchoolFamilyNotification.objects.select_related("school", "parent")).filter(
         parent=request.user, destination=SchoolFamilyNotification.TO_PARENT,
         school__is_active=True,
-    ).order_by("-created_at")[:100]
+    ).exclude(event_key__startswith="push-source:").order_by("-created_at")[:100]
     messages.extend(notice_output(item) for item in inbox)
+    from .parent_push_sources import singpay_notifications
+    messages.extend(singpay_notifications(request.user))
     return JsonResponse({"notifications": sorted(messages, key=lambda x: x["at"], reverse=True)[:100]})

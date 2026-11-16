@@ -19,11 +19,14 @@ class SchoolFamilyNotification(models.Model):
     existing_request = models.ForeignKey(ExistingStudentLinkRequest, on_delete=models.PROTECT, null=True, blank=True, related_name="notification_messages")
     destination = models.CharField(max_length=10, choices=DIRECTION_CHOICES)
     origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES)
+    student = models.ForeignKey("institutions.Student", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    event_key = models.CharField(max_length=120, blank=True, default="")
     message = models.CharField(max_length=700)
     read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        constraints = [models.UniqueConstraint(fields=["school", "parent", "event_key"], condition=~models.Q(event_key=""), name="unique_family_notice_event")]
         indexes = [
             models.Index(fields=["school", "destination", "-created_at"], name="yem_family_inbox_school"),
             models.Index(fields=["parent", "destination", "-created_at"], name="yem_family_inbox_parent"),

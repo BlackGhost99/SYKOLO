@@ -173,6 +173,8 @@ def publish_report(request,school_id,report_id):
             return JsonResponse({"error":"Aucun résultat calculé, publication impossible."},status=422)
         r.status="published";r.published_at=timezone.now();r.revision+=1;r.save(update_fields=["status","published_at","revision"])
         log_event(school,request,"report_published",r.pk)
+        from .pedagogical_family_notices import notify_students
+        notify_students(school, [(r.enrollment.student_id, f"report:{r.pk}")], "Un nouveau bulletin est disponible dans le dossier scolaire.")
     return JsonResponse(report_output(r,True))
 
 
@@ -192,6 +194,10 @@ def publish_assessment(request,school_id,assessment_id):
         if a.revision!=data["revision"]:return JsonResponse({"error":"Conflit de version.","revision":a.revision},status=409)
         a.published=True;a.revision+=1;a.save(update_fields=["published","revision"])
         log_event(school,request,"assessment_published",a.pk)
+        from .assessment_models import AssessmentGrade
+        from .pedagogical_family_notices import notify_students
+        grades = AssessmentGrade.objects.filter(school=school, assessment=a, enrollment__school=school, enrollment__year=a.course.year, enrollment__classroom=a.course.classroom).exclude(status="empty")
+        notify_students(school, [(student_id, f"grade:{pk}") for student_id, pk in grades.values_list("enrollment__student_id", "pk")], "Un nouveau résultat d’évaluation est disponible.")
     return JsonResponse({"id":str(a.pk),"published":True,"revision":a.revision})
 
 

@@ -138,8 +138,16 @@ def sign_in(request):
             failure(key)
             audit(request, "mfa_failed", user)
             return JsonResponse({"error": "Code de vérification invalide.", "mfa_required": True}, status=401)
-    request.session.flush()
-    login(request, user)
+    from django.contrib.sessions.models import Session
+    from institutions.parent_push_models import ParentPushDevice
+    from django.db import transaction
+    with transaction.atomic():
+        previous_key = request.session.session_key
+        if previous_key:
+            Session.objects.select_for_update().filter(session_key=previous_key).first()
+            ParentPushDevice.objects.filter(session_id=previous_key).delete()
+        request.session.flush()
+        login(request, user)
     request.session["login_scope"] = scope
     if school:
         request.session["school_id"] = str(school.pk)
@@ -155,8 +163,13 @@ def sign_in(request):
 @authorized
 def sign_out(request):
     user = request.user
-    audit(request, "logout", user)
-    logout(request)
+    from django.contrib.sessions.models import Session
+    from django.db import transaction
+    with transaction.atomic():
+        if request.session.session_key:
+            Session.objects.select_for_update().filter(session_key=request.session.session_key).first()
+        audit(request, "logout", user)
+        logout(request)
     return JsonResponse({"authenticated": False})
 
 

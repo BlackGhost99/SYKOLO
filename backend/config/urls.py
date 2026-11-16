@@ -10,6 +10,7 @@ urlpatterns = [
     path("offline.html", pwa_asset, {"name":"offline.html"}),
     path("icons/icon-192.png", pwa_asset, {"name":"icons/icon-192.png"}),
     path("icons/icon-512.png", pwa_asset, {"name":"icons/icon-512.png"}),
+    path("parents-app/", views.index),
     path("", views.index),
     path("healthz", views.health),
     path("readyz", views.ready),

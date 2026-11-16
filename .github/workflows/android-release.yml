@@ -1,0 +1,71 @@
+name: YEM Parents APK (release)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    # Never sign arbitrary feature-branch code or pull requests.
+    if: github.ref == 'refs/heads/main'
+    environment: android-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: "platforms;android-35 build-tools;35.0.0"
+          log-accepted-android-sdk-licenses: "false"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: Build non-debuggable release using protected credentials
+        env:
+          YEM_FIREBASE_ANDROID_JSON_B64: ${{ secrets.YEM_FIREBASE_ANDROID_JSON_B64 }}
+          YEM_ANDROID_KEYSTORE_B64: ${{ secrets.YEM_ANDROID_KEYSTORE_B64 }}
+          YEM_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.YEM_ANDROID_KEYSTORE_PASSWORD }}
+          YEM_ANDROID_KEY_ALIAS: ${{ secrets.YEM_ANDROID_KEY_ALIAS }}
+          YEM_ANDROID_KEY_PASSWORD: ${{ secrets.YEM_ANDROID_KEY_PASSWORD }}
+          YEM_ANDROID_SIGNER_SHA256: ${{ vars.YEM_ANDROID_SIGNER_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for key in YEM_FIREBASE_ANDROID_JSON_B64 YEM_ANDROID_KEYSTORE_B64 YEM_ANDROID_KEYSTORE_PASSWORD YEM_ANDROID_KEY_ALIAS YEM_ANDROID_KEY_PASSWORD YEM_ANDROID_SIGNER_SHA256; do
+            if [ -z "${!key:-}" ]; then echo "Missing release configuration: $key"; exit 1; fi
+          done
+          export YEM_ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/yem-release.jks"
+          trap 'rm -f "$YEM_ANDROID_KEYSTORE_PATH" android/app/google-services.json' EXIT
+          printf '%s' "$YEM_ANDROID_KEYSTORE_B64" | base64 --decode > "$YEM_ANDROID_KEYSTORE_PATH"
+          printf '%s' "$YEM_FIREBASE_ANDROID_JSON_B64" | base64 --decode > android/app/google-services.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("android/app/google-services.json").read_text())
+          assert data.get("project_info", {}).get("project_id") == "sykolo", "Firebase project does not match YEM"
+          assert any(c.get("client_info", {}).get("android_client_info", {}).get("package_name") == "com.bwetek.yem.parents" for c in data["client"]), "Firebase package does not match YEM Parents"
+          PY
+          gradle -p android :app:assembleRelease :app:lintRelease --no-daemon
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/yem-apk-cert.txt"
+          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/yem-apk-cert.txt" | tr '[:upper:]' '[:lower:]' | tr -d ':')
+          expected=$(printf '%s' "$YEM_ANDROID_SIGNER_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d ': ')
+          test "${#expected}" -eq 64
+          test "$actual" = "$expected"
+          ! "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -q application-debuggable
+          sha256sum "$apk" > android/app/build/outputs/apk/release/app-release.apk.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yem-parents-release
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/app-release.apk.sha256
+          if-no-files-found: error
+          retention-days: 30

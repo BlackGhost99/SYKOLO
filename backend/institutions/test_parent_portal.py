@@ -470,3 +470,50 @@ class ParentPortalTests(TestCase):
         self.assertEqual(self.client.get(self.path(suffix="/reports")).status_code, 404)
         self.client.logout()
         self.assertEqual(self.client.get(self.portal).status_code, 401)
+
+
+    def test_pedagogical_notice_is_idempotent_and_revocable(self):
+        from .pedagogical_family_notices import notify_students
+        from .family_notification_models import SchoolFamilyNotification
+        self.link()
+        self.link(index=1, user=self.parent_b)
+        args = (self.school, [(self.students[0].pk, "report:synthetic")], "Nouveau bulletin.")
+        notify_students(*args)
+        notify_students(*args)
+        rows = SchoolFamilyNotification.objects.filter(event_key="report:synthetic")
+        self.assertEqual(rows.count(), 1)
+        self.assertEqual(rows.get().parent_id, self.parent_a.pk)
+        notice = rows.get()
+        self.login(self.parent_b)
+        self.assertNotIn(str(notice.pk), [n["id"] for n in self.client.get("/api/v1/parents/notifications").json()["notifications"]])
+        self.login(self.parent_a)
+        self.assertIn(str(notice.pk), [n["id"] for n in self.client.get("/api/v1/parents/notifications").json()["notifications"]])
+        GuardianAccountLink.objects.filter(user=self.parent_a).update(active=False)
+        self.assertNotIn(str(notice.pk), [n["id"] for n in self.client.get("/api/v1/parents/notifications").json()["notifications"]])
+        self.assertEqual(self.write("/api/v1/parents/notification-messages/"+str(notice.pk), {"read":True}, method="patch").status_code,404)
+
+
+    def test_push_sources_do_not_duplicate_web_reminders_and_stop_after_payment(self):
+        from .parent_push_sources import materialize_sources, source_still_valid
+        from .family_notification_models import SchoolFamilyNotification
+        self.link()
+        self.link(index=1, user=self.parent_b)
+        self.add_finance(0)
+        self.add_finance(1)
+        today = timezone.localdate()
+        FeeCharge.objects.filter(school=self.school).update(due_date=today)
+        since = timezone.now() - timedelta(days=2)
+        materialize_sources(self.parent_a, since)
+        materialize_sources(self.parent_a, since)
+        rows = SchoolFamilyNotification.objects.filter(event_key__startswith="push-source:tuition:")
+        self.assertEqual(rows.count(), 1)
+        notice = rows.get()
+        self.assertEqual(notice.student_id, self.students[0].pk)
+        self.assertTrue(source_still_valid(notice, self.parent_a, since))
+        self.assertFalse(source_still_valid(notice, self.parent_b, since))
+        self.login(self.parent_a)
+        data = self.client.get("/api/v1/parents/notifications").json()["notifications"]
+        self.assertEqual(len([n for n in data if n["kind"] == "tuition_reminder"]), 1)
+        self.assertNotIn(str(notice.pk), [n["id"] for n in data])
+        FeePayment.objects.filter(charge__enrollment=self.enrollments[0]).update(amount=Decimal("120000.00"))
+        self.assertFalse(source_still_valid(notice, self.parent_a, since))
