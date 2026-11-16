@@ -470,3 +470,24 @@ class ParentPortalTests(TestCase):
         self.assertEqual(self.client.get(self.path(suffix="/reports")).status_code, 404)
         self.client.logout()
         self.assertEqual(self.client.get(self.portal).status_code, 401)
+
+
+    def test_pedagogical_notice_is_idempotent_and_revocable(self):
+        from .pedagogical_family_notices import notify_students
+        from .family_notification_models import SchoolFamilyNotification
+        self.link()
+        self.link(index=1, user=self.parent_b)
+        args = (self.school, [(self.students[0].pk, "report:synthetic")], "Nouveau bulletin.")
+        notify_students(*args)
+        notify_students(*args)
+        rows = SchoolFamilyNotification.objects.filter(event_key="report:synthetic")
+        self.assertEqual(rows.count(), 1)
+        self.assertEqual(rows.get().parent_id, self.parent_a.pk)
+        notice = rows.get()
+        self.login(self.parent_b)
+        self.assertNotIn(str(notice.pk), [n["id"] for n in self.client.get("/api/v1/parents/notifications").json()["notifications"]])
+        self.login(self.parent_a)
+        self.assertIn(str(notice.pk), [n["id"] for n in self.client.get("/api/v1/parents/notifications").json()["notifications"]])
+        GuardianAccountLink.objects.filter(user=self.parent_a).update(active=False)
+        self.assertNotIn(str(notice.pk), [n["id"] for n in self.client.get("/api/v1/parents/notifications").json()["notifications"]])
+        self.assertEqual(self.write("/api/v1/parents/notification-messages/"+str(notice.pk), {"read":True}, method="patch").status_code,404)

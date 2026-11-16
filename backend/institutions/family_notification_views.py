@@ -260,8 +260,9 @@ def parent_notice_detail(request, notice_id):
     if data != {"read": True}:
         return fail("Marquer comme lu uniquement.")
     with transaction.atomic():
-        row = Notice.objects.select_for_update().select_related("school", "parent").filter(
-            pk=notice_id, parent=request.user, destination=Notice.TO_PARENT,
+        from .pedagogical_family_notices import visible_notices
+        row = visible_notices(request.user, Notice.objects.select_for_update().select_related("school", "parent")).filter(
+            pk=notice_id, parent=request.user, destination=Notice.TO_PARENT, school__is_active=True,
         ).first()
         if row is None:
             return fail("Notification introuvable.", 404)

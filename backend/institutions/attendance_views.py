@@ -378,6 +378,9 @@ def close_session(request, school_id, session_id):
         session.revision += 1
         session.save(update_fields=["closed_at", "closed_by", "revision"])
         log_event(school, request, "attendance_session_closed", session.pk)
+        from .pedagogical_family_notices import notify_students
+        exceptions = AttendanceMark.objects.filter(school=school, session=session, enrollment__in=roster, status_group__in=["absent", "late"])
+        notify_students(school, [(student_id, f"attendance:{pk}") for student_id, pk in exceptions.values_list("enrollment__student_id", "pk")], "Une absence ou un retard a été enregistré. Consultez le suivi d’assiduité.")
     return JsonResponse(session_data(session))
 
 

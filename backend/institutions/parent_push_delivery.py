@@ -29,7 +29,8 @@ def enqueue(limit=200):
     for device in devices.iterator(chunk_size=100):
         if not active_device(device, now):
             continue
-        notices = Notice.objects.filter(
+        from .pedagogical_family_notices import visible_notices
+        notices = visible_notices(device.parent, Notice.objects.all()).filter(
             parent_id=device.parent_id, destination=Notice.TO_PARENT, school__is_active=True,
             read_at__isnull=True, created_at__gte=max(device.registered_at, now - timedelta(hours=8))
         ).exclude(parentpushdelivery__device_id=device.pk).order_by("created_at", "pk")[:max(0, limit-created)]
@@ -64,7 +65,8 @@ def deliver(transport, limit=50):
             pk = row.pk
         device = ParentPushDevice.objects.select_related("parent", "session").filter(pk=row.device_id).first()
         notice = Notice.objects.filter(pk=row.notice_id, destination=Notice.TO_PARENT, school__is_active=True, read_at__isnull=True).first()
-        if not device or not notice or notice.parent_id != device.parent_id or not active_device(device, now) or notice.created_at < device.registered_at or notice.created_at < now - timedelta(hours=8) or row.attempts > 5:
+        from .pedagogical_family_notices import visible_notices
+        if not device or not notice or notice.parent_id != device.parent_id or not visible_notices(device.parent, Notice.objects.filter(pk=row.notice_id)).exists() or not active_device(device, now) or notice.created_at < device.registered_at or notice.created_at < now - timedelta(hours=8) or row.attempts > 5:
             ParentPushDelivery.objects.filter(pk=pk).update(state="skipped", completed_at=now)
             stats["skipped"] += 1
             continue
