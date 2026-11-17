@@ -196,3 +196,22 @@ class PlatformSubscriptionTests(TestCase):
         member.access_cycle_ids=None
         member.save(update_fields=["role","access_cycle_ids"])
         self.assertEqual(self.client.get(url).status_code,403)
+
+    def test_principal_proviseur_direction_read_only_and_teacher_denied(self):
+        self.assertEqual(self.issue(period="mensuel").status_code, 201)
+        url=f"/api/v1/schools/{self.school.pk}/owner/subscriptions"
+        for role_code in ("direction", "principal", "proviseur"):
+            school_role=SchoolRole.objects.create(
+                school=self.school, code=role_code, label=role_code, permissions=["school.view"])
+            SchoolMember.objects.update_or_create(
+                school=self.school, user=self.ordinary, defaults={"role":school_role,"active":True,"access_cycle_ids":None})
+            self.client.force_login(self.ordinary)
+            response=self.client.get(url)
+            self.assertEqual(response.status_code, 200, (role_code,response.content))
+            self.assertEqual(response.json()["subscriptions"][0]["terms"]["period"], "mensuel")
+            self.assertEqual(self.client.get(self.path).status_code, 403)
+        teacher=SchoolRole.objects.create(
+            school=self.school,code="enseignant",label="Enseignant",permissions=["school.view"])
+        SchoolMember.objects.filter(school=self.school,user=self.ordinary).update(role=teacher)
+        self.assertEqual(self.client.get(url).status_code,403)
+        self.assertEqual(self.client.get("/api/v1/platform/subscription-pricing").status_code,403)
