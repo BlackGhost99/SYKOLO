@@ -50,6 +50,8 @@ urlpatterns = [
     path("platform/schools/<uuid:school_id>/subscriptions/<int:subscription_id>/invoice", subscription_views.commercial_document),
     path("platform/schools/<uuid:school_id>/subscriptions/<int:subscription_id>/payments/<int:payment_id>/receipt", subscription_views.commercial_document),
     path("schools/<uuid:school_id>/owner/subscriptions/<int:subscription_id>/invoice", subscription_views.commercial_document, {"school_scope": True}),
+    path("platform/schools/<uuid:school_id>/subscriptions/<int:subscription_id>/amendments/<int:amendment_id>/document", subscription_views.commercial_document),
+    path("schools/<uuid:school_id>/owner/subscriptions/<int:subscription_id>/amendments/<int:amendment_id>/document", subscription_views.commercial_document, {"school_scope": True}),
     path("schools/<uuid:school_id>/owner/subscriptions/<int:subscription_id>/payments/<int:payment_id>/receipt", subscription_views.commercial_document, {"school_scope": True}),
     path("platform/organizations", platform_admin_views.platform_organizations),
     path("platform/audit", platform_admin_views.platform_audit),
