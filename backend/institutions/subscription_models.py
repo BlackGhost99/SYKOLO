@@ -40,3 +40,30 @@ class PlatformSubscriptionPolicy(models.Model):
 
     class Meta:
         constraints = [models.CheckConstraint(condition=models.Q(id=1), name="singleton_yem_subscription_policy")]
+
+
+class PlatformSubscriptionAmendment(models.Model):
+    """Immutable additional commercial obligation, never rewrites the original invoice."""
+    subscription = models.ForeignKey(PlatformSubscription, on_delete=models.PROTECT, related_name="amendments")
+    revision = models.PositiveIntegerField()
+    effective_on = models.DateField()
+    snapshot = models.JSONField()
+    amount_xaf = models.PositiveBigIntegerField()
+    reason = models.CharField(max_length=240)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    issued_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["subscription", "revision"], name="unique_yem_amendment_revision")]
+
+
+class PlatformSubscriptionTrial(models.Model):
+    """One explicit free trial per school; expiration does not suspend access."""
+    school = models.OneToOneField("institutions.School", on_delete=models.PROTECT, related_name="commercial_trial")
+    year = models.OneToOneField(AcademicYear, on_delete=models.PROTECT, related_name="commercial_trial")
+    starts_on = models.DateField()
+    ends_before = models.DateField()
+    reason = models.CharField(max_length=240)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    issued_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(ends_before__gt=models.F("starts_on")), name="valid_yem_trial_dates")]
