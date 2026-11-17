@@ -1,4 +1,5 @@
 import React, {useEffect,useState} from "react";
+import OwnerSubscription from "./OwnerSubscription.jsx";
 import {PageHeader,Card,Metric,Table,Status,Button} from "./yem-ui.jsx";
 
 const number = value => new Intl.NumberFormat("fr-FR").format(Number(value||0));
@@ -80,6 +81,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
             aria-selected={tab===key} className={tab===key?"active":""}
             onClick={()=>setTab(key)}>{label}</button>)}
         </div>
+        {tab==="synthese"&&data.year?.id&&<OwnerSubscription key={schoolId} schoolId={schoolId} yearId={data.year.id}/>}
         {(tab==="synthese"||tab==="scolarite")&&<>
           <div className="yd-metrics five">
             <Metric icon="users" label="Élèves inscrits" value={number(metrics.active_students)} trend="none" trendLabel={data.year?.name||"Aucune année active"}/>

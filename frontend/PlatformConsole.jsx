@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 import PlatformSubscriptions from "./PlatformSubscriptions.jsx";
+import PlatformTariffPolicy from "./PlatformTariffPolicy.jsx";
 import AdminPasswordReset from "./AdminPasswordReset.jsx";
 import brand from "./assets/yem-brand.webp";
 import "./superadmin.css";
@@ -234,6 +235,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState(null);
   const [refreshKey,setRefreshKey]=useState(0);
+  const [tariffRevision,setTariffRevision]=useState(0);
   const [detailKey,setDetailKey]=useState(0);
   const [organizations,setOrganizations]=useState([]);
   const [allSchools,setAllSchools]=useState([]);
@@ -584,7 +586,8 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           </form>
         </section>
       </div>}
-      {view==="plans"&&selectedDetail&&<PlatformSubscriptions key={schoolId} schoolId={schoolId} api={api}/>}
+      {view==="plans"&&<PlatformTariffPolicy api={api} onSaved={()=>setTariffRevision(v=>v+1)}/>}
+      {view==="plans"&&selectedDetail&&<PlatformSubscriptions key={schoolId} schoolId={schoolId} api={api} tariffRevision={tariffRevision}/>}
       {view==="settings"&&<section className="ya-settings-wrap"><div className="ya-box ya-settings-note"><h2>Paramètres et sécurité de la plateforme</h2><p>Les paramètres pédagogiques appartiennent aux établissements. Les paramètres de sécurité ci-dessous concernent uniquement votre compte de super-administration.</p></div>{accountView}</section>}
       <footer className="ya-footer"><span><strong>YEM</strong> — Gestion scolaire &amp; universitaire</span><span>Développé par <b>BWETEK Informatyk</b></span></footer>
     </main>
