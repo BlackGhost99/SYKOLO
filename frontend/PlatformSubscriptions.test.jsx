@@ -134,3 +134,18 @@ test("read-only API rejection dispatches a tenant-bound regularization notice wi
   await target.fetch("/api/v1/schools/99999999-9999-9999-9999-999999999999/students");
   expect(listener).toHaveBeenCalledTimes(1);
 });
+
+test("commercial dashboard filters the list, retains global totals and opens a school subscription",async()=>{
+  const {default:CommercialDashboard}=await import("./CommercialDashboard.jsx");
+  const totals={contracted_xaf:100000,amendments_xaf:0,paid_xaf:5000,balance_xaf:95000,overdue_xaf:5000,due_today_xaf:0,future_xaf:90000,unscheduled_xaf:0,overpaid_xaf:0,schools:2,contracted_schools:1,active_schools:1,active_trials:0,overdue_schools:1,read_only_schools:0,review_count:0};
+  const school={school_id:"a",school:"École A",enabled:true,contracts:1,contracted_xaf:100000,paid_xaf:5000,balance_xaf:95000,overdue_xaf:5000,late_30_xaf:0};
+  const api=vi.fn(async path=>({as_of:"2026-11-17",year:2026,totals,months:[{month:"2026-11",received_xaf:5000,voided_xaf:0}],year_received_xaf:5000,year_voided_xaf:0,methods:{especes:5000},count:1,page:1,pages:1,schools:[school]}));
+  const select=vi.fn(),user=userEvent.setup();
+  render(<CommercialDashboard api={api} onSelectSchool={select}/>);
+  await screen.findByText("Montant contractuel cumulé");
+  await user.selectOptions(screen.getByLabelText("État commercial"),"overdue");
+  await waitFor(()=>expect(api.mock.calls.some(([p])=>p.includes("status=overdue"))).toBe(true));
+  await user.click(await screen.findByRole("button",{name:"Gérer l’abonnement"}));
+  expect(select).toHaveBeenCalledWith("a");
+  expect(screen.getByText("Montant contractuel cumulé")).toBeTruthy();
+});
