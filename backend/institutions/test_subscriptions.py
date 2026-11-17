@@ -354,15 +354,23 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(self.client.get(url).status_code,403)
         self.assertEqual(self.client.post(school_url,{},content_type="application/json").status_code,403)
         self.assertTrue(self.client.get(f"/api/v1/schools/{self.school.pk}/my-access").json()["commercial_workspace_restricted"])
-        for suffix in ("students","enrollments","reports","attendance/sessions","finance/payments","staff","owner/overview","academic/years","notification-inbox"):
-            response = self.client.get(f"/api/v1/schools/{self.school.pk}/{suffix}")
+        role.permissions = ["school.view", "school.academic.read"]
+        role.save(update_fields=["permissions"])
+        response = self.client.get(f"/api/v1/schools/{self.school.pk}/academic/years")
+        self.assertEqual(response.status_code,200,response.content)
+        for method, suffix in (("post","students"),("patch","academic/years/"+str(self.year.pk)),
+                               ("delete","academic/years/"+str(self.year.pk)),
+                               ("post","finance/payments"),("post","attendance/sessions"),
+                               ("post","reports"),("post","enrollments")):
+            response = getattr(self.client,method)(f"/api/v1/schools/{self.school.pk}/{suffix}",{},content_type="application/json")
             self.assertEqual(response.status_code,403,suffix)
-            self.assertEqual(response.json()["code"],"commercial_workspace_restricted",suffix)
+            self.assertEqual(response.json()["code"],"commercial_workspace_read_only",suffix)
+            self.assertEqual(response.json()["school_id"],str(self.school.pk))
         blocked = self.client.post(f"/api/v1/schools/{self.school.pk}/academic/quick-classes",{},content_type="application/json")
         self.assertEqual(blocked.status_code,403)
-        self.assertEqual(blocked.json()["code"],"commercial_workspace_restricted")
+        self.assertEqual(blocked.json()["code"],"commercial_workspace_read_only")
         blocked_staff = self.client.post(f"/api/v1/schools/{self.school.pk}/staff/onboard",{},content_type="application/json")
-        self.assertEqual(blocked_staff.json()["code"],"commercial_workspace_restricted")
+        self.assertEqual(blocked_staff.json()["code"],"commercial_workspace_read_only")
         self.assertEqual(self.client.get(f"/api/v1/schools/{self.school.pk}/owner/subscriptions").status_code,200)
         self.assertEqual(self.client.get(school_url.replace(str(self.school.pk),str(self.other.pk))).status_code,403)
         self.client.force_login(self.admin)
@@ -374,7 +382,7 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(PlatformCommercialAccessDecision.objects.count(),2)
         self.client.force_login(self.ordinary)
         restored = self.client.post(f"/api/v1/schools/{self.school.pk}/academic/quick-classes",{},content_type="application/json")
-        self.assertNotEqual(restored.json().get("code"),"commercial_workspace_restricted")
+        self.assertNotEqual(restored.json().get("code"),"commercial_workspace_read_only")
         self.assertEqual(FeePayment.objects.count(),0)
 
     def test_commercial_trial_expiration_is_read_only(self):
