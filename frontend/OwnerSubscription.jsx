@@ -29,7 +29,7 @@ export default function OwnerSubscription({schoolId,yearId}){
   const [selectedYear,setSelectedYear]=useState("");
   const sub=yearId?state.records.find(r=>r.year_id===yearId):state.records.find(r=>r.year_id===selectedYear)||state.records[0];
   return <Card title="Abonnement YEM — BWETEK Informatyk" icon="receipt">
-    <p className="hint">Abonnement de l’établissement, distinct des frais de scolarité des familles. Consultation seule.</p>
+    <p className="hint">Abonnement de l’établissement, distinct des frais de scolarité des familles. Pour régler le solde, contactez BWETEK Informatyk ; aucun paiement en ligne commercial n’est activé.</p>
     <CommercialAccess key={"commercial:"+schoolId} schoolId={schoolId}/>
     <CommercialReminders key={schoolId} schoolId={schoolId}/>
     <TrialStatus trial={state.trial}/>
