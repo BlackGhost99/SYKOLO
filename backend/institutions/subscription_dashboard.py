@@ -61,16 +61,21 @@ def commercial_report(today, year):
             schedule = terms.get("schedule", [])
             valid = bool(schedule) and sum(s["amount_xaf"] for s in schedule) == total and all(
                 type(s["amount_xaf"]) is int and s["amount_xaf"] >= 0 for s in schedule)
+            identities = [(s["kind"], s["number"]) for s in schedule]
+            if any(kind not in ("abonnement", "mise_en_service", "avenant") or
+                   type(number) is not int or number < 0 for kind, number in identities):
+                raise ValueError("Invalid schedule identity")
             initial = [s for s in schedule if s["kind"] == "abonnement"]
-            if not initial or not valid:
+            if not initial or not valid or len(set(identities)) != len(identities):
                 raise ValueError("Invalid schedule")
             start = date.fromisoformat(initial[0]["due_date"])
+            end = add_months(start, 12)
             balances = schedule_balances(terms, paid, today)
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             school["review_count"] += 1
             school["unscheduled_xaf"] += balance
             continue
-        if start <= today < add_months(start, 12):
+        if start <= today < end:
             school["active_contracts"] += 1
         for item in balances:
             key = {"overdue":"overdue_xaf","due":"due_today_xaf","upcoming":"future_xaf"}.get(item["status"])
