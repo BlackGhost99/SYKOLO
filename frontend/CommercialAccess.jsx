@@ -39,12 +39,12 @@ export default function CommercialAccess({schoolId,api=null}){
     <h3>État commercial YEM</h3>
     {state?<><p><strong>{labels[state.lifecycle]||state.lifecycle}</strong>{state.service_ends_before?" · Fin de service (exclue) : "+state.service_ends_before:""}</p>
       <p>Échu : {money(state.overdue_xaf)} · Retard de 30 jours ou plus : {money(state.late_30_xaf)}</p>
-      <p role="status">{state.restricted?"Espace établissement suspendu":"Accès établissement normal"}</p>
+      <p role="status">{state.restricted?"Établissement en lecture seule":"Accès établissement normal"}</p>
       {state.restriction_eligible_on&&<p>Fin de grâce : {state.restriction_eligible_on} · {state.grace_days_remaining} jour(s) restant(s)</p>}
-      <p className="hint">Après 30 jours de grâce, la suspension manuelle bloque tous les modules de l’espace établissement. Seuls les accès de régularisation commerciale restent disponibles. Les données sont conservées. Aucun blocage automatique.</p>
+      <p className="hint">Après 30 jours de grâce, le passage manuel en lecture seule bloque toutes les modifications scolaires. La consultation et la régularisation commerciale restent possibles. Aucun blocage automatique.</p>
       {api&&(state.restricted||state.can_restrict)&&<form onSubmit={change}>
         <label className="ya-field"><span>Motif de la décision commerciale</span><textarea maxLength={240} required value={reason} onChange={e=>setReason(e.target.value)}/></label>
-        <button className="ya-btn ya-btn-outline" disabled={busy||!reason.trim()}>{state.restricted?"Réactiver l’établissement":"Suspendre l’espace établissement"}</button>
+        <button className="ya-btn ya-btn-outline" disabled={busy||!reason.trim()}>{state.restricted?"Réactiver l’établissement":"Passer en lecture seule"}</button>
       </form>}
     </>:!error&&<p>Chargement de l’état commercial…</p>}
     {error&&<p role="alert">{error}</p>}
