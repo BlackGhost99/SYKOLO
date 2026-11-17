@@ -35,6 +35,10 @@ def receipt_reference(payment):
     return f"YEM-REC-{payment.pk:010d}"
 
 
+def amendment_reference(amendment):
+    return f"YEM-AV-{amendment.pk:010d}"
+
+
 def document_links(row, *, school_scope=False):
     school_id = row.year.school_id
     prefix = (f"/api/v1/schools/{school_id}/owner/subscriptions/" if school_scope else
@@ -43,6 +47,8 @@ def document_links(row, *, school_scope=False):
     payments = sorted(row.payments.all(), key=lambda p: (p.recorded_at, p.pk))
     return {
         "invoice": {"reference": invoice_reference(row), "url": root + "/invoice"},
+        "amendments": [{"id": a.pk, "reference": amendment_reference(a), "amount_xaf": a.amount_xaf,
+                        "url": root + f"/amendments/{a.pk}/document"} for a in sorted(row.amendments.all(), key=lambda a: a.revision)],
         "receipts": [{"id": p.pk, "reference": receipt_reference(p),
                       "url": root + f"/payments/{p.pk}/receipt",
                       "amount_xaf": p.amount_xaf, "recorded_at": p.recorded_at.isoformat(),
@@ -73,7 +79,9 @@ def _date(value):
     return timezone.localtime(value, LOC).strftime("%d/%m/%Y à %H:%M")
 
 
-def render_commercial_document(row, payment=None):
+def render_commercial_document(row, payment=None, *, amendment=None):
+    if amendment is not None and (payment is not None or amendment.subscription_id != row.pk):
+        raise ValueError("Avenant incompatible.")
     if payment is not None and payment.subscription_id != row.pk:
         raise ValueError("Règlement incompatible.")
     normal, bold = _font()
@@ -85,10 +93,10 @@ def render_commercial_document(row, payment=None):
         return _paragraph(value, style(size, color, strong, right))
     is_receipt = payment is not None
     voided = is_receipt and payment.voided_at is not None
-    reference = receipt_reference(payment) if is_receipt else invoice_reference(row)
-    title = "Reçu de règlement commercial" if is_receipt else "Facture commerciale — abonnement YEM"
-    total = payment.amount_xaf if is_receipt else row.total_xaf
-    issue = payment.recorded_at if is_receipt else row.issued_at
+    reference = receipt_reference(payment) if is_receipt else amendment_reference(amendment) if amendment else invoice_reference(row)
+    title = "Reçu de règlement commercial" if is_receipt else "Avenant commercial — abonnement YEM" if amendment else "Facture commerciale — abonnement YEM"
+    total = payment.amount_xaf if is_receipt else amendment.amount_xaf if amendment else row.total_xaf
+    issue = payment.recorded_at if is_receipt else amendment.issued_at if amendment else row.issued_at
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm,
                             topMargin=18*mm, bottomMargin=20*mm,
@@ -119,6 +127,17 @@ def render_commercial_document(row, payment=None):
     if is_receipt:
         items = [("Règlement enregistré au titre de l’abonnement YEM",total)]
         schedule = []
+    elif amendment:
+        snapshot = amendment.snapshot
+        items = [("Supplément proratisé des effectifs", snapshot["gross_prorata_xaf"])]
+        if snapshot["minimum_absorbed_xaf"]:
+            items.append(("Couvert par le minimum initial", -snapshot["minimum_absorbed_xaf"]))
+        if sum(amount for _, amount in items) != total:
+            raise ValueError("Montant d’avenant incohérent.")
+        schedule = [{"kind": "avenant", "number": amendment.revision, "due_date": amendment.effective_on.isoformat(), "amount_xaf": total}]
+        story.extend([p(f"Avenant n° {amendment.revision} — effet le {amendment.effective_on.isoformat()}",10,ACCENT,True),
+                      p(f"Prorata : {snapshot['remaining_days']} / {snapshot['duration_days']} jours"),
+                      *[p(f"{line['label']} : +{line['students']} élève(s) × {_amount(line['rate_xaf'], 'XAF')} / an") for line in snapshot["additions"]],Spacer(1,3*mm)])
     else:
         items,schedule = invoice_lines(row)
     rows = [[p("DÉSIGNATION",8,colors.white,True),p("MONTANT (FCFA)",8,colors.white,True,True)]]
@@ -137,7 +156,7 @@ def render_commercial_document(row, payment=None):
             plan = [[p("ÉCHÉANCE",8,colors.white,True),p("DATE",8,colors.white,True),
                      p("MONTANT (FCFA)",8,colors.white,True,True)]]
             for item in schedule:
-                label = "Mise en service" if item["kind"] == "mise_en_service" else f"Versement {item['number']}"
+                label = "Mise en service" if item["kind"] == "mise_en_service" else f"Avenant {item['number']}" if item["kind"] == "avenant" else f"Versement {item['number']}"
                 plan.append([p(label),p(item["due_date"]),p(_amount(item["amount_xaf"],"XAF"),9,TEXT,False,True)])
             story.append(table(plan,[width*.44,width*.26,width*.30],True))
         else:
