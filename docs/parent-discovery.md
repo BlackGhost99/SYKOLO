@@ -5,7 +5,7 @@ Cette livraison **étend** le module 15 existant ; elle ne remplace pas les bull
 ## Parcours opérationnel
 
 1. Sur la page d'authentification, choisir **Créer un compte parent**. Les comptes sont globaux à YEM, sans privilège d'école. Un lien de validation e-mail active le compte (SMTP requis).
-2. Le directeur / secrétariat autorisé ouvre **Admissions → Publication dans YEM Parents**, renseigne la ville, le quartier, le contact, les coordonnées publiques et coche **Publier**. Les établissements actifs ayant au moins une classe active sont visibles automatiquement sans fiche de publication. Une fiche explicitement désactivée reste masquée. Les coordonnées publiques restent facultatives.
+2. Le directeur / secrétariat autorisé ouvre **Admissions → Publication dans YEM Parents**, renseigne éventuellement la ville, le quartier et le contact public. Les établissements actifs ayant au moins une classe active sont visibles automatiquement, même si une ancienne fiche est marquée non publiée. Les établissements suspendus restent exclus. Les coordonnées publiques restent facultatives.
 3. Depuis l'espace parents (adapté à l'écran Android), le parent voit uniquement les écoles publiées, les classes ouvertes et un nombre de places *indicatif* basé sur les inscriptions actives.
 4. Le parent enregistre un ou plusieurs profils d'enfants **privés** puis sélectionne une classe et une voie d'admission autorisée (inscription directe, concours, orientation). Le dossier arrive dans le même workflow administratif que les candidatures au guichet.
 5. Le parent choisit pour l'instant **paiement en espèces sur place** (intention uniquement), consulte son statut dans **Mes demandes**, et suit le traitement administratif.
@@ -14,10 +14,10 @@ Cette livraison **étend** le module 15 existant ; elle ne remplace pas les bull
 ## Contrats API
 
 - `POST /api/v1/auth/parents/register` puis `POST /api/v1/auth/parents/verify` : compte parent par e-mail vérifié.
-- `GET /api/v1/parents/catalog` : écoles visibles automatiquement ou explicitement publiées, et classes actives. Accessible sans compte.
+- `GET /api/v1/parents/catalog` : écoles actives configurées (même avec un ancien indicateur non publié), écoles déjà publiées et classes actives. Accessible sans compte.
 - `GET/POST /api/v1/parents/family-children` : profils privés de chaque parent.
 - `GET/POST /api/v1/parents/applications` : dépôts et statuts propres au parent connecté.
-- `GET/POST /api/v1/schools/{id}/parent-listing` : publication réservée aux comptes avec `school.admissions.manage`.
+- `GET/POST /api/v1/schools/{id}/parent-listing` : coordonnées publiques réservées aux comptes avec `school.admissions.manage`.
 
 Le dépôt de candidature crée une `AdmissionApplication` dans le système actuel, avec une relation propriétaire `ParentAdmissionRequest`. Le statut côté parent est consultable **uniquement** depuis son compte. Les dossiers scolaires d'un enfant restent protégés par les liaisons `GuardianAccountLink` vérifiées par l'école.
 

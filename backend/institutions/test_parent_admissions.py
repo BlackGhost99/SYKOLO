@@ -187,7 +187,7 @@ class FamilyDiscoveryTests(TestCase):
         self.assertFalse(school["online_payment_available"])
         self.assertEqual(len(response.json()["schools"]), 1)
 
-    def test_automatic_publication_supports_admissions_and_explicit_hiding(self):
+    def test_automatic_publication_ignores_legacy_hidden_listing(self):
         self.login(self.parent)
         child_id = self.create_child()
         self.assertEqual(self.application(child_id).status_code, 201)
@@ -196,10 +196,15 @@ class FamilyDiscoveryTests(TestCase):
         settings = self.client.get(f"/api/v1/schools/{self.school.pk}/parent-listing").json()
         self.assertTrue(settings["published"])
         settings["published"] = False
-        self.assertEqual(self.post(f"schools/{self.school.pk}/parent-listing", settings).status_code, 200)
-        self.assertEqual(Client().get("/api/v1/parents/catalog").json()["schools"], [])
-        self.login(self.parent)
-        self.assertEqual(self.application(child_id).status_code, 404)
+        saved = self.post(f"schools/{self.school.pk}/parent-listing", settings)
+        self.assertEqual(saved.status_code, 200)
+        self.assertTrue(saved.json()["published"])
+        self.assertFalse(SchoolPublicListing.objects.get(school=self.school).published)
+        self.assertEqual([row["id"] for row in Client().get("/api/v1/parents/catalog").json()["schools"]], [str(self.school.pk)])
+        self.assertTrue(self.client.get(f"/api/v1/schools/{self.school.pk}/parent-listing").json()["published"])
+        self.login(self.other_parent)
+        self.assertEqual(self.client.get(f"/api/v1/parents/admission-form?classroom={self.classroom.pk}&route=direct").status_code, 200)
+        self.assertEqual(self.application(self.create_child()).status_code, 201)
 
     def test_automatic_publication_requires_active_class_and_school(self):
         self.classroom.active = False
@@ -377,9 +382,9 @@ class FamilyDiscoveryTests(TestCase):
         child_id = self.create_child()
         self.assertEqual(self.application(child_id, payment_choice="online").status_code, 409)
         self.assertEqual(AdmissionApplication.objects.count(), 0)
-        listing = SchoolPublicListing.objects.get(school=self.school)
-        listing.published = False
-        listing.save()
+        self.school.is_active = False
+        self.school.save(update_fields=["is_active"])
+        self.assertEqual(Client().get("/api/v1/parents/catalog").json()["schools"], [])
         self.assertEqual(self.application(child_id).status_code, 404)
 
     def test_no_available_places_is_not_an_admission(self):

@@ -12,7 +12,5 @@ def active_classrooms():
 
 
 def public_classrooms():
-    return active_classrooms().filter(
-        Q(school__public_listing__published=True) |
-        Q(school__public_listing__isnull=True)
-    )
+    # Legacy unpublished listing rows must not hide configured active schools.
+    return active_classrooms()

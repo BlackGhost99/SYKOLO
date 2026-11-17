@@ -389,14 +389,13 @@ export function SchoolCatalogSettings({schoolId}) {
   const update=(key,value)=>setSettings(old=>({...old,[key]:value}));
   return <div className="yp-settings">
     <h3>Publication dans YEM Parents</h3>
-    <p>Les établissements disposant de classes actives apparaissent automatiquement dans le catalogue. Décochez cette option uniquement pour masquer volontairement votre établissement.</p>
+    <p>Les établissements actifs disposant de classes actives apparaissent automatiquement dans le catalogue, sans activation manuelle.</p>
     <form onSubmit={async e=>{e.preventDefault();setBusy(true);setMessage("");
       try{const result=await api("schools/"+schoolId+"/parent-listing",settings);
-        setSettings(x=>({...x,revision:result.revision}));setMessage("Fiche publique enregistrée.");
+        setSettings(x=>({...x,revision:result.revision,published:result.published}));setMessage("Fiche publique enregistrée.");
       }catch(err){setMessage(err.message)}finally{setBusy(false);}
     }}>
-      <label className="yp-toggle"><input type="checkbox" checked={settings.published}
-        onChange={e=>update("published",e.target.checked)}/> Autoriser la visibilité dans le catalogue</label>
+      <p role="status">{settings.published?"Visible dans le catalogue des parents":"Non visible : vérifiez la configuration et le statut de l’établissement."}</p>
       <div className="yp-two">
         {[["city","Ville",100],["district","Quartier",100],["contact_phone","Téléphone public",45]].map(([key,label,max])=>
           <label key={key} className="yp-field">{label}<input maxLength={max} value={settings[key]}
