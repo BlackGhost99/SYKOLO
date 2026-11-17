@@ -73,3 +73,29 @@ test("commercial reminders refresh without duplicate rows and disappear after pa
   expect(screen.queryByText("Retard de 2 jours")).toBeNull();
   expect(fetcher.mock.calls.every(([url])=>url==="/api/v1/platform/subscription-reminders?page=1")).toBe(true);
 });
+
+test("trial issuance requires an explicit duration and justification",async()=>{
+  const {default:CommercialAdjustments}=await import("./CommercialAdjustments.jsx");
+  const api=vi.fn(async()=>({trial:{status:"active"}})),saved=vi.fn();
+  render(<CommercialAdjustments api={api} path="platform/schools/a/subscriptions" year="y" canTrial onSaved={saved}/>);
+  const user=userEvent.setup();
+  await user.type(screen.getByLabelText("Motif de l’essai"),"Découverte école");
+  await user.click(screen.getByRole("button",{name:"Accorder l’essai"}));
+  await waitFor(()=>expect(api).toHaveBeenCalledWith("platform/schools/a/subscriptions",{action:"trial_start",year_id:"y",days:30,reason:"Découverte école"}));
+  expect(saved).toHaveBeenCalledTimes(1);
+});
+test("amendment quote must be explicitly confirmed before issuance",async()=>{
+  const {default:CommercialAdjustments}=await import("./CommercialAdjustments.jsx");
+  const quote={revision:1,additions:[{cycle:"primaire",label:"Primaire",students:1,rate_xaf:1500}],remaining_days:180,duration_days:365,gross_prorata_xaf:740,minimum_absorbed_xaf:0,amount_xaf:740};
+  const api=vi.fn(async(path,body)=>body.action==="amendment_quote"?{amendment:quote}:{subscription:{}}),saved=vi.fn();
+  render(<CommercialAdjustments api={api} path="p" year="y" sub={{total_xaf:75000,amendments:[]}} onSaved={saved}/>);
+  const user=userEvent.setup();
+  await user.click(screen.getByRole("button",{name:"Calculer un avenant"}));
+  await screen.findByText(/Montant de l’avenant/);
+  expect(api).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button",{name:"Émettre l’avenant"}).disabled).toBe(true);
+  await user.type(screen.getByLabelText("Motif de l’avenant"),"Nouvel inscrit");
+  await user.click(screen.getByRole("button",{name:"Émettre l’avenant"}));
+  await waitFor(()=>expect(api).toHaveBeenCalledWith("p",{action:"amendment_issue",year_id:"y",expected:quote,reason:"Nouvel inscrit"}));
+  expect(saved).toHaveBeenCalledTimes(1);
+});
