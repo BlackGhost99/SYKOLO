@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useState} from "react";
 import {YemLogo,Icon,Button,Card} from "./yem-ui.jsx";
 import TeacherMobileGrades from "./TeacherMobileGrades.jsx";
+import TeachingDiary from "./TeachingDiary.jsx";
 import PreschoolFollowup from "./PreschoolFollowup.jsx";
 import TeacherMobileAttendance from "./TeacherMobileAttendance.jsx";
 import TeacherProfile from "./TeacherProfile.jsx";
@@ -88,7 +89,7 @@ export default function TeacherMobileWorkspace({
   const givenName=user?.first_name||user?.username||"Professeur";
   const open=id=>{setTab(id);window.scrollTo?.(0,0);};
   const title={accueil:"Bonjour, "+givenName,classes:"Mes classes",notes:"Notes",moyennes:"Moyennes",
-    appel:"Appel des élèves",profil:"Mon profil",emploi:"Mon emploi du temps"}[tab];
+    appel:"Appel des élèves",diary:"Cahier de textes",profil:"Mon profil",emploi:"Mon emploi du temps"}[tab];
   const subjectName=course=>data.subjects.find(s=>s.id===course.subject)?.name||"Matière";
   return <div className="ym-prof-app">
     <header className="ym-prof-header">
@@ -135,6 +136,7 @@ export default function TeacherMobileWorkspace({
             {[
               ["classes","users","Mes classes"],["notes","file","Notes"],["moyennes","barchart","Moyennes"],
               ["appel","check","Appel"],["emploi","calendar","Emploi du temps"],
+              ...(hasCurriculum||permissions.includes("school.diary.read")?[["diary","file","Cahier de textes"]]:[]),
             ].map(([id,icon,label])=><button type="button" className="ym-shortcut" onClick={()=>open(id)} key={id}>
               <span><Icon name={icon} size={26}/></span><strong>{label}</strong>
             </button>)}
@@ -182,6 +184,7 @@ export default function TeacherMobileWorkspace({
         key={schoolId+":"+workingYearId+":"+tab} schoolId={schoolId}
         courses={data.courses} classes={data.classes} subjects={data.subjects}
         periods={data.periods} yearId={workingYearId} mode={tab}/>}
+      {tab==="diary"&&(hasCurriculum||permissions.includes("school.diary.read"))&&<div className="ym-page"><TeachingDiary key={schoolId+":"+workingYearId} schoolId={schoolId} yearId={workingYearId}/></div>}
       {!loading&&tab==="appel"&&<TeacherMobileAttendance
         key={schoolId+":"+workingYearId} schoolId={schoolId} classes={data.classes}
         assignments={data.assignments} workingYearId={workingYearId}/>}

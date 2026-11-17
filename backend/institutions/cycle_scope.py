@@ -121,4 +121,9 @@ def allowed_school_permissions(perms, scoped_ids):
         "school.students.profile.read", "school.students.sensitive.read",
         "school.staff.manage",
     }
-    return sorted(set(perms) & allowed)
+    # UI-only capability for the diary APIs explicitly filtered by course/cycle.
+    # Never expose the broader curriculum permission to scoped clients.
+    result = set(perms) & allowed
+    if "school.curriculum.read" in perms:
+        result.add("school.diary.read")
+    return sorted(result)

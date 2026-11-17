@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from "react";
 import FinancialDocuments from "./FinancialDocuments.jsx";
+import {FamilyTeachingDiary} from "./TeachingDiary.jsx";
 import ParentDiscovery from "./ParentDiscovery.jsx";
 import PWAInstall from "./PWAInstall.jsx";
 import SingPayPayment from "./SingPayPayment.jsx";
@@ -413,7 +414,7 @@ function LiaisonBook({api,childBase,year}) {
  </Section>;
 }
 function School({m}) {
- const tabs=[["grades","Notes"],["attendance","Vie scolaire"],["timetable","Emploi du temps"],["reports","Bulletins"]];
+ const tabs=[["grades","Notes"],["attendance","Vie scolaire"],["timetable","Emploi du temps"],["reports","Bulletins"],["diary","Cahier de textes"]];
  if(m.enrollment?.preschool_liaison)tabs.push(["liaison","Carnet de liaison"]);
  const tab=tabs.some(([key])=>key===m.schoolTab)?m.schoolTab:"grades";
  return <>{!m.child?<section className="yfx-card"><Empty>Les informations scolaires seront disponibles après vérification du rattachement de votre enfant.</Empty></section>:<>

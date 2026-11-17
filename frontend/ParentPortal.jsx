@@ -42,7 +42,7 @@ export function FamilyWorkspace({accountView, onLogout, onSchoolWorkspace, user}
 
 const CHILD_SECTIONS = [
   ["grades", "Notes"], ["reports", "Bulletins"], ["attendance", "Vie scolaire"],
-  ["finance", "Frais"], ["timetable", "Emploi du temps"],
+  ["finance", "Frais"], ["timetable", "Emploi du temps"], ["diary","Cahier de textes"],
 ];
 
 function gradeResult(grade) {
@@ -116,6 +116,8 @@ function ChildSchoolSection({base, tab, year}) {
       <div><a href={"/api/v1/" + base + "/reports/" + report.id + "/pdf"}>Télécharger le bulletin PDF</a></div>
     </div>
   ) : <p>Aucun bulletin publié.</p>;
+
+  if (tab === "diary") return detail.entries?.length ? detail.entries.map(entry=><article key={entry.id}><h3>{entry.subject} · {entry.title}</h3><p>{entry.day} · {entry.classroom}</p><p className="yem-diary-text">{entry.lesson}</p>{entry.homework&&<p className="yem-diary-text"><strong>À faire{entry.due_on?" pour le "+entry.due_on:""} :</strong> {entry.homework}</p>}</article>) : <p>Aucune séance publiée pour cette année.</p>;
 
   if (tab === "attendance") return <ChildSchoolLife detail={detail}/>;
 

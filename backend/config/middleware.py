@@ -58,6 +58,8 @@ class SchoolCycleBoundaryMiddleware:
     _UUID = r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
     _ALLOW_GET = (
         r"my-access",
+        r"diary/courses",
+        rf"diary/courses/{_UUID}",
         r"academic/(?:years|cycles|levels|tracks|classes|periods|annual-snapshot|pedagogical-calendar|primary-criteria|primary-mastery|preschool-followup)",
         rf"academic/(?:years|cycles|levels|tracks|classes|periods)/{_UUID}",
         r"students",
@@ -70,8 +72,8 @@ class SchoolCycleBoundaryMiddleware:
         r"staff/me/dossier",
         r"organization/my-appointments",
     )
-    _ALLOW_POST = (r"staff/onboard", r"academic/(?:periods|pedagogical-calendar|preschool-followup)")
-    _ALLOW_PATCH = (rf"academic/(?:periods|pedagogical-calendar)/{_UUID}",
+    _ALLOW_POST = (rf"diary/courses/{_UUID}", r"staff/onboard", r"academic/(?:periods|pedagogical-calendar|preschool-followup)")
+    _ALLOW_PATCH = (rf"diary/courses/{_UUID}", rf"academic/(?:periods|pedagogical-calendar)/{_UUID}",
                     r"academic/(?:pedagogical-calendar/profile|primary-criteria|primary-mastery)")
 
     def __init__(self, get_response):
