@@ -5,7 +5,7 @@ Synthetic test endpoints only; no production URL or data change.
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from django.test import TestCase, override_settings
-from django.urls import path
+from django.urls import path, include
 from django.db import connection
 from .models import Organization, School, SchoolMember, SchoolRole
 from .subscription_models import PlatformCommercialAccessDecision
@@ -34,6 +34,7 @@ urlpatterns = [
     path("api/v1/schools/<uuid:school_id>/f7-read", synthetic_read),
     path("api/v1/schools/<uuid:school_id>/f7-unsafe-get", synthetic_mutating_read),
     path("api/v1/schools/<uuid:school_id>/f7-unsafe-cte", synthetic_cte_write),
+    path("", include("config.urls")),
 ]
 
 
@@ -45,7 +46,7 @@ class CommercialReadOnlyAcceptance(TestCase):
         self.other = School.objects.create(organization=org, name="F7 normal")
         user = get_user_model().objects.create_user(username="f7-staff", password="Test-f7-only-2026!")
         for school in (self.school, self.other):
-            role = SchoolRole.objects.create(school=school, code="direction", label="Direction", permissions=["school.view"])
+            role = SchoolRole.objects.create(school=school, code="direction", label="Direction", permissions=["school.view", "school.finance.read", "school.settings.read", "school.academic.read", "school.students.manage"])
             SchoolMember.objects.create(school=school, user=user, role=role)
         self.client.force_login(user)
         PlatformCommercialAccessDecision.objects.create(school=self.school, revision=1, restricted=True, reason="F7 synthetic")
@@ -78,3 +79,22 @@ class CommercialReadOnlyAcceptance(TestCase):
         self.assertEqual(self.client.post(self.url(self.other, "f7-read")).status_code, 200)
         PlatformCommercialAccessDecision.objects.create(school=self.school, revision=2, restricted=False, reason="F7 restored")
         self.assertEqual(self.client.post(self.url(self.school, "f7-read")).status_code, 200)
+
+    def test_real_school_consultation_and_mutation_routes(self):
+        from .finance_models import FeePayment
+        from .student_models import Student
+        initial = (Student.objects.count(), FeePayment.objects.count())
+        for suffix in ("my-access", "academic/years", "finance/summary", "finance/payments",
+                       "settings", "students/next-code"):
+            with self.subTest(suffix=suffix):
+                response = self.client.get(self.url(self.school, suffix))
+                self.assertEqual(response.status_code, 200, response.content)
+        for method, suffix in (("post", "finance/payments"), ("post", "students"),
+                               ("post", "academic/years"), ("patch", "settings")):
+            with self.subTest(method=method, suffix=suffix):
+                response = getattr(self.client, method)(self.url(self.school, suffix), {},
+                                                        content_type="application/json")
+                self.assertEqual(response.status_code, 403, response.content)
+                self.assertEqual(response.json()["code"], "commercial_workspace_read_only")
+        self.assertEqual((Student.objects.count(), FeePayment.objects.count()), initial)
+        self.assertEqual(self.client.get(self.url(self.other, "finance/summary")).status_code, 200)
