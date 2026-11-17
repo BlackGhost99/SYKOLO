@@ -98,3 +98,11 @@ class CommercialReadOnlyAcceptance(TestCase):
                 self.assertEqual(response.json()["code"], "commercial_workspace_read_only")
         self.assertEqual((Student.objects.count(), FeePayment.objects.count()), initial)
         self.assertEqual(self.client.get(self.url(self.other, "finance/summary")).status_code, 200)
+
+    def test_restricted_school_cannot_access_platform_financial_data(self):
+        for path in ("/api/v1/platform/commercial-dashboard",
+                     "/api/v1/platform/subscription-reminders",
+                     f"/api/v1/platform/schools/{self.school.pk}/commercial-access"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 403)
+        self.assertEqual(PlatformCommercialAccessDecision.objects.count(), 1)
