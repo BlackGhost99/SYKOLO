@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from "react";
 import {teacherRequest} from "./teacher-mobile-api.js";
 import "./teaching-diary.css";
+import CourseProgress from "./CourseProgress.jsx";
 
 const today = () => {
   const d = new Date();
@@ -68,6 +69,7 @@ export default function TeachingDiary({schoolId, yearId="", api=teacherRequest})
   const root="schools/"+schoolId+"/diary/courses";
   const [courses,setCourses]=useState([]);
   const [course,setCourse]=useState("");
+  const [showProgress,setShowProgress]=useState(false);
   const [entries,setEntries]=useState([]);
   const [writable,setWritable]=useState(false);
   const [form,setForm]=useState(blank);
@@ -124,8 +126,10 @@ export default function TeachingDiary({schoolId, yearId="", api=teacherRequest})
     {loading&&<p role="status">Chargement du cahier de textes…</p>}
     {error&&<p role="alert">{error}</p>}{message&&<p role="status">{message}</p>}
     {!loading&&!courses.length&&<p>Aucun cours autorisé pour cette année.</p>}
-    {!loading&&course&&!writable&&<p>Consultation seule : cours ou année non modifiable.</p>}
-    {!loading&&writable&&<form className="yem-diary-form" onSubmit={e=>save(e,form.published)}>
+    {!loading&&course&&<div className="actions"><button className="yd-btn" type="button" aria-pressed={showProgress} onClick={()=>setShowProgress(v=>!v)}>{showProgress?"Revenir aux séances":"Suivre la progression du programme"}</button></div>}
+    {!loading&&course&&showProgress&&<CourseProgress key={course} schoolId={schoolId} course={course} entries={entries} api={api}/>}
+    {!showProgress&&!loading&&course&&!writable&&<p>Consultation seule : cours ou année non modifiable.</p>}
+    {!showProgress&&!loading&&writable&&<form className="yem-diary-form" onSubmit={e=>save(e,form.published)}>
       <h3>{form.revision?"Modifier la séance":"Nouvelle séance"}</h3>
       <label className="field">Date du cours<input required type="date" value={form.day} disabled={busy} onChange={e=>change("day",e.target.value)}/></label>
       <label className="field">Titre du cours<input required maxLength={180} value={form.title} disabled={busy} onChange={e=>change("title",e.target.value)}/></label>
@@ -137,7 +141,7 @@ export default function TeachingDiary({schoolId, yearId="", api=teacherRequest})
       <div className="actions"><button className="yd-btn primary" type="submit" disabled={busy}>{form.published?"Enregistrer et publier":"Enregistrer le brouillon"}</button>
       <button className="yd-btn" type="button" disabled={busy} onClick={()=>{setForm(blank());setError("");}}>Nouvelle saisie</button></div>
     </form>}
-    {!loading&&course&&<Entries entries={entries} onEdit={writable&&!busy?setEntry:null} schoolId={schoolId} api={api} onRefresh={()=>setRefresh(n=>n+1)} resourceHref={(e,r)=>"/api/v1/schools/"+schoolId+"/diary/entries/"+e.id+"/resources/"+r.id}/>}
+    {!showProgress&&!loading&&course&&<Entries entries={entries} onEdit={writable&&!busy?setEntry:null} schoolId={schoolId} api={api} onRefresh={()=>setRefresh(n=>n+1)} resourceHref={(e,r)=>"/api/v1/schools/"+schoolId+"/diary/entries/"+e.id+"/resources/"+r.id}/>}
   </section>;
 }
 

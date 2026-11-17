@@ -1,6 +1,6 @@
 from django.urls import path
 from conduct import views as conduct_views
-from . import import_views, subscription_views, teaching_diary_views, diary_resource_views
+from . import import_views, subscription_views, teaching_diary_views, diary_resource_views, course_progress_views
 from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
@@ -202,6 +202,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/courses", curriculum_views.courses),
     path("schools/<uuid:school_id>/diary/courses", teaching_diary_views.catalog),
     path("schools/<uuid:school_id>/diary/courses/<uuid:course_id>", teaching_diary_views.diary),
+    path("schools/<uuid:school_id>/diary/courses/<uuid:course_id>/progress", course_progress_views.progress),
     path("schools/<uuid:school_id>/diary/entries/<uuid:entry_id>/resources", diary_resource_views.resources),
     path("schools/<uuid:school_id>/diary/entries/<uuid:entry_id>/resources/<uuid:resource_id>", diary_resource_views.resource_detail),
     path("schools/<uuid:school_id>/curriculum/my-courses", curriculum_views.my_courses),

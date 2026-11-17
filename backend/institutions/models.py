@@ -227,3 +227,5 @@ from .subscription_models import PlatformSubscription, PlatformSubscriptionPayme
 from .teaching_diary_models import TeachingDiaryEntry  # noqa: E402,F401
 
 from .diary_resource_models import DiaryResource  # noqa: E402,F401
+
+from .course_progress_models import CourseUnitProgress  # noqa: E402,F401
