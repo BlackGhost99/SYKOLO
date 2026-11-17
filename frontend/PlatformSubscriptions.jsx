@@ -60,7 +60,7 @@ export default function PlatformSubscriptions({schoolId, api}) {
   const annual=annualBeforeDiscount-(discountOK?Number(discount):0);
   const setup=includeSetup?(data?.setup_suggested_xaf||0):0;
   const total=annual+setup;
-  const installments={annuel:1,semestriel:2,trimestriel:4}[period];
+  const installments={annuel:1,semestriel:2,trimestriel:4,mensuel:12}[period];
   const validReason=reason.trim().length>0&&reason.trim().length<=240;
   return <section className="ya-box ya-form-box" aria-label="Abonnement commercial YEM">
     <h2>Abonnement annuel YEM</h2>
@@ -77,9 +77,10 @@ export default function PlatformSubscriptions({schoolId, api}) {
       <p>Minimum annuel unique : {money(minimum)} · Complément minimum : {money(Math.max(0,minimum-gross))}</p>
       <label className="ya-field"><span>Remise exceptionnelle (FCFA) · motif obligatoire</span><input type="number" min="0" max={annualBeforeDiscount} step="1" value={discount} disabled={busy} onChange={e=>setDiscount(e.target.value)}/></label>
       <label className="ya-field"><span>Modalité de règlement</span><select value={period} onChange={e=>setPeriod(e.target.value)} disabled={busy}>
-        <option value="annuel">Annuel · 1 versement</option><option value="semestriel">Semestriel · 2 versements</option><option value="trimestriel">Trimestriel · 4 versements</option></select></label>
+        <option value="annuel">Annuel · 1 versement</option><option value="semestriel">Semestriel · 2 versements</option><option value="trimestriel">Trimestriel · 4 versements</option><option value="mensuel">Mensuel · 12 versements</option></select></label>
       <p>Abonnement annuel net : <b>{money(annual)}</b> · {installments} versement(s) de {money(Math.floor(annual/installments))}{annual%installments!==0?" (écart d’arrondi sur les premières échéances)":""}. Première échéance : {data.first_due}.</p>
       {!!data.setup_suggested_xaf&&<label><input type="checkbox" checked={includeSetup} disabled={busy} onChange={e=>setIncludeSetup(e.target.checked)}/> Ajouter la mise en service unique : {money(data.setup_suggested_xaf)}</label>}
+      <p>Échéancier calculé sur douze mois à partir de la première échéance, indépendamment des vacances scolaires.</p>
       <p><strong>Total à contractualiser : {money(total)}</strong></p>
       <label className="ya-field"><span>Motif / référence du contrat (et justification de toute remise)</span><textarea value={reason} required rows={2} maxLength={240} onChange={e=>setReason(e.target.value)}/></label>
       <p>Les effectifs, tarifs, minimums, échéances et remises sont figés à la création. Vérifiez le devis avant enregistrement.</p>
