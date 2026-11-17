@@ -32,7 +32,10 @@ def current_counts(school, year):
         raise ValueError("Incohérence d'inscription : corrigez la structure avant facturation.")
     counts = {code: 0 for code in (school.education_cycles or [])}
     for row in rows.values("classroom__level__cycle__code").annotate(number=Count("student_id", distinct=True)):
-        counts[row["classroom__level__cycle__code"]] = row["number"]
+        code = row["classroom__level__cycle__code"]
+        if code not in counts:
+            raise ValueError("Inscriptions sur un cycle non ouvert : corrigez la classification avant facturation.")
+        counts[code] = row["number"]
     return counts
 
 
