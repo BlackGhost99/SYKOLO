@@ -468,6 +468,24 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(totals["review_count"],1)
         self.assertEqual(totals["balance_xaf"],105000)
 
+    def test_dashboard_flags_duplicate_or_out_of_range_schedule(self):
+        self.assertEqual(self.issue().status_code,201)
+        legacy = PlatformSubscription.objects.create(year=self.foreign_year,total_xaf=5000,lines=[])
+        examples = [
+            [{"kind":"abonnement","number":1,"amount_xaf":2500,"due_date":"2026-11-17"}]*2,
+            [{"kind":"abonnement","number":1,"amount_xaf":5000,"due_date":"9999-12-31"}],
+            [{"kind":"unknown","number":1,"amount_xaf":5000,"due_date":"2026-11-17"}],
+        ]
+        for schedule in examples:
+            legacy.commercial_terms={"schedule":schedule}
+            legacy.save(update_fields=["commercial_terms"])
+            response=self.client.get("/api/v1/platform/commercial-dashboard")
+            self.assertEqual(response.status_code,200,response.content)
+            totals=response.json()["totals"]
+            self.assertEqual(totals["review_count"],1)
+            self.assertEqual(totals["unscheduled_xaf"],5000)
+            self.assertEqual(totals["balance_xaf"],105000)
+
     def test_quote_uses_real_counts_and_snapshot(self):
         self.assertEqual(self.client.get(self.path).json()["suggested_year"], str(self.year.pk))
         quote = self.post("quote")
