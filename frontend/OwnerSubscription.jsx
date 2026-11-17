@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from "react";
 import {Card} from "./yem-ui.jsx";
+import SubscriptionDocuments from "./SubscriptionDocuments.jsx";
 const money=v=>new Intl.NumberFormat("fr-FR").format(v)+" FCFA";
 export default function OwnerSubscription({schoolId,yearId}){
   const [state,setState]=useState({loading:true,records:[],error:""});
@@ -27,6 +28,7 @@ export default function OwnerSubscription({schoolId,yearId}){
     <p className="hint">Abonnement de l’établissement, distinct des frais de scolarité des familles. Consultation seule.</p>
     {state.loading?<p role="status">Chargement…</p>:state.error?<p role="alert">{state.error}</p>:!sub?<p>Aucun contrat émis pour cette année scolaire.</p>:<>
       <p><strong>{sub.year}</strong> · Total contractuel : {money(sub.total_xaf)} · Réglé : {money(sub.paid_xaf)} · Solde : {money(sub.balance_xaf)}</p>
+      <SubscriptionDocuments documents={sub.documents}/>
       {sub.lines.map(l=><p key={l.cycle}>{l.label} — {l.students} × {money(l.rate_xaf)} = {money(l.amount_xaf)}</p>)}
       {sub.terms?.period&&<>
         <p>Minimum unique : {money(sub.terms.minimum_xaf)} · Remise : {money(sub.terms.discount_xaf)} · Mise en service : {money(sub.terms.setup_xaf)}</p>

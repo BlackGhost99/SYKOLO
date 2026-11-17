@@ -17,6 +17,8 @@ from .school_profiles import CYCLE_LABELS
 from .subscription_pricing import (DEFAULT_RATES, DEFAULT_MINIMUMS, PERIODS, quote_lines,
     calculate_terms, validate_schedule, setup_fee, schedule_balances)
 from .views import parse_body
+from .finance_document_pdf import previewable_pdf
+from .subscription_document_pdf import document_links, render_commercial_document
 
 METHODS = {"especes", "mobile_money", "virement", "autre"}
 
@@ -109,6 +111,7 @@ def representation(row):
     return {"id": row.pk, "lines": row.lines, "total_xaf": row.total_xaf, "paid_xaf": paid,
             "terms": row.commercial_terms, "schedule": schedule_balances(row.commercial_terms, paid, timezone.localdate()),
             "balance_xaf": row.total_xaf - paid, "issued_at": row.issued_at.isoformat(),
+            "documents": document_links(row),
             "payments": [{"id": p.pk, "reference": p.reference, "amount_xaf": p.amount_xaf,
                           "method": p.method, "recorded_at": p.recorded_at.isoformat(),
                           "voided": p.voided_at is not None, "void_reason": p.void_reason} for p in payments]}
@@ -245,7 +248,8 @@ def owner_subscriptions(request, school_id):
     for row in records:
         item = representation(row)
         data.append({k: item[k] for k in ("id", "lines", "total_xaf", "paid_xaf", "balance_xaf", "terms", "schedule", "issued_at")} |
-                    {"year": row.year.name, "year_id": str(row.year_id)})
+                    {"year": row.year.name, "year_id": str(row.year_id),
+                     "documents": document_links(row, school_scope=True)})
     return JsonResponse({"subscriptions": data})
 
 
@@ -261,3 +265,32 @@ def can_consult_commercial(user, school):
         return False
     roles = {member.role.code, *member.additional_roles.filter(school=school).values_list("code", flat=True)}
     return bool(roles & {"direction", "principal", "proviseur"})
+
+
+@never_cache
+@require_http_methods(["GET"])
+@authorized
+@previewable_pdf
+def commercial_document(request, school_id, subscription_id, payment_id=None, *, school_scope=False):
+    """Only the platform MFA session or the authorized school management may read PDFs."""
+    if school_scope:
+        school = school_access(request.user, school_id)
+        if school is None or not can_consult_commercial(request.user, school):
+            return denied()
+    elif not platform_only(request):
+        return denied()
+    if not 1 <= subscription_id <= 2**63 - 1 or (payment_id is not None and not 1 <= payment_id <= 2**63 - 1):
+        return fail("Document introuvable.", 404)
+    row = PlatformSubscription.objects.select_related("year__school").filter(
+        pk=subscription_id, year__school_id=school_id).first()
+    if row is None:
+        return fail("Document introuvable.", 404)
+    payment = None
+    if payment_id is not None:
+        payment = row.payments.filter(pk=payment_id).first()
+        if payment is None:
+            return fail("Document introuvable.", 404)
+    try:
+        return render_commercial_document(row, payment)
+    except (ValueError, TypeError, KeyError):
+        return fail("Données contractuelles incohérentes. Contactez BWETEK.", 409)

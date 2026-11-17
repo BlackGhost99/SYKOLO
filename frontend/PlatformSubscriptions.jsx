@@ -1,4 +1,5 @@
 import React, {useEffect, useRef, useState} from "react";
+import SubscriptionDocuments from "./SubscriptionDocuments.jsx";
 
 const money = value => new Intl.NumberFormat("fr-GA").format(value) + " FCFA";
 const methods = [["especes","Espèces"],["mobile_money","Mobile Money"],["virement","Virement déclaré"],["autre","Autre"]];
@@ -89,6 +90,7 @@ export default function PlatformSubscriptions({schoolId, api, tariffRevision=0})
     </form>}
     {sub&&<div>
       <h3>Contrat annuel enregistré</h3>
+      <SubscriptionDocuments documents={sub.documents}/>
       {sub.lines.map(line=><p key={line.cycle}>{line.label} : {line.students} × {money(line.rate_xaf)} = <strong>{money(line.amount_xaf)}</strong></p>)}
       {sub.terms?.period&&<><p>Abonnement annuel : {money(sub.terms.annual_xaf)} · Minimum : {money(sub.terms.minimum_xaf)} · Remise : {money(sub.terms.discount_xaf)} · Mise en service : {money(sub.terms.setup_xaf)}</p>
         <h4>Échéancier contractuel — {({annuel:"annuel",semestriel:"semestriel",trimestriel:"trimestriel",mensuel:"mensuel"})[sub.terms.period]}</h4>{sub.schedule.map(item=><p key={item.kind+item.number}>{item.kind==="mise_en_service"?"Mise en service":"Versement "+item.number} — {item.due_date} — {money(item.amount_xaf)} · reste : {money(item.balance_xaf)} {item.days_overdue>0?" · "+item.days_overdue+" j de retard":""}</p>)}</>}

@@ -34,3 +34,23 @@ test("management reads refreshed balances from the school endpoint",async()=>{
   expect(fetcher).toHaveBeenLastCalledWith("/api/v1/schools/school-a/owner/subscriptions",{credentials:"same-origin",cache:"no-store"});
   hidden.mockRestore();
 });
+
+test("commercial PDFs are available through private same-origin routes",async()=>{
+  const schoolId="11111111-1111-1111-1111-111111111111";
+  const root="/api/v1/schools/"+schoolId+"/owner/subscriptions/42";
+  const contract={id:42,year:"2026–2027",year_id:"y",lines:[],total_xaf:150000,paid_xaf:10000,balance_xaf:140000,terms:{},schedule:[],
+    documents:{invoice:{reference:"YEM-FAC-0000000042",url:root+"/invoice"},receipts:[
+      {id:7,reference:"YEM-REC-0000000007",url:root+"/payments/7/receipt",amount_xaf:10000,voided:false},
+      {id:8,reference:"YEM-REC-0000000008",url:root+"/payments/8/receipt",amount_xaf:2000,voided:true},
+      {id:9,reference:"Lien invalide",url:"https://example.test/receipt",amount_xaf:2000,voided:false}
+    ]}};
+  vi.stubGlobal("fetch",vi.fn().mockResolvedValue(Response.json({subscriptions:[contract]})));
+  vi.spyOn(document,"hidden","get").mockReturnValue(false);
+  render(<OwnerSubscription schoolId={schoolId} yearId="y"/>);
+  expect((await screen.findByRole("link",{name:"Ouvrir la facture"})).getAttribute("href")).toBe(root+"/invoice?preview=1");
+  expect(screen.getByRole("link",{name:"Télécharger la facture (PDF)"}).getAttribute("href")).toBe(root+"/invoice");
+  expect(screen.getByRole("link",{name:"Télécharger le reçu (PDF)"}).getAttribute("href")).toBe(root+"/payments/7/receipt");
+  expect(screen.getByRole("link",{name:"Télécharger le reçu annulé (PDF)"}).getAttribute("href")).toBe(root+"/payments/8/receipt");
+  expect(screen.getByText(/ANNULÉ/)).toBeTruthy();
+  expect(document.querySelector('a[href*="example.test"]')).toBeNull();
+});
