@@ -286,7 +286,13 @@ def effective_permissions(user, school):
     delegated = member.delegations.filter(school=school, revoked_at__isnull=True, class_cycle="").filter(
         Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
     )
-    return founder_permissions | set().union(*(set(role.permissions) for role in roles),
+    # The reserved owner role is supervisory, including historical rows that
+    # predate financial role separation. Explicit, separate operational roles
+    # and auditable delegations continue to grant their own permissions.
+    role_permissions = [set(role.permissions) - FINANCE_MUTATION_PERMISSIONS
+                        if role.code == OWNER_ROLE_CODE else set(role.permissions)
+                        for role in roles]
+    return founder_permissions | set().union(*role_permissions,
                                              *(set(d.permissions) for d in delegated))
 
 

@@ -46,6 +46,27 @@ class FinancialControlTests(TestCase):
         member.additional_roles.add(foreign)
         self.assertFalse(has_permission(self.cashier, self.school, "school.finance.manage"))
 
+    def test_legacy_owner_role_does_not_grant_operational_finance(self):
+        from .services import FINANCE_MUTATION_PERMISSIONS
+        owner = get_user_model().objects.create_user("legacy-owner-test")
+        role, _ = SchoolRole.objects.get_or_create(
+            school=self.school, code="proprietaire",
+            defaults={"label": "Propriétaire", "permissions": []},
+        )
+        role.permissions = ["school.finance.read", *sorted(FINANCE_MUTATION_PERMISSIONS)]
+        role.save(update_fields=["permissions"])
+        member = SchoolMember.objects.create(school=self.school, user=owner, role=role)
+        self.assertTrue(has_permission(owner, self.school, "school.finance.read"))
+        for permission in FINANCE_MUTATION_PERMISSIONS:
+            with self.subTest(permission=permission):
+                self.assertFalse(has_permission(owner, self.school, permission))
+        self.login(owner)
+        self.assertEqual(self.send(self.payload()).status_code, 403)
+        # An explicitly separate role remains effective.
+        member.additional_roles.add(SchoolRole.objects.get(school=self.school, code="comptabilite"))
+        self.assertTrue(has_permission(owner, self.school, "school.finance.approve"))
+        self.assertFalse(has_permission(owner, self.school, "school.finance.receive"))
+
     def test_transfer_limits_and_independent_receipt_control(self):
         self.send(self.payload())
         closure = self.post_closing("30000").json()
