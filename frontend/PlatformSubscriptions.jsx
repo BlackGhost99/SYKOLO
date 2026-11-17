@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from "react";
 import SubscriptionDocuments from "./SubscriptionDocuments.jsx";
 import CommercialAdjustments from "./CommercialAdjustments.jsx";
+import CommercialAccess from "./CommercialAccess.jsx";
 
 const money = value => new Intl.NumberFormat("fr-GA").format(value) + " FCFA";
 const methods = [["especes","Espèces"],["mobile_money","Mobile Money"],["virement","Virement déclaré"],["autre","Autre"]];
@@ -66,6 +67,7 @@ export default function PlatformSubscriptions({schoolId, api, tariffRevision=0})
   const validReason=reason.trim().length>0&&reason.trim().length<=240;
   return <section className="ya-box ya-form-box" aria-label="Abonnement commercial YEM">
     <h2>Abonnement annuel YEM</h2>
+    <CommercialAccess key={schoolId+":"+reload} schoolId={schoolId} api={api}/>
     <p>Facturation de la plateforme, distincte des frais de scolarité. Un seul contrat par établissement et année, ventilé par cycle. Aucun prélèvement ni suspension automatique. Les tarifs sont définis dans la grille centrale.</p>
     <label className="ya-field"><span>Année scolaire</span><select value={year} disabled={busy} onChange={e=>setYear(e.target.value)}>
       <option value="">Choisir une année…</option>{years.map(y=><option key={y.id} value={y.id}>{y.name}</option>)}
