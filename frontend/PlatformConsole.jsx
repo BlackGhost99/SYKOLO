@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 import PlatformSubscriptions from "./PlatformSubscriptions.jsx";
+import CommercialReminders from "./CommercialReminders.jsx";
 import PlatformTariffPolicy from "./PlatformTariffPolicy.jsx";
 import AdminPasswordReset from "./AdminPasswordReset.jsx";
 import brand from "./assets/yem-brand.webp";
@@ -586,6 +587,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           </form>
         </section>
       </div>}
+      {view==="plans"&&<CommercialReminders platform onSelectSchool={chooseSchool}/>}
       {view==="plans"&&<PlatformTariffPolicy api={api} onSaved={()=>setTariffRevision(v=>v+1)}/>}
       {view==="plans"&&selectedDetail&&<PlatformSubscriptions key={schoolId} schoolId={schoolId} api={api} tariffRevision={tariffRevision}/>}
       {view==="settings"&&<section className="ya-settings-wrap"><div className="ya-box ya-settings-note"><h2>Paramètres et sécurité de la plateforme</h2><p>Les paramètres pédagogiques appartiennent aux établissements. Les paramètres de sécurité ci-dessous concernent uniquement votre compte de super-administration.</p></div>{accountView}</section>}

@@ -1,6 +1,7 @@
 import React,{useEffect,useState} from "react";
 import {Card} from "./yem-ui.jsx";
 import SubscriptionDocuments from "./SubscriptionDocuments.jsx";
+import CommercialReminders from "./CommercialReminders.jsx";
 const money=v=>new Intl.NumberFormat("fr-FR").format(v)+" FCFA";
 export default function OwnerSubscription({schoolId,yearId}){
   const [state,setState]=useState({loading:true,records:[],error:""});
@@ -26,6 +27,7 @@ export default function OwnerSubscription({schoolId,yearId}){
   const sub=state.records.find(r=>r.year_id===yearId);
   return <Card title="Abonnement YEM — BWETEK Informatyk" icon="receipt">
     <p className="hint">Abonnement de l’établissement, distinct des frais de scolarité des familles. Consultation seule.</p>
+    <CommercialReminders key={schoolId} schoolId={schoolId}/>
     {state.loading?<p role="status">Chargement…</p>:state.error?<p role="alert">{state.error}</p>:!sub?<p>Aucun contrat émis pour cette année scolaire.</p>:<>
       <p><strong>{sub.year}</strong> · Total contractuel : {money(sub.total_xaf)} · Réglé : {money(sub.paid_xaf)} · Solde : {money(sub.balance_xaf)}</p>
       <SubscriptionDocuments documents={sub.documents}/>

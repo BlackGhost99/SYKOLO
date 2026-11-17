@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import {afterEach,expect,test,vi} from "vitest";
 import PlatformSubscriptions from "./PlatformSubscriptions.jsx";
 import OwnerSubscription from "./OwnerSubscription.jsx";
+import CommercialReminders from "./CommercialReminders.jsx";
 
 afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
 test("monthly commercial quote is selected and issued with exact total",async()=>{
@@ -23,15 +24,16 @@ test("monthly commercial quote is selected and issued with exact total",async()=
 });
 test("management reads refreshed balances from the school endpoint",async()=>{
   const contract={id:1,year:"2026–2027",year_id:"y",lines:[],total_xaf:150000,paid_xaf:0,balance_xaf:150000,terms:{period:"mensuel",minimum_xaf:75000,discount_xaf:0,setup_xaf:0},schedule:[]};
-  const fetcher=vi.fn().mockResolvedValueOnce(Response.json({subscriptions:[contract]})).mockResolvedValue(Response.json({subscriptions:[{...contract,paid_xaf:12500,balance_xaf:137500}]}));
+  let contractReads=0;
+  const fetcher=vi.fn(async url=>url.includes("subscription-reminders")?Response.json({reminders:[],count:0,overdue_count:0,due_count:0,upcoming_count:0,window_days:7,pages:1,page:1}):Response.json({subscriptions:[contractReads++===0?contract:{...contract,paid_xaf:12500,balance_xaf:137500}]}));
   vi.stubGlobal("fetch",fetcher);
   const hidden=vi.spyOn(document,"hidden","get").mockReturnValue(false);
   render(<OwnerSubscription schoolId="school-a" yearId="y"/>);
   await screen.findByText(/Total contractuel/);
   window.dispatchEvent(new Event("focus"));
-  await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(2));
+  await waitFor(()=>expect(contractReads).toBe(2));
   expect(await screen.findByText(/137[\s\u202f]500 FCFA/)).toBeTruthy();
-  expect(fetcher).toHaveBeenLastCalledWith("/api/v1/schools/school-a/owner/subscriptions",{credentials:"same-origin",cache:"no-store"});
+  expect(fetcher).toHaveBeenCalledWith("/api/v1/schools/school-a/owner/subscriptions",{credentials:"same-origin",cache:"no-store"});
   hidden.mockRestore();
 });
 
@@ -44,7 +46,7 @@ test("commercial PDFs are available through private same-origin routes",async()=
       {id:8,reference:"YEM-REC-0000000008",url:root+"/payments/8/receipt",amount_xaf:2000,voided:true},
       {id:9,reference:"Lien invalide",url:"https://example.test/receipt",amount_xaf:2000,voided:false}
     ]}};
-  vi.stubGlobal("fetch",vi.fn().mockResolvedValue(Response.json({subscriptions:[contract]})));
+  vi.stubGlobal("fetch",vi.fn(async url=>url.includes("subscription-reminders")?Response.json({reminders:[],count:0,overdue_count:0,due_count:0,upcoming_count:0,window_days:7,pages:1,page:1}):Response.json({subscriptions:[contract]})));
   vi.spyOn(document,"hidden","get").mockReturnValue(false);
   render(<OwnerSubscription schoolId={schoolId} yearId="y"/>);
   expect((await screen.findByRole("link",{name:"Ouvrir la facture"})).getAttribute("href")).toBe(root+"/invoice?preview=1");
@@ -53,4 +55,21 @@ test("commercial PDFs are available through private same-origin routes",async()=
   expect(screen.getByRole("link",{name:"Télécharger le reçu annulé (PDF)"}).getAttribute("href")).toBe(root+"/payments/8/receipt");
   expect(screen.getByText(/ANNULÉ/)).toBeTruthy();
   expect(document.querySelector('a[href*="example.test"]')).toBeNull();
+});
+
+test("commercial reminders refresh without duplicate rows and disappear after payment",async()=>{
+  const row={id:"3:abonnement:1:2026-11-17",school_id:"school-a",school:"École A",year:"2026–2027",kind:"abonnement",number:1,due_date:"2026-11-17",balance_xaf:8334,days_until_due:-2,stage:"late"};
+  const empty={reminders:[],count:0,overdue_count:0,due_count:0,upcoming_count:0,window_days:7,page:1,pages:1};
+  const fetcher=vi.fn().mockImplementationOnce(async()=>Response.json({...empty,reminders:[row],count:1,overdue_count:1,overdue_xaf:8334})).mockImplementation(async()=>Response.json(empty));
+  vi.stubGlobal("fetch",fetcher);
+  vi.spyOn(document,"hidden","get").mockReturnValue(false);
+  const select=vi.fn();
+  render(<CommercialReminders platform onSelectSchool={select}/>);
+  expect(await screen.findByText("Retard de 2 jours")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button",{name:"Voir l’établissement"}));
+  expect(select).toHaveBeenCalledWith("school-a");
+  window.dispatchEvent(new Event("focus"));
+  expect(await screen.findByText("Aucune échéance à relancer actuellement.")).toBeTruthy();
+  expect(screen.queryByText("Retard de 2 jours")).toBeNull();
+  expect(fetcher.mock.calls.every(([url])=>url==="/api/v1/platform/subscription-reminders?page=1")).toBe(true);
 });
