@@ -3,7 +3,7 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
-from .models import Organization, School, PlatformAudit
+from .models import Organization, OrganizationMember, School, PlatformAudit
 from .student_models import Student, Enrollment
 from .subscription_models import PlatformSubscription, PlatformSubscriptionPayment
 from .finance_models import FeePayment
@@ -141,3 +141,20 @@ class PlatformSubscriptionTests(TestCase):
                               period="trimestriel",first_due=date(2026,9,1))
         self.assertEqual(terms["annual_xaf"],1180000)
         self.assertEqual([r["amount_xaf"] for r in terms["schedule"]],[295000]*4)
+
+    def test_owner_only_read_of_own_contract(self):
+        self.assertEqual(self.issue().status_code,201)
+        url=f"/api/v1/schools/{self.school.pk}/owner/subscriptions"
+        self.client.force_login(self.ordinary)
+        self.mfa()
+        self.assertEqual(self.client.get(url).status_code,403)
+        self.assertEqual(self.client.get("/api/v1/platform/subscription-pricing").status_code,403)
+        OrganizationMember.objects.create(organization=self.school.organization,user=self.ordinary,role="founder")
+        r=self.client.get(url)
+        self.assertEqual(r.status_code,200,r.content)
+        row=r.json()["subscriptions"][0]
+        self.assertEqual(row["total_xaf"],100000)
+        self.assertNotIn("payments",row)
+        self.assertEqual(self.client.post(url,{},content_type="application/json").status_code,405)
+        other=School.objects.create(organization=Organization.objects.create(name="École indépendante"),name="Indépendante")
+        self.assertEqual(self.client.get(f"/api/v1/schools/{other.pk}/owner/subscriptions").status_code,403)
