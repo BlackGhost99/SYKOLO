@@ -1,8 +1,8 @@
-"""Commercial lifecycle and manual, narrowly scoped restrictions.
+"""Commercial lifecycle and explicit full school workspace restrictions.
 
 Expiry and late payments never change a school's activation or access by themselves.
 """
-from datetime import date
+from datetime import date, timedelta
 from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
@@ -18,6 +18,9 @@ from .subscription_pricing import add_months, schedule_balances
 from .views import parse_body
 
 
+GRACE_DAYS = 30
+
+
 def last_decision(school):
     return PlatformCommercialAccessDecision.objects.filter(school=school).order_by("-revision").first()
 
@@ -31,6 +34,8 @@ def commercial_status(school, today):
     overdue = 0
     late_30 = 0
     next_end = None
+    last_expiry = None
+    first_overdue = None
     for row in contracts:
         _, terms = effective_ledger(row)
         paid = sum(p.amount_xaf for p in row.payments.all() if p.voided_at is None)
@@ -47,10 +52,13 @@ def commercial_status(school, today):
                 future = True
             else:
                 expired = True
+                last_expiry = max(last_expiry or end, end)
         for item in schedule_balances(terms, paid, today):
             if item["days_overdue"]:
                 overdue += item["balance_xaf"]
-            if item["days_overdue"] >= 30:
+                due = date.fromisoformat(item["due_date"])
+                first_overdue = min(first_overdue or due, due)
+            if item["days_overdue"] >= GRACE_DAYS:
                 late_30 += item["balance_xaf"]
     trial = trial_summary(school, today)
     if active:
@@ -65,12 +73,24 @@ def commercial_status(school, today):
         lifecycle = "expired"
     else:
         lifecycle = "unconfigured"
+    if trial and trial["status"] == "expired":
+        end = date.fromisoformat(trial["ends_before"])
+        last_expiry = max(last_expiry or end, end)
+    grace_deadlines = []
+    if first_overdue:
+        grace_deadlines.append(first_overdue + timedelta(days=GRACE_DAYS))
+    if lifecycle == "expired" and last_expiry:
+        grace_deadlines.append(last_expiry + timedelta(days=GRACE_DAYS))
+    eligible_on = min(grace_deadlines) if grace_deadlines else None
     decision = last_decision(school)
     return {"lifecycle": lifecycle, "service_ends_before": next_end.isoformat() if next_end else None,
             "overdue_xaf": overdue, "late_30_xaf": late_30,
             "restricted": bool(decision and decision.restricted),
             "revision": decision.revision if decision else 0,
-            "can_restrict": bool(school.is_active and (lifecycle == "expired" or late_30 > 0)),
+            "grace_days": GRACE_DAYS,
+            "restriction_eligible_on": eligible_on.isoformat() if eligible_on else None,
+            "grace_days_remaining": max(0, (eligible_on - today).days) if eligible_on else None,
+            "can_restrict": bool(school.is_active and eligible_on and today >= eligible_on),
             "decision_at": decision.created_at.isoformat() if decision else None,
             "trial": trial}
 
@@ -109,7 +129,7 @@ def commercial_access(request, school_id, *, school_scope=False):
         if data["restricted"] == status["restricted"]:
             return JsonResponse({"error": "État déjà appliqué."}, status=409)
         if data["restricted"] and not status["can_restrict"]:
-            return JsonResponse({"error": "Restriction non éligible : expiration ou impayé de 30 jours requis."}, status=409)
+            return JsonResponse({"error": "Restriction non éligible : délai de grâce de 30 jours non écoulé."}, status=409)
         decision = PlatformCommercialAccessDecision.objects.create(
             school=school, revision=status["revision"]+1, restricted=data["restricted"],
             reason=data["reason"].strip(), actor=request.user)
