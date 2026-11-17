@@ -2,6 +2,7 @@ import React, {useEffect,useState} from "react";
 import {Button,Card,Status,Table} from "./yem-ui.jsx";
 
 const PROFILE_FIELDS = [
+  ["category","Catégorie du personnel"],
   ["qualification","Diplôme / qualification"],
   ["specialty","Spécialité ou discipline"],
   ["employment_status","Statut professionnel"],
@@ -10,7 +11,7 @@ const PROFILE_FIELDS = [
   ["professional_phone","Téléphone professionnel"],
 ];
 
-export default function StaffProfessionalDossier({schoolId,staffId="",own=false,onClose}) {
+export default function StaffProfessionalDossier({schoolId,staffId="",own=false,onClose,onUpdated}) {
   const [data,setData]=useState(null);
   const [draft,setDraft]=useState({});
   const [editing,setEditing]=useState(false);
@@ -58,6 +59,7 @@ export default function StaffProfessionalDossier({schoolId,staffId="",own=false,
       const result=await response.json();
       if(!response.ok)throw Error(result.error||"Modification refusée.");
       setData(result);setDraft(result.professional);setEditing(false);
+      onUpdated?.(result.professional);
       setNotice("Fiche professionnelle actualisée.");
     }catch(err){setError(err.message);}
     finally{setBusy(false);}
@@ -95,11 +97,12 @@ export default function StaffProfessionalDossier({schoolId,staffId="",own=false,
       </div> : <form onSubmit={save}>
         <div className="two">
           {PROFILE_FIELDS.map(([key,label])=><label key={key} className="field">{label}
-            <input type={key==="professional_email"?"email":key==="professional_phone"?"tel":"text"}
+            <input list={key==="category"?"yem-staff-category-options":undefined} type={key==="professional_email"?"email":key==="professional_phone"?"tel":"text"}
               maxLength={key==="professional_email"?254:key==="professional_phone"?45:key==="qualification"||key==="specialty"?180:100}
               value={draft[key]||""} onChange={event=>setDraft(current=>({...current,[key]:event.target.value}))}/>
           </label>)}
         </div>
+        <datalist id="yem-staff-category-options"><option value="Personnel administratif"/><option value="Enseignants"/><option value="Autres employés"/></datalist>
         <div className="actions">
           <Button onClick={()=>{setEditing(false);setDraft({...p});}}>Annuler</Button>
           <button type="submit" disabled={busy}>{busy?"Enregistrement…":"Enregistrer la fiche"}</button>
