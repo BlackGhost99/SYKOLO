@@ -17,7 +17,7 @@ def protect_diary(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("institutions", "0068_staff_professional_category"), migrations.swappable_dependency(settings.AUTH_USER_MODEL)]
+    dependencies = [("institutions", "0070_commercial_tariff_policy"), migrations.swappable_dependency(settings.AUTH_USER_MODEL)]
     operations = [
         migrations.CreateModel(
             name="TeachingDiaryEntry",
