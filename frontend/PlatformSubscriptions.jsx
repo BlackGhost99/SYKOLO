@@ -6,7 +6,10 @@ export default function PlatformSubscriptions({schoolId, api}) {
   const [years,setYears]=useState([]);
   const [year,setYear]=useState("");
   const [data,setData]=useState(null);
-  const [rates,setRates]=useState({});
+  const [period,setPeriod]=useState("annuel");
+  const [discount,setDiscount]=useState("0");
+  const [includeSetup,setIncludeSetup]=useState(false);
+  const [reload,setReload]=useState(0);
   const [reason,setReason]=useState("");
   const [reference,setReference]=useState("");
   const [amount,setAmount]=useState("");
@@ -18,7 +21,7 @@ export default function PlatformSubscriptions({schoolId, api}) {
   const path="platform/schools/"+schoolId+"/subscriptions";
   function assign(value) {
     setData(value);
-    if(value.rates) setRates(Object.fromEntries(Object.entries(value.rates).map(([k,v])=>[k,v==null?"":String(v)])));
+    if(value.counts){setPeriod("annuel");setDiscount("0");setIncludeSetup(false);}
   }
   useEffect(()=>{
     let alive=true;
@@ -39,7 +42,7 @@ export default function PlatformSubscriptions({schoolId, api}) {
       .catch(err=>{if(alive)setMessage(err.message);})
       .finally(()=>{if(alive)setLoading(false);});
     return()=>{alive=false;};
-  },[path,year,api]);
+  },[path,year,api,reload]);
   async function submit(action,values) {
     if(pending.current)return;
     pending.current=true;setBusy(true);setMessage("");
@@ -50,33 +53,44 @@ export default function PlatformSubscriptions({schoolId, api}) {
     finally{pending.current=false;setBusy(false);}
   }
   const sub=data?.subscription;
-  const validRates=data?.counts&&Object.keys(data.counts).every(k=>rates[k]!==""&&rates[k]!==undefined
-    &&Number.isSafeInteger(Number(rates[k]))&&Number(rates[k])>=0&&Number(rates[k])<=10000000);
-  const total=validRates?Object.entries(data.counts).reduce((sum,[k,n])=>sum+n*Number(rates[k]),0):null;
+  const gross=data?.terms?.gross_xaf ?? 0;
+  const minimum=data?.terms?.minimum_xaf ?? 0;
+  const annualBeforeDiscount=Math.max(gross,minimum);
+  const discountOK=discount!==""&&Number.isSafeInteger(Number(discount))&&Number(discount)>=0&&Number(discount)<=annualBeforeDiscount;
+  const annual=annualBeforeDiscount-(discountOK?Number(discount):0);
+  const setup=includeSetup?(data?.setup_suggested_xaf||0):0;
+  const total=annual+setup;
+  const installments={annuel:1,semestriel:2,trimestriel:4}[period];
   const validReason=reason.trim().length>0&&reason.trim().length<=240;
   return <section className="ya-box ya-form-box" aria-label="Abonnement commercial YEM">
     <h2>Abonnement annuel YEM</h2>
-    <p>Facturation de la plateforme, distincte des frais de scolarité. Un seul contrat par établissement et année, ventilé par cycle. Aucun prélèvement ni suspension automatique.</p>
+    <p>Facturation de la plateforme, distincte des frais de scolarité. Un seul contrat par établissement et année, ventilé par cycle. Aucun prélèvement ni suspension automatique. Les tarifs sont définis dans la grille centrale.</p>
     <label className="ya-field"><span>Année scolaire</span><select value={year} disabled={busy} onChange={e=>setYear(e.target.value)}>
       <option value="">Choisir une année…</option>{years.map(y=><option key={y.id} value={y.id}>{y.name}</option>)}
     </select></label>
     {loading&&<p role="status">Chargement des effectifs…</p>}
     {!loading&&!years.length&&<p>Créez une année scolaire pour préparer un abonnement.</p>}
-    {data?.counts&&<form onSubmit={e=>{e.preventDefault();submit("issue",{expected_counts:data.counts,rates:Object.fromEntries(Object.entries(rates).map(([k,v])=>[k,Number(v)]))});}}>
-      <h3>Devis par cycle — tarifs modifiables</h3>
-      {Object.entries(data.counts).map(([k,n])=><div key={k} className="ya-form-grid">
-        <label className="ya-field"><span>{data.labels[k]} · {n} élève(s) actif(s)</span>
-          <input required type="number" min="0" max="10000000" step="1" value={rates[k]??""} disabled={busy} onChange={e=>setRates(old=>({...old,[k]:e.target.value}))}/></label>
-        <p>{rates[k]!==""&&rates[k]!=null?money(n*Number(rates[k])):"Tarif à renseigner"}</p>
-      </div>)}
-      <p><strong>Total annuel : {total==null?"—":money(total)}</strong></p>
-      <label className="ya-field"><span>Motif / référence du contrat</span><textarea value={reason} required rows={2} maxLength={240} onChange={e=>setReason(e.target.value)}/></label>
-      <p>Les effectifs et tarifs sont figés à la création. Aucun changement des données scolaires. Vérifiez le devis avant enregistrement.</p>
-      <button className="ya-btn ya-btn-primary" disabled={busy||!data.can_issue||!validRates||!validReason||!Object.keys(data.counts).length}>Enregistrer l’abonnement annuel</button>
+    {data?.counts&&<form onSubmit={e=>{e.preventDefault();submit("issue",{expected_counts:data.counts,policy_revision:data.policy_revision,period,discount_xaf:Number(discount),include_setup:includeSetup,expected_total_xaf:total});}}>
+      <h3>Devis automatique · grille n°{data.policy_revision}</h3>
+      {Object.entries(data.counts).map(([k,n])=><p key={k}>{data.labels[k]} : {n} inscrit(s) × {money(data.rates[k])} = <strong>{money(n*data.rates[k])}</strong></p>)}
+      <p>Effectif total : <strong>{data.terms.student_count}</strong> · Montant par effectifs : {money(gross)}</p>
+      <p>Minimum annuel unique : {money(minimum)} · Complément minimum : {money(Math.max(0,minimum-gross))}</p>
+      <label className="ya-field"><span>Remise exceptionnelle (FCFA) · motif obligatoire</span><input type="number" min="0" max={annualBeforeDiscount} step="1" value={discount} disabled={busy} onChange={e=>setDiscount(e.target.value)}/></label>
+      <label className="ya-field"><span>Modalité de règlement</span><select value={period} onChange={e=>setPeriod(e.target.value)} disabled={busy}>
+        <option value="annuel">Annuel · 1 versement</option><option value="semestriel">Semestriel · 2 versements</option><option value="trimestriel">Trimestriel · 4 versements</option></select></label>
+      <p>Abonnement annuel net : <b>{money(annual)}</b> · {installments} versement(s) de {money(Math.floor(annual/installments))}{annual%installments!==0?" (écart d’arrondi sur les premières échéances)":""}. Première échéance : {data.first_due}.</p>
+      {!!data.setup_suggested_xaf&&<label><input type="checkbox" checked={includeSetup} disabled={busy} onChange={e=>setIncludeSetup(e.target.checked)}/> Ajouter la mise en service unique : {money(data.setup_suggested_xaf)}</label>}
+      <p><strong>Total à contractualiser : {money(total)}</strong></p>
+      <label className="ya-field"><span>Motif / référence du contrat (et justification de toute remise)</span><textarea value={reason} required rows={2} maxLength={240} onChange={e=>setReason(e.target.value)}/></label>
+      <p>Les effectifs, tarifs, minimums, échéances et remises sont figés à la création. Vérifiez le devis avant enregistrement.</p>
+      <button type="button" className="ya-btn ya-btn-outline" disabled={busy} onClick={()=>setReload(n=>n+1)}>Recalculer les effectifs</button>
+      <button className="ya-btn ya-btn-primary" disabled={busy||!data.can_issue||!discountOK||!validReason||!Object.keys(data.counts).length}>Enregistrer l’abonnement annuel</button>
     </form>}
     {sub&&<div>
       <h3>Contrat annuel enregistré</h3>
       {sub.lines.map(line=><p key={line.cycle}>{line.label} : {line.students} × {money(line.rate_xaf)} = <strong>{money(line.amount_xaf)}</strong></p>)}
+      {sub.terms?.period&&<><p>Abonnement annuel : {money(sub.terms.annual_xaf)} · Minimum : {money(sub.terms.minimum_xaf)} · Remise : {money(sub.terms.discount_xaf)} · Mise en service : {money(sub.terms.setup_xaf)}</p>
+        <h4>Échéancier contractuel</h4>{sub.schedule.map(item=><p key={item.kind+item.number}>{item.kind==="mise_en_service"?"Mise en service":"Versement "+item.number} — {item.due_date} — {money(item.amount_xaf)} · reste : {money(item.balance_xaf)} {item.days_overdue>0?" · "+item.days_overdue+" j de retard":""}</p>)}</>}
       <p>Total : <b>{money(sub.total_xaf)}</b> · Réglé : <b>{money(sub.paid_xaf)}</b> · Solde : <b>{money(sub.balance_xaf)}</b></p>
       <label className="ya-field"><span>Motif / justificatif de l’opération</span><textarea value={reason} rows={2} maxLength={240} onChange={e=>setReason(e.target.value)}/></label>
       {sub.balance_xaf>0&&<form onSubmit={e=>{e.preventDefault();submit("payment",{reference,amount_xaf:Number(amount),method});}}>
