@@ -42,7 +42,9 @@ export default function CommercialReminders({schoolId,platform=false,onSelectSch
       {!data.count&&<p>Aucune échéance à relancer actuellement.</p>}
       {data.reminders.map(item=><div className="ya-info-row" key={item.id}>
         <div><strong>{timing(item)}</strong> · {item.kind==="mise_en_service"?"Mise en service":"Versement "+item.number} — {item.due_date}<br/>
-          {platform?item.school+" · ":""}{item.year} · {money(item.balance_xaf)} restant(s)</div>
+          {platform?item.school+" · ":""}{item.year} · {money(item.balance_xaf)} restant(s)
+          {item.stage==="late_30"&&<strong> · Relance prioritaire (30 jours et plus)</strong>}
+          {item.stage==="late_7"&&<strong> · Relance prolongée (7 jours et plus)</strong>}</div>
         {platform&&onSelectSchool&&<button type="button" className="ya-btn ya-btn-outline" onClick={()=>onSelectSchool(item.school_id)}>Voir l’établissement</button>}
       </div>)}
       {data.pages>1&&<div>
