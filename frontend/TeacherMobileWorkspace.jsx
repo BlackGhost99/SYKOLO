@@ -24,7 +24,7 @@ const displayClass=(classes,id)=>classes.find(c=>c.id===id)?.name||"Classe";
 
 export default function TeacherMobileWorkspace({
   schoolId,schoolName,user,permissions=[],preschoolEnabled=false,workingYearId="",years=[],
-  schools=[],onSchoolChange,onYearChange,onLogout,onExit,accountView,
+  schools=[],onSchoolChange,onYearChange,onLogout,onExit,accountView,commercialBanner,
 }){
   const [tab,setTab]=useState("accueil");
   const [data,setData]=useState({courses:[],classes:[],subjects:[],periods:[],assignments:[],entries:[]});
@@ -117,6 +117,7 @@ export default function TeacherMobileWorkspace({
       </label>}
     </header>
     <main className="ym-prof-body" id="ym-prof-main">
+      {commercialBanner}
       {loading&&tab!=="profil"&&<p role="status" className="ym-hint">Chargement de vos cours et de vos affectations…</p>}
       {error&&tab!=="profil"&&<p role="alert" className="ym-alert">Certaines données sont indisponibles : {error}</p>}
       {tab==="accueil"&&<div className="ym-page">

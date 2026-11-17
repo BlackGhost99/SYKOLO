@@ -67,3 +67,15 @@ class PlatformSubscriptionTrial(models.Model):
     issued_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
     class Meta:
         constraints = [models.CheckConstraint(condition=models.Q(ends_before__gt=models.F("starts_on")), name="valid_yem_trial_dates")]
+
+
+class PlatformCommercialAccessDecision(models.Model):
+    """Append-only, explicit commercial restriction decision; not school suspension."""
+    school = models.ForeignKey("institutions.School", on_delete=models.PROTECT, related_name="commercial_access_decisions")
+    revision = models.PositiveIntegerField()
+    restricted = models.BooleanField()
+    reason = models.CharField(max_length=240)
+    created_at = models.DateTimeField(auto_now_add=True)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["school", "revision"], name="unique_yem_commercial_access_revision")]

@@ -1,7 +1,7 @@
 from django.urls import path
 from conduct import views as conduct_views
 from . import import_views, subscription_views, teaching_diary_views, diary_resource_views, course_progress_views, remediation_views
-from . import singpay_views, subscription_reminders
+from . import singpay_views, subscription_reminders, subscription_access
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
 from . import annual_views
@@ -43,6 +43,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/delegations/<uuid:delegation_id>", delegation_views.delegations),
     path("platform/dashboard", platform_admin_views.platform_dashboard),
     path("platform/subscription-reminders", subscription_reminders.commercial_reminders),
+    path("platform/schools/<uuid:school_id>/commercial-access", subscription_access.commercial_access),
+    path("schools/<uuid:school_id>/owner/commercial-access", subscription_access.commercial_access, {"school_scope": True}),
     path("schools/<uuid:school_id>/owner/subscription-reminders", subscription_reminders.commercial_reminders),
     path("platform/subscription-pricing", subscription_views.pricing_policy),
     path("platform/schools/<uuid:school_id>/subscriptions", subscription_views.subscriptions),
