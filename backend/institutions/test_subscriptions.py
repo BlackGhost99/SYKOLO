@@ -403,6 +403,89 @@ class PlatformSubscriptionTests(TestCase):
         self.school.refresh_from_db()
         self.assertTrue(self.school.is_active)
 
+    def test_commercial_dashboard_reconciles_ledger_and_keeps_school_funds_separate(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from .subscription_models import PlatformSubscriptionAmendment, PlatformCommercialAccessDecision
+        self.assertEqual(self.issue(period="mensuel").status_code,201)
+        row = PlatformSubscription.objects.get()
+        PlatformSubscriptionAmendment.objects.create(subscription=row, revision=1,
+            effective_on=date(2026,11,17), snapshot={}, amount_xaf=2000, reason="Avenant synthétique")
+        self.assertEqual(self.post("payment", reference="F6-VALID", amount_xaf=3000, method="especes", reason="Test").status_code,201)
+        self.assertEqual(self.post("payment", reference="F6-VOID", amount_xaf=1000, method="mobile_money", reason="Test").status_code,201)
+        cancel = PlatformSubscriptionPayment.objects.get(reference="F6-VOID")
+        self.assertEqual(self.post("void", payment_id=cancel.pk, reason="Annulation test").status_code,200)
+        PlatformSubscriptionPayment.objects.update(recorded_at=datetime(2026,11,17,12,0,tzinfo=ZoneInfo("Africa/Libreville")))
+        PlatformSubscription.objects.create(year=self.foreign_year, total_xaf=5000, lines=[])
+        self.other.is_active=False
+        self.other.save(update_fields=["is_active"])
+        PlatformCommercialAccessDecision.objects.create(school=self.school,revision=1,restricted=True,reason="Test synthétique")
+        url="/api/v1/platform/commercial-dashboard"
+        with patch("institutions.subscription_views.timezone.localdate",return_value=date(2026,12,18)):
+            result=self.client.get(url+"?year=2026")
+            self.assertEqual(result.status_code,200,result.content)
+            body=result.json()
+            totals=body["totals"]
+            self.assertEqual(totals["contracted_xaf"],107000)
+            self.assertEqual(totals["amendments_xaf"],2000)
+            self.assertEqual(totals["paid_xaf"],3000)
+            self.assertEqual(totals["balance_xaf"],104000)
+            self.assertEqual(totals["unscheduled_xaf"],5000)
+            self.assertEqual(totals["read_only_schools"],1)
+            self.assertEqual(totals["review_count"],1)
+            self.assertEqual(totals["overdue_xaf"],15668)
+            self.assertEqual(sum(totals[k] for k in ("overdue_xaf","due_today_xaf","future_xaf","unscheduled_xaf")),totals["balance_xaf"])
+            self.assertEqual(body["year_received_xaf"],3000)
+            self.assertEqual(body["year_voided_xaf"],1000)
+            self.assertEqual(body["months"][10]["received_xaf"],3000)
+            self.assertEqual(body["methods"]["especes"],3000)
+            self.assertEqual(body["methods"]["mobile_money"],0)
+            filtered=self.client.get(url+"?status=read_only").json()
+            self.assertEqual(filtered["count"],1)
+            self.assertEqual(filtered["totals"],totals)
+            self.assertEqual(filtered["schools"][0]["school_id"],str(self.school.pk))
+            self.assertEqual(self.client.get(url+"?status=review").json()["schools"][0]["school_id"],str(self.other.pk))
+            self.assertEqual(self.client.get(url+"?year=9999").status_code,422)
+            self.assertEqual(self.client.get(url+"?page=-1").status_code,422)
+            self.assertEqual(self.client.post(url,{}).status_code,405)
+        self.assertEqual(FeePayment.objects.count(),0)
+        session=self.client.session
+        session["mfa_verified"]=False
+        session.save()
+        self.assertEqual(self.client.get(url).status_code,403)
+        self.client.force_login(self.ordinary)
+        self.assertEqual(self.client.get(url).status_code,403)
+
+    def test_dashboard_keeps_malformed_legacy_balance_without_fake_dates(self):
+        self.assertEqual(self.issue().status_code,201)
+        PlatformSubscription.objects.create(year=self.foreign_year,total_xaf=5000,lines=[],
+            commercial_terms={"schedule":[{"amount_xaf":5000}]})
+        response=self.client.get("/api/v1/platform/commercial-dashboard")
+        self.assertEqual(response.status_code,200,response.content)
+        totals=response.json()["totals"]
+        self.assertEqual(totals["contracted_xaf"],105000)
+        self.assertEqual(totals["unscheduled_xaf"],5000)
+        self.assertEqual(totals["review_count"],1)
+        self.assertEqual(totals["balance_xaf"],105000)
+
+    def test_dashboard_flags_duplicate_or_out_of_range_schedule(self):
+        self.assertEqual(self.issue().status_code,201)
+        legacy = PlatformSubscription.objects.create(year=self.foreign_year,total_xaf=5000,lines=[])
+        examples = [
+            [{"kind":"abonnement","number":1,"amount_xaf":2500,"due_date":"2026-11-17"}]*2,
+            [{"kind":"abonnement","number":1,"amount_xaf":5000,"due_date":"9999-12-31"}],
+            [{"kind":"unknown","number":1,"amount_xaf":5000,"due_date":"2026-11-17"}],
+        ]
+        for schedule in examples:
+            legacy.commercial_terms={"schedule":schedule}
+            legacy.save(update_fields=["commercial_terms"])
+            response=self.client.get("/api/v1/platform/commercial-dashboard")
+            self.assertEqual(response.status_code,200,response.content)
+            totals=response.json()["totals"]
+            self.assertEqual(totals["review_count"],1)
+            self.assertEqual(totals["unscheduled_xaf"],5000)
+            self.assertEqual(totals["balance_xaf"],105000)
+
     def test_quote_uses_real_counts_and_snapshot(self):
         self.assertEqual(self.client.get(self.path).json()["suggested_year"], str(self.year.pk))
         quote = self.post("quote")
