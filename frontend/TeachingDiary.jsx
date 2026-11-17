@@ -8,14 +8,58 @@ const today = () => {
 };
 const blank = () => ({id:"", day:today(), title:"", lesson:"", homework:"", due_on:"", published:false});
 
-function Entries({entries, onEdit}) {
+export function ResourceLinks({resources=[],href}) {
+  if(!resources.length)return null;
+  return <div><strong>Documents pédagogiques</strong><ul>{resources.map(r=><li key={r.id}><a href={href(r)}>{r.filename}</a> · {Math.ceil(r.size/1024)} Ko</li>)}</ul></div>;
+}
+function ResourceUpload({entry,schoolId,onRefresh,api}) {
+  const [file,setFile]=useState(null),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+  const input=useRef(null),key=useRef(null),running=useRef(false);
+  const root="schools/"+schoolId+"/diary/entries/"+entry.id+"/resources";
+  async function upload(e) {
+    e.preventDefault();
+    if(running.current||!file)return;
+    running.current=true;setBusy(true);setMessage("");
+    try {
+      const csrfResponse=await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
+      if(!csrfResponse.ok)throw Error("Votre session a expiré.");
+      const csrf=document.cookie.split("; ").find(v=>v.startsWith("csrftoken="))?.split("=")[1]||"";
+      const form=new FormData();
+      key.current ||= crypto.randomUUID();
+      form.append("id",key.current);form.append("file",file);
+      const r=await fetch("/api/v1/"+root,{method:"POST",credentials:"same-origin",headers:{"X-CSRFToken":csrf},body:form});
+      const result=await r.json();
+      if(!r.ok)throw Error(result.error||"Document refusé.");
+      setFile(null);key.current=null;if(input.current)input.current.value="";
+      onRefresh();
+    }catch(e){setMessage(e.message);}
+    finally{running.current=false;setBusy(false);}
+  }
+  async function revoke(r) {
+    if(running.current)return;
+    running.current=true;setBusy(true);setMessage("");
+    try{await api(root+"/"+r.id,{},"PATCH");onRefresh();}
+    catch(e){setMessage(e.message);}finally{running.current=false;setBusy(false);}
+  }
+  return <div className="yem-diary-resources">
+    {(entry.resources||[]).map(r=><div key={r.id}><button type="button" className="yd-btn" disabled={busy} onClick={()=>revoke(r)}>Retirer {r.filename}</button></div>)}
+    <form onSubmit={upload}><label className="field">Joindre un document texte UTF-8 (.txt, 1 Mio maximum)
+      <input ref={input} type="file" accept=".txt,text/plain" disabled={busy} onChange={e=>{setFile(e.target.files?.[0]||null);key.current=null;setMessage("");}}/></label>
+      <button type="submit" className="yd-btn" disabled={busy||!file||file.size>1048576}>Joindre le document</button>
+    </form>{message&&<p role="alert">{message}</p>}
+  </div>;
+}
+
+function Entries({entries, onEdit, resourceHref, schoolId, onRefresh, api}) {
   if (!entries.length) return <p>Aucune séance enregistrée.</p>;
   return <div className="yem-diary-list">{entries.map(e=><article key={e.id}>
     <div className="yem-diary-entry-head"><div><small>{e.day} · {e.classroom} · {e.subject}</small>
       <h3>{e.title}</h3></div>{onEdit&&<span>{e.published?"Publié":"Brouillon"}</span>}</div>
     <p className="yem-diary-text">{e.lesson}</p>
     {e.homework&&<div className="yem-diary-homework"><strong>Travail à faire{e.due_on?" pour le "+e.due_on:""}</strong><p className="yem-diary-text">{e.homework}</p></div>}
+    {resourceHref&&<ResourceLinks resources={e.resources} href={r=>resourceHref(e,r)}/>}
     {onEdit&&<button className="yd-btn" type="button" onClick={()=>onEdit(e)}>Modifier la séance</button>}
+    {onEdit&&schoolId&&<ResourceUpload entry={e} schoolId={schoolId} onRefresh={onRefresh} api={api}/>}
   </article>)}
   {entries.length>=200&&<p>Les 200 dernières séances sont affichées.</p>}</div>;
 }
@@ -93,7 +137,7 @@ export default function TeachingDiary({schoolId, yearId="", api=teacherRequest})
       <div className="actions"><button className="yd-btn primary" type="submit" disabled={busy}>{form.published?"Enregistrer et publier":"Enregistrer le brouillon"}</button>
       <button className="yd-btn" type="button" disabled={busy} onClick={()=>{setForm(blank());setError("");}}>Nouvelle saisie</button></div>
     </form>}
-    {!loading&&course&&<Entries entries={entries} onEdit={writable&&!busy?setEntry:null}/>}
+    {!loading&&course&&<Entries entries={entries} onEdit={writable&&!busy?setEntry:null} schoolId={schoolId} api={api} onRefresh={()=>setRefresh(n=>n+1)} resourceHref={(e,r)=>"/api/v1/schools/"+schoolId+"/diary/entries/"+e.id+"/resources/"+r.id}/>}
   </section>;
 }
 
@@ -109,5 +153,5 @@ export function FamilyTeachingDiary({api=teacherRequest,childBase,year}) {
   },[api,childBase,year]);
   if(error)return <p role="alert">{error}</p>;
   if(!entries)return <p role="status">Chargement des séances publiées…</p>;
-  return <Entries entries={entries}/>;
+  return <Entries entries={entries} resourceHref={(_e,r)=>"/api/v1/"+childBase+"/diary/resources/"+r.id+"?year="+encodeURIComponent(year)}/>;
 }
