@@ -1,8 +1,10 @@
 from django.urls import include, path
 from pedagogy import views
 from pedagogy.pwa_views import pwa_asset
+from institutions.parent_push_scheduler import run_scheduled_push
 
 urlpatterns = [
+    path("internal/yem-parent-push", run_scheduled_push),
     path("api/v1/auth/", include("accounts.urls")),
     path("api/v1/", include("institutions.urls")),
     path("manifest.webmanifest", pwa_asset, {"name":"manifest.webmanifest"}),
