@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 import PlatformSubscriptions from "./PlatformSubscriptions.jsx";
 import CommercialReminders from "./CommercialReminders.jsx";
+import CommercialDashboard from "./CommercialDashboard.jsx";
 import PlatformTariffPolicy from "./PlatformTariffPolicy.jsx";
 import AdminPasswordReset from "./AdminPasswordReset.jsx";
 import brand from "./assets/yem-brand.webp";
@@ -32,6 +33,7 @@ const menu = [
   ["users", "Utilisateurs & rôles", "users"],
   ["audit", "Sécurité & audit", "shield"],
   ["plans", "Abonnements", "card"],
+  ["commercial", "Finances BWETEK", "card"],
   ["settings", "Paramètres plateforme", "settings"],
 ];
 const eventLabels = {
@@ -469,7 +471,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       <header className="ya-top">
         <div className="ya-top-title"><p>PLATEFORME / SUPER-ADMIN</p><h1>{view==="overview"?"Console d'administration YEM":({
           organizations:"Organisations",schools:"Établissements",users:"Utilisateurs & rôles",
-          audit:"Sécurité & audit",plans:"Abonnements et limites",settings:"Paramètres de la plateforme",newSchool:"Nouvel établissement",profile:"Type et cycles de l’établissement",
+          audit:"Sécurité & audit",plans:"Abonnements et limites",commercial:"Finances BWETEK",settings:"Paramètres de la plateforme",newSchool:"Nouvel établissement",profile:"Type et cycles de l’établissement",
         }[view]||"Console d'administration YEM")}</h1><span>Administration globale de YEM — organisations, établissements, utilisateurs et droits.</span></div>
         <div className="ya-top-actions"><div className="ya-global-search"><Icon name="search" size={20}/><input ref={searchRef} type="search" aria-label="Recherche globale" placeholder="Rechercher un établissement…" value={filters.q} onChange={e=>setFilters(o=>({...o,q:e.target.value,page:1}))}/><kbd>Ctrl + K</kbd></div>
           <button className="ya-icon-button" title="Historique des opérations" aria-label="Historique des opérations" onClick={()=>goto("audit")}><Icon name="bell" size={23}/></button>
@@ -587,6 +589,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           </form>
         </section>
       </div>}
+      {view==="commercial"&&<CommercialDashboard api={api} onSelectSchool={id=>{chooseSchool(id);goto("plans");}}/>}
       {view==="plans"&&<CommercialReminders platform onSelectSchool={chooseSchool}/>}
       {view==="plans"&&<PlatformTariffPolicy api={api} onSaved={()=>setTariffRevision(v=>v+1)}/>}
       {view==="plans"&&selectedDetail&&<PlatformSubscriptions key={schoolId} schoolId={schoolId} api={api} tariffRevision={tariffRevision}/>}
