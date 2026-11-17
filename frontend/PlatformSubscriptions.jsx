@@ -1,5 +1,6 @@
 import React, {useEffect, useRef, useState} from "react";
 import SubscriptionDocuments from "./SubscriptionDocuments.jsx";
+import CommercialAdjustments from "./CommercialAdjustments.jsx";
 
 const money = value => new Intl.NumberFormat("fr-GA").format(value) + " FCFA";
 const methods = [["especes","Espèces"],["mobile_money","Mobile Money"],["virement","Virement déclaré"],["autre","Autre"]];
@@ -85,15 +86,17 @@ export default function PlatformSubscriptions({schoolId, api, tariffRevision=0})
       <p><strong>Total à contractualiser : {money(total)}</strong></p>
       <label className="ya-field"><span>Motif / référence du contrat (et justification de toute remise)</span><textarea value={reason} required rows={2} maxLength={240} onChange={e=>setReason(e.target.value)}/></label>
       <p>Les effectifs, tarifs, minimums, échéances et remises sont figés à la création. Vérifiez le devis avant enregistrement.</p>
+      {data.trial&&data.trial.status!=="converted"&&<p role="note">L’émission de ce contrat met fin à l’essai gratuit et crée les échéances contractuelles.</p>}
       <button type="button" className="ya-btn ya-btn-outline" disabled={busy} onClick={()=>setReload(n=>n+1)}>Recalculer les effectifs</button>
       <button className="ya-btn ya-btn-primary" disabled={busy||!data.can_issue||!discountOK||!validReason||!Object.keys(data.counts).length}>Enregistrer l’abonnement annuel</button>
     </form>}
+    {!loading&&data&&year&&<CommercialAdjustments key={year+":"+(sub?.amendments?.length||0)+":"+(data.trial?.status||"")} api={api} path={path} year={year} sub={sub} trial={data.trial} canTrial={data.can_trial&&data.can_issue} disabled={busy} onSaved={()=>setReload(n=>n+1)}/>}
     {sub&&<div>
       <h3>Contrat annuel enregistré</h3>
       <SubscriptionDocuments documents={sub.documents}/>
       {sub.lines.map(line=><p key={line.cycle}>{line.label} : {line.students} × {money(line.rate_xaf)} = <strong>{money(line.amount_xaf)}</strong></p>)}
       {sub.terms?.period&&<><p>Abonnement annuel : {money(sub.terms.annual_xaf)} · Minimum : {money(sub.terms.minimum_xaf)} · Remise : {money(sub.terms.discount_xaf)} · Mise en service : {money(sub.terms.setup_xaf)}</p>
-        <h4>Échéancier contractuel — {({annuel:"annuel",semestriel:"semestriel",trimestriel:"trimestriel",mensuel:"mensuel"})[sub.terms.period]}</h4>{sub.schedule.map(item=><p key={item.kind+item.number}>{item.kind==="mise_en_service"?"Mise en service":"Versement "+item.number} — {item.due_date} — {money(item.amount_xaf)} · reste : {money(item.balance_xaf)} {item.days_overdue>0?" · "+item.days_overdue+" j de retard":""}</p>)}</>}
+        <h4>Échéancier contractuel — {({annuel:"annuel",semestriel:"semestriel",trimestriel:"trimestriel",mensuel:"mensuel"})[sub.terms.period]}</h4>{sub.schedule.map(item=><p key={item.kind+item.number}>{item.kind==="mise_en_service"?"Mise en service":item.kind==="avenant"?"Avenant "+item.number:"Versement "+item.number} — {item.due_date} — {money(item.amount_xaf)} · reste : {money(item.balance_xaf)} {item.days_overdue>0?" · "+item.days_overdue+" j de retard":""}</p>)}</>}
       <p>Total : <b>{money(sub.total_xaf)}</b> · Réglé : <b>{money(sub.paid_xaf)}</b> · Solde : <b>{money(sub.balance_xaf)}</b></p>
       <label className="ya-field"><span>Motif / justificatif de l’opération</span><textarea value={reason} rows={2} maxLength={240} onChange={e=>setReason(e.target.value)}/></label>
       {sub.balance_xaf>0&&<form onSubmit={e=>{e.preventDefault();submit("payment",{reference,amount_xaf:Number(amount),method});}}>

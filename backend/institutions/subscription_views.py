@@ -19,6 +19,8 @@ from .subscription_pricing import (DEFAULT_RATES, DEFAULT_MINIMUMS, PERIODS, quo
 from .views import parse_body
 from .finance_document_pdf import previewable_pdf
 from .subscription_document_pdf import document_links, render_commercial_document
+from .subscription_amendments import (amendment_rows, amendment_quote, effective_ledger,
+    serialize_amendment, start_trial, trial_summary)
 
 METHODS = {"especes", "mobile_money", "virement", "autre"}
 
@@ -108,9 +110,12 @@ def quote_for(school, year, policy, counts):
 def representation(row):
     payments = sorted(row.payments.all(), key=lambda p: (p.recorded_at, p.pk))
     paid = sum(p.amount_xaf for p in payments if p.voided_at is None)
-    return {"id": row.pk, "lines": row.lines, "total_xaf": row.total_xaf, "paid_xaf": paid,
-            "terms": row.commercial_terms, "schedule": schedule_balances(row.commercial_terms, paid, timezone.localdate()),
-            "balance_xaf": row.total_xaf - paid, "issued_at": row.issued_at.isoformat(),
+    amendments = amendment_rows(row)
+    total, terms = effective_ledger(row, amendments)
+    return {"id": row.pk, "lines": row.lines, "total_xaf": total, "paid_xaf": paid,
+            "original_total_xaf": row.total_xaf, "amendments": [serialize_amendment(a) for a in amendments],
+            "terms": row.commercial_terms, "schedule": schedule_balances(terms, paid, timezone.localdate()),
+            "balance_xaf": total - paid, "issued_at": row.issued_at.isoformat(),
             "documents": document_links(row),
             "payments": [{"id": p.pk, "reference": p.reference, "amount_xaf": p.amount_xaf,
                           "method": p.method, "recorded_at": p.recorded_at.isoformat(),
@@ -138,7 +143,10 @@ def subscriptions(request, school_id):
     fields = {"quote": {"year_id", "action"},
               "issue": {"year_id", "action", "policy_revision", "expected_counts", "reason", "period", "discount_xaf", "include_setup", "expected_total_xaf"},
               "payment": {"year_id", "action", "reference", "amount_xaf", "method", "reason"},
-              "void": {"year_id", "action", "payment_id", "reason"}}
+              "void": {"year_id", "action", "payment_id", "reason"},
+              "amendment_quote": {"year_id", "action"},
+              "amendment_issue": {"year_id", "action", "expected", "reason"},
+              "trial_start": {"year_id", "action", "days", "reason"}}
     if not isinstance(action, str) or action not in fields or set(data) != fields[action]:
         return fail("Action ou paramètres invalides.")
     from uuid import UUID
@@ -153,20 +161,38 @@ def subscriptions(request, school_id):
         if year is None:
             return fail("Année introuvable pour cet établissement.", 404)
         row = PlatformSubscription.objects.filter(year=year).first()
+        today = timezone.localdate()
+        trial = trial_summary(school, today)
         if action == "quote":
             if row:
-                return JsonResponse({"subscription": representation(row)})
+                return JsonResponse({"subscription": representation(row), "trial": trial})
             try:
                 counts = current_counts(school, year)
                 if not counts or not set(counts).issubset(CYCLE_LABELS):
                     raise ValueError("Configurez et vérifiez les cycles de l'établissement.")
-                return JsonResponse(quote_for(school, year, policy_snapshot(), counts))
+                return JsonResponse(quote_for(school, year, policy_snapshot(), counts) | {"trial": trial, "can_trial": trial is None and not PlatformSubscription.objects.filter(year__school=school).exists()})
+            except ValueError as exc:
+                return fail(str(exc), 409)
+        if action == "amendment_quote":
+            if not row:
+                return fail("Aucun abonnement pour cette année.", 404)
+            if not school.is_active or not year.active or year.status == "closed":
+                return fail("Établissement ou année non ouverte.", 409)
+            try:
+                return JsonResponse({"amendment": amendment_quote(row, current_counts(school, year), today)})
             except ValueError as exc:
                 return fail(str(exc), 409)
         reason = data.get("reason")
         if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 240:
             return fail("Motif obligatoire (240 caractères maximum).")
         reason = reason.strip()
+        if action == "trial_start":
+            try:
+                item = start_trial(school, year, today, data["days"], reason, request.user)
+            except ValueError as exc:
+                return fail(str(exc), 409)
+            audit(request, "subscription_trial_started", item.pk, school=school, reason=reason)
+            return JsonResponse({"trial": trial_summary(school, today)}, status=201)
         if action == "issue":
             if row:
                 return fail("Un abonnement existe déjà pour cette année.", 409)
@@ -200,9 +226,26 @@ def subscriptions(request, school_id):
             row = PlatformSubscription.objects.create(year=year, lines=lines,
                 commercial_terms=terms, total_xaf=terms["total_xaf"], issued_by=request.user)
             audit(request, "subscription_issued", row.pk, school=school, reason=reason)
-            return JsonResponse({"subscription": representation(row)}, status=201)
+            return JsonResponse({"subscription": representation(row), "trial": trial_summary(school, today)}, status=201)
         if not row:
             return fail("Aucun abonnement pour cette année.", 404)
+        if action == "amendment_issue":
+            if not school.is_active or not year.active or year.status == "closed":
+                return fail("Établissement ou année non ouverte.", 409)
+            try:
+                quote = amendment_quote(row, current_counts(school, year), today)
+            except ValueError as exc:
+                return fail(str(exc), 409)
+            # Canonical JSON comparison rejects booleans masquerading as integer values.
+            import json
+            if json.dumps(data["expected"], sort_keys=True) != json.dumps(quote, sort_keys=True):
+                return fail("Devis d’avenant modifié. Actualisez-le.", 409)
+            if not quote["additions"]:
+                return fail("Aucun effectif supplémentaire à facturer.", 409)
+            item = row.amendments.create(revision=quote["revision"], effective_on=today, snapshot=quote,
+                                         amount_xaf=quote["amount_xaf"], reason=reason, issued_by=request.user)
+            audit(request, "subscription_amendment_issued", item.pk, school=school, reason=reason)
+            return JsonResponse({"subscription": representation(row)}, status=201)
         if action == "payment":
             reference, amount, method = data["reference"], data["amount_xaf"], data["method"]
             if (not isinstance(reference, str) or not 1 <= len(reference.strip()) <= 100
@@ -243,14 +286,14 @@ def owner_subscriptions(request, school_id):
     if school is None or not can_consult_commercial(request.user, school):
         return denied()
     # Only issued contracts belonging to the requested school; no private audit notes.
-    records = PlatformSubscription.objects.filter(year__school=school).select_related("year").prefetch_related("payments").order_by("-year__start_date")
+    records = PlatformSubscription.objects.filter(year__school=school).select_related("year").prefetch_related("payments", "amendments").order_by("-year__start_date")
     data = []
     for row in records:
         item = representation(row)
-        data.append({k: item[k] for k in ("id", "lines", "total_xaf", "paid_xaf", "balance_xaf", "terms", "schedule", "issued_at")} |
+        data.append({k: item[k] for k in ("id", "lines", "total_xaf", "paid_xaf", "balance_xaf", "terms", "schedule", "issued_at", "original_total_xaf", "amendments")} |
                     {"year": row.year.name, "year_id": str(row.year_id),
                      "documents": document_links(row, school_scope=True)})
-    return JsonResponse({"subscriptions": data})
+    return JsonResponse({"subscriptions": data, "trial": trial_summary(school, timezone.localdate())})
 
 
 def can_consult_commercial(user, school):
@@ -271,7 +314,7 @@ def can_consult_commercial(user, school):
 @require_http_methods(["GET"])
 @authorized
 @previewable_pdf
-def commercial_document(request, school_id, subscription_id, payment_id=None, *, school_scope=False):
+def commercial_document(request, school_id, subscription_id, payment_id=None, amendment_id=None, *, school_scope=False):
     """Only the platform MFA session or the authorized school management may read PDFs."""
     if school_scope:
         school = school_access(request.user, school_id)
@@ -279,7 +322,7 @@ def commercial_document(request, school_id, subscription_id, payment_id=None, *,
             return denied()
     elif not platform_only(request):
         return denied()
-    if not 1 <= subscription_id <= 2**63 - 1 or (payment_id is not None and not 1 <= payment_id <= 2**63 - 1):
+    if any(not 1 <= value <= 2**63 - 1 for value in (subscription_id, payment_id, amendment_id) if value is not None):
         return fail("Document introuvable.", 404)
     row = PlatformSubscription.objects.select_related("year__school").filter(
         pk=subscription_id, year__school_id=school_id).first()
@@ -290,7 +333,12 @@ def commercial_document(request, school_id, subscription_id, payment_id=None, *,
         payment = row.payments.filter(pk=payment_id).first()
         if payment is None:
             return fail("Document introuvable.", 404)
+    amendment = None
+    if amendment_id is not None:
+        amendment = row.amendments.filter(pk=amendment_id).first()
+        if amendment is None:
+            return fail("Document introuvable.", 404)
     try:
-        return render_commercial_document(row, payment)
+        return render_commercial_document(row, payment, amendment=amendment)
     except (ValueError, TypeError, KeyError):
         return fail("Données contractuelles incohérentes. Contactez BWETEK.", 409)
