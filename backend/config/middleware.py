@@ -128,39 +128,82 @@ class ClosedYearWriteErrorMiddleware:
         return None
 
 
-class CommercialWorkspaceBoundaryMiddleware:
-    """Default-deny all school workspace API operations after an explicit restriction.
+class CommercialReadOnlyViolation(Exception):
+    pass
 
-    Authentication and the narrowly allowed commercial recovery GETs remain
-    available; their own tenant and role checks still apply. Independent family
-    records and payment-provider callbacks are not school workspace endpoints.
+
+class CommercialWorkspaceBoundaryMiddleware:
+    """Enforce read-only operation on school APIs after an explicit restriction.
+
+    GET is not assumed to be harmless: SQL writes are denied in restricted reads
+    and PostgreSQL transactions are read-only. Existing tenant/cycle permissions
+    still apply, and independent family routes are outside this boundary.
     """
     _UUID = SchoolCycleBoundaryMiddleware._UUID
-    _RECOVERY_GET = (
-        r"my-access",
-        r"owner/(?:commercial-access|subscription-reminders|subscriptions)",
-        r"owner/subscriptions/\d+/(?:invoice|payments/\d+/receipt|amendments/\d+/document)",
-    )
 
     def __init__(self, get_response):
         self.get_response = get_response
 
+    @staticmethod
+    def blocked(school_id):
+        from django.http import JsonResponse
+        return JsonResponse({
+            "error": "Abonnement YEM à régulariser : établissement en lecture seule. Les modifications sont indisponibles.",
+            "code": "commercial_workspace_read_only",
+            "school_id": str(school_id),
+        }, status=403, headers={"Cache-Control": "no-store"})
+
+    def process_exception(self, request, exception):
+        school_id = getattr(request, "_commercial_read_only_school", None)
+        if school_id is None:
+            return None
+        cause = getattr(exception, "__cause__", None)
+        if isinstance(exception, CommercialReadOnlyViolation) or getattr(cause, "sqlstate", None) == "25006" or getattr(cause, "pgcode", None) == "25006":
+            request._commercial_write_attempted = True
+            return self.blocked(school_id)
+        return None
+
     def __call__(self, request):
         import re
-        from django.http import JsonResponse
-        if request.user.is_authenticated and request.user.is_active:
-            match = re.fullmatch(rf"/api/v1/schools/({self._UUID})(?:/(.*?))?/?", request.path_info)
-            if match:
-                suffix = (match.group(2) or "").rstrip("/")
-                if request.method == "GET" and any(re.fullmatch(pattern, suffix) for pattern in self._RECOVERY_GET):
-                    return self.get_response(request)
-                from institutions.services import school_access
-                from institutions.subscription_access import last_decision
-                school = school_access(request.user, match.group(1))
-                if school is not None:
-                    decision = last_decision(school)
-                    if decision and decision.restricted:
-                        return JsonResponse({"error": "Espace établissement suspendu pour motif commercial. Contactez BWETEK pour régulariser l’abonnement YEM.",
-                                             "code": "commercial_workspace_restricted"}, status=403,
-                                            headers={"Cache-Control": "no-store"})
-        return self.get_response(request)
+        from django.db import connection, transaction
+        if not request.user.is_authenticated or not request.user.is_active:
+            return self.get_response(request)
+        match = re.fullmatch(rf"/api/v1/schools/({self._UUID})(?:/(.*?))?/?", request.path_info)
+        if not match:
+            return self.get_response(request)
+        from institutions.services import school_access
+        from institutions.subscription_access import last_decision
+        school = school_access(request.user, match.group(1))
+        if school is None:
+            return self.get_response(request)
+        decision = last_decision(school)
+        if not (decision and decision.restricted):
+            return self.get_response(request)
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            return self.blocked(school.pk)
+
+        request._commercial_read_only_school = school.pk
+        request._commercial_write_attempted = False
+
+        def guard(execute, sql, params, many, context):
+            # Django emits transaction control for nested atomic blocks. SQL
+            # mutation is blocked even on SQLite and in Django's TestCase.
+            verb = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ""
+            if verb not in {"SELECT", "WITH", "EXPLAIN", "SAVEPOINT", "RELEASE", "ROLLBACK"}:
+                request._commercial_write_attempted = True
+                raise CommercialReadOnlyViolation("Tentative de modification durant une lecture.")
+            return execute(sql, params, many, context)
+
+        outermost = not connection.in_atomic_block
+        with transaction.atomic():
+            if connection.vendor == "postgresql" and outermost:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET TRANSACTION READ ONLY")
+            with connection.execute_wrapper(guard):
+                response = self.get_response(request)
+            # No restricted read may commit a data change, even in test
+            # environments or an enclosing transaction.
+            transaction.set_rollback(True)
+        if request._commercial_write_attempted:
+            return self.blocked(school.pk)
+        return response
