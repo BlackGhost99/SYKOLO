@@ -215,3 +215,24 @@ class PlatformSubscriptionTests(TestCase):
         SchoolMember.objects.filter(school=self.school,user=self.ordinary).update(role=teacher)
         self.assertEqual(self.client.get(url).status_code,403)
         self.assertEqual(self.client.get("/api/v1/platform/subscription-pricing").status_code,403)
+
+    def test_enrollment_changes_requote_before_contract_and_unknown_cycle_blocked(self):
+        first=self.post("quote").json()
+        self.assertEqual(first["counts"]["primaire"],2)
+        cycle=AcademicCycle.objects.get(school=self.school,code="primaire")
+        classroom=AcademicClass.objects.get(school=self.school,year=self.year,level__cycle=cycle)
+        student=Student.objects.create(school=self.school,student_code="NOUVEAU",first_name="A",last_name="B")
+        Enrollment.objects.create(school=self.school,year=self.year,student=student,
+            classroom=classroom,enrolled_on=date(2026,10,2))
+        revised=self.post("quote").json()
+        self.assertEqual(revised["counts"]["primaire"],3)
+        self.assertEqual(self.issue(expected_counts=first["counts"]).status_code,409)
+        self.assertEqual(PlatformSubscription.objects.count(),0)
+        # An enrolled but undeclared cycle must never silently enter the commercial quote.
+        invalid_cycle=AcademicCycle.objects.create(school=self.school,code="lycee_general",name="Lycée")
+        level=AcademicLevel.objects.create(school=self.school,cycle=invalid_cycle,code="terminale",name="Terminale")
+        room=AcademicClass.objects.create(school=self.school,year=self.year,level=level,code="terminale",name="Terminale")
+        pupil=Student.objects.create(school=self.school,student_code="LYCEE-1",first_name="C",last_name="D")
+        Enrollment.objects.create(school=self.school,year=self.year,student=pupil,
+            classroom=room,enrolled_on=date(2026,10,3))
+        self.assertEqual(self.post("quote").status_code,409)
