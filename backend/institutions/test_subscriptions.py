@@ -669,3 +669,38 @@ class PlatformSubscriptionTests(TestCase):
         Enrollment.objects.create(school=self.school,year=self.year,student=pupil,
             classroom=room,enrolled_on=date(2026,10,3))
         self.assertEqual(self.post("quote").status_code,409)
+
+
+    def test_readonly_simulator_shared_real_counts_and_contract_preservation(self):
+        url=f"/api/v1/platform/schools/{self.school.pk}/subscription-simulation"
+        school_url=f"/api/v1/schools/{self.school.pk}/owner/subscription-simulation"
+        response=self.client.get(url)
+        self.assertEqual(response.status_code,200,response.content)
+        estimate=response.json()
+        self.assertEqual(estimate["simulation"]["lines"][1]["students"],2)
+        monthly=estimate["simulation"]["options"]["mensuel"]
+        self.assertEqual(monthly["annual_xaf"],100000)
+        self.assertEqual(sum(s["amount_xaf"] for s in monthly["schedule"]),100000)
+        self.assertEqual(len(monthly["schedule"]),12)
+        self.assertEqual(PlatformSubscription.objects.count(),0)
+        self.assertEqual(PlatformSubscriptionPayment.objects.count(),0)
+        self.assertEqual(PlatformAudit.objects.count(),0)
+        self.assertEqual(self.client.post(url,{}).status_code,405)
+        self.assertEqual(self.client.get(url+"?year_id="+str(self.foreign_year.pk)).status_code,404)
+        self.assertEqual(self.issue().status_code,201)
+        row=PlatformSubscription.objects.get()
+        frozen=row.commercial_terms.copy()
+        self.assertTrue(self.client.get(url).json()["contracted"])
+        row.refresh_from_db()
+        self.assertEqual(row.commercial_terms,frozen)
+        role=SchoolRole.objects.create(school=self.school,code="direction",label="Direction",permissions=["school.view"])
+        member=SchoolMember.objects.create(school=self.school,user=self.ordinary,role=role)
+        self.client.force_login(self.ordinary)
+        shared=self.client.get(school_url)
+        self.assertEqual(shared.status_code,200,shared.content)
+        self.assertEqual(shared.json()["simulation"]["options"],estimate["simulation"]["options"])
+        self.assertEqual(self.client.get(url).status_code,403)
+        self.assertEqual(self.client.get(f"/api/v1/schools/{self.other.pk}/owner/subscription-simulation").status_code,403)
+        member.access_cycle_ids=[]
+        member.save(update_fields=["access_cycle_ids"])
+        self.assertEqual(self.client.get(school_url).status_code,403)

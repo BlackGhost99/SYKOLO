@@ -48,6 +48,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/owner/commercial-access", subscription_access.commercial_access, {"school_scope": True}),
     path("schools/<uuid:school_id>/owner/subscription-reminders", subscription_reminders.commercial_reminders),
     path("platform/subscription-pricing", subscription_views.pricing_policy),
+    path("platform/schools/<uuid:school_id>/subscription-simulation", subscription_views.subscription_simulation),
+    path("schools/<uuid:school_id>/owner/subscription-simulation", subscription_views.subscription_simulation, {"school_scope": True}),
     path("platform/schools/<uuid:school_id>/subscriptions", subscription_views.subscriptions),
     path("schools/<uuid:school_id>/owner/subscriptions", subscription_views.owner_subscriptions),
     path("platform/schools/<uuid:school_id>/subscriptions/<int:subscription_id>/invoice", subscription_views.commercial_document),

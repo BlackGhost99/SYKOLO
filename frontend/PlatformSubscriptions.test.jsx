@@ -7,6 +7,8 @@ import PlatformSubscriptions from "./PlatformSubscriptions.jsx";
 import OwnerSubscription from "./OwnerSubscription.jsx";
 import CommercialReminders from "./CommercialReminders.jsx";
 
+vi.mock("./CommercialSimulator.jsx",()=>({default:()=>null}));
+
 afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
 test("monthly commercial quote is selected and issued with exact total",async()=>{
   const api=vi.fn(async(path,body)=>{
