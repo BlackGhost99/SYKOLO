@@ -25,7 +25,7 @@ test("monthly commercial quote is selected and issued with exact total",async()=
 test("management reads refreshed balances from the school endpoint",async()=>{
   const contract={id:1,year:"2026–2027",year_id:"y",lines:[],total_xaf:150000,paid_xaf:0,balance_xaf:150000,terms:{period:"mensuel",minimum_xaf:75000,discount_xaf:0,setup_xaf:0},schedule:[]};
   let contractReads=0;
-  const fetcher=vi.fn(async url=>url.includes("subscription-reminders")?Response.json({reminders:[],count:0,overdue_count:0,due_count:0,upcoming_count:0,window_days:7,pages:1,page:1}):Response.json({subscriptions:[contractReads++===0?contract:{...contract,paid_xaf:12500,balance_xaf:137500}]}));
+  const fetcher=vi.fn(async url=>url.includes("commercial-access")?Response.json({revision:0,lifecycle:"active",overdue_xaf:0,late_30_xaf:0,restricted:false,can_restrict:false}):url.includes("subscription-reminders")?Response.json({reminders:[],count:0,overdue_count:0,due_count:0,upcoming_count:0,window_days:7,pages:1,page:1}):Response.json({subscriptions:[contractReads++===0?contract:{...contract,paid_xaf:12500,balance_xaf:137500}]}));
   vi.stubGlobal("fetch",fetcher);
   const hidden=vi.spyOn(document,"hidden","get").mockReturnValue(false);
   render(<OwnerSubscription schoolId="school-a" yearId="y"/>);
@@ -46,7 +46,7 @@ test("commercial PDFs are available through private same-origin routes",async()=
       {id:8,reference:"YEM-REC-0000000008",url:root+"/payments/8/receipt",amount_xaf:2000,voided:true},
       {id:9,reference:"Lien invalide",url:"https://example.test/receipt",amount_xaf:2000,voided:false}
     ]}};
-  vi.stubGlobal("fetch",vi.fn(async url=>url.includes("subscription-reminders")?Response.json({reminders:[],count:0,overdue_count:0,due_count:0,upcoming_count:0,window_days:7,pages:1,page:1}):Response.json({subscriptions:[contract]})));
+  vi.stubGlobal("fetch",vi.fn(async url=>url.includes("commercial-access")?Response.json({revision:0,lifecycle:"active",overdue_xaf:0,late_30_xaf:0,restricted:false,can_restrict:false}):url.includes("subscription-reminders")?Response.json({reminders:[],count:0,overdue_count:0,due_count:0,upcoming_count:0,window_days:7,pages:1,page:1}):Response.json({subscriptions:[contract]})));
   vi.spyOn(document,"hidden","get").mockReturnValue(false);
   render(<OwnerSubscription schoolId={schoolId} yearId="y"/>);
   expect((await screen.findByRole("link",{name:"Ouvrir la facture"})).getAttribute("href")).toBe(root+"/invoice?preview=1");
@@ -98,4 +98,22 @@ test("amendment quote must be explicitly confirmed before issuance",async()=>{
   await user.click(screen.getByRole("button",{name:"Émettre l’avenant"}));
   await waitFor(()=>expect(api).toHaveBeenCalledWith("p",{action:"amendment_issue",year_id:"y",expected:quote,reason:"Nouvel inscrit"}));
   expect(saved).toHaveBeenCalledTimes(1);
+});
+
+test("manual restriction and restoration use explicit revision and reason",async()=>{
+  const {default:CommercialAccess}=await import("./CommercialAccess.jsx");
+  const start={revision:0,lifecycle:"expired",overdue_xaf:1000,late_30_xaf:1000,restricted:false,can_restrict:true};
+  const api=vi.fn(async(path,body)=>body?{...start,revision:body.revision+1,restricted:body.restricted}:start);
+  vi.spyOn(document,"hidden","get").mockReturnValue(false);
+  render(<CommercialAccess schoolId="school-a" api={api}/>);
+  const user=userEvent.setup();
+  expect((await screen.findByRole("button",{name:"Restreindre les extensions"})).disabled).toBe(true);
+  await user.type(screen.getByLabelText("Motif de la décision commerciale"),"Retard confirmé");
+  await user.click(screen.getByRole("button",{name:"Restreindre les extensions"}));
+  await screen.findByText("Extensions administratives restreintes");
+  expect(api).toHaveBeenCalledWith("platform/schools/school-a/commercial-access",{restricted:true,revision:0,reason:"Retard confirmé"});
+  await user.type(screen.getByLabelText("Motif de la décision commerciale"),"Accord de régularisation");
+  await user.click(screen.getByRole("button",{name:"Rétablir les extensions"}));
+  await screen.findByText("Accès administratif normal");
+  expect(api).toHaveBeenCalledWith("platform/schools/school-a/commercial-access",{restricted:false,revision:1,reason:"Accord de régularisation"});
 });
