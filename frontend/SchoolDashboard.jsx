@@ -283,10 +283,22 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   },[chosen]);
   useEffect(()=>{
     if (!chosen) {setAccess(null);return;}
-    let alive=true;setAccess(null);
-    get("schools/"+chosen+"/my-access").then(x=>{if(alive)setAccess(x);}).catch(e=>{if(alive)setMessage(e.message);});
+    let alive=true,busy=false;setAccess(null);
+    async function refresh(){
+      if(busy||document.hidden)return;
+      busy=true;
+      try{
+        const x=await get("schools/"+chosen+"/my-access");
+        if(alive)setAccess(old=>old&&old.commercial_workspace_restricted===x.commercial_workspace_restricted?old:x);
+      }catch(e){if(alive)setMessage(e.message);}
+      finally{busy=false;}
+    }
+    refresh();
+    const timer=window.setInterval(refresh,30000);
+    window.addEventListener("focus",refresh);
+    document.addEventListener("visibilitychange",refresh);
     setPage("dashboard");setTeacherViewRequested(null);setHasTeachingAssignment(false);
-    return ()=>{alive=false;};
+    return ()=>{alive=false;window.clearInterval(timer);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
   },[chosen]);
   useEffect(()=>{
     let live=true;
@@ -477,6 +489,20 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       </select>
     </label>}
   </div>;
+  if(access?.commercial_workspace_restricted){
+    const canRegularize=access.is_owner||(!access.cycle_scope_restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role)));
+    return <main className="yd-real-body" aria-label="Espace établissement suspendu">
+      <PageHeader title="Espace établissement suspendu" subtitle={schoolName}/>
+      <Card title="Abonnement YEM à régulariser" icon="lock">
+        <p role="alert">Les modules scolaires, pédagogiques et financiers sont temporairement indisponibles. Contactez BWETEK Informatyk pour régulariser l’abonnement et obtenir la réactivation.</p>
+        <p>Les données de l’établissement sont conservées. La situation est actualisée automatiquement.</p>
+        {schools.length>1&&<label className="field">Changer d’établissement<select value={chosen} onChange={e=>{setAccess(null);setChosen(e.target.value);}}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
+        <Button type="button" onClick={onLogout}>Se déconnecter</Button>
+        <Button type="button" onClick={()=>window.location.reload()}>Actualiser l’accès</Button>
+      </Card>
+      {canRegularize&&<OwnerSubscription key={chosen} schoolId={chosen}/>}
+    </main>;
+  }
   const isSchoolParent=access?.role==="parent"&&!user?.is_platform_admin;
   if (isSchoolParent&&!showWorkspace) {
     const canUseSchoolWorkspace=nav.length>1;
