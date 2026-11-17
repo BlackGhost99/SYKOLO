@@ -27,6 +27,8 @@ test("un professeur accède à ses évaluations sans permission scolaire globale
     [root+"academic/annual-snapshot?year=2026-27"]:{year,years:[year]},
     [root+"organization/my-appointments"]:{appointments:[]},
     [root+"curriculum/my-courses"]:{courses:[assignedCourse]},
+    [root+"diary/courses?year=2026-27"]:{courses:[{id:"math-s",subject:"Mathématiques",classroom:"Seconde S",year_name:"2026-2027"}]},
+    [root+"diary/courses/math-s"]:{entries:[],writable:true},
     [root+"courses"]:{courses:[assignedCourse,
       {id:"autre-cours-interdit",year:year.id,classroom:"terminal-c",
        subject:"phy",active:true,coefficient:"2"}]},
@@ -42,6 +44,8 @@ test("un professeur accède à ses évaluations sans permission scolaire globale
   const user=userEvent.setup();
   render(<SchoolDashboard user={{username:"enseignant"}}/>);
   const nav=await screen.findByRole("navigation",{name:"Navigation principale"});
+  await user.click(await within(nav).findByRole("button",{name:"Cahier de textes"}));
+  expect(await screen.findByRole("heading",{name:"Nouvelle séance"})).toBeTruthy();
   const access=await within(nav).findByRole("button",{name:"Évaluations et notes"});
   await user.click(access);
   expect(await screen.findByRole("heading",{name:"Évaluations et saisie des notes"})).toBeTruthy();
