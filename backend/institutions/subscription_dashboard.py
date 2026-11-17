@@ -35,7 +35,8 @@ def commercial_report(today, year):
     for row in PlatformSubscription.objects.select_related("year").prefetch_related("payments","amendments").iterator(chunk_size=200):
         school = schools[row.year.school_id]
         school["contracts"] += 1
-        total, terms = effective_ledger(row)
+        amendments = list(row.amendments.all())
+        total = row.total_xaf + sum(a.amount_xaf for a in amendments)
         paid = 0
         for payment in row.payments.all():
             recorded = timezone.localtime(payment.recorded_at).date()
@@ -53,9 +54,11 @@ def commercial_report(today, year):
         balance = max(0, total-paid)
         school["balance_xaf"] += balance
         school["overpaid_xaf"] += max(0, paid-total)
-        schedule = terms.get("schedule", [])
         # Legacy or inconsistent terms never turn into invented due dates.
+        # The normalization itself may fail on malformed historical JSON.
         try:
+            _, terms = effective_ledger(row, amendments)
+            schedule = terms.get("schedule", [])
             valid = bool(schedule) and sum(s["amount_xaf"] for s in schedule) == total and all(
                 type(s["amount_xaf"]) is int and s["amount_xaf"] >= 0 for s in schedule)
             initial = [s for s in schedule if s["kind"] == "abonnement"]
