@@ -456,6 +456,18 @@ class PlatformSubscriptionTests(TestCase):
         self.client.force_login(self.ordinary)
         self.assertEqual(self.client.get(url).status_code,403)
 
+    def test_dashboard_keeps_malformed_legacy_balance_without_fake_dates(self):
+        self.assertEqual(self.issue().status_code,201)
+        PlatformSubscription.objects.create(year=self.foreign_year,total_xaf=5000,lines=[],
+            commercial_terms={"schedule":[{"amount_xaf":5000}]})
+        response=self.client.get("/api/v1/platform/commercial-dashboard")
+        self.assertEqual(response.status_code,200,response.content)
+        totals=response.json()["totals"]
+        self.assertEqual(totals["contracted_xaf"],105000)
+        self.assertEqual(totals["unscheduled_xaf"],5000)
+        self.assertEqual(totals["review_count"],1)
+        self.assertEqual(totals["balance_xaf"],105000)
+
     def test_quote_uses_real_counts_and_snapshot(self):
         self.assertEqual(self.client.get(self.path).json()["suggested_year"], str(self.year.pk))
         quote = self.post("quote")
