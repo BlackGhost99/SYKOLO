@@ -230,6 +230,93 @@ class PlatformSubscriptionTests(TestCase):
         member.save(update_fields=["access_cycle_ids"])
         self.assertEqual(self.client.get(url).status_code, 403)
 
+    def test_trial_is_explicit_unique_free_and_never_auto_converted(self):
+        from .subscription_models import PlatformSubscriptionTrial
+        self.assertEqual(self.post("trial_start", days=91, reason="Essai").status_code, 409)
+        result = self.post("trial_start", days=30, reason="Essai commercial")
+        self.assertEqual(result.status_code, 201, result.content)
+        self.assertEqual(result.json()["trial"]["status"], "active")
+        self.assertEqual(result.json()["trial"]["ends_before"], "2026-12-17")
+        self.assertEqual(PlatformSubscriptionTrial.objects.count(), 1)
+        self.assertEqual(PlatformSubscription.objects.count(), 0)
+        self.assertEqual(self.post("trial_start", days=30, reason="Double").status_code, 409)
+        with patch("institutions.subscription_views.timezone.localdate", return_value=date(2026,12,17)):
+            self.assertEqual(self.post("quote").json()["trial"]["status"], "expired")
+            self.assertEqual(PlatformSubscription.objects.count(), 0)
+            self.school.refresh_from_db()
+            self.assertTrue(self.school.is_active)
+            issued = self.issue()
+            self.assertEqual(issued.status_code, 201, issued.content)
+            self.assertEqual(issued.json()["trial"]["status"], "converted")
+            self.assertEqual(issued.json()["subscription"]["schedule"][0]["due_date"], "2026-12-17")
+        self.assertEqual(PlatformSubscriptionPayment.objects.count(), 0)
+        self.assertEqual(FeePayment.objects.count(), 0)
+
+    def test_amendment_proration_absorbs_minimum_and_keeps_original_invoice(self):
+        from .subscription_document_pdf import invoice_lines
+        from .subscription_models import PlatformSubscriptionAmendment
+        self.assertEqual(self.issue(period="mensuel").status_code, 201)
+        row = PlatformSubscription.objects.get()
+        original = invoice_lines(row)
+        room = AcademicClass.objects.get(school=self.school, year=self.year, level__cycle__code="college")
+        def add(number, offset):
+            for i in range(offset, offset+number):
+                student = Student.objects.create(school=self.school, student_code=f"F4-{i}", first_name="Test", last_name="Ajout")
+                Enrollment.objects.create(school=self.school, student=student, year=self.year, classroom=room, enrolled_on=date(2026,11,17))
+        add(1, 0)
+        quote = self.post("amendment_quote").json()["amendment"]
+        self.assertEqual(quote["gross_prorata_xaf"], 2000)
+        self.assertEqual(quote["amount_xaf"], 0)
+        self.assertEqual(self.post("amendment_issue", expected=quote, reason="Effectif couvert").status_code, 201)
+        self.assertEqual(self.post("amendment_issue", expected=quote, reason="Rejeu").status_code, 409)
+        add(45, 1)
+        second = self.post("amendment_quote").json()["amendment"]
+        self.assertEqual(second["minimum_absorbed_xaf"], 88000)
+        self.assertEqual(second["amount_xaf"], 2000)
+        result = self.post("amendment_issue", expected=second, reason="Effectif complémentaire")
+        self.assertEqual(result.status_code, 201, result.content)
+        sub = result.json()["subscription"]
+        self.assertEqual(sub["original_total_xaf"], 100000)
+        self.assertEqual(sub["total_xaf"], 102000)
+        self.assertEqual(sum(s["amount_xaf"] for s in sub["schedule"]), 102000)
+        self.assertEqual(len([s for s in sub["schedule"] if s["kind"]=="abonnement"]), 12)
+        row.refresh_from_db()
+        self.assertEqual(row.total_xaf, 100000)
+        self.assertEqual(invoice_lines(row), original)
+        self.assertEqual(PlatformSubscriptionAmendment.objects.count(), 2)
+        amendment = sub["documents"]["amendments"][-1]
+        self.assertTrue(self.client.get(amendment["url"]).content.startswith(b"%PDF-"))
+        self.assertEqual(self.client.get(amendment["url"].replace(str(self.school.pk),str(self.other.pk))).status_code, 404)
+        reminders = self.client.get("/api/v1/platform/subscription-reminders").json()["reminders"]
+        self.assertEqual([r["balance_xaf"] for r in reminders if r["kind"]=="avenant"], [2000])
+        with patch("institutions.subscription_views.timezone.localdate", return_value=date(2026,12,17)):
+            add(1, 46)
+            third = self.post("amendment_quote").json()["amendment"]
+            self.assertEqual(third["remaining_days"], 335)
+            self.assertEqual(third["amount_xaf"], 1836)
+            self.assertEqual(self.post("amendment_issue", expected=third, reason="Prorata").status_code, 201)
+        # A decrease/replacement of already billed capacity does not recharge.
+        Enrollment.objects.filter(school=self.school, student__student_code__startswith="F4-").update(active=False)
+        with patch("institutions.subscription_views.timezone.localdate", return_value=date(2026,12,17)):
+            empty = self.post("amendment_quote").json()["amendment"]
+            self.assertEqual(empty["additions"], [])
+            self.assertEqual(self.post("amendment_issue", expected=empty, reason="Pas d’ajout").status_code, 409)
+        self.assertEqual(self.post("payment", reference="F4-FULL", amount_xaf=103836, method="especes", reason="Test").status_code, 201)
+        self.assertEqual(self.post("quote").json()["subscription"]["balance_xaf"], 0)
+        self.assertEqual(FeePayment.objects.count(), 0)
+
+    def test_trial_amendments_remain_platform_only_and_school_reads_scoped(self):
+        self.assertEqual(self.issue().status_code, 201)
+        self.assertEqual(self.post("trial_start",days=30,reason="Déjà abonné").status_code, 409)
+        self.client.force_login(self.ordinary)
+        direction = SchoolRole.objects.create(school=self.school, code="direction", label="Direction", permissions=["school.view"])
+        SchoolMember.objects.create(school=self.school, user=self.ordinary, role=direction)
+        self.assertEqual(self.post("amendment_quote").status_code, 403)
+        self.assertEqual(self.post("trial_start",days=30,reason="Non autorisé").status_code, 403)
+        data = self.client.get(f"/api/v1/schools/{self.school.pk}/owner/subscriptions").json()
+        self.assertEqual(data["subscriptions"][0]["amendments"], [])
+        self.assertNotIn("payments", data["subscriptions"][0])
+
     def test_quote_uses_real_counts_and_snapshot(self):
         self.assertEqual(self.client.get(self.path).json()["suggested_year"], str(self.year.pk))
         quote = self.post("quote")
