@@ -2,7 +2,7 @@ import React, {useEffect, useRef, useState} from "react";
 
 const money = value => new Intl.NumberFormat("fr-GA").format(value) + " FCFA";
 const methods = [["especes","Espèces"],["mobile_money","Mobile Money"],["virement","Virement déclaré"],["autre","Autre"]];
-export default function PlatformSubscriptions({schoolId, api}) {
+export default function PlatformSubscriptions({schoolId, api, tariffRevision=0}) {
   const [years,setYears]=useState([]);
   const [year,setYear]=useState("");
   const [data,setData]=useState(null);
@@ -42,7 +42,7 @@ export default function PlatformSubscriptions({schoolId, api}) {
       .catch(err=>{if(alive)setMessage(err.message);})
       .finally(()=>{if(alive)setLoading(false);});
     return()=>{alive=false;};
-  },[path,year,api,reload]);
+  },[path,year,api,reload,tariffRevision]);
   async function submit(action,values) {
     if(pending.current)return;
     pending.current=true;setBusy(true);setMessage("");
@@ -91,7 +91,7 @@ export default function PlatformSubscriptions({schoolId, api}) {
       <h3>Contrat annuel enregistré</h3>
       {sub.lines.map(line=><p key={line.cycle}>{line.label} : {line.students} × {money(line.rate_xaf)} = <strong>{money(line.amount_xaf)}</strong></p>)}
       {sub.terms?.period&&<><p>Abonnement annuel : {money(sub.terms.annual_xaf)} · Minimum : {money(sub.terms.minimum_xaf)} · Remise : {money(sub.terms.discount_xaf)} · Mise en service : {money(sub.terms.setup_xaf)}</p>
-        <h4>Échéancier contractuel</h4>{sub.schedule.map(item=><p key={item.kind+item.number}>{item.kind==="mise_en_service"?"Mise en service":"Versement "+item.number} — {item.due_date} — {money(item.amount_xaf)} · reste : {money(item.balance_xaf)} {item.days_overdue>0?" · "+item.days_overdue+" j de retard":""}</p>)}</>}
+        <h4>Échéancier contractuel — {({annuel:"annuel",semestriel:"semestriel",trimestriel:"trimestriel",mensuel:"mensuel"})[sub.terms.period]}</h4>{sub.schedule.map(item=><p key={item.kind+item.number}>{item.kind==="mise_en_service"?"Mise en service":"Versement "+item.number} — {item.due_date} — {money(item.amount_xaf)} · reste : {money(item.balance_xaf)} {item.days_overdue>0?" · "+item.days_overdue+" j de retard":""}</p>)}</>}
       <p>Total : <b>{money(sub.total_xaf)}</b> · Réglé : <b>{money(sub.paid_xaf)}</b> · Solde : <b>{money(sub.balance_xaf)}</b></p>
       <label className="ya-field"><span>Motif / justificatif de l’opération</span><textarea value={reason} rows={2} maxLength={240} onChange={e=>setReason(e.target.value)}/></label>
       {sub.balance_xaf>0&&<form onSubmit={e=>{e.preventDefault();submit("payment",{reference,amount_xaf:Number(amount),method});}}>
