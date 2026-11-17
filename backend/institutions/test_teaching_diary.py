@@ -142,3 +142,53 @@ class DiaryTests(TestCase):
         self.login("parent")
         self.assertEqual(self.client.get(family_download).status_code,404)
         self.assertEqual(self.client.get(self.family).json()["entries"][0]["resources"],[])
+
+    def test_course_progress_tracking_boundaries_and_revision(self):
+        from datetime import date
+        from unittest.mock import patch
+        from .curriculum_models import CourseUnit
+        from .course_progress_models import CourseUnitProgress
+        first = CourseUnit.objects.create(school=self.school,course=self.course,code="fractions",title="Fractions")
+        second = CourseUnit.objects.create(school=self.school,course=self.course,code="geometry",title="Géométrie")
+        foreign = CourseUnit.objects.create(school=self.school,course=self.other_course,code="foreign",title="Autre")
+        archived = CourseUnit.objects.create(school=self.school,course=self.course,code="archived",title="Archivé",active=False)
+        self.login("teacher")
+        path = self.path+"/"+str(self.course.pk)+"/progress"
+        payload = {"unit":str(first.pk),"revision":0,"planned_start":"2026-10-01",
+                   "planned_end":"2026-11-01","status":"in_progress","completed_on":None,"evidence":None}
+        def save(data, endpoint=path):
+            return self.client.patch(endpoint,json.dumps(data),content_type="application/json")
+        with patch("institutions.course_progress_views.timezone.localdate",return_value=date(2026,11,17)):
+            initial=self.client.get(path).json()["summary"]
+            self.assertEqual(initial["total"],2)
+            self.assertEqual(initial["percent"],0)
+            self.assertEqual(initial["unplanned"],2)
+            self.assertEqual(save({**payload,"unit":str(foreign.pk)}).status_code,404)
+            self.assertEqual(save({**payload,"unit":str(archived.pk)}).status_code,409)
+            self.assertEqual(save({**payload,"planned_end":"2026-09-01"}).status_code,422)
+            self.assertEqual(save(payload).status_code,200)
+            self.assertEqual(save(payload).json()["revision"],1)
+            self.assertEqual(CourseUnitProgress.objects.count(),1)
+            self.assertEqual(self.client.get(path).json()["summary"]["overdue"],1)
+            completion={**payload,"status":"completed","completed_on":"2026-11-17"}
+            self.assertEqual(save(completion).status_code,409)
+            self.assertEqual(save({**completion,"revision":1,"completed_on":"2026-11-18"}).status_code,422)
+            self.assertEqual(save({**completion,"revision":1,"evidence":str(uuid.uuid4())}).status_code,422)
+            self.assertEqual(self.write(self.payload).status_code,201)
+            self.assertEqual(save({**completion,"revision":1,"evidence":self.payload["id"]}).status_code,200)
+            summary=self.client.get(path).json()["summary"]
+            self.assertEqual(summary["percent"],50)
+            self.assertEqual(summary["completed_late"],1)
+            self.assertEqual(summary["overdue"],0)
+            self.login("unassigned")
+            self.assertEqual(self.client.get(path).status_code,404)
+            self.login("parent")
+            self.assertEqual(self.client.get(path).status_code,403)
+            self.login("director")
+            member=SchoolMember.objects.get(user=self.users["director"],school=self.school)
+            member.access_cycle_ids=[str(self.course.classroom.level.cycle_id)];member.save()
+            self.assertEqual(self.client.get(path).status_code,200)
+            self.assertEqual(self.client.get(self.path+"/"+str(self.other_course.pk)+"/progress").status_code,404)
+            self.year.status="closed";self.year.active=False;self.year.save()
+            self.assertFalse(self.client.get(path).json()["writable"])
+            self.assertEqual(save({**completion,"revision":2}).status_code,409)
