@@ -3,7 +3,7 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
-from .models import Organization, OrganizationMember, School, PlatformAudit
+from .models import Organization, OrganizationMember, School, PlatformAudit, SchoolMember, SchoolRole
 from .student_models import Student, Enrollment
 from .subscription_models import PlatformSubscription, PlatformSubscriptionPayment
 from .finance_models import FeePayment
@@ -158,3 +158,41 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(self.client.post(url,{},content_type="application/json").status_code,405)
         other=School.objects.create(organization=Organization.objects.create(name="École indépendante"),name="Indépendante")
         self.assertEqual(self.client.get(f"/api/v1/schools/{other.pk}/owner/subscriptions").status_code,403)
+
+    def test_monthly_exact_rounding_calendar_and_shared_balance(self):
+        # Twelve monthly instalments; calendar clamps correctly for short months.
+        terms=calculate_terms({"primaire":1},{"primaire":1500},DEFAULT_MINIMUMS,
+            period="mensuel",discount=1,first_due=date(2027,1,31))
+        self.assertEqual(len(terms["schedule"]),12)
+        self.assertEqual(sum(x["amount_xaf"] for x in terms["schedule"]),74999)
+        self.assertEqual([x["due_date"] for x in terms["schedule"][:3]],["2027-01-31","2027-02-28","2027-03-31"])
+        result=self.issue(period="mensuel",expected_total_xaf=100000)
+        self.assertEqual(result.status_code,201,result.content)
+        sub=result.json()["subscription"]
+        self.assertEqual(sub["terms"]["period"],"mensuel")
+        self.assertEqual([s["amount_xaf"] for s in sub["schedule"]],[8334]*4+[8333]*8)
+        self.assertEqual(sub["schedule"][-1]["due_date"],"2027-10-17")
+        payment=self.post("payment",reference="MENS-1",amount_xaf=10000,method="especes",reason="Versement déclaré")
+        self.assertEqual(payment.status_code,201,payment.content)
+        issued=payment.json()["subscription"]
+        self.assertEqual(issued["schedule"][0]["balance_xaf"],0)
+        self.assertEqual(issued["schedule"][1]["balance_xaf"],6668)
+        direction=SchoolRole.objects.create(school=self.school,code="direction",label="Direction",permissions=["school.view"])
+        member=SchoolMember.objects.create(school=self.school,user=self.ordinary,role=direction)
+        self.client.force_login(self.ordinary)
+        url=f"/api/v1/schools/{self.school.pk}/owner/subscriptions"
+        school_response=self.client.get(url)
+        self.assertEqual(school_response.status_code,200,school_response.content)
+        shared=school_response.json()["subscriptions"][0]
+        for key in ("total_xaf","paid_xaf","balance_xaf","terms","schedule"):
+            self.assertEqual(issued[key],shared[key])
+        self.assertNotIn("payments",shared)
+        self.assertEqual(self.client.get(self.path).status_code,403)
+        member.access_cycle_ids=[]
+        member.save(update_fields=["access_cycle_ids"])
+        self.assertEqual(self.client.get(url).status_code,403)
+        teacher=SchoolRole.objects.create(school=self.school,code="enseignant",label="Enseignant",permissions=["school.view"])
+        member.role=teacher
+        member.access_cycle_ids=None
+        member.save(update_fields=["role","access_cycle_ids"])
+        self.assertEqual(self.client.get(url).status_code,403)
