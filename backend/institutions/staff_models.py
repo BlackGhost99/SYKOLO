@@ -71,6 +71,7 @@ class StaffProfessionalDossier(models.Model):
         StaffRecord, on_delete=models.PROTECT, primary_key=True,
         related_name="professional_dossier",
     )
+    category = models.CharField(max_length=100, blank=True, default="")
     qualification = models.CharField(max_length=180, blank=True)
     specialty = models.CharField(max_length=180, blank=True)
     employment_status = models.CharField(max_length=100, blank=True)
