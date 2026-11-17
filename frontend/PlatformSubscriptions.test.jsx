@@ -107,13 +107,13 @@ test("manual restriction and restoration use explicit revision and reason",async
   vi.spyOn(document,"hidden","get").mockReturnValue(false);
   render(<CommercialAccess schoolId="school-a" api={api}/>);
   const user=userEvent.setup();
-  expect((await screen.findByRole("button",{name:"Restreindre les extensions"})).disabled).toBe(true);
+  expect((await screen.findByRole("button",{name:"Suspendre l’espace établissement"})).disabled).toBe(true);
   await user.type(screen.getByLabelText("Motif de la décision commerciale"),"Retard confirmé");
-  await user.click(screen.getByRole("button",{name:"Restreindre les extensions"}));
-  await screen.findByText("Extensions administratives restreintes");
+  await user.click(screen.getByRole("button",{name:"Suspendre l’espace établissement"}));
+  await screen.findByText("Espace établissement suspendu");
   expect(api).toHaveBeenCalledWith("platform/schools/school-a/commercial-access",{restricted:true,revision:0,reason:"Retard confirmé"});
   await user.type(screen.getByLabelText("Motif de la décision commerciale"),"Accord de régularisation");
-  await user.click(screen.getByRole("button",{name:"Rétablir les extensions"}));
-  await screen.findByText("Accès administratif normal");
+  await user.click(screen.getByRole("button",{name:"Réactiver l’établissement"}));
+  await screen.findByText("Accès établissement normal");
   expect(api).toHaveBeenCalledWith("platform/schools/school-a/commercial-access",{restricted:false,revision:1,reason:"Accord de régularisation"});
 });
