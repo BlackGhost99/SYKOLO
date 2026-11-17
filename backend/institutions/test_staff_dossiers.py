@@ -238,3 +238,17 @@ class StaffProfessionalDossierTests(TestCase):
         own=self.client.get(self.base+"staff/me/dossier")
         self.assertEqual(own.status_code,200,own.content)
         self.assertEqual(own.json()["class_assignments"][0]["classroom"],"Sixième A")
+
+
+    def test_custom_category_visible_in_directory_and_editable_only_by_authorized_staff(self):
+        response = self.patch(self.route, {"revision": 1, "category": "Intervenants spécialisés"})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["professional"]["category"], "Intervenants spécialisés")
+        self.login(self.users["annuaire"])
+        response = self.client.get(self.base + "staff")
+        self.assertEqual(response.status_code, 200)
+        record = next(row for row in response.json()["staff"] if row["id"] == str(self.record.pk))
+        self.assertEqual(record["category"], "Intervenants spécialisés")
+        denied = self.patch(self.route, {"revision": 2, "category": "Autres employés"})
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(StaffProfessionalDossier.objects.get(staff=self.record).category, "Intervenants spécialisés")
