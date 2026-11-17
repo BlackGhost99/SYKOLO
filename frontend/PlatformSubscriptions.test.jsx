@@ -107,13 +107,30 @@ test("manual restriction and restoration use explicit revision and reason",async
   vi.spyOn(document,"hidden","get").mockReturnValue(false);
   render(<CommercialAccess schoolId="school-a" api={api}/>);
   const user=userEvent.setup();
-  expect((await screen.findByRole("button",{name:"Suspendre l’espace établissement"})).disabled).toBe(true);
+  expect((await screen.findByRole("button",{name:"Passer en lecture seule"})).disabled).toBe(true);
   await user.type(screen.getByLabelText("Motif de la décision commerciale"),"Retard confirmé");
-  await user.click(screen.getByRole("button",{name:"Suspendre l’espace établissement"}));
-  await screen.findByText("Espace établissement suspendu");
+  await user.click(screen.getByRole("button",{name:"Passer en lecture seule"}));
+  await screen.findByText("Établissement en lecture seule");
   expect(api).toHaveBeenCalledWith("platform/schools/school-a/commercial-access",{restricted:true,revision:0,reason:"Retard confirmé"});
   await user.type(screen.getByLabelText("Motif de la décision commerciale"),"Accord de régularisation");
   await user.click(screen.getByRole("button",{name:"Réactiver l’établissement"}));
   await screen.findByText("Accès établissement normal");
   expect(api).toHaveBeenCalledWith("platform/schools/school-a/commercial-access",{restricted:false,revision:1,reason:"Accord de régularisation"});
+});
+
+test("read-only API rejection dispatches a tenant-bound regularization notice without consuming response",async()=>{
+  const {installCommercialReadOnlyNotice}=await import("./commercial-read-only.js");
+  const id="12345678-1234-1234-1234-123456789abc";
+  const response=()=>Response.json({code:"commercial_workspace_read_only",school_id:id},{status:403});
+  const emitter=new EventTarget(), listener=vi.fn();
+  emitter.addEventListener("yem:commercial-read-only",listener);
+  const target={fetch:vi.fn(async()=>response()),location:{href:"https://yem.test/",origin:"https://yem.test"},CustomEvent,dispatchEvent:emitter.dispatchEvent.bind(emitter)};
+  installCommercialReadOnlyNotice(target);
+  const result=await target.fetch("/api/v1/schools/"+id+"/students",{method:"POST"});
+  expect((await result.json()).code).toBe("commercial_workspace_read_only");
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(listener.mock.calls[0][0].detail.schoolId).toBe(id);
+  await target.fetch("https://other.test/api/v1/schools/"+id+"/students");
+  await target.fetch("/api/v1/schools/99999999-9999-9999-9999-999999999999/students");
+  expect(listener).toHaveBeenCalledTimes(1);
 });
