@@ -159,6 +159,77 @@ class PlatformSubscriptionTests(TestCase):
         row.save(update_fields=["total_xaf"])
         self.assertEqual(self.client.get(self.path + f"/{row.pk}/invoice").status_code, 409)
 
+    def test_commercial_reminders_automatic_thresholds_partial_payment_and_void(self):
+        from datetime import timedelta
+        from .family_notification_models import SchoolFamilyNotification
+        self.assertEqual(self.issue(period="mensuel").status_code, 201)
+        root = "/api/v1/platform/subscription-reminders"
+        today = date(2026, 11, 17)
+        row = PlatformSubscription.objects.get()
+        for offset, stage in [(-8, None), (-7, "soon"), (-1, "soon"), (0, "due"),
+                              (1, "late"), (7, "late_7"), (30, "late_30")]:
+            with self.subTest(offset=offset), patch("institutions.subscription_reminders.timezone.localdate",
+                                                    return_value=today+timedelta(days=offset)):
+                response = self.client.get(root)
+                self.assertEqual(response.status_code, 200, response.content)
+                first = next((r for r in response.json()["reminders"] if r["number"] == 1), None)
+                self.assertEqual(first["stage"] if first else None, stage)
+                if first:
+                    self.assertEqual(first["id"], f"{row.pk}:abonnement:1:2026-11-17")
+                    self.assertEqual(first["balance_xaf"], 8334)
+        response = self.post("payment", reference="F3-PART", amount_xaf=3000, method="especes", reason="Versement")
+        self.assertEqual(response.status_code, 201, response.content)
+        result = self.client.get(root).json()
+        self.assertEqual(result["reminders"][0]["balance_xaf"], 5334)
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(self.client.get(root).json(), result)
+        second = self.post("payment", reference="F3-END", amount_xaf=5334, method="especes", reason="Complément")
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(self.client.get(root).json()["count"], 0)
+        payment_id = second.json()["subscription"]["payments"][-1]["id"]
+        self.assertEqual(self.post("void", payment_id=payment_id, reason="Erreur de saisie").status_code, 200)
+        result = self.client.get(root).json()
+        self.assertEqual(result["reminders"][0]["balance_xaf"], 5334)
+        self.assertEqual(result["due_count"], 1)
+        audit_count = PlatformAudit.objects.count()
+        self.assertEqual(self.client.get(root+"?page=999").json()["page"], 1)
+        self.assertEqual(self.client.get(root+"?page=-1").status_code, 422)
+        self.assertEqual(self.client.post(root, {}).status_code, 405)
+        self.assertEqual(PlatformAudit.objects.count(), audit_count)
+        self.assertEqual(FeePayment.objects.count(), 0)
+        self.assertEqual(SchoolFamilyNotification.objects.count(), 0)
+
+    def test_commercial_reminders_school_isolation_and_mfa(self):
+        self.assertEqual(self.issue().status_code, 201)
+        PlatformSubscription.objects.create(year=self.foreign_year, total_xaf=2000, lines=[])
+        root = "/api/v1/platform/subscription-reminders"
+        central = self.client.get(root).json()
+        self.assertEqual(central["count"], 1)
+        self.assertEqual(central["missing_schedule_count"], 1)
+        session = self.client.session
+        session["mfa_verified"] = False
+        session.save()
+        self.assertEqual(self.client.get(root).status_code, 403)
+        self.client.force_login(self.ordinary)
+        url = f"/api/v1/schools/{self.school.pk}/owner/subscription-reminders"
+        self.assertEqual(self.client.get(url).status_code, 403)
+        role = SchoolRole.objects.create(school=self.school, code="direction", label="Direction", permissions=["school.view"])
+        member = SchoolMember.objects.create(school=self.school, user=self.ordinary, role=role)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["reminders"], central["reminders"])
+        self.assertEqual(response.json()["missing_schedule_count"], 0)
+        self.assertEqual(self.client.get(url.replace(str(self.school.pk), str(self.other.pk))).status_code, 403)
+        self.assertEqual(self.client.get(root).status_code, 403)
+        member.access_cycle_ids = []
+        member.save(update_fields=["access_cycle_ids"])
+        self.assertEqual(self.client.get(url).status_code, 403)
+        role.code = "enseignant"
+        role.save(update_fields=["code"])
+        member.access_cycle_ids = None
+        member.save(update_fields=["access_cycle_ids"])
+        self.assertEqual(self.client.get(url).status_code, 403)
+
     def test_quote_uses_real_counts_and_snapshot(self):
         self.assertEqual(self.client.get(self.path).json()["suggested_year"], str(self.year.pk))
         quote = self.post("quote")
