@@ -396,6 +396,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]);
   const hasTab=(id,tab)=>Boolean(visibleSections[id]?.modules.includes(tab)||visibleSections[id]?.lives.some(l=>l.key===tab));
   const dashboardShortcuts=[
+    hasTab("diary","live")&&{id:"diary",tab:"live",icon:"file",title:"Cahier de textes",subtitle:"Cours / Devoirs / Progression"},
     hasTab("admissions","admissions")&&{id:"admissions",tab:"admissions",icon:"adduser",title:"Admissions",subtitle:"Inscriptions / Concours"},
     hasTab("payments","live")&&{id:"payments",tab:"live",icon:"wallet",title:"Paiements",subtitle:"Encaissements / Reçus"},
     hasTab("bulletins","assessments")&&{id:"bulletins",tab:"assessments",icon:"barchart",title:"Évaluations",subtitle:"Notes / Moyennes"},
@@ -567,7 +568,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     schoolName={schoolName} onNavigate={navigate}
     canNotes={ownCourseAssessment||can("school.assessments.read")}
     canAttendance={can("school.attendance.assigned")||can("school.attendance.read")}
-    canClasses={can("school.academic.read")}/>;
+    canDiary={hasTab("diary","live")} canClasses={can("school.academic.read")}/>;
   else if (perms.includes("school.finance.read")) content=<>
     <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId} shortcuts={dashboardShortcuts} visibleSections={visibleSections} canEnroll={can("school.students.manage")}/>
     <MySchoolFunctions schoolId={chosen}/>

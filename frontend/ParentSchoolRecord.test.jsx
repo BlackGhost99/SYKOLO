@@ -96,3 +96,20 @@ test("la famille retrouve les messages publiés dans le carnet de liaison", asyn
   await user.click(screen.getByRole("button",{name:"Carnet de liaison"}));
   expect(await screen.findByText("Lecture vendredi.")).toBeTruthy();
 });
+
+test("le cahier de textes est accessible depuis l'accueil parent et ne montre pas les bulletins à sa place", async()=>{
+  const path="/api/v1/parents/children";
+  const child=path+"/child-1";
+  const fetch=renderPortal({
+    [path]:{children:[{student:"child-1",first_name:"Lina",last_name:"Nkomo",school_name:"École",student_code:"001"}]},
+    [child+"/enrollments"]:{enrollments:[{id:"en-1",year:"2026-2027",year_id:"year-1",year_status:"current",classroom:"6e A",class_size:24,active:true,status:"inscrit"}]},
+    [child+"/diary?year=year-1"]:{entries:[{id:"one",day:"2026-11-17",subject:"Mathématiques",classroom:"6e A",title:"Fractions",lesson:"Comparer les fractions",homework:"Exercice 1"}]},
+  });
+  const user=userEvent.setup();
+  await screen.findByText("6e A");
+  await user.click(screen.getByRole("button",{name:"Cahier de textes"}));
+  expect(await screen.findByText("Comparer les fractions")).toBeTruthy();
+  expect(screen.getByText("Exercice 1")).toBeTruthy();
+  expect(screen.queryByText("Bulletins officiels publiés")).toBeNull();
+  expect(fetch.mock.calls.some(([url])=>url===child+"/diary?year=year-1")).toBe(true);
+});

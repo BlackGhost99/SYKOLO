@@ -166,7 +166,7 @@ function Head({m}) {
 function ActionTiles({goSchool,navTo}) {
   return <div className="yfx-action-grid">
     {[["Scolarité","cap",()=>goSchool("attendance")],["Paiements","card",()=>navTo("payments")],
-      ["Notes","chart",()=>goSchool("grades")],["Emploi du temps","calendar",()=>goSchool("timetable")]].map(([label,ic,click])=>
+      ["Notes","chart",()=>goSchool("grades")],["Emploi du temps","calendar",()=>goSchool("timetable")],["Cahier de textes","book",()=>goSchool("diary")]].map(([label,ic,click])=>
       <button className="yfx-action" type="button" key={label} onClick={click}><Icon name={ic} size={32}/><strong>{label}</strong></button>)}
   </div>;
 }
@@ -424,6 +424,7 @@ function School({m}) {
   </div>
   {m.dataErrors[tab]&&<p role="alert" className="yfx-alert">{m.dataErrors[tab]}</p>}
   {tab==="grades"?<SchoolResult m={m}/>:tab==="attendance"?<SchoolLife m={m}/>:
+   tab==="diary"?<Section title="Cahier de textes et devoirs" icon="book"><FamilyTeachingDiary key={m.childBase+":"+m.year} api={m.api} childBase={m.childBase} year={m.year}/></Section>:
    tab==="liaison"?<LiaisonBook key={m.childBase+":"+m.year} api={m.api} childBase={m.childBase} year={m.year}/>:
    tab==="timetable"?<Section title="Emploi du temps de la classe" icon="calendar">
     {m.data.timetable?.entries?.length?m.data.timetable.entries.map(e=><div className="yfx-timetable-row" key={e.id}>
