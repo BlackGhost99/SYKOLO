@@ -17,6 +17,7 @@ from .services import platform_only, school_access
 from .subscription_models import PlatformSubscription
 from .subscription_pricing import schedule_balances
 from .subscription_views import can_consult_commercial
+from .subscription_amendments import effective_ledger
 
 REMINDER_WINDOW = 7
 PAGE_SIZE = 100
@@ -24,7 +25,8 @@ PAGE_SIZE = 100
 
 def reminder_rows(row, today):
     result = []
-    for item in schedule_balances(row.commercial_terms or {}, row.paid_xaf, today):
+    _, terms = effective_ledger(row)
+    for item in schedule_balances(terms, row.paid_xaf, today):
         if not item["balance_xaf"]:
             continue
         due = date.fromisoformat(item["due_date"])
@@ -69,13 +71,14 @@ def commercial_reminders(request, school_id=None):
     query = PlatformSubscription.objects.filter(year__school__is_active=True)
     if school_id is not None:
         query = query.filter(year__school_id=school_id)
-    query = query.select_related("year__school").annotate(
+    query = query.select_related("year__school").prefetch_related("amendments").annotate(
         paid_xaf=Coalesce(Sum("payments__amount_xaf", filter=Q(payments__voided_at__isnull=True)),
                           Value(0), output_field=BigIntegerField()))
     notices = []
     missing_schedule = 0
     for row in query.iterator(chunk_size=250):
-        if row.paid_xaf >= row.total_xaf:
+        total_xaf, _ = effective_ledger(row)
+        if row.paid_xaf >= total_xaf:
             continue
         if not (row.commercial_terms or {}).get("schedule"):
             missing_schedule += 1
