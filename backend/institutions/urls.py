@@ -1,6 +1,6 @@
 from django.urls import path
 from conduct import views as conduct_views
-from . import import_views
+from . import import_views, subscription_views
 from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
@@ -42,6 +42,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/delegations", delegation_views.delegations),
     path("schools/<uuid:school_id>/delegations/<uuid:delegation_id>", delegation_views.delegations),
     path("platform/dashboard", platform_admin_views.platform_dashboard),
+    path("platform/schools/<uuid:school_id>/subscriptions", subscription_views.subscriptions),
     path("platform/organizations", platform_admin_views.platform_organizations),
     path("platform/audit", platform_admin_views.platform_audit),
     path("platform/schools", platform_views.platform_schools),
