@@ -35,7 +35,8 @@ export default function TeacherMobileWorkspace({
   const [todayCalls,setTodayCalls]=useState(null);
   const hasCurriculum=permissions.includes("school.curriculum.read")&&permissions.includes("school.academic.read");
   const hasAcademic=permissions.includes("school.academic.read");
-  const navigation=preschoolEnabled&&hasAcademic?[...tabs,{id:"preschool",label:"Suivi",icon:"file"}]:tabs;
+  const canDiary=permissions.includes("school.curriculum.read")||permissions.includes("school.diary.read");
+  const navigation=[...tabs,...(canDiary?[{id:"diary",label:"Cahier",icon:"file"}]:[]),...(preschoolEnabled&&hasAcademic?[{id:"preschool",label:"Suivi",icon:"file"}]:[])];
   const hasTimetable=permissions.includes("school.timetable.read");
   useEffect(()=>{setTab("accueil");},[schoolId]);
   useEffect(()=>{
@@ -136,7 +137,7 @@ export default function TeacherMobileWorkspace({
             {[
               ["classes","users","Mes classes"],["notes","file","Notes"],["moyennes","barchart","Moyennes"],
               ["appel","check","Appel"],["emploi","calendar","Emploi du temps"],
-              ...(hasCurriculum||permissions.includes("school.diary.read")?[["diary","file","Cahier de textes"]]:[]),
+              ...(canDiary?[["diary","file","Cahier de textes"]]:[]),
             ].map(([id,icon,label])=><button type="button" className="ym-shortcut" onClick={()=>open(id)} key={id}>
               <span><Icon name={icon} size={26}/></span><strong>{label}</strong>
             </button>)}
@@ -184,7 +185,7 @@ export default function TeacherMobileWorkspace({
         key={schoolId+":"+workingYearId+":"+tab} schoolId={schoolId}
         courses={data.courses} classes={data.classes} subjects={data.subjects}
         periods={data.periods} yearId={workingYearId} mode={tab}/>}
-      {tab==="diary"&&(hasCurriculum||permissions.includes("school.diary.read"))&&<div className="ym-page"><TeachingDiary key={schoolId+":"+workingYearId} schoolId={schoolId} yearId={workingYearId}/></div>}
+      {tab==="diary"&&(canDiary)&&<div className="ym-page"><TeachingDiary key={schoolId+":"+workingYearId} schoolId={schoolId} yearId={workingYearId}/></div>}
       {!loading&&tab==="appel"&&<TeacherMobileAttendance
         key={schoolId+":"+workingYearId} schoolId={schoolId} classes={data.classes}
         assignments={data.assignments} workingYearId={workingYearId}/>}
