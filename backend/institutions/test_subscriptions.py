@@ -317,6 +317,71 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(data["subscriptions"][0]["amendments"], [])
         self.assertNotIn("payments", data["subscriptions"][0])
 
+    def test_commercial_expiration_restriction_and_manual_restoration(self):
+        from .subscription_models import PlatformCommercialAccessDecision
+        self.assertEqual(self.issue(period="mensuel").status_code, 201)
+        url = f"/api/v1/platform/schools/{self.school.pk}/commercial-access"
+        school_url = f"/api/v1/schools/{self.school.pk}/owner/commercial-access"
+        def decide(restricted, revision, reason="Décision documentée"):
+            return self.client.post(url, json.dumps({"restricted":restricted,"revision":revision,"reason":reason}), content_type="application/json")
+        status = self.client.get(url).json()
+        self.assertEqual(status["lifecycle"], "active")
+        self.assertFalse(status["restricted"])
+        self.assertFalse(status["can_restrict"])
+        self.assertEqual(decide(True,0).status_code,409)
+        with patch("institutions.subscription_views.timezone.localdate", return_value=date(2026,12,17)):
+            status = self.client.get(url).json()
+            self.assertTrue(status["can_restrict"])
+            self.assertEqual(status["late_30_xaf"],8334)
+            self.assertFalse(status["restricted"])
+            result = decide(True,0)
+            self.assertEqual(result.status_code,201,result.content)
+            self.assertTrue(result.json()["restricted"])
+            self.assertEqual(decide(True,0).status_code,409)
+            self.assertEqual(decide(False,0).status_code,409)
+        self.school.refresh_from_db()
+        self.assertTrue(self.school.is_active)
+        self.assertEqual(PlatformCommercialAccessDecision.objects.count(),1)
+        self.client.force_login(self.ordinary)
+        role = SchoolRole.objects.create(school=self.school,code="direction",label="Direction",permissions=["school.view"])
+        SchoolMember.objects.create(school=self.school,user=self.ordinary,role=role)
+        self.assertTrue(self.client.get(school_url).json()["restricted"])
+        self.assertEqual(self.client.get(url).status_code,403)
+        self.assertEqual(self.client.post(school_url,{},content_type="application/json").status_code,405)
+        blocked = self.client.post(f"/api/v1/schools/{self.school.pk}/academic/quick-classes",{},content_type="application/json")
+        self.assertEqual(blocked.status_code,403)
+        self.assertEqual(blocked.json()["code"],"commercial_expansion_restricted")
+        blocked_staff = self.client.post(f"/api/v1/schools/{self.school.pk}/staff/onboard",{},content_type="application/json")
+        self.assertEqual(blocked_staff.json()["code"],"commercial_expansion_restricted")
+        self.assertEqual(self.client.get(f"/api/v1/schools/{self.school.pk}/owner/subscriptions").status_code,200)
+        self.assertEqual(self.client.get(school_url.replace(str(self.school.pk),str(self.other.pk))).status_code,403)
+        self.client.force_login(self.admin)
+        self.mfa()
+        self.assertEqual(self.post("payment",reference="F5-PAY",amount_xaf=100000,method="especes",reason="Règlement test").status_code,201)
+        self.assertTrue(self.client.get(url).json()["restricted"])
+        self.assertEqual(decide(False,1).status_code,201)
+        self.assertFalse(self.client.get(url).json()["restricted"])
+        self.assertEqual(PlatformCommercialAccessDecision.objects.count(),2)
+        self.client.force_login(self.ordinary)
+        restored = self.client.post(f"/api/v1/schools/{self.school.pk}/academic/quick-classes",{},content_type="application/json")
+        self.assertNotEqual(restored.json().get("code"),"commercial_expansion_restricted")
+        self.assertEqual(FeePayment.objects.count(),0)
+
+    def test_commercial_trial_expiration_is_read_only(self):
+        from .subscription_models import PlatformCommercialAccessDecision
+        self.assertEqual(self.post("trial_start",days=30,reason="Essai").status_code,201)
+        url = f"/api/v1/platform/schools/{self.school.pk}/commercial-access"
+        self.assertEqual(self.client.get(url).json()["lifecycle"],"trial_active")
+        with patch("institutions.subscription_views.timezone.localdate",return_value=date(2026,12,17)):
+            status = self.client.get(url).json()
+            self.assertEqual(status["lifecycle"],"expired")
+            self.assertFalse(status["restricted"])
+            self.assertTrue(status["can_restrict"])
+        self.assertEqual(PlatformCommercialAccessDecision.objects.count(),0)
+        self.assertEqual(PlatformSubscription.objects.count(),0)
+        self.school.refresh_from_db()
+        self.assertTrue(self.school.is_active)
+
     def test_quote_uses_real_counts_and_snapshot(self):
         self.assertEqual(self.client.get(self.path).json()["suggested_year"], str(self.year.pk))
         quote = self.post("quote")
