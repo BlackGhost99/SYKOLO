@@ -2,6 +2,11 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase, override_settings
+from django.db import connection
+from django.utils import timezone
+from unittest import skipUnless
+from institutions.parent_push_scheduler import take_ticket
+import hashlib
 
 PATH = "/internal/yem-parent-push"
 TOKEN = "a" * 64
@@ -54,3 +59,40 @@ class ParentPushSchedulerTests(TestCase):
             response = self.client.post(PATH, **AUTH)
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("private value", response.content.decode())
+
+    @patch(MODULE + ".take_ticket", return_value=True)
+    @patch(MODULE + ".FcmTransport")
+    @patch(MODULE + ".ParentPushDevice")
+    def test_pilot_device_capacity(self, device, transport, ticket):
+        device.objects.filter.return_value.order_by.return_value.values_list.return_value = list(range(26))
+        self.assertEqual(self.client.post(PATH, **AUTH).status_code, 503)
+        transport.assert_not_called()
+
+
+@skipUnless(connection.vendor == "postgresql", "PostgreSQL ticket atomicity")
+class PostgreSQLTicketTests(TestCase):
+    def setUp(self):
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE SCHEMA yem_push_private")
+            cursor.execute("""
+                CREATE TABLE yem_push_private.dispatch_state (
+                    singleton boolean PRIMARY KEY,
+                    ticket_digest text,
+                    ticket_expires timestamptz,
+                    running_until timestamptz
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO yem_push_private.dispatch_state
+                VALUES (true, %s, now() + interval '4 minutes', now() - interval '1 minute')
+            """, [hashlib.sha256(TOKEN.encode("ascii")).hexdigest()])
+
+    def test_one_time_and_wrong_ticket(self):
+        self.assertFalse(take_ticket("b" * 64))
+        self.assertTrue(take_ticket(TOKEN))
+        self.assertFalse(take_ticket(TOKEN))
+
+    def test_expired_ticket(self):
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE yem_push_private.dispatch_state SET ticket_expires=now() - interval '1 second'")
+        self.assertFalse(take_ticket(TOKEN))

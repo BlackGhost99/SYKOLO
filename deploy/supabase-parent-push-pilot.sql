@@ -60,8 +60,8 @@ END $$;
 REVOKE ALL ON FUNCTION yem_push_private.schedule_dispatch(boolean) FROM PUBLIC, anon, authenticated;
 
 -- Do not expose the pg_net queue containing short-lived request headers.
-REVOKE SELECT ON net.http_request_queue FROM PUBLIC, anon, authenticated;
-REVOKE SELECT ON net._http_response FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON net.http_request_queue FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON net._http_response FROM PUBLIC, anon, authenticated;
 
 -- A real due durable message triggers work; an hourly scan covers computed
 -- finance/admission events. The scheduler does not ping an idle no-device pilot.
