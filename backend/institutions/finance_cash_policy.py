@@ -31,8 +31,12 @@ def recorded_cash_total(*, school, day, currency, user):
         amount for amount, method, label in entries.iterator()
         if classify_payment(method, label) != "simulation"
     ), Decimal("0.00"))
-    admission = AdmissionCashReceipt.objects.filter(
-        school=school, recorded_by=user, received_on=day,
-        is_demo=False, void__isnull=True,
-    ).aggregate(total=Sum("amount_xaf"))["total"] or 0
+    # Admission receipts are denominated in XAF only. Never mix them into
+    # an EUR (or any other currency) cash reconciliation.
+    admission = 0
+    if currency == "XAF":
+        admission = AdmissionCashReceipt.objects.filter(
+            school=school, recorded_by=user, received_on=day,
+            is_demo=False, void__isnull=True,
+        ).aggregate(total=Sum("amount_xaf"))["total"] or 0
     return ((total or Decimal("0.00")) + Decimal(admission)).quantize(Decimal("0.01"))
