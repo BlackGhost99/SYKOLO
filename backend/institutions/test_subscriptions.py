@@ -329,6 +329,11 @@ class PlatformSubscriptionTests(TestCase):
         self.assertFalse(status["restricted"])
         self.assertFalse(status["can_restrict"])
         self.assertEqual(decide(True,0).status_code,409)
+        with patch("institutions.subscription_views.timezone.localdate", return_value=date(2026,12,16)):
+            status = self.client.get(url).json()
+            self.assertFalse(status["can_restrict"])
+            self.assertEqual(status["grace_days_remaining"],1)
+            self.assertEqual(decide(True,0).status_code,409)
         with patch("institutions.subscription_views.timezone.localdate", return_value=date(2026,12,17)):
             status = self.client.get(url).json()
             self.assertTrue(status["can_restrict"])
@@ -347,12 +352,17 @@ class PlatformSubscriptionTests(TestCase):
         SchoolMember.objects.create(school=self.school,user=self.ordinary,role=role)
         self.assertTrue(self.client.get(school_url).json()["restricted"])
         self.assertEqual(self.client.get(url).status_code,403)
-        self.assertEqual(self.client.post(school_url,{},content_type="application/json").status_code,405)
+        self.assertEqual(self.client.post(school_url,{},content_type="application/json").status_code,403)
+        self.assertTrue(self.client.get(f"/api/v1/schools/{self.school.pk}/my-access").json()["commercial_workspace_restricted"])
+        for suffix in ("students","enrollments","reports","attendance/sessions","finance/payments","staff","owner/overview","academic/years","notification-inbox"):
+            response = self.client.get(f"/api/v1/schools/{self.school.pk}/{suffix}")
+            self.assertEqual(response.status_code,403,suffix)
+            self.assertEqual(response.json()["code"],"commercial_workspace_restricted",suffix)
         blocked = self.client.post(f"/api/v1/schools/{self.school.pk}/academic/quick-classes",{},content_type="application/json")
         self.assertEqual(blocked.status_code,403)
-        self.assertEqual(blocked.json()["code"],"commercial_expansion_restricted")
+        self.assertEqual(blocked.json()["code"],"commercial_workspace_restricted")
         blocked_staff = self.client.post(f"/api/v1/schools/{self.school.pk}/staff/onboard",{},content_type="application/json")
-        self.assertEqual(blocked_staff.json()["code"],"commercial_expansion_restricted")
+        self.assertEqual(blocked_staff.json()["code"],"commercial_workspace_restricted")
         self.assertEqual(self.client.get(f"/api/v1/schools/{self.school.pk}/owner/subscriptions").status_code,200)
         self.assertEqual(self.client.get(school_url.replace(str(self.school.pk),str(self.other.pk))).status_code,403)
         self.client.force_login(self.admin)
@@ -364,7 +374,7 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(PlatformCommercialAccessDecision.objects.count(),2)
         self.client.force_login(self.ordinary)
         restored = self.client.post(f"/api/v1/schools/{self.school.pk}/academic/quick-classes",{},content_type="application/json")
-        self.assertNotEqual(restored.json().get("code"),"commercial_expansion_restricted")
+        self.assertNotEqual(restored.json().get("code"),"commercial_workspace_restricted")
         self.assertEqual(FeePayment.objects.count(),0)
 
     def test_commercial_trial_expiration_is_read_only(self):
@@ -376,7 +386,10 @@ class PlatformSubscriptionTests(TestCase):
             status = self.client.get(url).json()
             self.assertEqual(status["lifecycle"],"expired")
             self.assertFalse(status["restricted"])
-            self.assertTrue(status["can_restrict"])
+            self.assertFalse(status["can_restrict"])
+            self.assertEqual(status["grace_days_remaining"],30)
+        with patch("institutions.subscription_views.timezone.localdate",return_value=date(2027,1,16)):
+            self.assertTrue(self.client.get(url).json()["can_restrict"])
         self.assertEqual(PlatformCommercialAccessDecision.objects.count(),0)
         self.assertEqual(PlatformSubscription.objects.count(),0)
         self.school.refresh_from_db()
