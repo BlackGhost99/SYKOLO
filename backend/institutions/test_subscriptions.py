@@ -53,6 +53,112 @@ class PlatformSubscriptionTests(TestCase):
     def issue(self, **kwargs):
         return self.post("issue", **({"policy_revision":1,"expected_counts":self.counts,"reason":"Contrat test","period":"annuel","discount_xaf":0,"include_setup":False,"expected_total_xaf":100000} | kwargs))
 
+    def test_commercial_documents_use_frozen_terms_and_private_ledger(self):
+        from .subscription_document_pdf import invoice_lines
+        result = self.issue(period="mensuel", discount_xaf=3, include_setup=True,
+                            expected_total_xaf=149997)
+        self.assertEqual(result.status_code, 201, result.content)
+        sub = PlatformSubscription.objects.get()
+        items, schedule = invoice_lines(sub)
+        self.assertEqual(sum(amount for _, amount in items), 149997)
+        self.assertIn(("Remise commerciale", -3), items)
+        self.assertEqual(sum(s["amount_xaf"] for s in schedule), 149997)
+        self.assertEqual(len(schedule), 13)
+        documents = result.json()["subscription"]["documents"]
+        invoice = documents["invoice"]["url"]
+        audit_count = PlatformAudit.objects.count()
+        first = self.client.get(invoice)
+        self.assertEqual(first.status_code, 200, first.content)
+        self.assertTrue(first.content.startswith(b"%PDF-"))
+        self.assertIn("private", first["Cache-Control"])
+        self.assertIn("no-store", first["Cache-Control"])
+        self.assertEqual(first["X-YEM-Document-Reference"], documents["invoice"]["reference"])
+        self.assertTrue(first["Content-Disposition"].startswith("attachment;"))
+        self.assertTrue(self.client.get(invoice + "?preview=1")["Content-Disposition"].startswith("inline;"))
+        self.assertEqual(PlatformAudit.objects.count(), audit_count)
+        self.assertEqual(PlatformSubscriptionPayment.objects.count(), 0)
+        self.assertEqual(self.client.post(invoice, {}).status_code, 405)
+        # Live tariff/roster do not rewrite historical amounts.
+        Enrollment.objects.filter(school=self.school).update(active=False)
+        updated = dict(DEFAULT_RATES, primaire=1600)
+        self.assertEqual(self.client.post("/api/v1/platform/subscription-pricing",
+            json.dumps({"rates": updated, "minimums": DEFAULT_MINIMUMS,
+                        "revision": 1, "reason": "Nouvelle grille"}), content_type="application/json").status_code, 200)
+        sub.refresh_from_db()
+        self.assertEqual(invoice_lines(sub), (items, schedule))
+        payment = self.post("payment", reference="F2-REC", amount_xaf=10000,
+                            method="mobile_money", reason="Règlement déclaré")
+        self.assertEqual(payment.status_code, 201, payment.content)
+        receipt = payment.json()["subscription"]["documents"]["receipts"][0]
+        pdf = self.client.get(receipt["url"])
+        self.assertEqual(pdf.status_code, 200)
+        self.assertTrue(pdf.content.startswith(b"%PDF-"))
+        self.assertEqual(pdf["X-YEM-Document-Reference"], receipt["reference"])
+        self.assertEqual(pdf["X-YEM-Document-Status"], "issued")
+        self.assertEqual(self.post("void", payment_id=receipt["id"], reason="Erreur documentée").status_code, 200)
+        voided = self.client.get(receipt["url"])
+        self.assertEqual(voided.status_code, 200)
+        self.assertEqual(voided["X-YEM-Document-Status"], "voided")
+        self.assertEqual(voided["X-YEM-Document-Reference"], receipt["reference"])
+        self.assertNotEqual(pdf.content, voided.content)
+        self.assertEqual(PlatformSubscriptionPayment.objects.count(), 1)
+        self.assertEqual(FeePayment.objects.count(), 0)
+
+    def test_commercial_document_mfa_and_school_scope(self):
+        result = self.issue()
+        invoice = result.json()["subscription"]["documents"]["invoice"]["url"]
+        payment = self.post("payment", reference="F2-PRIVATE", amount_xaf=3000,
+                            method="especes", reason="Justificatif privé")
+        receipt = payment.json()["subscription"]["documents"]["receipts"][0]["url"]
+        foreign = PlatformSubscription.objects.create(year=self.foreign_year, total_xaf=2000,
+            lines=[{"cycle":"college","label":"Collège","students":1,"rate_xaf":2000,"amount_xaf":2000}])
+        foreign_payment = PlatformSubscriptionPayment.objects.create(subscription=foreign,
+            reference="FOREIGN", amount_xaf=1000, method="especes")
+        self.assertEqual(self.client.get(invoice.replace(str(self.school.pk), str(self.other.pk))).status_code, 404)
+        self.assertEqual(self.client.get(receipt.rsplit("/", 2)[0] + f"/{foreign_payment.pk}/receipt").status_code, 404)
+        session = self.client.session
+        session["mfa_verified"] = False
+        session.save()
+        self.assertEqual(self.client.get(invoice).status_code, 403)
+        self.client.force_login(self.ordinary)
+        self.assertEqual(self.client.get(invoice).status_code, 403)
+        direction = SchoolRole.objects.create(school=self.school, code="direction", label="Direction",
+                                              permissions=["school.view"])
+        member = SchoolMember.objects.create(school=self.school, user=self.ordinary, role=direction)
+        school_root = f"/api/v1/schools/{self.school.pk}/owner/subscriptions"
+        summary = self.client.get(school_root).json()["subscriptions"][0]
+        doc = summary["documents"]["invoice"]["url"]
+        rec = summary["documents"]["receipts"][0]["url"]
+        self.assertNotIn("payments", summary)
+        self.assertNotIn("void_reason", summary["documents"]["receipts"][0])
+        self.assertEqual(self.client.get(doc).status_code, 200)
+        self.assertEqual(self.client.get(rec).status_code, 200)
+        self.assertEqual(self.client.post(doc,{}).status_code, 405)
+        self.assertEqual(self.client.get(doc.replace(str(self.school.pk),str(self.other.pk))).status_code, 403)
+        self.assertEqual(self.client.get(doc.replace(f"/{summary['id']}/",f"/{foreign.pk}/")).status_code, 404)
+        member.access_cycle_ids = []
+        member.save(update_fields=["access_cycle_ids"])
+        self.assertEqual(self.client.get(doc).status_code, 403)
+        teacher = SchoolRole.objects.create(school=self.school, code="enseignant", label="Professeur",
+                                            permissions=["school.view"])
+        member.role = teacher
+        member.access_cycle_ids = None
+        member.save(update_fields=["role", "access_cycle_ids"])
+        self.assertEqual(self.client.get(doc).status_code, 403)
+        self.assertEqual(self.client.get(rec).status_code, 403)
+        self.client.logout()
+        self.assertIn(self.client.get(doc).status_code, (401,403,404))
+
+    def test_legacy_contract_pdf_without_schedule_or_repricing(self):
+        from .subscription_document_pdf import invoice_lines
+        row = PlatformSubscription.objects.create(year=self.year, total_xaf=1500,
+            lines=[{"cycle":"primaire","label":"Primaire","students":1,"rate_xaf":1500,"amount_xaf":1500}])
+        self.assertEqual(invoice_lines(row)[1], [])
+        self.assertEqual(self.client.get(self.path + f"/{row.pk}/invoice").status_code, 200)
+        row.total_xaf = 1501
+        row.save(update_fields=["total_xaf"])
+        self.assertEqual(self.client.get(self.path + f"/{row.pk}/invoice").status_code, 409)
+
     def test_quote_uses_real_counts_and_snapshot(self):
         self.assertEqual(self.client.get(self.path).json()["suggested_year"], str(self.year.pk))
         quote = self.post("quote")
