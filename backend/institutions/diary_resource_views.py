@@ -1,6 +1,5 @@
 """Authenticated downloads. No public URLs, inline render, or external fetching."""
 import hashlib
-import re
 from pathlib import PurePath
 from uuid import UUID
 from django.db import IntegrityError, transaction
@@ -18,7 +17,7 @@ from .parent_views import child_scope
 from .services import has_permission
 from .teaching_diary_models import TeachingDiaryEntry
 from .teaching_diary_views import school_courses, writable, error, family_entries
-from .views import access, log_event, refuse
+from .views import access, log_event, refuse, parse_body
 
 MAX_BYTES = 1048576
 SCHOOL_BUDGET = 20 * 1048576
@@ -88,6 +87,8 @@ def resources(request,school_id,entry_id):
             return error("Requête trop volumineuse.",413)
         if set(request.FILES)!={"file"} or len(request.FILES.getlist("file"))!=1 or set(request.POST)!={"id"} or len(request.POST.getlist("id"))!=1:
             return error("Un fichier et son identifiant sont requis.")
+        if request.FILES["file"].size>MAX_BYTES:
+            return error("Fichier trop volumineux.",413)
         key=UUID(request.POST["id"])
         filename,raw=payload(request.FILES["file"])
         digest=hashlib.sha256(raw).hexdigest()
@@ -123,6 +124,9 @@ def resource_detail(request,school_id,entry_id,resource_id):
     if request.method=="GET":
         row=entry.resources.filter(pk=resource_id,active=True).first()
         return download(row) if row else error("Document introuvable.",404)
+    body, denied = parse_body(request)
+    if denied is not None: return denied
+    if body != {}: return error("Retrait du document : objet JSON vide requis.")
     with transaction.atomic():
         School.objects.select_for_update().get(pk=school.pk)
         _,entry,denied=school_entry(request,school_id,entry_id)
