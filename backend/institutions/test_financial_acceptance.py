@@ -21,8 +21,7 @@ def synthetic_mutating_read(request, school_id):
 
 
 def synthetic_cte_write(request, school_id):
-    # WITH is not necessarily read-only. Even when the SQL wrapper permits its
-    # initial token, the enclosing transaction must never commit the mutation.
+    # WITH is not necessarily read-only: deny the ambiguous statement.
     table = connection.ops.quote_name(School._meta.db_table)
     id_column = connection.ops.quote_name(School._meta.pk.column)
     with connection.cursor() as cur:
@@ -65,10 +64,10 @@ class CommercialReadOnlyAcceptance(TestCase):
         self.assertEqual(self.school.name, "F7 restricted")
 
     def test_cte_cannot_persist_hidden_write(self):
-        # TestCase already opens a transaction: the middleware savepoint still
-        # must undo any mutation hidden behind a WITH clause.
+        # The boundary must reject this even inside a Django TestCase transaction.
         response = self.client.get(self.url(self.school, "f7-unsafe-cte"))
-        self.assertIn(response.status_code, (200, 403))
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "commercial_workspace_read_only")
         self.school.refresh_from_db()
         self.assertEqual(self.school.name, "F7 restricted")
 
