@@ -242,6 +242,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [chosen,setChosen]=useState("");
   const [schoolBranding,setSchoolBranding]=useState(null);
   const [access,setAccess]=useState(null);
+  const [regularizationSchool,setRegularizationSchool]=useState("");
   const [myPhotoUrl,setMyPhotoUrl]=useState(null);
   const [hasStaffProfile,setHasStaffProfile]=useState(false);
   const [hasTeachingAssignment,setHasTeachingAssignment]=useState(false);
@@ -298,8 +299,18 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     const timer=window.setInterval(poll,30000);
     window.addEventListener("focus",poll);
     document.addEventListener("visibilitychange",poll);
-    setPage("dashboard");setTeacherViewRequested(null);setHasTeachingAssignment(false);
+    setRegularizationSchool("");setPage("dashboard");setTeacherViewRequested(null);setHasTeachingAssignment(false);
     return ()=>{alive=false;window.clearInterval(timer);window.removeEventListener("focus",poll);document.removeEventListener("visibilitychange",poll);};
+  },[chosen]);
+  useEffect(()=>{
+    const blocked=event=>{
+      if(String(event.detail?.schoolId)===String(chosen)){
+        setRegularizationSchool(chosen);
+        setAccess(old=>old?{...old,commercial_workspace_restricted:true}:old);
+      }
+    };
+    window.addEventListener("yem:commercial-read-only",blocked);
+    return()=>window.removeEventListener("yem:commercial-read-only",blocked);
   },[chosen]);
   useEffect(()=>{
     let live=true;
@@ -490,16 +501,20 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       </select>
     </label>}
   </div>;
-  if(access?.commercial_workspace_restricted){
+  const commercialReadOnly=Boolean(access?.commercial_workspace_restricted);
+  const readOnlyBanner=commercialReadOnly?<Card title="Abonnement YEM à régulariser" icon="lock">
+    <p role="status">Mode lecture seule : vos données restent consultables, mais toute modification est bloquée.</p>
+    <Button type="button" onClick={()=>setRegularizationSchool(chosen)}>Régulariser l’abonnement</Button>
+  </Card>:null;
+  if(commercialReadOnly&&regularizationSchool===chosen){
     const canRegularize=access.is_owner||(!access.cycle_scope_restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role)));
-    return <main className="yd-real-body" aria-label="Espace établissement suspendu">
-      <PageHeader title="Espace établissement suspendu" subtitle={schoolName}/>
-      <Card title="Abonnement YEM à régulariser" icon="lock">
-        <p role="alert">Les modules scolaires, pédagogiques et financiers sont temporairement indisponibles. Contactez BWETEK Informatyk pour régulariser l’abonnement et obtenir la réactivation.</p>
-        <p>Les données de l’établissement sont conservées. La situation est actualisée automatiquement.</p>
-        {schools.length>1&&<label className="field">Changer d’établissement<select value={chosen} onChange={e=>{setAccess(null);setChosen(e.target.value);}}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
+    return <main className="yd-real-body" aria-label="Régularisation de l’abonnement YEM">
+      <PageHeader title="Abonnement YEM à régulariser" subtitle={schoolName}/>
+      <Card title="Modification indisponible" icon="lock">
+        <p role="alert">Le délai de régularisation est dépassé. L’établissement est en lecture seule jusqu’à réactivation.</p>
+        <p>{canRegularize?"Consultez le solde et les factures ci-dessous, puis contactez BWETEK Informatyk pour effectuer et faire valider le règlement.":"Contactez le propriétaire ou la direction pour régulariser l’abonnement."}</p>
+        <Button type="button" onClick={()=>setRegularizationSchool("")}>Retour à la consultation</Button>
         <Button type="button" onClick={onLogout}>Se déconnecter</Button>
-        <Button type="button" onClick={()=>window.location.reload()}>Actualiser l’accès</Button>
       </Card>
       {canRegularize&&<OwnerSubscription key={chosen} schoolId={chosen}/>}
     </main>;
@@ -519,7 +534,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     permissions={perms} preschoolEnabled={preschoolEnabled} years={academicYears} workingYearId={workingYearId}
     onYearChange={setWorkingYearId} schools={schools} onSchoolChange={setChosen}
     onExit={()=>setTeacherViewRequested(false)}
-    onLogout={onLogout} accountView={accountView}/>;
+    onLogout={onLogout} accountView={accountView} commercialBanner={readOnlyBanner}/>;
   let content;
   if (page==="profile") content=<><PageHeader title="Mon profil professionnel" subtitle="Photo et informations synchronisées avec la fiche Personnel"/><div className="yd-real-body"><TeacherProfile schoolId={chosen}/></div></>;
   else if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}{chosen && access && <StaffProfessionalDossier own schoolId={chosen}/>}</div></>;
@@ -619,6 +634,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
        onProfile={hasStaffProfile?()=>navigate("profile"):undefined}
        photoUrl={myPhotoUrl?myPhotoUrl+"?rev="+photoRevision:undefined}
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
+    {readOnlyBanner}
     {message&&<p role="status" className="pc-alert">{message}</p>}
     {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school" className="yd-school-code-compact">
       <div className="yd-school-code-row"><label className="field">Code à communiquer au personnel
