@@ -3,6 +3,8 @@ import json
 import uuid
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from .diary_resource_models import DiaryResource
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
 from .curriculum_models import Subject, CourseOffering, CourseInstructor
 from .models import Organization, School, SchoolRole, SchoolMember
@@ -99,3 +101,44 @@ class DiaryTests(TestCase):
         self.year.status="closed";self.year.active=False;self.year.save()
         self.assertEqual(self.write({**self.payload,"revision":1},"patch").status_code,409)
         self.assertEqual(self.client.get(self.path+"/"+str(self.course.pk)).status_code,200)
+
+    def test_resources_private_published_and_revocable(self):
+        self.login("teacher")
+        self.assertEqual(self.write(self.payload).status_code,201)
+        root=f"/api/v1/schools/{self.school.pk}/diary/entries/{self.payload['id']}/resources"
+        key=str(uuid.uuid4())
+        def upload(name="exercices.txt", data=b"Exercice 1", ident=key):
+            return self.client.post(root,{"id":ident,"file":SimpleUploadedFile(name,data,content_type="text/plain")})
+        self.assertEqual(upload().status_code,201)
+        self.assertEqual(upload().status_code,200)
+        self.assertEqual(DiaryResource.objects.count(),1)
+        self.assertEqual(upload(data=b"Other").status_code,409)
+        self.assertEqual(upload("virus.pdf", b"%PDF-1.7", str(uuid.uuid4())).status_code,422)
+        self.assertEqual(upload("invalid.txt", b"\x00\xff", str(uuid.uuid4())).status_code,422)
+        self.assertEqual(upload("large.txt", b"a"*1048577, str(uuid.uuid4())).status_code,413)
+        self.assertEqual(self.client.get(root).json()["resources"][0]["filename"],"exercices.txt")
+        school_download=root+"/"+key
+        family_download=f"/api/v1/parents/children/{self.student.pk}/diary/resources/{key}?year={self.year.pk}"
+        self.assertEqual(self.client.get(school_download).content,b"Exercice 1")
+        self.login("unassigned")
+        self.assertEqual(self.client.get(school_download).status_code,404)
+        self.login("parent")
+        self.assertEqual(self.client.get(family_download).status_code,404)
+        self.login("teacher")
+        self.assertEqual(self.write({**self.payload,"published":True,"revision":1},"patch").status_code,200)
+        self.login("parent")
+        response=self.client.get(family_download)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.content,b"Exercice 1")
+        self.assertIn("attachment",response["Content-Disposition"])
+        self.assertIn("no-store",response["Cache-Control"])
+        self.assertEqual(self.client.get(self.family).json()["entries"][0]["resources"][0]["id"],key)
+        self.link.active=False;self.link.save()
+        self.assertEqual(self.client.get(family_download).status_code,404)
+        self.link.active=True;self.link.save()
+        self.login("teacher")
+        self.assertEqual(self.client.patch(school_download,json.dumps({}),content_type="application/json").status_code,200)
+        self.assertEqual(DiaryResource.objects.count(),1)
+        self.login("parent")
+        self.assertEqual(self.client.get(family_download).status_code,404)
+        self.assertEqual(self.client.get(self.family).json()["entries"][0]["resources"],[])
