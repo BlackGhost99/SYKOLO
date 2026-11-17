@@ -1,3 +1,4 @@
+import {ResourceLinks} from "./TeachingDiary.jsx";
 import React, { useEffect, useState } from "react";
 import ParentDiscovery from "./ParentDiscovery.jsx";
 import {SchoolExistingRequests} from "./ParentExistingSchool.jsx";
@@ -117,7 +118,7 @@ function ChildSchoolSection({base, tab, year}) {
     </div>
   ) : <p>Aucun bulletin publié.</p>;
 
-  if (tab === "diary") return detail.entries?.length ? detail.entries.map(entry=><article key={entry.id}><h3>{entry.subject} · {entry.title}</h3><p>{entry.day} · {entry.classroom}</p><p className="yem-diary-text">{entry.lesson}</p>{entry.homework&&<p className="yem-diary-text"><strong>À faire{entry.due_on?" pour le "+entry.due_on:""} :</strong> {entry.homework}</p>}</article>) : <p>Aucune séance publiée pour cette année.</p>;
+  if (tab === "diary") return detail.entries?.length ? detail.entries.map(entry=><article key={entry.id}><h3>{entry.subject} · {entry.title}</h3><p>{entry.day} · {entry.classroom}</p><p className="yem-diary-text">{entry.lesson}</p>{entry.homework&&<p className="yem-diary-text"><strong>À faire{entry.due_on?" pour le "+entry.due_on:""} :</strong> {entry.homework}</p>}<ResourceLinks resources={entry.resources} href={r=>"/api/v1/"+base+"/diary/resources/"+r.id+"?year="+encodeURIComponent(year)}/></article>) : <p>Aucune séance publiée pour cette année.</p>;
 
   if (tab === "attendance") return <ChildSchoolLife detail={detail}/>;
 
