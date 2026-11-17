@@ -7,11 +7,12 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 from .academic_models import AcademicYear
-from .models import School
+from .models import School, SchoolMember
 from .student_models import Enrollment
 from .subscription_models import PlatformSubscription, PlatformSubscriptionPayment, PlatformSubscriptionPolicy
 from .platform_admin_views import audit, denied
 from .services import platform_only, school_access, owns_school
+from .cycle_scope import scoped_cycle_ids
 from .school_profiles import CYCLE_LABELS
 from .subscription_pricing import (DEFAULT_RATES, DEFAULT_MINIMUMS, PERIODS, quote_lines,
     calculate_terms, validate_schedule, setup_fee, schedule_balances)
@@ -100,7 +101,7 @@ def quote_for(school, year, policy, counts):
 
 
 def representation(row):
-    payments = list(row.payments.order_by("recorded_at", "pk"))
+    payments = sorted(row.payments.all(), key=lambda p: (p.recorded_at, p.pk))
     paid = sum(p.amount_xaf for p in payments if p.voided_at is None)
     return {"id": row.pk, "lines": row.lines, "total_xaf": row.total_xaf, "paid_xaf": paid,
             "terms": row.commercial_terms, "schedule": schedule_balances(row.commercial_terms, paid, timezone.localdate()),
@@ -233,9 +234,9 @@ def subscriptions(request, school_id):
 @authorized
 def owner_subscriptions(request, school_id):
     school = school_access(request.user, school_id)
-    if school is None or not owns_school(request.user, school):
+    if school is None or not can_consult_commercial(request.user, school):
         return denied()
-    # Only this owner's issued contracts; no internal payment references or audit notes.
+    # Only issued contracts belonging to the requested school; no private audit notes.
     records = PlatformSubscription.objects.filter(year__school=school).select_related("year").prefetch_related("payments").order_by("-year__start_date")
     data = []
     for row in records:
@@ -243,3 +244,17 @@ def owner_subscriptions(request, school_id):
         data.append({k: item[k] for k in ("id", "lines", "total_xaf", "paid_xaf", "balance_xaf", "terms", "schedule", "issued_at")} |
                     {"year": row.year.name, "year_id": str(row.year_id)})
     return JsonResponse({"subscriptions": data})
+
+
+def can_consult_commercial(user, school):
+    """School-wide commercial amounts are never exposed to cycle-limited staff or families."""
+    if owns_school(user, school):
+        return True
+    if scoped_cycle_ids(user, school) is not None:
+        return False
+    member = SchoolMember.objects.select_related("role").filter(
+        school=school, user=user, active=True, role__school=school).first()
+    if not member:
+        return False
+    roles = {member.role.code, *member.additional_roles.filter(school=school).values_list("code", flat=True)}
+    return bool(roles & {"direction", "principal", "proviseur"})
