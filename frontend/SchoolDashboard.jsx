@@ -17,6 +17,7 @@ import CycleWorkspace from "./CycleWorkspace.jsx";
 import OrganisationPanel, {MySchoolFunctions} from "./OrganisationPanel.jsx";
 import RoleManager from "./RoleManager.jsx";
 import CurriculumPanel from "./CurriculumPanel.jsx";
+import TeachingDiary from "./TeachingDiary.jsx";
 import AssessmentPanel from "./AssessmentPanel.jsx";
 import ReportPanel from "./ReportPanel.jsx";
 import CouncilPanel from "./CouncilPanel.jsx";
@@ -67,6 +68,7 @@ const sections = {
     {key:"byclass",label:"Inscriptions par classe",need:["school.students.profile.read","school.academic.read"]}],
     hidden:{new:"school.students.manage",import:"school.students.manage",fiche:"school.students.profile.read"}},
   classes:{modules:[],lives:[{key:"live",label:"Classes et effectifs",need:["school.academic.read"]}]},
+  diary:{title:"Cahier de textes",subtitle:"Séances de cours et travail à faire",modules:[],lives:[{key:"live",label:"Cahier de textes",need:["school.curriculum.read"]}]},
   calendar:{title:"Calendrier pédagogique",subtitle:"Année, trimestres, vacances et événements",modules:[],lives:[
     {key:"live",label:"Calendrier pédagogique",need:["school.academic.read"]}]},
   admissions:{title:"Admissions et préinscriptions",subtitle:"Consultez les demandes et suivez leur inscription",modules:["admissions"]},
@@ -84,7 +86,7 @@ const sections = {
     {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]},
     {key:"payroll",label:"Rémunérations (RH)",need:["school.payroll.read"]}]},
 };
-const schoolNav = [...NAV.slice(0,1), ["notifications","bell","Notifications"], ["owner","barchart","Pilotage propriétaire"], ...NAV.slice(1,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ["preschool","file","Suivi préscolaire"], ["expenses","receipt","Dépenses et budgets"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
+const schoolNav = [...NAV.slice(0,1), ["notifications","bell","Notifications"], ["owner","barchart","Pilotage propriétaire"], ...NAV.slice(1,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ["diary","file","Cahier de textes"], ["preschool","file","Suivi préscolaire"], ["expenses","receipt","Dépenses et budgets"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
 const sectionIcon=Object.fromEntries(schoolNav.map(([id,icon])=>[id,icon]));
 
 const settingsSections = [
@@ -375,6 +377,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     ? Object.fromEntries([
         ...(can("school.academic.read")&&access?.school?.education_cycles?.includes("primaire")
           ? [["calendar",sections.calendar]] : []),
+        ...(can("school.diary.read")?[["diary",{...sections.diary,lives:[{key:"live",label:"Cahier de textes",need:[]}]}]]:[]),
         ...(can("school.students.profile.read")?[["students",{...sections.students,modules:[],lives:[{key:"cycle-list",label:"Élèves autorisés",need:[]}]}]]:[]),
         ...(can("school.staff.manage")?[["staff",{...sections.staff,modules:["onboarding"],lives:[]}]]:[]),
         ...(ownCourseAssessment?[["bulletins",{...sections.bulletins,modules:["assessments"],lives:[]}]]:[]),
@@ -509,6 +512,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "students:import":<ImportStudents key={chosen} {...props}/>,
       "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.profile.read")} canReadRoster={can("school.students.profile.read")||can("school.attendance.read")||can("school.curriculum.manage")} advancedSettings={advancedSettings} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
       "preschool:live":<div className="yd-real-body"><PreschoolFollowup key={chosen+":"+workingYearId} schoolId={chosen} yearId={workingYearId}/></div>,
+      "diary:live":<><PageHeader title="Cahier de textes" subtitle="Séances, brouillons et devoirs communiqués aux familles"/><div className="yd-real-body"><TeachingDiary key={chosen+":"+workingYearId} schoolId={chosen} yearId={workingYearId}/></div></>,
       "calendar:live":<PedagogicalCalendar key={chosen} schoolId={chosen} workingYearId={workingYearId}
         onWorkingYearChange={setWorkingYearId} onYearsUpdated={()=>setYearCatalogVersion(v=>v+1)}/>,
       "payments:live":<LivePayments key={k} {...props}/>,
