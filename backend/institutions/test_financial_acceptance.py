@@ -84,11 +84,16 @@ class CommercialReadOnlyAcceptance(TestCase):
         from .finance_models import FeePayment
         from .student_models import Student
         initial = (Student.objects.count(), FeePayment.objects.count())
-        for suffix in ("my-access", "academic/years", "finance/summary", "finance/payments",
+        for suffix in ("my-access", "academic/years", "finance/summary",
                        "settings", "students/next-code"):
             with self.subTest(suffix=suffix):
                 response = self.client.get(self.url(self.school, suffix))
                 self.assertEqual(response.status_code, 200, response.content)
+        # The payment list requires a charge identifier; validation must remain
+        # reachable in read-only mode rather than returning a commercial denial.
+        response = self.client.get(self.url(self.school, "finance/payments"))
+        self.assertEqual(response.status_code, 422, response.content)
+        self.assertEqual(response.json()["error"], "Identifiant du frais requis.")
         for method, suffix in (("post", "finance/payments"), ("post", "students"),
                                ("post", "academic/years"), ("patch", "settings")):
             with self.subTest(method=method, suffix=suffix):
