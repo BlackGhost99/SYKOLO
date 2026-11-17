@@ -128,17 +128,18 @@ class ClosedYearWriteErrorMiddleware:
         return None
 
 
-class CommercialExpansionBoundaryMiddleware:
-    """Restrict selected administrative expansion endpoints only after explicit decision.
+class CommercialWorkspaceBoundaryMiddleware:
+    """Default-deny all school workspace API operations after an explicit restriction.
 
-    Existing pupils, pedagogical workflows, family access, payments, documents,
-    security administration and existing staff corrections are unaffected.
+    Authentication and the narrowly allowed commercial recovery GETs remain
+    available; their own tenant and role checks still apply. Independent family
+    records and payment-provider callbacks are not school workspace endpoints.
     """
     _UUID = SchoolCycleBoundaryMiddleware._UUID
-    _EXPANSION_POST = (
-        r"staff(?:/onboard)?",
-        r"academic/(?:quick-classes|preschool-standard-classes|standard-classes|series-classes|classes|cycles|levels|tracks|prepare-year)",
-        rf"academic/classes/{_UUID}/(?:clone|carry-forward)",
+    _RECOVERY_GET = (
+        r"my-access",
+        r"owner/(?:commercial-access|subscription-reminders|subscriptions)",
+        r"owner/subscriptions/\d+/(?:invoice|payments/\d+/receipt|amendments/\d+/document)",
     )
 
     def __init__(self, get_response):
@@ -147,15 +148,19 @@ class CommercialExpansionBoundaryMiddleware:
     def __call__(self, request):
         import re
         from django.http import JsonResponse
-        if request.method == "POST" and request.user.is_authenticated and request.user.is_active:
-            match = re.fullmatch(rf"/api/v1/schools/({self._UUID})/(.*?)/?", request.path_info)
-            if match and any(re.fullmatch(pattern, match.group(2)) for pattern in self._EXPANSION_POST):
+        if request.user.is_authenticated and request.user.is_active:
+            match = re.fullmatch(rf"/api/v1/schools/({self._UUID})(?:/(.*?))?/?", request.path_info)
+            if match:
+                suffix = (match.group(2) or "").rstrip("/")
+                if request.method == "GET" and any(re.fullmatch(pattern, suffix) for pattern in self._RECOVERY_GET):
+                    return self.get_response(request)
                 from institutions.services import school_access
                 from institutions.subscription_access import last_decision
                 school = school_access(request.user, match.group(1))
                 if school is not None:
                     decision = last_decision(school)
                     if decision and decision.restricted:
-                        return JsonResponse({"error": "Extension administrative temporairement restreinte. Contactez BWETEK pour rétablir l’accès.",
-                                             "code": "commercial_expansion_restricted"}, status=403)
+                        return JsonResponse({"error": "Espace établissement suspendu pour motif commercial. Contactez BWETEK pour régulariser l’abonnement YEM.",
+                                             "code": "commercial_workspace_restricted"}, status=403,
+                                            headers={"Cache-Control": "no-store"})
         return self.get_response(request)
