@@ -3,7 +3,7 @@ from datetime import date
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
-from django.db.models import F, Q
+from django.db.models import F, Q, Prefetch
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_GET
@@ -16,6 +16,7 @@ from .parent_views import child_scope
 from .services import has_permission
 from .student_models import Enrollment
 from .teaching_diary_models import TeachingDiaryEntry
+from .diary_resource_models import DiaryResource
 from .views import access, parse_body, refuse, log_event
 
 
@@ -58,11 +59,19 @@ def writable(course):
             and course.classroom.level.cycle.active and course.subject.active)
 
 
+def resource_prefetch():
+    return Prefetch("resources", queryset=DiaryResource.objects.filter(active=True).defer("data").order_by("created_at","pk"), to_attr="visible_resources")
+
+
 def output(row, family=False):
     result = {"id": str(row.pk), "day": row.day.isoformat(), "title": row.title,
               "lesson": row.lesson, "homework": row.homework,
               "due_on": row.due_on.isoformat() if row.due_on else None,
               "subject": row.course.subject.name, "classroom": row.course.classroom.name}
+    resources = getattr(row, "visible_resources", None)
+    if resources is None:
+        resources = row.resources.filter(active=True).defer("data").order_by("created_at","pk")
+    result["resources"] = [{"id":str(r.pk),"filename":r.filename,"size":r.size} for r in resources]
     if not family:
         result.update(published=row.published, revision=row.revision)
     return result
@@ -130,7 +139,7 @@ def diary(request, school_id, course_id):
         return error("Cours introuvable ou non autorisé.", 404)
     if request.method == "GET":
         return JsonResponse({"entries": [output(row) for row in TeachingDiaryEntry.objects.filter(course=course)
-            .select_related("course__subject", "course__classroom").order_by("-day", "-created_at", "pk")[:200]],
+            .select_related("course__subject", "course__classroom").prefetch_related(resource_prefetch()).order_by("-day", "-created_at", "pk")[:200]],
             "writable": writable(course)})
     body, denied = parse_body(request)
     if denied is not None:
@@ -176,13 +185,7 @@ def diary(request, school_id, course_id):
         return error("Écriture concurrente. Actualisez.", 409)
 
 
-@never_cache
-@require_GET
-@authorized
-def child_diary(request, student_id):
-    student, year_id, denied = child_scope(request, student_id)
-    if denied is not None:
-        return denied
+def family_entries(student, year_id):
     enrollments = Enrollment.objects.filter(school=student.school, student=student,
         year__school=student.school, classroom__school=student.school,
         classroom__year_id=F("year_id"), active=True)
@@ -190,11 +193,20 @@ def child_diary(request, student_id):
         enrollments = enrollments.filter(year_id=year_id)
     else:
         enrollments = enrollments.filter(year__active=True)
-    rows = TeachingDiaryEntry.objects.none()
     # Unique registration per school and year; constrain both class and dates.
     conditions = Q(pk__in=[])
     for e in enrollments:
         conditions |= Q(course__classroom_id=e.classroom_id, course__year_id=e.year_id, day__gte=e.enrolled_on)
-    rows = TeachingDiaryEntry.objects.filter(conditions, course__school=student.school,
-        course__subject__school=student.school, published=True).select_related("course__subject","course__classroom")
+    return TeachingDiaryEntry.objects.filter(conditions, course__school=student.school,
+        course__subject__school=student.school, published=True)
+
+
+@never_cache
+@require_GET
+@authorized
+def child_diary(request, student_id):
+    student, year_id, denied = child_scope(request, student_id)
+    if denied is not None:
+        return denied
+    rows = family_entries(student, year_id).select_related("course__subject","course__classroom").prefetch_related(resource_prefetch())
     return JsonResponse({"entries": [output(row, family=True) for row in rows.order_by("-day","-created_at","pk")[:200]]})
