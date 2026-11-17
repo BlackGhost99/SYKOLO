@@ -284,21 +284,22 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   useEffect(()=>{
     if (!chosen) {setAccess(null);return;}
     let alive=true,busy=false;setAccess(null);
-    async function refresh(){
-      if(busy||document.hidden)return;
+    async function refresh(force=false){
+      if(busy||(!force&&document.hidden))return;
       busy=true;
       try{
         const x=await get("schools/"+chosen+"/my-access");
-        if(alive)setAccess(old=>old&&old.commercial_workspace_restricted===x.commercial_workspace_restricted?old:x);
+        if(alive)setAccess(old=>old&&JSON.stringify(old)===JSON.stringify(x)?old:x);
       }catch(e){if(alive)setMessage(e.message);}
       finally{busy=false;}
     }
-    refresh();
-    const timer=window.setInterval(refresh,30000);
-    window.addEventListener("focus",refresh);
-    document.addEventListener("visibilitychange",refresh);
+    refresh(true);
+    const poll=()=>refresh();
+    const timer=window.setInterval(poll,30000);
+    window.addEventListener("focus",poll);
+    document.addEventListener("visibilitychange",poll);
     setPage("dashboard");setTeacherViewRequested(null);setHasTeachingAssignment(false);
-    return ()=>{alive=false;window.clearInterval(timer);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
+    return ()=>{alive=false;window.clearInterval(timer);window.removeEventListener("focus",poll);document.removeEventListener("visibilitychange",poll);};
   },[chosen]);
   useEffect(()=>{
     let live=true;
