@@ -222,7 +222,7 @@ from .preschool_followup_models import (  # noqa: E402,F401
 
 from .parent_push_models import ParentPushDevice, ParentPushDelivery  # noqa: E402,F401
 
-from .subscription_models import PlatformSubscription, PlatformSubscriptionPayment, PlatformSubscriptionPolicy  # noqa: E402,F401
+from .subscription_models import PlatformSubscription, PlatformSubscriptionPayment, PlatformSubscriptionPolicy, PlatformSubscriptionAmendment, PlatformSubscriptionTrial  # noqa: E402,F401
 
 from .teaching_diary_models import TeachingDiaryEntry  # noqa: E402,F401
 
