@@ -24,11 +24,11 @@ async function request(path,method="GET",payload){
   return data;
 }
 
-export default function PayrollPanel({schoolId,workingYearId="",canManage=false,canApprove=false,canPay=false,canReverse=false}){
+export default function PayrollPanel({schoolId,workingYearId="",canManage=false,canApprove=false,canPay=false,canReverse=false,staffId=""}){
   const root="schools/"+schoolId+"/payroll/";
   const [staff,setStaff]=useState([]);
   const [runs,setRuns]=useState([]);
-  const [selected,setSelected]=useState("");
+  const [selected,setSelected]=useState(staffId);
   const [period,setPeriod]=useState(currentMonth());
   const [basis,setBasis]=useState("monthly");
   const [gross,setGross]=useState("");
@@ -43,13 +43,16 @@ export default function PayrollPanel({schoolId,workingYearId="",canManage=false,
   const [message,setMessage]=useState("");
 
   const refresh=useCallback(async()=>{
+    const params=new URLSearchParams();
+    if(workingYearId)params.set("year",workingYearId);
+    if(staffId)params.set("staff",staffId);
     const [users,payroll]=await Promise.all([
       request(root+"staff"),
-      request(root+"runs"+(workingYearId?"?year="+encodeURIComponent(workingYearId):"")),
+      request(root+"runs"+(params.toString()?"?"+params:"")),
     ]);
     setStaff(users.staff||[]);
     setRuns(payroll.runs||[]);
-  },[root,workingYearId]);
+  },[root,workingYearId,staffId]);
   useEffect(()=>{
     let active=true;
     setError("");setMessage("");setDetail(null);
@@ -125,9 +128,9 @@ export default function PayrollPanel({schoolId,workingYearId="",canManage=false,
       {error&&<p role="alert">{error}</p>}
       {message&&<p role="status">{message}</p>}
       <label className="field">Collaborateur
-        <select value={selected} onChange={e=>{setSelected(e.target.value);setDetail(null);}}>
-          <option value="">Tous les collaborateurs</option>
-          {staff.map(x=><option value={x.id} key={x.id}>{x.name} · {x.position}{x.active?"":" (archivé)"}</option>)}
+        <select disabled={Boolean(staffId)} value={selected} onChange={e=>{setSelected(e.target.value);setDetail(null);}}>
+          {!staffId&&<option value="">Tous les collaborateurs</option>}
+          {staff.filter(x=>!staffId||x.id===staffId).map(x=><option value={x.id} key={x.id}>{x.name} · {x.position}{x.active?"":" (archivé)"}</option>)}
         </select>
       </label>
       <p><strong>Année scolaire :</strong> {workingYearId?"Année sélectionnée dans la barre supérieure":"Sélectionnez une année scolaire pour préparer une rémunération"}</p>
@@ -141,7 +144,7 @@ export default function PayrollPanel({schoolId,workingYearId="",canManage=false,
         run.staff_name,run.period.slice(0,7),fmt(run.net_amount,run.currency),fmt(run.paid,run.currency),
         fmt(run.balance,run.currency),
         <Status tone={statusTone(run.status)}>{statusText[run.status]||run.status}</Status>,
-        <Button className="small" onClick={()=>openRun(run.id)}>Détail</Button>,
+        <Button className="small" onClick={()=>openRun(run.id)}>{canPay&&["approved","partially_paid"].includes(run.status)?"Payer / détail":"Détail"}</Button>,
       ])}/>}
     </Card>
 
