@@ -1,6 +1,6 @@
 from django.urls import path
 from conduct import views as conduct_views
-from . import import_views, subscription_views, teaching_diary_views
+from . import import_views, subscription_views, teaching_diary_views, diary_resource_views
 from . import singpay_views
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
@@ -95,6 +95,7 @@ urlpatterns = [
     path("parents/children/<uuid:student_id>/enrollments", parent_views.child_enrollments),
     path("parents/children/<uuid:student_id>/grades", parent_views.child_grades),
     path("parents/children/<uuid:student_id>/diary", teaching_diary_views.child_diary),
+    path("parents/children/<uuid:student_id>/diary/resources/<uuid:resource_id>", diary_resource_views.child_resource),
     path("parents/children/<uuid:student_id>/liaison", preschool_followup_views.child_liaison),
     path("parents/children/<uuid:student_id>/reports", parent_views.child_reports),
     path("parents/children/<uuid:student_id>/reports/<uuid:report_id>", parent_views.child_report_detail),
@@ -201,6 +202,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/courses", curriculum_views.courses),
     path("schools/<uuid:school_id>/diary/courses", teaching_diary_views.catalog),
     path("schools/<uuid:school_id>/diary/courses/<uuid:course_id>", teaching_diary_views.diary),
+    path("schools/<uuid:school_id>/diary/entries/<uuid:entry_id>/resources", diary_resource_views.resources),
+    path("schools/<uuid:school_id>/diary/entries/<uuid:entry_id>/resources/<uuid:resource_id>", diary_resource_views.resource_detail),
     path("schools/<uuid:school_id>/curriculum/my-courses", curriculum_views.my_courses),
     path("schools/<uuid:school_id>/courses/generate", curriculum_views.generate_courses),
     path("schools/<uuid:school_id>/courses/<uuid:course_id>", curriculum_views.course_detail),

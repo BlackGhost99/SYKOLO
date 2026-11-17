@@ -31,10 +31,11 @@ test("saisie d'une séance et publication explicite",async()=>{
 });
 
 test("famille: le cahier est en consultation et rattaché à l'enfant et à l'année",async()=>{
-  const api=vi.fn(async()=>({entries:[{id:"entry",day:"2026-11-17",title:"Fractions",subject:"Maths",classroom:"6e A",lesson:"Comparer les fractions",homework:"Exercice 1",due_on:"2026-11-20"}]}));
+  const api=vi.fn(async()=>({entries:[{id:"entry",day:"2026-11-17",title:"Fractions",subject:"Maths",classroom:"6e A",lesson:"Comparer les fractions",homework:"Exercice 1",due_on:"2026-11-20",resources:[{id:"file",filename:"exercices.txt",size:100}]}]}));
   render(<FamilyTeachingDiary api={api} childBase="parents/children/child" year="year"/>);
   await screen.findByText("Fractions");
   expect(screen.getByText("Exercice 1")).toBeTruthy();
+  expect(screen.getByRole("link",{name:"exercices.txt"}).getAttribute("href")).toBe("/api/v1/parents/children/child/diary/resources/file?year=year");
   expect(screen.queryByRole("button",{name:"Modifier la séance"})).toBeNull();
   expect(api).toHaveBeenCalledWith("parents/children/child/diary?year=year");
 });
