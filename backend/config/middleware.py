@@ -60,6 +60,7 @@ class SchoolCycleBoundaryMiddleware:
         r"my-access",
         r"diary/courses",
         rf"diary/courses/{_UUID}",
+        rf"diary/courses/{_UUID}/progress",
         rf"diary/entries/{_UUID}/resources(?:/{_UUID})?",
         r"academic/(?:years|cycles|levels|tracks|classes|periods|annual-snapshot|pedagogical-calendar|primary-criteria|primary-mastery|preschool-followup)",
         rf"academic/(?:years|cycles|levels|tracks|classes|periods)/{_UUID}",
@@ -74,7 +75,7 @@ class SchoolCycleBoundaryMiddleware:
         r"organization/my-appointments",
     )
     _ALLOW_POST = (rf"diary/entries/{_UUID}/resources", rf"diary/courses/{_UUID}", r"staff/onboard", r"academic/(?:periods|pedagogical-calendar|preschool-followup)")
-    _ALLOW_PATCH = (rf"diary/entries/{_UUID}/resources/{_UUID}", rf"diary/courses/{_UUID}", rf"academic/(?:periods|pedagogical-calendar)/{_UUID}",
+    _ALLOW_PATCH = (rf"diary/courses/{_UUID}/progress", rf"diary/entries/{_UUID}/resources/{_UUID}", rf"diary/courses/{_UUID}", rf"academic/(?:periods|pedagogical-calendar)/{_UUID}",
                     r"academic/(?:pedagogical-calendar/profile|primary-criteria|primary-mastery)")
 
     def __init__(self, get_response):
