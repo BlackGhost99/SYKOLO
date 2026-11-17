@@ -20,7 +20,7 @@ export default function CommercialReminders({schoolId,platform=false,onSelectSch
       try{
         const response=await fetch(endpoint+"?page="+page,{credentials:"same-origin",cache:"no-store",signal:controller.signal});
         const body=await response.json();
-        if(!response.ok)throw Error(body.error||"Alertes indisponibles.");
+        if(!response.ok||!Array.isArray(body.reminders))throw Error(body.error||"Alertes indisponibles.");
         if(live)setState({loading:false,data:body,error:""});
       }catch(e){if(live)setState({loading:false,data:null,error:e.message});}
       finally{busy=false;}
