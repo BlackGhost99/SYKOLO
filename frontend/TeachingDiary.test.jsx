@@ -39,3 +39,40 @@ test("famille: le cahier est en consultation et rattaché à l'enfant et à l'an
   expect(screen.queryByRole("button",{name:"Modifier la séance"})).toBeNull();
   expect(api).toHaveBeenCalledWith("parents/children/child/diary?year=year");
 });
+
+test("les filtres classe et matière ne sélectionnent que des cours autorisés, dans les deux espaces",async()=>{
+  const api=vi.fn(async(path)=>path.includes("?year=")?{courses:[
+    {id:"a-maths",classroom_id:"a",classroom:"6e A",subject:"Maths",year:"year",year_name:"2026"},
+    {id:"a-fr",classroom_id:"a",classroom:"6e A",subject:"Français",year:"year",year_name:"2026"},
+    {id:"b-maths",classroom_id:"b",classroom:"6e B",subject:"Maths",year:"year",year_name:"2026"}
+  ]}:{entries:[],writable:true});
+  render(<TeachingDiary schoolId="school" yearId="year" api={api} audience="teacher"/>);
+  await screen.findByRole("heading",{name:"Nouvelle séance"});
+  const user=userEvent.setup();
+  expect(screen.getByLabelText("Matière").options.length).toBe(3);
+  await user.selectOptions(screen.getByLabelText("Classe"),screen.getByRole("option",{name:"6e B"}).value);
+  await screen.findByRole("heading",{name:"6e B · Maths"});
+  expect(screen.getByLabelText("Matière").options.length).toBe(2);
+  expect(api).toHaveBeenCalledWith("schools/school/diary/courses/b-maths");
+  expect(screen.getByRole("heading",{name:"Mes séances"})).toBeTruthy();
+});
+
+test("historique filtrable par texte, statut et date; édition existante",async()=>{
+  const api=vi.fn(async(path)=>path.includes("?year=")?{courses:[{id:"course",subject:"Maths",classroom:"6e A",year_name:"2026"}]}:{writable:true,entries:[
+    {id:"one",revision:2,published:true,title:"Géométrie",day:"2026-11-17",lesson:"Triangles",subject:"Maths",classroom:"6e A",homework:"",resources:[]},
+    {id:"two",revision:1,published:false,title:"Fractions",day:"2026-11-16",lesson:"Exercices",subject:"Maths",classroom:"6e A",homework:"",resources:[]}
+  ]});
+  render(<TeachingDiary schoolId="school" yearId="year" api={api}/>);
+  await screen.findByRole("heading",{name:"Géométrie"});
+  const user=userEvent.setup();
+  await user.selectOptions(screen.getByLabelText("Statut"),"draft");
+  expect(screen.queryByRole("heading",{name:"Géométrie"})).toBeNull();
+  await user.click(screen.getByRole("button",{name:"Modifier la séance"}));
+  expect(screen.getByLabelText("Titre du cours").value).toBe("Fractions");
+  await user.selectOptions(screen.getByLabelText("Statut"),"all");
+  await user.type(screen.getByLabelText("Rechercher une séance"),"geometrie");
+  expect(screen.queryByRole("heading",{name:"Fractions"})).toBeNull();
+  expect(screen.getByRole("heading",{name:"Géométrie"})).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Date de séance"),{target:{value:"2026-11-16"}});
+  expect(screen.getByText(/Aucune séance ne correspond/)).toBeTruthy();
+});

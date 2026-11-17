@@ -186,7 +186,7 @@ export default function TeacherMobileWorkspace({
         key={schoolId+":"+workingYearId+":"+tab} schoolId={schoolId}
         courses={data.courses} classes={data.classes} subjects={data.subjects}
         periods={data.periods} yearId={workingYearId} mode={tab}/>}
-      {tab==="diary"&&(canDiary)&&<div className="ym-page"><TeachingDiary key={schoolId+":"+workingYearId} schoolId={schoolId} yearId={workingYearId}/></div>}
+      {tab==="diary"&&(canDiary)&&<div className="ym-page"><TeachingDiary key={schoolId+":"+workingYearId} schoolId={schoolId} yearId={workingYearId} audience="teacher"/></div>}
       {!loading&&tab==="appel"&&<TeacherMobileAttendance
         key={schoolId+":"+workingYearId} schoolId={schoolId} classes={data.classes}
         assignments={data.assignments} workingYearId={workingYearId}/>}
