@@ -126,3 +126,36 @@ class ClosedYearWriteErrorMiddleware:
                 "error": "Année scolaire clôturée : les écritures historiques sont interdites."
             }, status=409)
         return None
+
+
+class CommercialExpansionBoundaryMiddleware:
+    """Restrict selected administrative expansion endpoints only after explicit decision.
+
+    Existing pupils, pedagogical workflows, family access, payments, documents,
+    security administration and existing staff corrections are unaffected.
+    """
+    _UUID = SchoolCycleBoundaryMiddleware._UUID
+    _EXPANSION_POST = (
+        r"staff(?:/onboard)?",
+        r"academic/(?:quick-classes|preschool-standard-classes|standard-classes|series-classes|classes|cycles|levels|tracks|prepare-year)",
+        rf"academic/classes/{_UUID}/(?:clone|carry-forward)",
+    )
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        import re
+        from django.http import JsonResponse
+        if request.method == "POST" and request.user.is_authenticated and request.user.is_active:
+            match = re.fullmatch(rf"/api/v1/schools/({self._UUID})/(.*?)/?", request.path_info)
+            if match and any(re.fullmatch(pattern, match.group(2)) for pattern in self._EXPANSION_POST):
+                from institutions.services import school_access
+                from institutions.subscription_access import last_decision
+                school = school_access(request.user, match.group(1))
+                if school is not None:
+                    decision = last_decision(school)
+                    if decision and decision.restricted:
+                        return JsonResponse({"error": "Extension administrative temporairement restreinte. Contactez BWETEK pour rétablir l’accès.",
+                                             "code": "commercial_expansion_restricted"}, status=403)
+        return self.get_response(request)
