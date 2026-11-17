@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import SchoolDashboard from "./SchoolDashboard.jsx";
+import PlatformSubscriptions from "./PlatformSubscriptions.jsx";
 import AdminPasswordReset from "./AdminPasswordReset.jsx";
 import brand from "./assets/yem-brand.webp";
 import "./superadmin.css";
@@ -44,6 +45,9 @@ const eventLabels = {
   school_suspended:"a suspendu un établissement",
   school_renamed:"a renommé un établissement",
   limits_updated:"a modifié les limites de l'établissement",
+  subscription_issued:"a créé un abonnement annuel",
+  subscription_payment_recorded:"a enregistré un règlement YEM",
+  subscription_payment_voided:"a annulé un règlement YEM",
   role_created:"a créé un rôle",
   role_updated:"a mis à jour un rôle",
   settings_updated:"a mis à jour les paramètres",
@@ -580,6 +584,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           </form>
         </section>
       </div>}
+      {view==="plans"&&selectedDetail&&<PlatformSubscriptions key={schoolId} schoolId={schoolId} api={api}/>}
       {view==="settings"&&<section className="ya-settings-wrap"><div className="ya-box ya-settings-note"><h2>Paramètres et sécurité de la plateforme</h2><p>Les paramètres pédagogiques appartiennent aux établissements. Les paramètres de sécurité ci-dessous concernent uniquement votre compte de super-administration.</p></div>{accountView}</section>}
       <footer className="ya-footer"><span><strong>YEM</strong> — Gestion scolaire &amp; universitaire</span><span>Développé par <b>BWETEK Informatyk</b></span></footer>
     </main>
