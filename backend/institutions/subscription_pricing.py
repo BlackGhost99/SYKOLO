@@ -7,7 +7,7 @@ DEFAULT_RATES = {"prescolaire": 1000, "primaire": 1500, "college": 2000,
                  "lycee_general": 2000, "lycee_technique": 2000}
 DEFAULT_MINIMUMS = {"prescolaire": 50000, "primaire": 75000, "college": 100000,
                     "lycee_general": 100000, "lycee_technique": 100000}
-PERIODS = {"annuel": 1, "semestriel": 2, "trimestriel": 4}
+PERIODS = {"annuel": 1, "semestriel": 2, "trimestriel": 4, "mensuel": 12}
 CYCLE_ORDER = list(DEFAULT_RATES)
 
 
