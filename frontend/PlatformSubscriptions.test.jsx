@@ -19,13 +19,38 @@ test("monthly commercial quote is selected and issued with exact total",async()=
   const user=userEvent.setup();
   render(<PlatformSubscriptions schoolId="school-a" api={api}/>);
   await user.selectOptions(await screen.findByLabelText("Modalité de règlement"),"mensuel");
-  await user.type(screen.getByLabelText(/Motif \/ référence du contrat/),"Contrat mensuel");
   const activate=screen.getByRole("button",{name:"Activer la facturation"});
   expect(activate.disabled).toBe(true);
   await user.click(screen.getByRole("switch",{name:/Autoriser le passage au service payant/}));
   await user.click(activate);
-  await waitFor(()=>expect(api).toHaveBeenCalledWith("platform/schools/school-a/subscriptions",expect.objectContaining({action:"issue",period:"mensuel",expected_total_xaf:150000,expected_counts:{primaire:100}})));
+  await waitFor(()=>expect(api).toHaveBeenCalledWith("platform/schools/school-a/subscriptions",expect.objectContaining({action:"issue",period:"mensuel",expected_total_xaf:150000,expected_counts:{primaire:100},reason:"Activation du service payant sans remise exceptionnelle"})));
   expect(await screen.findByText("Contrat annuel enregistré")).toBeTruthy();
+});
+test("activation explains invalid or missing discount justification and keeps ordinary confirmation simple",async()=>{
+  const quote={counts:{primaire:100},rates:{primaire:1500},labels:{primaire:"Primaire"},policy_revision:1,terms:{gross_xaf:150000,minimum_xaf:75000,student_count:100},first_due:"2026-11-18",setup_suggested_xaf:0,can_issue:true};
+  const api=vi.fn(async(path,body)=>path.endsWith("commercial-access")?{revision:0,lifecycle:"unconfigured",overdue_xaf:0,late_30_xaf:0}:!body?{years:[{id:"y",name:"2026–2027"}],suggested_year:"y"}:quote);
+  render(<PlatformSubscriptions schoolId="a" api={api}/>);
+  const user=userEvent.setup();
+  const button=await screen.findByRole("button",{name:"Activer la facturation"});
+  expect(button.disabled).toBe(true);
+  await user.click(screen.getByRole("switch",{name:/Autoriser le passage au service payant/}));
+  expect(button.disabled).toBe(false);
+  const discount=screen.getByLabelText(/Remise exceptionnelle/);
+  await user.clear(discount);
+  expect(button.disabled).toBe(true);
+  expect(screen.getByText(/Renseignez une remise valide/)).toBeTruthy();
+  await user.type(discount,"100");
+  expect(button.disabled).toBe(true);
+  expect(screen.getByText("Justifiez la remise exceptionnelle.")).toBeTruthy();
+  await user.type(screen.getByLabelText(/Motif \/ référence du contrat/),"Accord commercial");
+  expect(button.disabled).toBe(false);
+});
+test("ineligible quote shows the actual server blocker",async()=>{
+  const api=vi.fn(async(path,body)=>path.endsWith("commercial-access")?{revision:0,lifecycle:"unconfigured",overdue_xaf:0,late_30_xaf:0}:!body?{years:[{id:"y",name:"2026–2027"}],suggested_year:"y"}:{counts:{primaire:100},policy_revision:1,terms:{gross_xaf:150000,minimum_xaf:75000,student_count:100},first_due:"2026-11-18",can_issue:false,issue_blocker:"Année scolaire clôturée ou inactive : choisissez une année ouverte."});
+  render(<PlatformSubscriptions schoolId="a" api={api}/>);
+  expect(await screen.findByText("Année scolaire clôturée ou inactive : choisissez une année ouverte.")).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Activer la facturation"}).disabled).toBe(true);
+  expect(screen.getByRole("switch",{name:/Autoriser le passage au service payant/}).disabled).toBe(true);
 });
 test("management reads refreshed balances from the school endpoint",async()=>{
   const contract={id:1,year:"2026–2027",year_id:"y",lines:[],total_xaf:150000,paid_xaf:0,balance_xaf:150000,terms:{period:"mensuel",minimum_xaf:75000,discount_xaf:0,setup_xaf:0},schedule:[]};
