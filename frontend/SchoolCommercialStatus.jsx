@@ -2,6 +2,7 @@ import React from "react";
 import "./school-commercial-status.css";
 
 const labels={free:"Mode gratuit",trial:"Essai gratuit",active:"Abonnement actif",scheduled:"Abonnement programmé",due_today:"Échéance aujourd’hui",overdue:"Abonnement en retard",expired:"Abonnement expiré",read_only:"Mode lecture seule",review:"Abonnement à vérifier"};
+const periods={annuel:"annuel",semestriel:"semestriel",trimestriel:"trimestriel",mensuel:"mensuel"};
 const formatDate=value=>typeof value==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(value)?value.split("-").reverse().join("/"):null;
 
 export default function SchoolCommercialStatus({status,restricted=false,canManage=false,onManage,onRegularize}){
@@ -14,17 +15,22 @@ export default function SchoolCommercialStatus({status,restricted=false,canManag
   let details=[];
   if(mode==="free")details=["Facturation non activée","Aucune échéance"];
   else if(mode==="trial")details=["Aucun règlement exigible",trialEnd&&"Fin de l’essai le "+trialEnd];
-  else if(mode==="read_only")details=["Modifications bloquées","Abonnement à régulariser",overdue&&"Impayé depuis le "+overdue];
+  else if(mode==="read_only")details=["Modifications bloquées",status?.billing_started===false?"Facturation non activée":"Réactivation par BWETEK requise",overdue&&"Impayé depuis le "+overdue];
   else if(mode==="overdue")details=[overdue&&"Impayé depuis le "+overdue,grace,end&&"Renouvellement le "+end];
   else if(mode==="expired")details=[expired&&"Fin du service le "+expired,grace,"Renouvellement nécessaire"];
   else if(mode==="review")details=["Échéancier à vérifier auprès de BWETEK"];
   else details=[due?(mode==="due_today"?"À régler le ":"Prochaine échéance : ")+due:"Aucune échéance impayée",end&&"Renouvellement le "+end];
+  const start=formatDate(status?.service_period_start),periodEnd=formatDate(status?.service_period_end),trialStart=formatDate(status?.trial_starts_on);
+  const period=periods[status?.payment_period];
+  if(start&&periodEnd)details.push("Contrat annuel : du "+start+" au "+periodEnd+" (fin exclue)");
+  if(period)details.push("Règlement "+period);
+  if(trialStart)details.push("Début de l’essai le "+trialStart);
   const attention=["read_only","overdue","due_today","expired","review"].includes(mode);
   return <aside className={"yd-commercial-status yd-commercial-status--"+mode} aria-label="Statut de l’abonnement YEM">
     <div className="yd-commercial-status-main" role="status">
       <span className="yd-commercial-status-marker" aria-hidden="true"/>
       <div className="yd-commercial-status-text"><strong>YEM · {labels[mode]}</strong><span>{details.filter(Boolean).join(" · ")}</span></div>
     </div>
-    {mode==="read_only"&&onRegularize?<button type="button" onClick={onRegularize}>{canManage?"Régulariser":"Contacter la direction"}</button>:canManage&&onManage?<button type="button" onClick={onManage}>{attention?"Voir l’abonnement":"Mon abonnement"} <span aria-hidden="true">›</span></button>:attention&&<small className="yd-commercial-status-contact">Contacter la direction</small>}
+    {mode==="read_only"&&onRegularize?<button type="button" onClick={onRegularize}>{canManage?(status?.billing_started===false?"Contacter BWETEK":"Régulariser"):"Contacter la direction"}</button>:canManage&&onManage?<button type="button" onClick={onManage}>{attention?"Voir l’abonnement":"Mon abonnement"} <span aria-hidden="true">›</span></button>:attention&&<small className="yd-commercial-status-contact">Contacter la direction</small>}
   </aside>;
 }

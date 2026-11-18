@@ -824,15 +824,19 @@ class PlatformSubscriptionTests(TestCase):
             self.assertEqual(self.client.get(private).status_code,403)
             status=response.json()["commercial_workspace_status"]
             self.assertEqual(set(status),{"mode","service_ends_before","next_payment_due","oldest_overdue_on",
-                "grace_days_remaining","restriction_eligible_on","trial_ends_before","last_service_ended_on"})
+                "grace_days_remaining","restriction_eligible_on","trial_ends_before","last_service_ended_on",
+                "billing_started","service_period_start","service_period_end","payment_period","trial_starts_on"})
             # my-access deliberately hides an inaccessible school behind 404.
             self.assertEqual(self.client.get(url.replace(str(self.school.pk),str(self.other.pk))).status_code,404)
             self.client.force_login(self.admin)
             self.mfa()
             return status
         self.assertEqual(read()["mode"],"free")
+        self.assertFalse(read()["billing_started"])
+        self.assertIsNone(read()["service_period_start"])
         self.assertEqual(self.post("trial_start",days=30,reason="Essai synthétique").status_code,201)
         self.assertEqual(read()["mode"],"trial")
+        self.assertEqual(read()["trial_starts_on"],"2026-11-17")
         with patch("institutions.subscription_views.timezone.localdate",return_value=date(2026,12,18)):
             self.assertEqual(read()["mode"],"free")
             self.assertIsNone(read()["next_payment_due"])
@@ -841,6 +845,10 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(due["mode"],"due_today")
         self.assertEqual(due["next_payment_due"],"2026-11-17")
         self.assertEqual(due["service_ends_before"],"2027-11-17")
+        self.assertTrue(due["billing_started"])
+        self.assertEqual(due["service_period_start"],"2026-11-17")
+        self.assertEqual(due["service_period_end"],"2027-11-17")
+        self.assertEqual(due["payment_period"],"mensuel")
         self.assertEqual(self.post("payment",reference="session-paid",method="especes",amount_xaf=8334,reason="Test").status_code,201)
         paid=read()
         self.assertEqual(paid["mode"],"active")
