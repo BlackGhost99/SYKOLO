@@ -420,3 +420,22 @@
  .ya-compact-console .ya-school-directory-table .ya-school-ident>strong{max-height:2.5em;}
  .ya-compact-console .ya-school-directory-table .ya-school-mobile-meta{flex-wrap:nowrap;white-space:nowrap;}
 }
+
+
+/* Native top-layer action dialog: mobile keyboards and touch editing are independent
+   of the console's grid, scrolling containers and sticky navigation. */
+dialog.ya-action-dialog{position:fixed;inset:0;margin:auto;box-sizing:border-box;width:calc(100% - 24px);max-width:470px;max-height:min(calc(100dvh - 24px),var(--ya-action-viewport-height,calc(100dvh - 24px)));height:fit-content;overflow-y:auto;overscroll-behavior:contain;z-index:2147483000;color:#192d24;font:14px/1.44 Inter,"Segoe UI",Arial,sans-serif;pointer-events:auto;touch-action:auto}
+dialog.ya-action-dialog:not([open]){display:none}
+dialog.ya-action-dialog::backdrop{background:#0b2419a6}
+dialog.ya-action-dialog *,dialog.ya-action-dialog *::before,dialog.ya-action-dialog *::after{box-sizing:border-box}
+dialog.ya-action-dialog form>p{font-size:13px;color:#526758;margin:12px 0 17px}
+dialog.ya-action-dialog :is(input,textarea,select){font:inherit;color:#24362c;pointer-events:auto;touch-action:auto;user-select:text;-webkit-user-select:text;max-width:100%}
+dialog.ya-action-dialog textarea{min-height:94px;display:block;resize:vertical}
+dialog.ya-action-dialog :is(input,textarea,select):focus{outline:2px solid #75b98b;outline-offset:2px}
+dialog.ya-action-dialog button{font:inherit;cursor:pointer;min-height:44px}
+dialog.ya-action-dialog button:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:760px){
+ dialog.ya-action-dialog{padding:16px;max-width:470px}
+ dialog.ya-action-dialog :is(input,textarea,select){font-size:16px!important}
+ dialog.ya-action-dialog .ya-modal-footer{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+}
