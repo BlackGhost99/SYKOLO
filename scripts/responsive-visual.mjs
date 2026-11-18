@@ -14,6 +14,7 @@ const roles=[
   ["secretariat","Tableau de bord"],
   ["comptabilite","Tableau de bord"],
   ["tarification","Tableau de bord"],
+  ...["proviseur","principal","etudes","censeur_principal","vie_scolaire","surveillance_generale","surveillance","secretariat_pedagogique","chef_travaux"].map(role=>[role,"Tableau de bord"]),
 ];
 try{
  for(const [width,height] of viewports){
