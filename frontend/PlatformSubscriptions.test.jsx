@@ -51,6 +51,7 @@ test("commercial PDFs are available through private same-origin routes",async()=
   vi.stubGlobal("fetch",vi.fn(async url=>url.includes("commercial-access")?Response.json({revision:0,lifecycle:"active",overdue_xaf:0,late_30_xaf:0,restricted:false,can_restrict:false}):url.includes("subscription-reminders")?Response.json({reminders:[],count:0,overdue_count:0,due_count:0,upcoming_count:0,window_days:7,pages:1,page:1}):Response.json({subscriptions:[contract]})));
   vi.spyOn(document,"hidden","get").mockReturnValue(false);
   render(<OwnerSubscription schoolId={schoolId} yearId="y"/>);
+  await userEvent.click(screen.getByRole("button",{name:"Contrat et documents"}));
   expect((await screen.findByRole("link",{name:"Ouvrir la facture"})).getAttribute("href")).toBe(root+"/invoice?preview=1");
   expect(screen.getByRole("link",{name:"Télécharger la facture (PDF)"}).getAttribute("href")).toBe(root+"/invoice");
   expect(screen.getByRole("link",{name:"Télécharger le reçu (PDF)"}).getAttribute("href")).toBe(root+"/payments/7/receipt");
