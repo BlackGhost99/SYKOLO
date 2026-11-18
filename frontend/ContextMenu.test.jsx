@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import {afterEach,expect,test,vi} from "vitest";
-import {cleanup,fireEvent,render,screen} from "@testing-library/react";
+import {act,cleanup,fireEvent,render,screen} from "@testing-library/react";
 import {ContextTarget,ContextTrigger,ContextReadOnly} from "./ContextMenu.jsx";
 import {Table} from "./yem-ui.jsx";
 afterEach(()=>cleanup());
@@ -76,4 +76,29 @@ test("le menu n'intercepte pas le clic gauche, ni ne soumet le formulaire",()=>{
   fireEvent.click(screen.getByRole("button",{name:"Ouvrir les actions contextuelles"}));
   fireEvent.click(screen.getByRole("menuitem"));
   expect(submit).not.toHaveBeenCalled();expect(run).toHaveBeenCalledTimes(1);
+});
+
+test("appui tactile prolongé ouvre le menu et un déplacement annule le geste",()=>{
+  vi.useFakeTimers();
+  try{
+    const click=vi.fn(),select=vi.fn();
+    render(<ContextTarget actions={[action(select)]} onClick={click}>Dossier tactile</ContextTarget>);
+    const el=screen.getByText("Dossier tactile");
+    function pointer(type,x,y){
+      const e=new Event(type,{bubbles:true,cancelable:true});
+      Object.defineProperties(e,{pointerType:{value:"touch"},pointerId:{value:1},isPrimary:{value:true},clientX:{value:x},clientY:{value:y}});
+      fireEvent(el,e);
+    }
+    pointer("pointerdown",10,10);pointer("pointermove",10,40);
+    act(()=>vi.advanceTimersByTime(600));
+    expect(screen.queryByRole("menu")).toBeNull();
+    pointer("pointerdown",10,10);
+    act(()=>vi.advanceTimersByTime(600));
+    expect(screen.getByRole("menu")).toBeTruthy();
+    pointer("pointerup",10,10);
+    fireEvent.click(el);
+    expect(click).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("menuitem",{name:"Ouvrir le dossier"}));
+    expect(select).toHaveBeenCalledTimes(1);
+  }finally{vi.useRealTimers();}
 });
