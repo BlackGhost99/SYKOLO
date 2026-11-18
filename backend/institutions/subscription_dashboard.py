@@ -139,13 +139,15 @@ def financial_dashboard(request):
     search = request.GET.get("q", "").strip()
     if (not year.isascii() or not year.isdecimal() or len(year)!=4 or not 2000 <= int(year) <= today.year
         or not page.isascii() or not page.isdecimal() or len(page)>7 or int(page)<1
-        or len(search)>120 or status not in ("all","overdue","read_only","trial","no_contract","review")):
+        or len(search)>120 or status not in ("all","overdue","read_only","trial","no_contract","unactivated","review")):
         return JsonResponse({"error":"Filtres financiers invalides."},status=422)
     year, page = int(year), int(page)
     totals, rows, months, methods = commercial_report(today, year)
     filters = {"all":lambda s:True, "overdue":lambda s:s["overdue_xaf"]>0,
         "read_only":lambda s:s["read_only"], "trial":lambda s:s["trial"]=="active",
-        "no_contract":lambda s:not s["contracts"], "review":lambda s:s["review_count"]>0}
+        "no_contract":lambda s:not s["contracts"],
+        "unactivated":lambda s:bool(s["current_year"] and not s["current_billing_active"]),
+        "review":lambda s:s["review_count"]>0}
     rows = [s for s in rows if filters[status](s) and search.casefold() in s["school"].casefold()]
     pages = max(1,(len(rows)+PAGE_SIZE-1)//PAGE_SIZE)
     page=min(page,pages)
