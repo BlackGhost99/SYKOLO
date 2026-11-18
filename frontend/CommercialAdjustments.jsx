@@ -2,7 +2,7 @@ import React,{useRef,useState} from "react";
 const money=value=>new Intl.NumberFormat("fr-GA").format(value)+" FCFA";
 export function TrialStatus({trial}){
   if(!trial)return null;
-  return <p className="hint"><strong>Essai gratuit : {({active:"en cours",scheduled:"programmé",expired:"expiré",converted:"converti en abonnement"})[trial.status]}</strong> — du {trial.starts_on} au {trial.ends_before} (fin exclue). Aucun prélèvement ni blocage automatique.</p>;
+  return <p className="hint"><strong>Essai gratuit : {({active:"en cours",scheduled:"programmé",expired:"expiré",converted:"converti en abonnement"})[trial.status]}</strong> — du {trial.starts_on} au {trial.ends_before} (fin exclue). Aucune échéance ni sanction liée à l’essai gratuit avant activation du service payant.</p>;
 }
 export default function CommercialAdjustments({api,path,year,sub,trial,canTrial,disabled,onSaved}){
   const [days,setDays]=useState("30"),[reason,setReason]=useState(""),[quote,setQuote]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
@@ -23,7 +23,7 @@ export default function CommercialAdjustments({api,path,year,sub,trial,canTrial,
     <TrialStatus trial={trial}/>
     {!sub&&canTrial&&<form onSubmit={e=>{e.preventDefault();run("trial_start",{days:Number(days),reason:reason.trim()});}}>
       <h3>Accorder un essai gratuit</h3>
-      <p>Un seul essai par établissement, sans création de contrat ni frais. La conversion nécessite une émission explicite du contrat.</p>
+      <p>Un seul essai par établissement, sans création de contrat ni frais. L’expiration de l’essai ne déclenche pas la facturation. La conversion nécessite une activation explicite.</p>
       <label className="ya-field"><span>Durée d’essai en jours</span><input type="number" min="1" max="90" required value={days} onChange={e=>setDays(e.target.value)}/></label>
       <label className="ya-field"><span>Motif de l’essai</span><textarea maxLength={240} required value={reason} onChange={e=>setReason(e.target.value)}/></label>
       <button className="ya-btn ya-btn-outline" disabled={busy||disabled||!hasReason||!validDays}>Accorder l’essai</button>
