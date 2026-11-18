@@ -221,6 +221,19 @@ export const NAV = [
 /* Cadre commun : barre supérieure + menu latéral + zone de contenu. */
 export function Shell({ schoolSelector, search, headerBanner, userName = "Mme la Directrice", userMenu, notifications = 0, onNotifications, nav = NAV, active, onNavigate, children, className = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const compactSchool = className.split(" ").includes("yd-operational-compact");
+  const [mobile,setMobile]=useState(()=>typeof window.matchMedia==="function"&&window.matchMedia("(max-width: 760px)").matches);
+  const [collapsed,setCollapsed]=useState(false);
+  React.useEffect(()=>{
+    if(typeof window.matchMedia!=="function")return;
+    const media=window.matchMedia("(max-width: 760px)");
+    const update=()=>{setMobile(media.matches);setMenuOpen(false);};
+    media.addEventListener?.("change",update);
+    return()=>media.removeEventListener?.("change",update);
+  },[]);
+  const groups=[["Pilotage",["dashboard","owner"]],["Scolarité",["students","admissions","classes","parents"]],["Pédagogie",["diary","calendar","bulletins","preschool"]],["Vie scolaire",["absences"]],["Finances",["payments","arrears","expenses"]],["Personnel",["staff"]],["Communication",["notifications"]],["Administration",["settings","subscription"]]];
+  const groupedIds=new Set(groups.flatMap(g=>g[1]));
+  const renderNav=([id,icon,label])=><button type="button" key={id} title={label} aria-label={label} className={active===id?"active":""} aria-current={active===id?"page":undefined} onClick={()=>{setMenuOpen(false);onNavigate?.(id);}}><Icon name={icon} size={22}/><span>{label}</span></button>;
   const navId = useId();
   const menuButton = useRef(null);
   function closeMenu(event) {
@@ -228,7 +241,7 @@ export function Shell({ schoolSelector, search, headerBanner, userName = "Mme la
     setMenuOpen(false);
     menuButton.current.focus();
   }
-  return <div className={`yd-app ${className}`} onKeyDown={closeMenu}>
+  return <div className={`yd-app ${className} ${compactSchool&&collapsed&&!mobile?"yd-sidebar-collapsed":""}`} onKeyDown={closeMenu}>
     <header className="yd-topbar">
       <YemLogo/>
       <div className="yd-topbar-sep"/>
@@ -245,9 +258,15 @@ export function Shell({ schoolSelector, search, headerBanner, userName = "Mme la
       </button>
       {userMenu || <div className="yd-user"><div className="yd-avatar"><Icon name="user" size={22} strokeWidth={0} className="filled"/></div><b>{userName}</b><Icon name="chevron" size={18}/></div>}
     </header>
-    <nav id={navId} className={`yd-sidebar ${menuOpen ? "is-open" : ""}`} aria-label="Navigation principale">{nav.map(([id, icon, label]) => <button type="button" key={id} aria-label={label} className={active === id ? "active" : ""} aria-current={active === id ? "page" : undefined} onClick={() => { setMenuOpen(false); onNavigate?.(id); }}><Icon name={icon} size={24} strokeWidth={1.6}/><span>{label}</span></button>)}</nav>
+    <nav id={navId} className={`yd-sidebar ${menuOpen ? "is-open" : ""}`} aria-label="Navigation principale">
+      {compactSchool&&!mobile&&<button type="button" className="yd-sidebar-collapse" aria-label={collapsed?"Développer la navigation":"Réduire la navigation"} aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}><Icon name="menu"/><span>Réduire le menu</span></button>}
+      {compactSchool?<>
+        {groups.map(([label,ids])=>{const items=ids.map(id=>nav.find(item=>item[0]===id)).filter(Boolean);return items.length?<div className="yd-nav-group" key={label}><small>{label}</small>{items.map(renderNav)}</div>:null;})}
+        {nav.filter(item=>!groupedIds.has(item[0])).map(renderNav)}
+      </>:nav.map(renderNav)}
+    </nav>
     <main className="yd-content">{children}</main>
-    {className.split(" ").includes("yd-operational-compact")&&<nav className="yd-school-bottom-nav" aria-label="Navigation mobile">
+    {compactSchool&&mobile&&<nav className="yd-school-bottom-nav" aria-label="Navigation mobile">
       {["dashboard","students","diary","payments"].map(id=>nav.find(item=>item[0]===id)).filter(Boolean).map(([id,icon,label])=><button key={id} type="button" aria-current={active===id?"page":undefined} onClick={()=>{setMenuOpen(false);onNavigate?.(id);}}><Icon name={icon}/><span>{({dashboard:"Accueil",students:"Élèves",diary:"Cours",payments:"Finances"})[id]||label}</span></button>)}
       <button type="button" aria-controls={navId} aria-expanded={menuOpen} onClick={()=>setMenuOpen(open=>!open)}><Icon name="menu"/><span>Plus</span></button>
     </nav>}
