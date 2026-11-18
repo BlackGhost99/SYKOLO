@@ -14,3 +14,7 @@ staticfiles/
 
 .venv-finance/
 artifacts-*.txt
+
+.npm-cache/
+.pip-cache/
+frontend/public/icons/

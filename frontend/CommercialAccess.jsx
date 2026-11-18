@@ -3,11 +3,12 @@ const labels={active:"Abonnement actif",trial_active:"Essai actif",scheduled:"Ab
 const money=value=>new Intl.NumberFormat("fr-GA").format(value)+" FCFA";
 export default function CommercialAccess({schoolId,api=null}){
   const [state,setState]=useState(null),[reason,setReason]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
+  const [override,setOverride]=useState(false);
   const pending=useRef(false),generation=useRef(0);
   const route=api?"platform/schools/"+schoolId+"/commercial-access":"schools/"+schoolId+"/owner/commercial-access";
   useEffect(()=>{
     let live=true;let reading=false;
-    setState(null);setReason("");setError("");
+    setState(null);setReason("");setError("");setOverride(false);
     async function refresh(){
       if(!live||reading||pending.current||document.hidden)return;
       reading=true;const version=generation.current;
@@ -29,9 +30,9 @@ export default function CommercialAccess({schoolId,api=null}){
   },[route,api]);
   async function change(event){
     event.preventDefault();
-    if(!api||!state||pending.current||!reason.trim()||(!state.restricted&&!state.can_restrict))return;
+    if(!api||!state||pending.current||!reason.trim()||(!state.restricted&&!state.can_restrict&&!override))return;
     pending.current=true;generation.current++;setBusy(true);setError("");
-    try{const result=await api(route,{restricted:!state.restricted,revision:state.revision,reason:reason.trim()});setState(result);setReason("");}
+    try{const result=await api(route,{restricted:!state.restricted,revision:state.revision,reason:reason.trim(),...(!state.restricted&&!state.can_restrict?{override_grace:true}:{})});setState(result);setReason("");setOverride(false);}
     catch(e){setError(e.message);}
     finally{pending.current=false;setBusy(false);}
   }
@@ -42,9 +43,10 @@ export default function CommercialAccess({schoolId,api=null}){
       <p role="status">{state.restricted?"Établissement en lecture seule":"Accès établissement normal"}</p>
       {state.restriction_eligible_on&&<p>Fin de grâce : {state.restriction_eligible_on} · {state.grace_days_remaining} jour(s) restant(s)</p>}
       <p className="hint">Après 30 jours de grâce, le passage manuel en lecture seule bloque toutes les modifications scolaires. La consultation et la régularisation commerciale restent possibles. Aucun blocage automatique.</p>
-      {api&&(state.restricted||state.can_restrict)&&<form onSubmit={change}>
+      {api&&<form onSubmit={change}>
+        {!state.restricted&&!state.can_restrict&&<label className="ya-field"><span><input type="checkbox" checked={override} onChange={e=>setOverride(e.target.checked)} disabled={busy}/> Dérogation administrative : appliquer la lecture seule avant la fin de grâce ou sans abonnement.</span><small>Restriction réelle, sans création de contrat ni dette. Réactivation possible à tout moment.</small></label>}
         <label className="ya-field"><span>Motif de la décision commerciale</span><textarea maxLength={240} required value={reason} onChange={e=>setReason(e.target.value)}/></label>
-        <button className="ya-btn ya-btn-outline" disabled={busy||!reason.trim()}>{state.restricted?"Réactiver l’établissement":"Passer en lecture seule"}</button>
+        <button className="ya-btn ya-btn-outline" disabled={busy||!reason.trim()||(!state.restricted&&!state.can_restrict&&!override)}>{state.restricted?"Rétablir l’accès normal":state.can_restrict?"Passer en lecture seule":"Appliquer la restriction manuelle"}</button>
       </form>}
     </>:!error&&<p>Chargement de l’état commercial…</p>}
     {error&&<p role="alert">{error}</p>}

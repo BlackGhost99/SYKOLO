@@ -144,9 +144,31 @@ test("manual restriction and restoration use explicit revision and reason",async
   await screen.findByText("Établissement en lecture seule");
   expect(api).toHaveBeenCalledWith("platform/schools/school-a/commercial-access",{restricted:true,revision:0,reason:"Retard confirmé"});
   await user.type(screen.getByLabelText("Motif de la décision commerciale"),"Accord de régularisation");
-  await user.click(screen.getByRole("button",{name:"Réactiver l’établissement"}));
+  await user.click(screen.getByRole("button",{name:"Rétablir l’accès normal"}));
   await screen.findByText("Accès établissement normal");
   expect(api).toHaveBeenCalledWith("platform/schools/school-a/commercial-access",{restricted:false,revision:1,reason:"Accord de régularisation"});
+});
+
+test("early restriction needs explicit override and never alters billing status",async()=>{
+  const {default:CommercialAccess}=await import("./CommercialAccess.jsx");
+  const start={revision:0,lifecycle:"unconfigured",billing_started:false,restricted:false,can_restrict:false};
+  const api=vi.fn(async(path,body)=>body?{...start,revision:body.revision+1,restricted:body.restricted}:start);
+  vi.spyOn(document,"hidden","get").mockReturnValue(false);
+  render(<CommercialAccess schoolId="school-a" api={api}/>);
+  const user=userEvent.setup();
+  const submit=await screen.findByRole("button",{name:"Appliquer la restriction manuelle"});
+  await user.type(screen.getByLabelText("Motif de la décision commerciale"),"Test autorisé");
+  expect(submit.disabled).toBe(true);
+  await user.click(screen.getByRole("checkbox",{name:/Dérogation administrative/}));
+  expect(submit.disabled).toBe(false);
+  await user.click(submit);
+  await screen.findByText("Établissement en lecture seule");
+  expect(api).toHaveBeenCalledWith("platform/schools/school-a/commercial-access",{restricted:true,revision:0,reason:"Test autorisé",override_grace:true});
+  expect(screen.getByText(/Facturation inactive/)).toBeTruthy();
+  await user.type(screen.getByLabelText("Motif de la décision commerciale"),"Fin du test");
+  await user.click(screen.getByRole("button",{name:"Rétablir l’accès normal"}));
+  await screen.findByText("Accès établissement normal");
+  expect(api).toHaveBeenCalledWith("platform/schools/school-a/commercial-access",{restricted:false,revision:1,reason:"Fin du test"});
 });
 
 test("read-only API rejection dispatches a tenant-bound regularization notice without consuming response",async()=>{

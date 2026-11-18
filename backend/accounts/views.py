@@ -110,14 +110,24 @@ def sign_in(request):
     if scope == "school":
         try:
             identity = SchoolLogin.objects.select_related("user", "school").filter(
-                school_id=school_code, username=username, school__is_active=True).first()
+                school_id=school_code, username=username).first()
         except (ValueError, ValidationError):
             identity = None
         user = authenticate(request, username=identity.user.username if identity else "__invalid_school__", password=password)
-        if not identity or not user or user.is_superuser or not school_access(user, identity.school_id):
+        if not identity or not user or user.is_superuser:
             user = None
-        else:
+        elif identity.school.is_active:
+            school = school_access(user, identity.school_id)
+            if school is None:
+                user = None
+        elif (SchoolMember.objects.filter(user=user, school=identity.school, active=True,
+                                          role__school=identity.school).exists() or
+              OrganizationMember.objects.filter(user=user, organization=identity.school.organization,
+                                                role="founder").exists()):
+            # Verify credentials and MFA before revealing an inactive school's status.
             school = identity.school
+        else:
+            user = None
     else:
         user = authenticate(request, username=username, password=password)
         if user and ((scope == "platform" and not user.is_superuser) or
@@ -138,6 +148,20 @@ def sign_in(request):
             failure(key)
             audit(request, "mfa_failed", user)
             return JsonResponse({"error": "Code de vérification invalide.", "mfa_required": True}, status=401)
+    if school is not None and not school.is_active:
+        from institutions.models import PlatformAudit
+        decision = PlatformAudit.objects.filter(school=school, event__in=("school_suspended", "school_reactivated")).order_by("-created_at", "-pk").first()
+        reason = decision.reason.strip() if decision and decision.event == "school_suspended" else ""
+        reason = reason or "Motif non renseigné. Veuillez contacter l’administration de YEM."
+        clear_throttle(key)
+        audit(request, "login_school_suspended", user)
+        return JsonResponse({
+            "error": f"Établissement suspendu : {school.name}. Motif : {reason}",
+            "code": "school_suspended",
+            "school_name": school.name,
+            "reason": reason,
+            "suspended_at": decision.created_at.isoformat() if decision and decision.event == "school_suspended" else None,
+        }, status=403)
     from django.contrib.sessions.models import Session
     from institutions.parent_push_models import ParentPushDevice
     from django.db import transaction
