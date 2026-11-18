@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React,{useEffect,useState} from "react";
 const money=n=>new Intl.NumberFormat("fr-GA").format(n)+" FCFA";
 const statuses=[["all","Tous"],["overdue","Impayés"],["read_only","Lecture seule"],["trial","Essais actifs"],["no_contract","Sans contrat"],["review","À contrôler"]];
@@ -55,13 +56,13 @@ export default function CommercialDashboard({api,onSelectSchool}){
       {d&&<>
         <p>{d.count} établissement(s)</p>
         {!d.schools.length&&<p>Aucun établissement correspondant.</p>}
-        {d.schools.map(s=><div className="ya-info-row" key={s.school_id}>
+        {d.schools.map(s=><ContextTarget className="ya-info-row" key={s.school_id} showTrigger actions={onSelectSchool?[{id:"contract",label:"Gérer l’abonnement",run:()=>onSelectSchool(s.school_id)}]:[]}>
           <div><strong>{s.school}</strong>{!s.enabled?" · Inactif":""}{s.read_only?" · Lecture seule":""}{s.trial==="active"?" · Essai actif":""}
             <p>Contrats : {s.contracts} · {money(s.contracted_xaf)} contractualisés · {money(s.paid_xaf)} réglés · {money(s.balance_xaf)} restants</p>
             <p>Impayés : {money(s.overdue_xaf)} · Retard ≥ 30 j : {money(s.late_30_xaf)}{s.review_count?" · Historique à contrôler":""}</p>
           </div>
           <button className="ya-btn ya-btn-outline" type="button" onClick={()=>onSelectSchool(s.school_id)}>Gérer l’abonnement</button>
-        </div>)}
+        </ContextTarget>)}
         {d.pages>1&&<p><button disabled={d.page===1} onClick={()=>setPage(d.page-1)}>Précédent</button> Page {d.page} / {d.pages} <button disabled={d.page===d.pages} onClick={()=>setPage(d.page+1)}>Suivant</button></p>}
       </>}
     </div>
