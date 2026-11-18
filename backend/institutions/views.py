@@ -286,6 +286,7 @@ def school_members(request, school_id):
 def my_school_access(request, school_id):
     from .cycle_scope import scoped_cycle_ids, allowed_school_permissions
     from .academic_models import AcademicCycle
+    from django.utils import timezone
     from .subscription_access import last_decision, workspace_commercial_status
     school, error = access(request, school_id)
     if error is not None:
