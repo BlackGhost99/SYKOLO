@@ -1,5 +1,6 @@
 import {ContextTarget} from "./ContextMenu.jsx";
 import React,{useEffect,useState} from "react";
+import "./commercial-estimate.css";
 const money=value=>new Intl.NumberFormat("fr-GA").format(value)+" FCFA";
 function timing(item){
   const days=item.days_until_due;
@@ -33,7 +34,7 @@ export default function CommercialReminders({schoolId,platform=false,onSelectSch
     return()=>{live=false;controller?.abort();window.clearInterval(timer);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
   },[endpoint,page]);
   const data=state.data;
-  return <section className={platform?"ya-box":"card"} aria-label="Alertes commerciales YEM">
+  return <section className={platform?"ya-box yem-commercial-panel":"card"} aria-label="Alertes commerciales YEM">
     <h3>Échéances et relances YEM</h3>
     <p className="hint">Abonnement BWETEK — distinct de la scolarité. Alertes automatiques dans YEM, actualisées toutes les 30 secondes lorsque la page est visible.</p>
     {state.loading?<p>Chargement des échéances…</p>:state.error?<p role="alert">{state.error}</p>:data&&<>
@@ -41,7 +42,7 @@ export default function CommercialReminders({schoolId,platform=false,onSelectSch
       {!!data.overdue_count&&<p>Solde échu : <strong>{money(data.overdue_xaf)}</strong></p>}
       {!!data.missing_schedule_count&&<p role="note">{data.missing_schedule_count} contrat(s) historique(s) sans échéancier : contrôle manuel nécessaire.</p>}
       {!data.count&&<p>Aucune échéance à relancer actuellement.</p>}
-      {data.reminders.map(item=><ContextTarget className="ya-info-row" key={item.id} showTrigger actions={platform&&onSelectSchool?[{id:"school",label:"Voir l’établissement et son abonnement",run:()=>onSelectSchool(item.school_id)}]:[]}>
+      {data.reminders.map(item=><ContextTarget className="ya-info-row yem-commercial-row" key={item.id} showTrigger actions={platform&&onSelectSchool?[{id:"school",label:"Voir l’établissement et son abonnement",run:()=>onSelectSchool(item.school_id)}]:[]}>
         <div><strong>{timing(item)}</strong> · {item.kind==="mise_en_service"?"Mise en service":item.kind==="avenant"?"Avenant "+item.number:"Versement "+item.number} — {item.due_date}<br/>
           {platform?item.school+" · ":""}{item.year} · {money(item.balance_xaf)} restant(s)
           {item.stage==="late_30"&&<strong> · Relance prioritaire (30 jours et plus)</strong>}

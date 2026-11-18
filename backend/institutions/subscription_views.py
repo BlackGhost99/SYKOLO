@@ -119,10 +119,13 @@ def quote_for(school, year, policy, counts):
     first_due = max(year.start_date, timezone.localdate())
     terms = calculate_terms(counts, rates, minimums, first_due=first_due, revision=policy["revision"])
     prior = PlatformSubscription.objects.filter(year__school=school).exists()
+    issue_blocker = ("Établissement inactif : réactivez-le dans le répertoire." if not school.is_active else
+        "Année scolaire clôturée ou inactive : choisissez une année ouverte." if not year.active or year.status == "closed" else
+        "Fin de l’année scolaire dépassée : choisissez une année ouverte." if timezone.localdate() > year.end_date else "")
     return {"counts": counts, "rates": rates, "minimums": minimums, "policy_revision": policy["revision"],
             "labels": {k: CYCLE_LABELS[k] for k in counts}, "terms": terms,
             "first_due": first_due.isoformat(), "setup_suggested_xaf": 0 if prior else setup_fee(sum(counts.values())),
-            "can_issue": school.is_active and year.active and year.status != "closed" and timezone.localdate() <= year.end_date}
+            "can_issue": not issue_blocker, "issue_blocker": issue_blocker}
 
 
 def representation(row):
