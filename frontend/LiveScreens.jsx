@@ -495,6 +495,7 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
+  const [dashboardView,setDashboardView]=useState("overview");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
   const d = fin.data;
   const monthly = d?.monthly.map(m => Number(m.total)) || [];
@@ -505,8 +506,8 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
   const share = v => monthTotal ? `${Math.round(v / monthTotal * 100)} %` : "0 %";
   const canOpen=(id,tab)=>!visibleSections||Boolean(visibleSections[id]&&(!tab||visibleSections[id].modules.includes(tab)||visibleSections[id].lives.some(l=>l.key===tab)));
   return <div className="yd-dashboard-compact">
-    <div className="yd-dashboard-toolbar"><CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/><DashboardShortcuts items={shortcuts} onNavigate={onNavigate}/></div>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName} — ${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`} badge={roleLabel || "Membre"} badgeIcon="crown"/>
+    <div className="yd-dashboard-control-row"><div className="yd-dashboard-views" role="group" aria-label="Vue du tableau de bord">{[["overview","Vue générale"],["finance","Écritures et paiements"],["actions","Accès rapides"]].map(([id,label])=><button key={id} type="button" aria-pressed={dashboardView===id} onClick={()=>setDashboardView(id)}>{label}</button>)}</div><CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/></div>
     {tabs}
     <Loading state={fin}>{d && <>
       <FinanceEvidenceNotice data={d}/>
@@ -517,29 +518,30 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
         <Metric icon="alert" label="Familles en retard" value={num(d.families_late)} trend="none" trendLabel={`${fmtMoney(d.overdue_total, d.currency)} échus`}/>
         <Metric icon="receipt" label="Paiements aujourd’hui" value={num(d.today.count)} trend="none" trendLabel={fmtMoney(d.today.total, d.currency)}/>
       </div>
-      <div className="yd-grid dash-main">
+      {dashboardView!=="actions"&&<div className={`yd-grid dash-main ${dashboardView==="overview"?"yd-overview-grid":"yd-financial-grid"}`}>
         <Card title="Évolution des écritures" icon="barchart" subtitle={`Paiements enregistrés (${cur(d.currency)}) sur les 6 derniers mois — non certifiés`}>
           <LineChart points={monthly} labels={d.monthly.map(m => monthLabel(m.month))} min={sc.min} max={sc.max} step={sc.step}/>
         </Card>
-        <Card title="Répartition des moyens de paiement" icon="wallet">
+        {dashboardView==="finance"&&<Card title="Répartition des moyens de paiement" icon="wallet">
           <Donut size={160} values={methods.map(m => m[1])} centerTop={num(monthTotal)} centerBottom={`${cur(d.currency)}\nenregistrés`} legend={methods.map(([l, v]) => [`${l} : ${share(v)}`, `(${fmtMoney(v, d.currency)})`])}/>
-        </Card>
-        <Card title="Actions rapides" icon="bolt" className="quick">
+        </Card>}
+        {dashboardView==="overview"&&<Card title="Actions rapides" icon="bolt" className="quick">
           {canReceive && canOpen("payments","live") && <Button primary icon="card" onClick={() => onNavigate("payments", "live")}>Nouvel encaissement</Button>}
           {canOpen("arrears")&&<Button icon="mail" onClick={() => onNavigate("arrears")}>Préparer les relances</Button>}
           {canOpen("students")&&canEnroll&&<Button icon="adduser" onClick={() => onNavigate("students", "new")}>Inscrire un élève</Button>}
           {canOpen("students","byclass")&&<Button icon="users" onClick={() => onNavigate("students", "byclass")}>Inscriptions par classe</Button>}
           {canOpen("bulletins","reports")&&<Button icon="file" onClick={() => onNavigate("bulletins","reports")}>Générer les bulletins</Button>}
-        </Card>
-      </div>
-      <div className="yd-grid dash-bottom">
-        <Card title="Retardataires prioritaires" icon="users">
-          {d.arrears.length ? <Table align={{ 1: "nowrap", 3: "nowrap" }} headers={["#", "Élève", "Classe", "Total en retard", "Statut"]} rows={d.arrears.slice(0, 5).map((a, i) => [i + 1, a.student, a.classroom, fmtMoney(a.amount_due, d.currency), <Status tone={a.last_payment ? "yellow" : "red"}>{a.last_payment ? "À relancer" : "En retard"}</Status>])}/> : <Empty>Aucune famille en retard.</Empty>}
+        </Card>}
+      </div>}
+      {dashboardView==="actions"&&<Card title="Accès directs aux modules" icon="bolt"><DashboardShortcuts items={shortcuts} onNavigate={onNavigate}/>{!shortcuts.length&&<Empty>Aucun raccourci supplémentaire. Utilisez le menu principal.</Empty>}</Card>}
+      {dashboardView!=="actions"&&<div className="yd-grid dash-bottom">
+        <Card title="Retardataires prioritaires" icon="users" right={canOpen("arrears")?<Button className="small" onClick={()=>onNavigate("arrears")}>Voir tout</Button>:undefined}>
+          {d.arrears.length ? <Table align={{ 1: "nowrap", 3: "nowrap" }} headers={["#", "Élève", "Classe", "Total en retard", "Statut"]} rows={d.arrears.slice(0, dashboardView==="overview"?3:5).map((a, i) => [i + 1, a.student, a.classroom, fmtMoney(a.amount_due, d.currency), <Status tone={a.last_payment ? "yellow" : "red"}>{a.last_payment ? "À relancer" : "En retard"}</Status>])}/> : <Empty>Aucune famille en retard.</Empty>}
         </Card>
         <Card title="Derniers paiements du jour" icon="receipt">
-          {d.today.payments.length ? <Table className="nowrap" headers={["Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.slice(0, 5).map(p => [p.student, p.classroom, fmtMoney(p.amount, d.currency), methodLabel(p.method), fmtTime(p.recorded_at)])}/> : <Empty>Aucun paiement enregistré aujourd’hui.</Empty>}
+          {d.today.payments.length ? <Table className="nowrap" headers={["Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.slice(0, dashboardView==="overview"?3:5).map(p => [p.student, p.classroom, fmtMoney(p.amount, d.currency), methodLabel(p.method), fmtTime(p.recorded_at)])}/> : <Empty>Aucun paiement enregistré aujourd’hui.</Empty>}
         </Card>
-      </div>
+      </div>}
     </>}</Loading>
   </div>;
 }
