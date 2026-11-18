@@ -29,19 +29,37 @@ def fail(message, status=422):
     return JsonResponse({"error": message}, status=status)
 
 
-def current_counts(school, year):
-    rows = Enrollment.objects.filter(school=school, year=year, active=True, student__active=True)
-    if rows.exclude(student__school=school, classroom__school=school, classroom__year=year,
-                    classroom__level__school=school, classroom__level__cycle__school=school).exists():
-        raise ValueError("Incohérence d'inscription : corrigez la structure avant facturation.")
-    counts = {code: 0 for code in (school.education_cycles or [])}
-    for row in rows.values("classroom__level__cycle__code").annotate(number=Count("student_id", distinct=True)):
-        code = row["classroom__level__cycle__code"]
-        if code not in counts:
-            raise ValueError("Inscriptions sur un cycle non ouvert : corrigez la classification avant facturation.")
-        counts[code] = row["number"]
-    return counts
+def current_counts_by_year(school_years):
+    """Shared batched counting rule for the school quote and commercial console."""
+    counts = {year.pk: {code: 0 for code in (school.education_cycles or [])}
+              for school, year in school_years}
+    errors = {}
+    if not counts:
+        return counts, errors
+    rows = Enrollment.objects.filter(year_id__in=counts, active=True, student__active=True)
+    inconsistent = rows.exclude(school_id=F("year__school_id"), student__school_id=F("school_id"),
+        classroom__school_id=F("school_id"), classroom__year_id=F("year_id"),
+        classroom__level__school_id=F("school_id"), classroom__level__cycle__school_id=F("school_id"))
+    for year_id in inconsistent.values_list("year_id", flat=True).distinct():
+        errors[year_id] = "Incohérence d'inscription : corrigez la structure avant facturation."
+    for row in rows.values("year_id", "classroom__level__cycle__code").annotate(number=Count("student_id", distinct=True)):
+        year_id, code = row["year_id"], row["classroom__level__cycle__code"]
+        if year_id in errors:
+            continue
+        if code not in counts[year_id]:
+            errors[year_id] = "Inscriptions sur un cycle non ouvert : corrigez la classification avant facturation."
+        else:
+            counts[year_id][code] = row["number"]
+    return counts, errors
 
+
+def current_counts(school, year):
+    if year.school_id != school.pk:
+        raise ValueError("Année scolaire étrangère à l'établissement.")
+    counts, errors = current_counts_by_year([(school, year)])
+    if year.pk in errors:
+        raise ValueError(errors[year.pk])
+    return counts[year.pk]
 
 def policy_snapshot(lock=False):
     query = PlatformSubscriptionPolicy.objects
