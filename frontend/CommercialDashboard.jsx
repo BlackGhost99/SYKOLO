@@ -1,7 +1,8 @@
 import {ContextTarget} from "./ContextMenu.jsx";
 import React,{useEffect,useState} from "react";
+import "./commercial-estimate.css";
 const money=n=>new Intl.NumberFormat("fr-GA").format(n)+" FCFA";
-const statuses=[["all","Tous"],["overdue","Impayés"],["read_only","Lecture seule"],["trial","Essais actifs"],["no_contract","Sans contrat"],["review","À contrôler"]];
+const statuses=[["all","Tous"],["overdue","Impayés"],["read_only","Lecture seule"],["trial","Essais actifs"],["no_contract","Sans contrat"],["unactivated","Facturation inactive (année en cours)"],["review","À contrôler"]];
 const methods={especes:"Espèces",mobile_money:"Mobile Money déclaré",virement:"Virement déclaré",autre:"Autres"};
 export default function CommercialDashboard({api,onSelectSchool}){
   const [year,setYear]=useState(""),[status,setStatus]=useState("all"),[search,setSearch]=useState(""),[page,setPage]=useState(1),[reload,setReload]=useState(0);
@@ -63,7 +64,7 @@ export default function CommercialDashboard({api,onSelectSchool}){
             <p>Contrats : {s.contracts} · {money(s.contracted_xaf)} contractualisés · {money(s.paid_xaf)} réglés · {money(s.balance_xaf)} restants</p>
             <p>Impayés : {money(s.overdue_xaf)} · Retard ≥ 30 j : {money(s.late_30_xaf)}{s.review_count?" · Historique à contrôler":""}</p>
           </div>
-          <button className="ya-btn ya-btn-outline" type="button" onClick={()=>onSelectSchool(s.school_id)}>Gérer l’abonnement</button>
+          <button className="ya-btn ya-btn-outline" type="button" onClick={()=>onSelectSchool(s.school_id)}>{s.current_year&&!s.current_billing_active?"Configurer l’activation":"Gérer l’abonnement"}</button>
         </ContextTarget>)}
         {d.pages>1&&<p><button disabled={d.page===1} onClick={()=>setPage(d.page-1)}>Précédent</button> Page {d.page} / {d.pages} <button disabled={d.page===d.pages} onClick={()=>setPage(d.page+1)}>Suivant</button></p>}
       </>}
