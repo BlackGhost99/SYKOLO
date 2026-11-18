@@ -87,6 +87,9 @@ export function LiveStudents({ schoolId, canManage, canEditAdministration=false,
   const [klass, setKlass] = useState("");
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState(null);
+  const [page,setPage]=useState(0);
+  const [pageSize,setPageSize]=useState(12);
+  useEffect(()=>{setPage(0);setSelected(null);},[schoolId,viewYear,query,klass,status,pageSize]);
   const [lookupMessage, setLookupMessage] = useState("");
   async function openByMatricule() {
     try {
@@ -103,7 +106,9 @@ export function LiveStudents({ schoolId, canManage, canEditAdministration=false,
     return text.includes(query.toLowerCase()) && (!klass || s.enrollment?.classroom.id === klass)
       && (!status || (status === "non_inscrit" ? !s.enrollment : s.finance?.status === status));
   }), [d, query, klass, status]);
-  const current = rows.find(r => r.id === selected) || rows[0];
+  const maxPage=Math.max(0,Math.ceil(rows.length/pageSize)-1), currentPage=Math.min(page,maxPage), offset=currentPage*pageSize;
+  const pageRows=rows.slice(offset,offset+pageSize);
+  const current = pageRows.find(r => r.id === selected) || pageRows[0];
   const m = d?.metrics;
   return <>
     <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
@@ -128,16 +133,17 @@ export function LiveStudents({ schoolId, canManage, canEditAdministration=false,
       <div className="yd-grid students-grid">
         <Card title="Liste des élèves" count={`(${rows.length})`} icon="users">
           {rows.length === 0 ? <Empty>Aucun élève ne correspond. Créez une fiche depuis « Nouvel élève » ou importez votre liste Excel.</Empty> :
-            <TableScroll label="Liste des élèves"><table className="clickable nowrap dense"><thead><tr>{["#", "Élève", "Classe", ...(d.sensitive_visible?["Parent / Tuteur", "Téléphone"]:[]), <>Situation<br/>financière</>, "Statut", "Actions"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-              <tbody>{rows.map((s, i) => { const f = s.finance && FIN[s.finance.status]; return <ContextTarget as="tr" key={s.id} className={current?.id === s.id ? "selected" : ""} onClick={() => setSelected(s.id)}
+            <TableScroll label="Liste des élèves"><table className="clickable nowrap dense yd-student-roster"><thead><tr>{["#", "Élève", "Classe", ...(d.sensitive_visible?["Parent / Tuteur", "Téléphone"]:[]), <>Situation<br/>financière</>, "Statut", "Actions"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+              <tbody>{pageRows.map((s, i) => { const f = s.finance && FIN[s.finance.status]; return <ContextTarget as="tr" key={s.id} className={current?.id === s.id ? "selected" : ""} onClick={() => setSelected(s.id)}
                 actions={[{id:"preview",label:"Afficher l’aperçu",run:()=>setSelected(s.id)},
                   {id:"file",label:"Ouvrir la fiche",run:()=>onNavigate("students","fiche",{student:s.id})},
                   ...(canEditAdministration?[{id:"edit",label:"Modifier le dossier",write:true,run:()=>onNavigate("students","fiche",{student:s.id,action:"edit"})}]:[]),
                   ...(canManage?[{id:"assignment",label:"Préparer un changement de classe",write:true,run:()=>onNavigate("students","fiche",{student:s.id,action:"assignment"})}]:[]),
                   ...(canReceive&&s.enrollment?[{id:"payment",label:"Préparer un encaissement",write:true,run:()=>onNavigate("payments","live",{enrollment:s.enrollment.id})}]:[])]}>
-                <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.enrollment?.classroom.name || "—"}</td>{d.sensitive_visible&&<><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td></>}
-                <td>{f ? f[1] : "—"}</td><td>{s.enrollment ? (f ? <Status tone={f[0]}>{f[1]}</Status> : <Status>Inscrit</Status>) : <Status tone="gray">Non inscrit</Status>}</td>
-                <td><ContextTrigger/><button type="button" className="yd-link" aria-label="Ouvrir la fiche" onClick={e=>{e.stopPropagation();onNavigate("students","fiche",{student:s.id});}}>Fiche</button></td></ContextTarget>; })}</tbody></table></TableScroll>}
+                <td data-label="#">{offset+i+1}</td><td data-label="Élève"><b>{s.last_name} {s.first_name}</b></td><td data-label="Classe">{s.enrollment?.classroom.name || "—"}</td>{d.sensitive_visible&&<><td data-label="Parent / tuteur">{s.guardian?.full_name || "—"}</td><td data-label="Téléphone">{s.guardian?.phone || "—"}</td></>}
+                <td data-label="Situation financière">{f ? f[1] : "—"}</td><td data-label="Statut">{s.enrollment ? (f ? <Status tone={f[0]}>{f[1]}</Status> : <Status>Inscrit</Status>) : <Status tone="gray">Non inscrit</Status>}</td>
+                <td data-label="Actions"><ContextTrigger/><button type="button" className="yd-link" aria-label="Ouvrir la fiche" onClick={e=>{e.stopPropagation();onNavigate("students","fiche",{student:s.id});}}>Fiche</button></td></ContextTarget>; })}</tbody></table></TableScroll>}
+          {!!rows.length&&<div className="yd-list-pagination" aria-label="Pagination des élèves"><span>{offset+1}–{Math.min(offset+pageSize,rows.length)} sur {rows.length}</span><label>Par page <select aria-label="Élèves par page" value={pageSize} onChange={e=>setPageSize(Number(e.target.value))}>{[12,25,50].map(n=><option key={n}>{n}</option>)}</select></label><Button disabled={currentPage===0} onClick={()=>{setPage(currentPage-1);setSelected(null);}}>Précédent</Button><Button disabled={currentPage===maxPage} onClick={()=>{setPage(currentPage+1);setSelected(null);}}>Suivant</Button></div>}
         </Card>
         {current ? <Card title="Aperçu de l’élève" icon="user" className="student-preview">
           <div className="yd-person"><div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div><div><h3>{current.last_name} {current.first_name}</h3><span>Classe : {current.enrollment?.classroom.name || "non inscrit"}</span><span>Matricule : {current.student_code}</span>{current.matricule_yem && current.matricule_yem !== current.student_code && <small>Identifiant YEM : {current.matricule_yem}</small>}</div></div>
