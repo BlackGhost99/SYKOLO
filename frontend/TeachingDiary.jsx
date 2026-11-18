@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React, {useEffect, useRef, useState} from "react";
 import {teacherRequest} from "./teacher-mobile-api.js";
 import "./teaching-diary.css";
@@ -54,7 +55,7 @@ function ResourceUpload({entry,schoolId,onRefresh,api}) {
 
 function Entries({entries, onEdit, resourceHref, schoolId, onRefresh, api}) {
   if (!entries.length) return <p>Aucune séance enregistrée.</p>;
-  return <div className="yem-diary-list">{entries.map(e=><article key={e.id}>
+  return <div className="yem-diary-list">{entries.map(e=><ContextTarget as="article" key={e.id} showTrigger actions={onEdit?[{id:"edit",label:"Modifier la séance",write:true,run:()=>onEdit(e)}]:[]}>
     <div className="yem-diary-entry-head"><div><small>{e.day} · {e.classroom} · {e.subject}</small>
       <h3>{e.title}</h3></div>{onEdit&&<span>{e.published?"Publié":"Brouillon"}</span>}</div>
     <p className="yem-diary-text">{e.lesson}</p>
@@ -62,7 +63,7 @@ function Entries({entries, onEdit, resourceHref, schoolId, onRefresh, api}) {
     {resourceHref&&<ResourceLinks resources={e.resources} href={r=>resourceHref(e,r)}/>}
     {onEdit&&<button className="yd-btn" type="button" onClick={()=>onEdit(e)}>Modifier la séance</button>}
     {onEdit&&schoolId&&<ResourceUpload entry={e} schoolId={schoolId} onRefresh={onRefresh} api={api}/>}
-  </article>)}
+  </ContextTarget>)}
   {entries.length>=200&&<p>Les 200 dernières séances sont affichées.</p>}</div>;
 }
 
