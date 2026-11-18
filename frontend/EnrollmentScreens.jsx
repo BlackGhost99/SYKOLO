@@ -772,7 +772,10 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
           </form></>}
           {d.classes.length === 0 ? <Empty>Aucune classe pour cette année.</Empty> :
             <TableScroll label="Classes de l’année"><table className="xs"><thead><tr>{["Classe", "Inscrits", "Capacité", "Statut", "Actions"].map(h => <th key={h}>{h}</th>)}</tr></thead>
-              <tbody>{d.classes.map(c => <tr key={c.id}>
+              <tbody>{d.classes.map(c => <ContextTarget as="tr" key={c.id} actions={canManageClasses&&cycleAllowed(c.level.cycle_code)?[
+                {id:"edit",label:"Modifier la classe",write:true,disabled:busy,run:()=>{setCloning(null);setMessage({text:""});setEditing({...c,capacity:c.capacity??"",originalName:c.name});}},
+                ...(d.year.active!==false&&c.active?[{id:"copy",label:"Préparer une duplication",write:true,disabled:busy,run:()=>{setEditing(null);setMessage({text:""});setCloning({id:c.id,name:proposeCloneName(c),originalName:c.name});}}]:[])
+              ]:[]}>
                 <td><b>{c.name}</b><br/><small>{c.level.name}</small></td><td>{c.enrolled}</td><td>{c.capacity ?? "—"}</td>
                 <td><Status tone={c.active ? "green" : "gray"}>{c.active ? "Active" : "Archivée"}</Status></td>
                 <td>{canManageClasses && cycleAllowed(c.level.cycle_code) && <button type="button" className="yf-link" aria-label={`Modifier ${c.name}`} disabled={busy} onClick={() => { setCloning(null); setMessage({text: ""}); setEditing({ ...c, capacity: c.capacity ?? "", originalName: c.name }); }}>Modifier</button>}
@@ -783,8 +786,8 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
                     }}>Dupliquer</button>}
                   {canManageClasses && d.year.active !== false && cycleAllowed(c.level.cycle_code) &&
                     <button type="button" className="yf-link" aria-label={`${c.active ? "Archiver" : "Réactiver"} ${c.name}`}
-                      disabled={busy} onClick={() => toggleArchive(c)}>{c.active ? "Archiver" : "Réactiver"}</button>}</td>
-              </tr>)}</tbody></table></TableScroll>}
+                      disabled={busy} onClick={() => toggleArchive(c)}>{c.active ? "Archiver" : "Réactiver"}</button>}<ContextTrigger/></td>
+              </ContextTarget>)}</tbody></table></TableScroll>}
           {d.can_manage_academic && (onNavigate ? <div className="yf-inline-form"><button type="button" className="yf-link" onClick={()=>onNavigate("calendar")}>Gérer les années dans le Calendrier pédagogique</button></div> : <details className="yf-details"><summary>Créer une autre année scolaire</summary>{yearForm}</details>)}
         </Card>
       </div>}
@@ -906,14 +909,16 @@ export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs, advanc
         <Card title="Situation par élève" count={`(${rows.length})`} icon="users">
           {rows.length === 0 ? <Empty>Aucun élève ne correspond aux filtres.</Empty> :
             <TableScroll label="Suivi des paiements"><table className="xs nowrap clickable"><thead><tr>{["Élève", "Classe", "Total dû", "Payé", "Reste", "Situation", "Moyens utilisés", "Dernier paiement", ""].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-              <tbody>{rows.map(s => <tr key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}>
+              <tbody>{rows.map(s => <ContextTarget as="tr" key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}
+                 actions={[{id:"file",label:"Consulter le dossier financier de l’élève",run:()=>onNavigate("students","fiche",{student:s.id})},
+                   ...(canReceive&&Number(s.finance.balance)>0?[{id:"receive",label:"Préparer un encaissement",write:true,run:()=>onNavigate("payments","live",{enrollment:s.enrollment.id})}]:[])]}>
                 <td><b>{s.last_name} {s.first_name}</b><br/><small>{s.guardian?.full_name || "—"}</small></td><td>{s.enrollment.classroom.name}</td>
                 <td>{money(s.finance.billed, currency)}</td><td>{money(s.finance.paid, currency)}</td><td><b>{money(s.finance.balance, currency)}</b></td>
                 <td><Status tone={FIN[s.finance.status][0]}>{FIN[s.finance.status][1]}</Status></td>
                 <td>{s.finance.methods.length ? s.finance.methods.map(m => <span key={m} className="yf-chip">{methodLabel(m)}</span>) : "—"}</td>
                 <td>{fmtDate(s.finance.last_payment)}</td>
-                <td>{canReceive && Number(s.finance.balance) > 0 ? <button type="button" className="yf-link" onClick={e => { e.stopPropagation(); onNavigate("payments", "live", { enrollment: s.enrollment.id }); }}>Encaisser</button> : <Icon name="chevronright" size={18}/>}</td>
-              </tr>)}</tbody></table></TableScroll>}
+                <td>{canReceive && Number(s.finance.balance) > 0 ? <button type="button" className="yf-link" onClick={e => { e.stopPropagation(); onNavigate("payments", "live", { enrollment: s.enrollment.id }); }}>Encaisser</button> : <Icon name="chevronright" size={18}/>}<ContextTrigger/></td>
+              </ContextTarget>)}</tbody></table></TableScroll>}
         </Card>
         <div className="yd-stack">
           <Card title="Encaissé par moyen de paiement" icon="wallet" subtitle={fin.data?.year ? `Année ${fin.data.year.name}` : ""}>
