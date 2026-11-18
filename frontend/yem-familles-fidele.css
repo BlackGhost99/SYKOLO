@@ -477,3 +477,40 @@
   .yfx-hero-body{gap:9px;}
   .yfx-brand strong{font-size:18px;}
 }
+
+/* Compact family workspace: keep the approved palette and real school identity. */
+.yfx-compact-workspace .yfx-brand-emblem{width:44px;height:44px;object-fit:contain;flex:0 0 44px}
+.yfx-compact-workspace .yfx-school-brand{display:flex;align-items:center;gap:10px;min-width:0;border-radius:10px;background:#f4f8f5;border:1px solid #e6eee8;padding:6px;margin-bottom:10px}
+.yfx-compact-workspace .yfx-school-banner{display:block;min-width:0;flex:1 1 0;width:auto;height:74px;object-fit:contain}
+.yfx-compact-workspace .yfx-school-logo{display:block;flex:0 0 48px;width:48px;height:48px;object-fit:contain}
+.yfx-compact-workspace .yfx-hero{height:auto;min-height:0;display:block;padding:14px 22px 56px}
+.yfx-compact-workspace .yfx-hero-body{margin-top:10px}
+.yfx-compact-workspace .yfx-main{margin-top:-38px}
+.yfx-compact-workspace .yfx-action-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:10px 0 12px}
+.yfx-compact-workspace .yfx-action{min-height:76px;padding:8px 5px;gap:6px;border-radius:12px}
+.yfx-compact-workspace .yfx-action .yfx-icon{width:26px;height:26px}
+.yfx-compact-workspace .yfx-action strong{font-size:12px}
+.yfx-compact-workspace .yfx-child-card{margin-bottom:10px}
+.yfx-compact-workspace .yfx-install{margin:8px 0}
+.yd-parent-standalone.yfm-standalone:has(.yfx-compact-workspace)>.yd-brand-footer{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+@media(max-width:620px){
+ .yfx-compact-workspace{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+ .yfx-compact-workspace .yfx-hero{padding:11px 13px 44px}
+ .yfx-compact-workspace .yfx-main{margin-top:-28px;padding:0 11px 16px}
+ .yfx-compact-workspace .yfx-hero-body{gap:8px;margin-top:8px}
+ .yfx-compact-workspace .yfx-greeting h1{font-size:20px}
+ .yfx-compact-workspace .yfx-greeting p{font-size:12px}
+ .yfx-compact-workspace .yfx-greeting>div>span{font-size:13px}
+ .yfx-compact-workspace .yfx-switcher{min-width:140px;min-height:44px;padding:8px 11px}
+ .yfx-compact-workspace .yfx-brand-emblem{width:37px;height:37px;flex-basis:37px}
+ .yfx-compact-workspace .yfx-school-banner{height:58px}
+ .yfx-compact-workspace .yfx-school-logo{width:40px;height:40px;flex-basis:40px}
+ .yfx-compact-workspace .yfx-card{padding:12px;border-radius:14px;margin-bottom:10px}
+ .yfx-compact-workspace .yfx-action-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .yfx-compact-workspace .yfx-action{min-height:64px;gap:4px}
+ .yfx-compact-workspace .yfx-action strong{font-size:11px}
+ .yfx-compact-workspace .yfx-bottom-nav{min-height:58px}
+ .yfx-compact-workspace .yfx-bottom-nav button{min-height:48px}
+ .yfx-compact-workspace .yfx-bottom-nav button .yfx-icon{width:21px;height:21px}
+}
+@media(max-width:380px){.yfx-compact-workspace .yfx-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
