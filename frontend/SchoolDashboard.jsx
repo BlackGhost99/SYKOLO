@@ -536,6 +536,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const showTeacherWorkspace=teacherPolicy.show;
   if (showTeacherWorkspace) return <ContextReadOnly.Provider value={commercialReadOnly}><TeacherMobileWorkspace
     key={chosen} schoolId={chosen} schoolName={schoolName} user={user}
+    schoolBrand={schoolBranding?{name:schoolName,logo:schoolBranding.logo_url||"",banner:schoolBranding.banner_url||"",city:schoolBranding.city||""}:null}
     permissions={perms} preschoolEnabled={preschoolEnabled} years={academicYears} workingYearId={workingYearId}
     onYearChange={setWorkingYearId} schools={schools} onSchoolChange={setChosen}
     onExit={()=>setTeacherViewRequested(false)}
