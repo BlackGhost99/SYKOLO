@@ -18,7 +18,7 @@ export default function SchoolCommercialStatus({status,restricted=false,canManag
   else if(mode==="overdue")details=[overdue&&"Impayé depuis le "+overdue,grace,end&&"Renouvellement le "+end];
   else if(mode==="expired")details=[expired&&"Fin du service le "+expired,grace,"Renouvellement nécessaire"];
   else if(mode==="review")details=["Échéancier à vérifier auprès de BWETEK"];
-  else details=[due?(mode==="due_today"?"À régler le ":"Prochaine échéance : ")+due:"Aucune échéance restante connue",end&&"Renouvellement le "+end];
+  else details=[due?(mode==="due_today"?"À régler le ":"Prochaine échéance : ")+due:"Aucune échéance impayée",end&&"Renouvellement le "+end];
   const attention=["read_only","overdue","due_today","expired","review"].includes(mode);
   return <aside className={"yd-commercial-status yd-commercial-status--"+mode} aria-label="Statut de l’abonnement YEM">
     <div className="yd-commercial-status-main" role="status">
