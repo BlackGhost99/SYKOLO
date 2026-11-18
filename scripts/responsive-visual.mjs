@@ -11,6 +11,9 @@ const roles=[
   ["platform","Console d'administration YEM"],
   ["parent","Espace parents"],
   ["econome","Tableau de bord"],
+  ["secretariat","Tableau de bord"],
+  ["comptabilite","Tableau de bord"],
+  ["tarification","Tableau de bord"],
 ];
 try{
  for(const [width,height] of viewports){
@@ -49,6 +52,17 @@ try{
         if(metrics.demoError)failures.push("Erreur du composant de démonstration");
         if(errors.length)failures.push(...errors);
         if(width<=760&&["direction","proprietaire","econome","parent"].includes(role)&&!metrics.navVisible)failures.push("Navigation mobile absente");
+        if(role==="proprietaire"){
+          await root.locator(".yd-owner-workspace .yd-owner-tabs").waitFor();
+          const panels=root.locator(".yd-owner-overview-grid");
+          const boxes=await panels.locator(":scope > .yd-card").evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width};}));
+          if(width>1050&&boxes.length===2&&Math.abs(boxes[0].y-boxes[1].y)>2)failures.push("Panneaux propriétaire non alignés");
+          if(await root.locator(".yd-year-picker").count()&&await root.getByLabel("Année scolaire du pilotage").count())failures.push("Année propriétaire dupliquée");
+          await root.getByRole("tab",{name:"Finances",exact:true}).click();
+          await root.getByRole("heading",{name:"Situation financière de l’établissement",exact:true}).waitFor();
+          await root.getByRole("tab",{name:"Vue d’ensemble",exact:true}).click();
+        }
+        if(role==="secretariat")await root.locator(".yd-staff-shortcuts .pc-module-grid").waitFor();
         if(width>760&&["direction","proprietaire","econome"].includes(role)){
           const banner=root.locator(".yd-fixed-banner.has-image");
           await banner.waitFor({state:"visible"});
