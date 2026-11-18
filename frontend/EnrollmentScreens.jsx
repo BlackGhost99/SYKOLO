@@ -1,4 +1,4 @@
-import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
+import {ContextTarget,ContextTrigger,ContextReadOnly} from "./ContextMenu.jsx";
 import FinancialDocuments, {PdfLinks} from "./FinancialDocuments.jsx";
 import React, { useEffect, useMemo, useState } from "react";
 import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Check, Donut, PageHeader } from "./yem-ui.jsx";
@@ -197,6 +197,13 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
   const [destination, setDestination] = useState("");
   const [transfer, setTransfer] = useState("");
   const d = dossier.data;
+  const menuReadOnly=React.useContext(ContextReadOnly);
+  const [shortcutConsumed,setShortcutConsumed]=useState(false);
+  useEffect(()=>{
+    if(shortcutConsumed||menuReadOnly||!d?.student)return;
+    if(params?.action==="edit"&&canEditAdministration){startEdit();setShortcutConsumed(true);}
+    if(params?.action==="assignment"&&canManage){setShowClassAssignment(true);setShortcutConsumed(true);}
+  },[shortcutConsumed,menuReadOnly,d,params?.action,canEditAdministration,canManage]);
   async function run(fn, ok) {
     setBusy(true); setMessage({ text: "" });
     try { await fn(); setMessage({ text: ok }); dossier.reload(); classes.reload?.(); assignment.reload?.(); history.reload?.(); }
@@ -213,6 +220,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
   const history = useLoad(canManage && current && showAssignmentHistory
     ? `schools/${schoolId}/enrollments/${current.id}/history` : "");
   function startEdit() {
+    const s=d.student;
     const base = {first_name:s.first_name,last_name:s.last_name};
     setDraft(d.sensitive_visible ? {...base, date_of_birth:s.date_of_birth||"",
       gender:s.gender,place_of_birth:s.place_of_birth,nationality:s.nationality,
@@ -422,7 +430,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
 }
 
 /* ---------- Inscriptions par classe ---------- */
-export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange }) {
+export function ClassEnrollments({ schoolId, canManage, canEditAdministration=false, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange }) {
   const [year, setYear] = useState(workingYearId);
   useEffect(() => {setYear(workingYearId);setSelected("");setPicking(false);setPicked({});}, [schoolId, workingYearId]);
   const overview = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
@@ -489,6 +497,8 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
           <TableScroll label="Élèves de la classe"><table className="xs nowrap clickable"><thead><tr>{["#", "Élève", "Responsable", "Téléphone", ...(o.finance_visible ? ["Payé", "Reste", "Situation", "Moyens"] : []), "Pièces", ""].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
             <tbody>{members.map((s, i) => <ContextTarget as="tr" key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}
               actions={[{id:"file",label:"Ouvrir le dossier élève",run:()=>onNavigate("students","fiche",{student:s.id})},
+                ...(canEditAdministration?[{id:"edit",label:"Modifier le dossier",write:true,run:()=>onNavigate("students","fiche",{student:s.id,action:"edit"})}]:[]),
+                ...(canManage?[{id:"assignment",label:"Préparer un changement de classe",write:true,run:()=>onNavigate("students","fiche",{student:s.id,action:"assignment"})}]:[]),
                 ...(canReceive&&s.enrollment&&Number(s.finance?.balance)>0?[{id:"payment",label:"Préparer un encaissement",write:true,run:()=>onNavigate("payments","live",{enrollment:s.enrollment.id})}]:[])]}>
               <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td>
               {o.finance_visible && <><td>{money(s.finance?.paid, roster.data.currency)}</td><td><b>{money(s.finance?.balance, roster.data.currency)}</b></td><td>{s.finance && <Status tone={FIN[s.finance.status][0]}>{FIN[s.finance.status][1]}</Status>}</td><td>{(s.finance?.methods || []).map(methodLabel).join(", ") || "—"}</td></>}
