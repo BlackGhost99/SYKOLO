@@ -54,6 +54,34 @@ class IdentityTests(TestCase):
         self.assertFalse(self.client.get("/api/v1/auth/me").json()["authenticated"])
         self.assertEqual(AuthAudit.objects.filter(event="login_success").count(), 1)
 
+    def test_suspended_school_reason_only_after_valid_credentials(self):
+        from institutions.models import Organization, School, SchoolLogin, SchoolRole, SchoolMember, PlatformAudit
+        org = Organization.objects.create(name="Organisation de test")
+        school = School.objects.create(organization=org, name="École de test")
+        role = SchoolRole.objects.create(school=school, code="direction", label="Direction", permissions=["school.view"])
+        member = SchoolMember.objects.create(school=school, user=self.user, role=role)
+        SchoolLogin.objects.create(school=school, user=self.user, username="directrice")
+        school.is_active = False
+        school.save(update_fields=["is_active"])
+        PlatformAudit.objects.create(school=school, actor=self.user, event="school_suspended", subject=school.name, reason="Motif synthétique")
+        kwargs = {"scope": "school", "school_code": str(school.pk)}
+        wrong = self.sign_in(**kwargs, password="incorrect")
+        self.assertEqual(wrong.status_code, 401)
+        self.assertNotIn("reason", wrong.json())
+        blocked = self.sign_in(**kwargs)
+        self.assertEqual(blocked.status_code, 403)
+        self.assertEqual(blocked.json()["code"], "school_suspended")
+        self.assertEqual(blocked.json()["reason"], "Motif synthétique")
+        self.assertFalse(self.client.get("/api/v1/auth/me").json()["authenticated"])
+        member.active = False
+        member.save(update_fields=["active"])
+        self.assertEqual(self.sign_in(**kwargs).status_code, 401)
+        member.active = True
+        member.save(update_fields=["active"])
+        school.is_active = True
+        school.save(update_fields=["is_active"])
+        self.assertEqual(self.sign_in(**kwargs).status_code, 200)
+
     def test_login_throttling_and_no_secrets_in_audit(self):
         for _ in range(5):
             self.assertEqual(self.post("/api/v1/auth/login", {
