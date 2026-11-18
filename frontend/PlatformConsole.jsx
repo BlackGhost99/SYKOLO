@@ -146,15 +146,15 @@ function Directory({dashboard,filters,setFilters,onSchool,selected,onNew,compact
         <option value="all">Tous les statuts</option><option value="active">Actifs</option><option value="inactive">Suspendus</option>
       </select>
     </div>
-    <div className="ya-table-overflow" role="region" aria-label="Annuaire des établissements" tabIndex={0}><table className="ya-table"><thead><tr>
+    <div className="ya-table-overflow" role="region" aria-label="Annuaire des établissements" tabIndex={0}><table className="ya-table ya-school-directory-table"><thead><tr>
       <th><button onClick={()=>change("sort",filters.sort==="name"?"-name":"name")}>Établissement ↕</button></th>
       <th>Organisation</th><th>Utilisateurs</th><th>Statut</th><th>Actions</th>
     </tr></thead><tbody>{rows.map(s=><ContextTarget as="tr" key={s.id} className={s.id===selected?"ya-selected":""}
       actions={[{id:"school",label:"Gérer l’établissement",run:()=>onSchool(s.id)}]}>
-      <td><div className="ya-school-name"><span className="ya-school-icon"><Icon name="school" size={21}/></span><span><strong>{s.name}</strong><small>{s.students_count} élève(s)</small></span></div></td>
-      <td>{s.organization}</td><td><span className="ya-cell-count"><Icon name="users" size={17}/>{fmt(s.members_count)}</span></td>
-      <td><Status active={s.active}/></td>
-      <td><button className="ya-btn ya-btn-table" onClick={()=>onSchool(s.id)}>Gérer <Icon name="right" size={15}/></button><ContextTrigger/></td>
+      <td data-label="Établissement"><div className="ya-school-name"><span className="ya-school-icon"><Icon name="school" size={21}/></span><span><strong>{s.name}</strong><small>{s.students_count} élève(s)</small></span></div></td>
+      <td data-label="Organisation">{s.organization}</td><td data-label="Utilisateurs"><span className="ya-cell-count"><Icon name="users" size={17}/>{fmt(s.members_count)}</span></td>
+      <td data-label="Statut"><Status active={s.active}/></td>
+      <td data-label="Actions"><button className="ya-btn ya-btn-table" onClick={()=>onSchool(s.id)}>Gérer <Icon name="right" size={15}/></button><ContextTrigger/></td>
     </ContextTarget>)}</tbody></table></div>
     {!rows.length&&<div className="ya-empty">Aucun établissement ne correspond aux filtres.</div>}
     <div className="ya-pagination">
@@ -458,7 +458,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     <div className="ya-return"><img src={brand} alt="Logo YEM"/><div><b>Espace scolaire — intervention auditée</b><small>{selectedName}</small></div><button onClick={()=>goto("schools")}>← Retour à la console super-admin</button></div>
     <SchoolDashboard user={user} initialSchoolId={schoolId} accountView={accountView} onLogout={onLogout}/>
   </div>;
-  return <div className="ya-root">
+  return <div className="ya-root ya-compact-console">
     <aside className={"ya-sidebar"+(menuOpen?" ya-expanded":"")} aria-label="Navigation de super-administration">
       <div className="ya-brand"><img src={brand} alt="Logo officiel YEM"/><div><b>YEM</b><span>Console de super-administration<br/>de la plateforme</span></div></div>
       <button type="button" className="ya-mobile-toggle" aria-label="Menu de super-administration"
