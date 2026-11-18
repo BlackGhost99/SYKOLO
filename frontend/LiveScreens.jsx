@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CashClosingPanel from "./CashClosingPanel.jsx";
 import {DashboardShortcuts} from "./SchoolDashboardHeader.jsx";
@@ -21,8 +22,8 @@ async function api(path, body) {
   if (!r.ok) throw Error(data.error || "Requête refusée.");
   return data;
 }
-function CurrencyChoice({data, value, onChange, year, onYearChange}) {
-  return <div className="yd-view-filters"><label>Année scolaire <select aria-label="Année scolaire" value={year || data?.year?.id || ""} onChange={e=>onYearChange(e.target.value)}>{(data?.years||[]).map(y=><option key={y.id} value={y.id}>{y.name}</option>)}</select></label><label>Devise de consultation <select aria-label="Devise de consultation" value={value || data?.currency || "XAF"} onChange={e=>onChange(e.target.value)}>
+function CurrencyChoice({data, value, onChange, year, onYearChange, showYear=true}) {
+  return <div className="yd-view-filters">{showYear&&<label>Année scolaire <select aria-label="Année scolaire" value={year || data?.year?.id || ""} onChange={e=>onYearChange(e.target.value)}>{(data?.years||[]).map(y=><option key={y.id} value={y.id}>{y.name}</option>)}</select></label>}<label className="yd-currency-choice">Devise de consultation <select aria-label="Devise de consultation" value={value || data?.currency || "XAF"} onChange={e=>onChange(e.target.value)}>
     {(data?.currencies?.length ? data.currencies : [data?.currency || "XAF"]).map(c=><option key={c} value={c}>{c}</option>)}
   </select></label></div>;
 }
@@ -77,7 +78,7 @@ function scale(values) {
 function Empty({ children }) { return <p className="yd-card-sub yd-empty">{children}</p>; }
 
 /* ---------- Élèves ---------- */
-export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange, initialQuery = "" }) {
+export function LiveStudents({ schoolId, canManage, canEditAdministration=false, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange, initialQuery = "" }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
@@ -86,6 +87,9 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
   const [klass, setKlass] = useState("");
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState(null);
+  const [page,setPage]=useState(0);
+  const [pageSize,setPageSize]=useState(12);
+  useEffect(()=>{setPage(0);setSelected(null);},[schoolId,viewYear,query,klass,status,pageSize]);
   const [lookupMessage, setLookupMessage] = useState("");
   async function openByMatricule() {
     try {
@@ -102,7 +106,9 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
     return text.includes(query.toLowerCase()) && (!klass || s.enrollment?.classroom.id === klass)
       && (!status || (status === "non_inscrit" ? !s.enrollment : s.finance?.status === status));
   }), [d, query, klass, status]);
-  const current = rows.find(r => r.id === selected) || rows[0];
+  const maxPage=Math.max(0,Math.ceil(rows.length/pageSize)-1), currentPage=Math.min(page,maxPage), offset=currentPage*pageSize;
+  const pageRows=rows.slice(offset,offset+pageSize);
+  const current = pageRows.find(r => r.id === selected) || pageRows[0];
   const m = d?.metrics;
   return <>
     <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
@@ -127,11 +133,17 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
       <div className="yd-grid students-grid">
         <Card title="Liste des élèves" count={`(${rows.length})`} icon="users">
           {rows.length === 0 ? <Empty>Aucun élève ne correspond. Créez une fiche depuis « Nouvel élève » ou importez votre liste Excel.</Empty> :
-            <TableScroll label="Liste des élèves"><table className="clickable nowrap dense"><thead><tr>{["#", "Élève", "Classe", ...(d.sensitive_visible?["Parent / Tuteur", "Téléphone"]:[]), <>Situation<br/>financière</>, "Statut", "Actions"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-              <tbody>{rows.map((s, i) => { const f = s.finance && FIN[s.finance.status]; return <tr key={s.id} className={current?.id === s.id ? "selected" : ""} onClick={() => setSelected(s.id)}>
-                <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.enrollment?.classroom.name || "—"}</td>{d.sensitive_visible&&<><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td></>}
-                <td>{f ? f[1] : "—"}</td><td>{s.enrollment ? (f ? <Status tone={f[0]}>{f[1]}</Status> : <Status>Inscrit</Status>) : <Status tone="gray">Non inscrit</Status>}</td>
-                <td><button type="button" className="yd-dots" aria-label="Ouvrir la fiche" onClick={e => { e.stopPropagation(); onNavigate("students", "fiche", { student: s.id }); }}><Icon name="dots" size={22}/></button></td></tr>; })}</tbody></table></TableScroll>}
+            <TableScroll label="Liste des élèves"><table className="clickable nowrap dense yd-student-roster"><thead><tr>{["#", "Élève", "Classe", ...(d.sensitive_visible?["Parent / Tuteur", "Téléphone"]:[]), <>Situation<br/>financière</>, "Statut", "Actions"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+              <tbody>{pageRows.map((s, i) => { const f = s.finance && FIN[s.finance.status]; return <ContextTarget as="tr" key={s.id} className={current?.id === s.id ? "selected" : ""} onClick={() => setSelected(s.id)}
+                actions={[{id:"preview",label:"Afficher l’aperçu",run:()=>setSelected(s.id)},
+                  {id:"file",label:"Ouvrir la fiche",run:()=>onNavigate("students","fiche",{student:s.id})},
+                  ...(canEditAdministration?[{id:"edit",label:"Modifier le dossier",write:true,run:()=>onNavigate("students","fiche",{student:s.id,action:"edit"})}]:[]),
+                  ...(canManage?[{id:"assignment",label:"Préparer un changement de classe",write:true,run:()=>onNavigate("students","fiche",{student:s.id,action:"assignment"})}]:[]),
+                  ...(canReceive&&s.enrollment?[{id:"payment",label:"Préparer un encaissement",write:true,run:()=>onNavigate("payments","live",{enrollment:s.enrollment.id})}]:[])]}>
+                <td data-label="#">{offset+i+1}</td><td data-label="Élève"><b>{s.last_name} {s.first_name}</b></td><td data-label="Classe">{s.enrollment?.classroom.name || "—"}</td>{d.sensitive_visible&&<><td data-label="Parent / tuteur">{s.guardian?.full_name || "—"}</td><td data-label="Téléphone">{s.guardian?.phone || "—"}</td></>}
+                <td data-label="Situation financière">{f ? f[1] : "—"}</td><td data-label="Statut">{s.enrollment ? (f ? <Status tone={f[0]}>{f[1]}</Status> : <Status>Inscrit</Status>) : <Status tone="gray">Non inscrit</Status>}</td>
+                <td data-label="Actions"><ContextTrigger/><button type="button" className="yd-link" aria-label="Ouvrir la fiche" onClick={e=>{e.stopPropagation();onNavigate("students","fiche",{student:s.id});}}>Fiche</button></td></ContextTarget>; })}</tbody></table></TableScroll>}
+          {!!rows.length&&<div className="yd-list-pagination" aria-label="Pagination des élèves"><span>{offset+1}–{Math.min(offset+pageSize,rows.length)} sur {rows.length}</span><label>Par page <select aria-label="Élèves par page" value={pageSize} onChange={e=>setPageSize(Number(e.target.value))}>{[12,25,50].map(n=><option key={n}>{n}</option>)}</select></label><Button disabled={currentPage===0} onClick={()=>{setPage(currentPage-1);setSelected(null);}}>Précédent</Button><Button disabled={currentPage===maxPage} onClick={()=>{setPage(currentPage+1);setSelected(null);}}>Suivant</Button></div>}
         </Card>
         {current ? <Card title="Aperçu de l’élève" icon="user" className="student-preview">
           <div className="yd-person"><div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div><div><h3>{current.last_name} {current.first_name}</h3><span>Classe : {current.enrollment?.classroom.name || "non inscrit"}</span><span>Matricule : {current.student_code}</span>{current.matricule_yem && current.matricule_yem !== current.student_code && <small>Identifiant YEM : {current.matricule_yem}</small>}</div></div>
@@ -333,7 +345,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
           </Card>
           <Card title="Derniers paiements du jour" icon="receipt">
             {d.today.payments.length === 0 ? <Empty>Aucun paiement enregistré aujourd’hui.</Empty> :
-              <Table className="nowrap xs" headers={["# Reçu", "Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.map(p => [<PdfLinks url={`/api/v1/schools/${schoolId}/finance/payments/${p.id}/receipt`} label={`Reçu ${p.id.slice(0, 8).toUpperCase()}`} openText={`R-${p.id.slice(0, 8).toUpperCase()}`} openLabel={`R-${p.id.slice(0, 8).toUpperCase()}`}/>, p.student, p.classroom, fmtMoney(p.amount, d.currency), <span className="yd-mode"><Icon name={methodIcon(p.method)} size={18}/>{methodLabel(p.method)}</span>, fmtTime(p.recorded_at)])}/>}
+              <Table rowKey={(_,i)=>d.today.payments[i].id} rowActions={(_,i)=>[{id:"receipt",label:"Ouvrir le reçu du paiement",run:()=>window.open("/api/v1/schools/"+schoolId+"/finance/payments/"+d.today.payments[i].id+"/receipt","_blank","noopener,noreferrer")}]} className="nowrap xs" headers={["# Reçu", "Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.map(p => [<PdfLinks url={`/api/v1/schools/${schoolId}/finance/payments/${p.id}/receipt`} label={`Reçu ${p.id.slice(0, 8).toUpperCase()}`} openText={`R-${p.id.slice(0, 8).toUpperCase()}`} openLabel={`R-${p.id.slice(0, 8).toUpperCase()}`}/>, p.student, p.classroom, fmtMoney(p.amount, d.currency), <span className="yd-mode"><Icon name={methodIcon(p.method)} size={18}/>{methodLabel(p.method)}</span>, fmtTime(p.recorded_at)])}/>}
           </Card>
           <Card title="Caisse du jour" icon="layers">
             <div className="cash-row">
@@ -429,7 +441,8 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
           {d.arrears.length === 0 ? <Empty>Aucune famille en retard de paiement.</Empty> :
             <TableScroll label="Impayés par élève"><table className="xs clickable"><thead><tr>{["", "Élève", "Classe", "Responsable", "Plus ancienne échéance impayée", "Total en retard", <>Dernier<br/>paiement</>, "Statut"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>{d.arrears.map((row, index) => (
-                <tr key={row.enrollment} className={a === row ? "selected" : ""}
+                <ContextTarget as="tr" key={row.enrollment} className={a === row ? "selected" : ""}
+                    actions={[{id:"details",label:canRemind?"Consulter les échéances et options de relance":"Consulter les échéances",disabled:sending,run:()=>selectEnrollment(row.enrollment)}]}
                     onClick={() => selectEnrollment(row.enrollment)}>
                   <td>{index + 1}</td>
                   <td className="nowrap">
@@ -444,8 +457,8 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
                   <td className="nowrap">{fmtDate(row.due_date)}</td>
                   <td className="nowrap"><b>{fmtMoney(row.amount_due, d.currency)}</b></td>
                   <td className="nowrap">{fmtDate(row.last_payment)}</td>
-                  <td><Status tone={row.last_payment ? "yellow" : "red"}>{row.last_payment ? "À relancer" : "En retard"}</Status></td>
-                </tr>
+                  <td><Status tone={row.last_payment ? "yellow" : "red"}>{row.last_payment ? "À relancer" : "En retard"}</Status><ContextTrigger/></td>
+                </ContextTarget>
               ))}</tbody>
             </table></TableScroll>}
         </Card>
@@ -484,10 +497,11 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
 }
 
 /* ---------- Tableau de bord ---------- */
-export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange, shortcuts=[], visibleSections, canEnroll=true }) {
+export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange, shortcuts=[], visibleSections, canEnroll=true, headerYearAvailable=false }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
+  const [dashboardView,setDashboardView]=useState("overview");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
   const d = fin.data;
   const monthly = d?.monthly.map(m => Number(m.total)) || [];
@@ -498,11 +512,11 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
   const share = v => monthTotal ? `${Math.round(v / monthTotal * 100)} %` : "0 %";
   const canOpen=(id,tab)=>!visibleSections||Boolean(visibleSections[id]&&(!tab||visibleSections[id].modules.includes(tab)||visibleSections[id].lives.some(l=>l.key===tab)));
   return <div className="yd-dashboard-compact">
-    <div className="yd-dashboard-toolbar"><CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/><DashboardShortcuts items={shortcuts} onNavigate={onNavigate}/></div>
-    <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName} — ${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`} badge={roleLabel || "Membre"} badgeIcon="crown"/>
+    <PageHeader title="Tableau de bord" subtitle={`${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })} · ${schoolName}`} badge={roleLabel || "Membre"} badgeIcon="crown"/>
+    <div className="yd-dashboard-control-row"><div className="yd-dashboard-views" role="group" aria-label="Vue du tableau de bord">{[["overview","Vue générale"],["finance","Écritures et paiements"],["actions","Accès rapides"]].map(([id,label])=><button key={id} type="button" aria-pressed={dashboardView===id} onClick={()=>setDashboardView(id)}>{label}</button>)}</div><CurrencyChoice showYear={!headerYearAvailable} data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/></div>
     {tabs}
     <Loading state={fin}>{d && <>
-      <FinanceEvidenceNotice data={d}/>
+      {d.revenue_certified===false&&<details className="yd-dashboard-evidence"><summary><Icon name="alert" size={16}/> Écritures non certifiées · à rapprocher</summary><FinanceEvidenceNotice data={d}/></details>}
       <div className="yd-metrics five">
         <Metric icon="coins" label="Enregistré ce mois" value={fmtMoney(d.month.total, d.currency)} trend={monthTotal >= Number(d.month.previous) ? "up" : "down"} trendValue={pct(d.month.total, d.month.previous) || ""} trendLabel="vs. mois précédent"/>
         <Metric icon="file" label="Restant dû" value={fmtMoney(d.outstanding, d.currency)} trend="none" trendLabel="toutes échéances"/>
@@ -510,29 +524,30 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
         <Metric icon="alert" label="Familles en retard" value={num(d.families_late)} trend="none" trendLabel={`${fmtMoney(d.overdue_total, d.currency)} échus`}/>
         <Metric icon="receipt" label="Paiements aujourd’hui" value={num(d.today.count)} trend="none" trendLabel={fmtMoney(d.today.total, d.currency)}/>
       </div>
-      <div className="yd-grid dash-main">
+      {dashboardView!=="actions"&&<div className={`yd-grid dash-main ${dashboardView==="overview"?"yd-overview-grid":"yd-financial-grid"}`}>
         <Card title="Évolution des écritures" icon="barchart" subtitle={`Paiements enregistrés (${cur(d.currency)}) sur les 6 derniers mois — non certifiés`}>
           <LineChart points={monthly} labels={d.monthly.map(m => monthLabel(m.month))} min={sc.min} max={sc.max} step={sc.step}/>
         </Card>
-        <Card title="Répartition des moyens de paiement" icon="wallet">
+        {dashboardView==="finance"&&<Card title="Répartition des moyens de paiement" icon="wallet">
           <Donut size={160} values={methods.map(m => m[1])} centerTop={num(monthTotal)} centerBottom={`${cur(d.currency)}\nenregistrés`} legend={methods.map(([l, v]) => [`${l} : ${share(v)}`, `(${fmtMoney(v, d.currency)})`])}/>
-        </Card>
-        <Card title="Actions rapides" icon="bolt" className="quick">
+        </Card>}
+        {dashboardView==="overview"&&<Card title="Actions rapides" icon="bolt" className="quick">
           {canReceive && canOpen("payments","live") && <Button primary icon="card" onClick={() => onNavigate("payments", "live")}>Nouvel encaissement</Button>}
           {canOpen("arrears")&&<Button icon="mail" onClick={() => onNavigate("arrears")}>Préparer les relances</Button>}
           {canOpen("students")&&canEnroll&&<Button icon="adduser" onClick={() => onNavigate("students", "new")}>Inscrire un élève</Button>}
           {canOpen("students","byclass")&&<Button icon="users" onClick={() => onNavigate("students", "byclass")}>Inscriptions par classe</Button>}
           {canOpen("bulletins","reports")&&<Button icon="file" onClick={() => onNavigate("bulletins","reports")}>Générer les bulletins</Button>}
-        </Card>
-      </div>
-      <div className="yd-grid dash-bottom">
-        <Card title="Retardataires prioritaires" icon="users">
-          {d.arrears.length ? <Table align={{ 1: "nowrap", 3: "nowrap" }} headers={["#", "Élève", "Classe", "Total en retard", "Statut"]} rows={d.arrears.slice(0, 5).map((a, i) => [i + 1, a.student, a.classroom, fmtMoney(a.amount_due, d.currency), <Status tone={a.last_payment ? "yellow" : "red"}>{a.last_payment ? "À relancer" : "En retard"}</Status>])}/> : <Empty>Aucune famille en retard.</Empty>}
+        </Card>}
+      </div>}
+      {dashboardView==="actions"&&<Card title="Accès directs aux modules" icon="bolt"><DashboardShortcuts items={shortcuts} onNavigate={onNavigate}/>{!shortcuts.length&&<Empty>Aucun raccourci supplémentaire. Utilisez le menu principal.</Empty>}</Card>}
+      {dashboardView!=="actions"&&<div className="yd-grid dash-bottom">
+        <Card title="Retardataires prioritaires" icon="users" right={canOpen("arrears")?<Button className="small" onClick={()=>onNavigate("arrears")}>Voir tout</Button>:undefined}>
+          {d.arrears.length ? <Table align={{ 1: "nowrap", 3: "nowrap" }} headers={["#", "Élève", "Classe", "Total en retard", "Statut"]} rows={d.arrears.slice(0, dashboardView==="overview"?3:5).map((a, i) => [i + 1, a.student, a.classroom, fmtMoney(a.amount_due, d.currency), <Status tone={a.last_payment ? "yellow" : "red"}>{a.last_payment ? "À relancer" : "En retard"}</Status>])}/> : <Empty>Aucune famille en retard.</Empty>}
         </Card>
         <Card title="Derniers paiements du jour" icon="receipt">
-          {d.today.payments.length ? <Table className="nowrap" headers={["Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.slice(0, 5).map(p => [p.student, p.classroom, fmtMoney(p.amount, d.currency), methodLabel(p.method), fmtTime(p.recorded_at)])}/> : <Empty>Aucun paiement enregistré aujourd’hui.</Empty>}
+          {d.today.payments.length ? <Table className="nowrap" headers={["Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.slice(0, dashboardView==="overview"?3:5).map(p => [p.student, p.classroom, fmtMoney(p.amount, d.currency), methodLabel(p.method), fmtTime(p.recorded_at)])}/> : <Empty>Aucun paiement enregistré aujourd’hui.</Empty>}
         </Card>
-      </div>
+      </div>}
     </>}</Loading>
   </div>;
 }

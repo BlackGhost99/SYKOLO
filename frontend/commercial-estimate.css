@@ -1,0 +1,54 @@
+
+.yem-commercial-estimate{min-width:0;display:grid;gap:10px;padding:12px;border:1px solid var(--line,#dde4e2);border-radius:12px}
+.yem-commercial-estimate p,.yem-commercial-estimate h3{margin:0}
+.yem-estimate-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.yem-estimate-head button{font-size:.85rem;padding:6px 10px}
+.yem-estimate-state{display:grid;gap:3px;padding:9px 11px;border-radius:8px;background:var(--soft,#eff6f2);color:var(--ink,#183c34)}
+.yem-estimate-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,135px),1fr));gap:8px}
+.yem-estimate-totals>div{min-width:0;padding:9px;border:1px solid var(--line,#dde4e2);border-radius:8px;display:grid;gap:4px}
+.yem-estimate-totals strong{font-size:clamp(1rem,3.2vw,1.25rem);font-variant-numeric:tabular-nums;overflow-wrap:normal}
+.yem-estimate-cycles{display:grid;gap:0}
+.yem-estimate-cycle{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 10px;padding:8px 0;border-bottom:1px solid var(--line,#dde4e2)}
+.yem-estimate-cycle>div{display:grid;gap:3px;min-width:0}
+.yem-estimate-cycle small,.yem-estimate-totals small{font-size:.8rem}
+.yem-estimate-cycle b{white-space:nowrap;word-break:normal;font-variant-numeric:tabular-nums}
+.yem-commercial-estimate .field{margin:0;display:grid;gap:4px}
+.yem-estimate-installment{font-size:.9rem}
+.yem-billing-toggle{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line,#dde4e2);border-radius:10px;cursor:pointer}
+.yem-billing-toggle input{accent-color:#17634e;flex:none;width:20px;height:20px;margin:2px 0 0}
+.yem-billing-toggle span{display:grid;gap:3px}
+.yem-billing-toggle small{font-weight:400}
+
+
+/* A generic ya-info-row reserves 21px for an icon. Commercial rows have
+   text/actions instead: opt in to their own flexible layout, not that grid. */
+.yem-commercial-panel,.yem-commercial-panel .ya-box,.yem-commercial-panel form,
+.yem-commercial-panel .ya-field,.yem-commercial-panel .ya-form-grid{min-width:0;max-width:100%}
+.yem-commercial-panel,.yem-commercial-estimate,.yem-commercial-row{overflow-wrap:normal;word-break:normal;writing-mode:horizontal-tb}
+.yem-commercial-panel .ya-stats{grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr))}
+.yem-commercial-panel .ya-stats h3{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:clamp(.85rem,1.4vw,1.1rem)}
+.yem-commercial-panel .ya-form-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr))}
+.yem-commercial-panel .ya-form-box p,.yem-commercial-panel form p{margin-bottom:0}
+.yem-commercial-panel .ya-field{margin:4px 0}
+.yem-commercial-row.ya-info-row,.yem-commercial-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:10px 0;border-bottom:1px solid #edf1ee;min-width:0;max-width:100%;grid-template-columns:none}
+.yem-commercial-row>div,.yem-commercial-row>span:not(.yem-context-trigger){flex:1 1 230px;min-width:0;overflow-wrap:break-word;word-break:normal}
+.yem-commercial-row>button,.yem-commercial-row>a{flex:0 1 auto;max-width:100%;white-space:normal}
+.yem-commercial-row>.yem-context-trigger{flex:0 0 auto;width:auto;min-width:32px}
+.yem-commercial-doc-actions{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.yem-commercial-months{display:grid;gap:1px;margin:10px 0}
+.yem-commercial-month{display:grid;grid-template-columns:minmax(70px,.6fr) minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #edf1ee}
+.yem-commercial-month>div{display:grid;gap:2px;min-width:0}
+.yem-commercial-month small{color:#63776c;font-size:.78rem}
+.yem-commercial-month b{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:.9rem}
+.yem-estimate-head{height:auto;min-height:0;padding:0;border:0;background:transparent}
+.yem-billing-toggle{width:100%;min-width:0}
+.yem-billing-toggle>span{flex:1;min-width:0;overflow-wrap:normal;word-break:normal}
+.yem-activation-status{padding:8px 10px;background:#eff6f2;border-radius:7px;color:#245747!important}
+@media(max-width:600px){
+ .yem-commercial-panel .ya-stats{grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr))}
+ .yem-commercial-panel .ya-form-grid{grid-template-columns:1fr}
+ .yem-commercial-row>div,.yem-commercial-row>span:not(.yem-context-trigger){flex-basis:100%}
+ .yem-commercial-month{grid-template-columns:1fr 1fr}
+ .yem-commercial-month>strong{grid-column:1/-1}
+ .yem-commercial-panel .ya-btn{max-width:100%;white-space:normal;word-break:normal}
+}

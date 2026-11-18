@@ -7,10 +7,10 @@ const amount = (value,currency) => `${number(value)} ${currency}`;
 const SECTIONS = [
   ["synthese","Vue d’ensemble"],["scolarite","Scolarité"],
   ["finances","Finances"],["admissions","Admissions"],
-  ["personnel","Personnel"],["activite","Activité"],
+  ["personnel","Personnel"],["activite","Activité"],["abonnement","Abonnement YEM"],
 ];
 
-export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
+export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workingYearId="",onWorkingYearChange,headerYearAvailable=false}) {
   const [year,setYear]=useState("");
   const [tab,setTab]=useState("synthese");
   const [data,setData]=useState(null);
@@ -21,7 +21,8 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
     if(!schoolId)return;
     let active=true;
     setLoading(true);setError("");setData(null);
-    const params=year?`?year=${encodeURIComponent(year)}`:"";
+    const selectedYear=headerYearAvailable?workingYearId:year;
+    const params=selectedYear?`?year=${encodeURIComponent(selectedYear)}`:"";
     fetch(`/api/v1/schools/${schoolId}/owner/overview${params}`,{
       credentials:"same-origin",
     }).then(async response=>{
@@ -31,7 +32,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
     }).catch(err=>{if(active)setError(err.message);})
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
-  },[schoolId,year]);
+  },[schoolId,year,workingYearId,headerYearAvailable]);
 
   const title="Pilotage du propriétaire";
   const metrics=data?.schooling||{};
@@ -58,30 +59,30 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
     : null;
 
   return <>
-    <PageHeader title={title} subtitle={`Indicateurs de ${schoolName||data?.school?.name||"l’établissement"} — consultation sans pouvoir d’encaissement`}/>
-    <div className="yd-real-body">
+    <PageHeader title={title} subtitle={schoolName||data?.school?.name||"Établissement"} badge="Propriétaire" badgeIcon="crown"/>
+    <div className="yd-real-body yd-owner-workspace">
       {loading&&<p role="status">Chargement des indicateurs de l’établissement…</p>}
       {error&&<Card title="Pilotage indisponible" icon="alert">
         <p role="alert">{error}</p>
         <p className="hint">Cette vue est réservée au propriétaire autorisé de l’établissement.</p>
       </Card>}
       {data&&!loading&&<>
-        <div className="actions" style={{alignItems:"center",justifyContent:"space-between",flexWrap:"wrap"}}>
-          <label className="field" style={{maxWidth:310}}>Année scolaire
+        <div className="yd-owner-toolbar">
+          {!headerYearAvailable&&<label className="field">Année scolaire
             <select aria-label="Année scolaire du pilotage" value={data.year?.id||""}
               onChange={event=>setYear(event.target.value)}>
               {!data.year&&<option value="">Aucune année scolaire</option>}
               {(data.years||[]).map(item=><option key={item.id} value={item.id}>{item.name}{item.status==="current"?" · en cours":item.status==="closed"?" · clôturée":""}</option>)}
             </select>
-          </label>
+          </label>}
           <Status tone="green">Lecture seule — chiffres consolidés</Status>
         </div>
-        <div role="tablist" aria-label="Rubriques du pilotage" className="yd-real-tabs" style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        <div role="tablist" aria-label="Rubriques du pilotage" className="yd-real-tabs yd-owner-tabs">
           {SECTIONS.map(([key,label])=><button key={key} type="button" role="tab"
             aria-selected={tab===key} className={tab===key?"active":""}
             onClick={()=>setTab(key)}>{label}</button>)}
         </div>
-        {tab==="synthese"&&data.year?.id&&<OwnerSubscription key={schoolId} schoolId={schoolId} yearId={data.year.id}/>}
+        {tab==="abonnement"&&<OwnerSubscription key={schoolId} schoolId={schoolId} yearId={data.year?.id}/>}
         {(tab==="synthese"||tab==="scolarite")&&<>
           <div className="yd-metrics five">
             <Metric icon="users" label="Élèves inscrits" value={number(metrics.active_students)} trend="none" trendLabel={data.year?.name||"Aucune année active"}/>
@@ -90,7 +91,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
             <Metric icon="adduser" label="Demandes à traiter" value={number(admission.pending)} trend="none" trendLabel="Admissions en attente"/>
             <Metric icon="file" label="Bulletins publiés" value={number(metrics.published_reports)} trend="none" trendLabel="Année sélectionnée"/>
           </div>
-          <Card title="Effectifs par cycle" icon="school"
+          <div className="yd-owner-overview-grid"><Card title="Effectifs par cycle" icon="school"
             subtitle="Répartition sans accès nominatif aux dossiers des élèves">
             {metrics.enrollment_by_cycle?.length
               ? <Table headers={["Cycle","Classes actives","Élèves inscrits"]}
@@ -99,8 +100,11 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
             <p className="hint">Capacité renseignée pour {number(metrics.capacities_defined)} classe(s) :
               {" "}{number(metrics.total_defined_places)} places. Les classes sans capacité définie ne sont pas incluses dans ce total.</p>
           </Card>
-        </>}
-        {(tab==="synthese"||tab==="finances")&&<Card title="Situation financière de l’établissement" icon="coins"
+        {tab==="synthese"&&finance.length>0&&<Card title="Situation financière — synthèse" icon="coins" subtitle="Écritures enregistrées, non certifiées">
+          <Table headers={["Devise","Enregistré","Solde comptable","Échu comptable"]} rows={finance.map(row=>[row.currency,amount(row.paid,row.currency),amount(row.outstanding,row.currency),amount(row.overdue,row.currency)])}/>
+        </Card>}</div></>}
+        {tab==="synthese"&&<div className="yd-owner-quick-grid">{[["finances","coins","Situation financière","Consulter les écritures et les soldes"],["admissions","adduser","Admissions",number(admission.pending)+" en attente"],["personnel","idcard","Personnel",number(staff.active)+" collaborateurs actifs"],["activite","calendar","Activité",number(activity.total_30d)+" opérations sur 30 jours"],["abonnement","receipt","Abonnement YEM","Contrat, simulation et échéances"]].map(([id,icon,label,desc])=><Card key={id} title={label} icon={icon}><p>{desc}</p><Button onClick={()=>setTab(id)}>Consulter</Button></Card>)}</div>}
+        {tab==="finances"&&<Card title="Situation financière de l’établissement" icon="coins"
           subtitle="Total des frais et règlements enregistrés ; aucune caisse ni modification depuis cet espace">
           {financialTable}
           <p className="hint" role="note">Ce tableau est un relevé d'écritures, pas un état de recettes certifiées. Les montants à justifier ne sont pas considérés comme vérifiés.</p>
@@ -113,7 +117,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
               rows={data.finance.monthly.map(item=>[item.month,item.currency,amount(item.total,item.currency)])}/>
           </>}
         </Card>}
-        {(tab==="synthese"||tab==="admissions")&&<Card title="Admissions et demandes" icon="adduser">
+        {tab==="admissions"&&<Card title="Admissions et demandes" icon="adduser">
           <div className="yd-metrics">
             <Metric icon="file" label="Demandes reçues" value={number(admission.total)} trend="none"/>
             <Metric icon="hourglass" label="En attente" value={number(admission.pending)} trend="none"/>
@@ -123,7 +127,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
           </div>
           <p className="hint">La direction garde la responsabilité d'instruire et de décider les admissions.</p>
         </Card>}
-        {(tab==="synthese"||tab==="personnel")&&<Card title="Équipe et organisation" icon="idcard">
+        {tab==="personnel"&&<Card title="Équipe et organisation" icon="idcard">
           <div className="yd-metrics">
             <Metric icon="users" label="Collaborateurs actifs" value={number(staff.active)} trend="none"/>
             <Metric icon="check" label="Comptes YEM liés" value={number(staff.with_account)} trend="none"/>
@@ -142,7 +146,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
           </div>
           <p className="hint">Ces chiffres mesurent l'activité enregistrée, pas les résultats individuels des élèves.</p>
         </Card>}
-        {(tab==="synthese"||tab==="activite")&&<Card title="Activité récente de l’établissement" icon="calendar"
+        {tab==="activite"&&<Card title="Activité récente de l’établissement" icon="calendar"
           subtitle="30 derniers jours — volumes d'opérations, sans noms, identifiants ni contenus des dossiers">
           <p><strong>{number(activity.total_30d)} opération(s) tracée(s)</strong></p>
           {activity.by_type?.length
@@ -155,13 +159,13 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
               rows={activity.days.map(row=>[row.date,number(row.total)])}/>
           </>}
         </Card>}
-        <Card title="Suivi et responsabilités" icon="shield">
+        <details className="yd-fold yd-owner-responsibilities"><summary>Suivi et responsabilités</summary><Card title="Périmètre de supervision" icon="shield">
           <p className="hint">Cet espace est réservé au pilotage et à la supervision. Le propriétaire peut observer les indicateurs sans disposer des droits d'encaisser, de modifier les notes, d'admettre des élèves ou de consulter les renseignements privés des familles.</p>
           {onNavigate&&<div className="actions">
             <Button onClick={()=>onNavigate("settings","roles")}>Gérer les comptes et les droits</Button>
           </div>}
           <p className="hint">Données arrêtées au {data.as_of}. Les chiffres affichés sont ceux de l'établissement et de l'année sélectionnés.</p>
-        </Card>
+        </Card></details>
       </>}
     </div>
   </>;

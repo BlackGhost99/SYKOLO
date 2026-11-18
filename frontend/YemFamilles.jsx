@@ -79,6 +79,21 @@ export default function YemFamilles({api, accountView, onLogout, onSchoolWorkspa
   const [financeRevision, setFinanceRevision] = useState(0);
   const child = children.find(c => c.student === selected);
   const childId = child?.student;
+  const schoolId = child?.school;
+  const [brandRecord,setBrandRecord] = useState(null);
+  useEffect(()=>{
+    let live=true;
+    setBrandRecord(null);
+    if(!schoolId)return ()=>{live=false;};
+    api("schools/"+encodeURIComponent(schoolId)+"/branding").then(data=>{
+      if(!live||data?.school_id!==schoolId)return;
+      const prefix="/api/v1/schools/"+schoolId+"/branding/";
+      const asset=(url,kind)=>typeof url==="string"&&(url===prefix+kind||url.startsWith(prefix+kind+"?v="))?url:null;
+      setBrandRecord({schoolId,logo:asset(data.logo_url,"logo"),banner:asset(data.banner_url,"banner")});
+    }).catch(()=>{if(live)setBrandRecord(null);});
+    return ()=>{live=false;};
+  },[api,schoolId]);
+  const schoolBrand=brandRecord?.schoolId===schoolId?brandRecord:null;
   const childBase = childId ? "parents/children/" + childId : "";
 
   useEffect(() => {
@@ -179,7 +194,7 @@ export default function YemFamilles({api, accountView, onLogout, onSchoolWorkspa
     enrollments, enrollment, enrollmentError, year, setYear,
     data, dataErrors, gradeRows, reportRows, totals, totalCalls,
     attendancePercent, financial, charges, paid, billed, due,
-    reportMean, publishedReport, observations, future, name, child, childBase,
+    reportMean, publishedReport, observations, future, name, child, childBase, schoolBrand,
     currentYearLabel, alerts, firstName, feesReady, paymentsAvailable,
     activeCharge, setActiveCharge, gradeEmpty, financeRevision,
     refreshFinance: () => setFinanceRevision(revision => revision + 1)

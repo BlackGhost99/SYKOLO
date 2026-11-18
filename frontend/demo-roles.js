@@ -46,3 +46,17 @@ export const DEMO_ROLES = {
     "school.view",
   ]},
 };
+
+const studies=["school.view","school.academic.read","school.curriculum.read","school.curriculum.manage","school.staff.read","school.timetable.read","school.timetable.manage","school.assessments.read","school.reports.read","school.deliberations.read"];
+const attendance=["school.view","school.academic.read","school.attendance.read","school.attendance.write"];
+Object.assign(DEMO_ROLES,{
+ proviseur:{...DEMO_ROLES.direction,label:"Proviseur"},
+ principal:{...DEMO_ROLES.direction,label:"Principal"},
+ etudes:{label:"Censeur des études",permissions:studies},
+ censeur_principal:{label:"Censeur principal",permissions:[...studies,"school.attendance.read"]},
+ vie_scolaire:{label:"Censeur de la vie scolaire",permissions:[...attendance,"school.attendance.finalize"]},
+ surveillance_generale:{label:"Surveillant général",permissions:attendance},
+ surveillance:{label:"Surveillant",permissions:["school.view","school.academic.read","school.attendance.assigned"]},
+ secretariat_pedagogique:{label:"Secrétaire pédagogique",permissions:["school.view","school.academic.read","school.students.read","school.students.profile.read","school.curriculum.read","school.timetable.read","school.assessments.read","school.reports.read"]},
+ chef_travaux:{label:"Chef de travaux",permissions:["school.view","school.academic.read","school.curriculum.read"]}
+});

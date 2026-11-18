@@ -568,3 +568,8 @@
   .ym-prof-app .ym-attendance-stats { gap: 4px; }
   .ym-prof-app .ym-status { font-size: 10px; }
 }
+
+.ym-prof-school-brand{display:flex;align-items:center;gap:8px;min-width:0;margin:6px 0 8px;padding:5px;border-radius:8px;background:rgba(255,255,255,.12);}
+.ym-prof-school-banner{display:block;min-width:0;flex:1 1 0;width:auto;height:76px;object-fit:contain;}
+.ym-prof-school-logo{display:block;flex:0 0 48px;width:48px;height:48px;object-fit:contain;}
+@media(max-width:400px){.ym-prof-school-banner{height:62px;}.ym-prof-school-logo{flex-basis:42px;width:42px;height:42px;}}

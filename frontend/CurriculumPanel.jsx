@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import React, {useEffect, useRef, useState} from "react";
 import {req} from "./EnrollmentScreens.jsx";
 import {Button, Card, Status, TableScroll} from "./yem-ui.jsx";
@@ -116,10 +117,12 @@ export default function CurriculumPanel({schoolId,workingYearId=""}) {
             <TableScroll label="Matières de la classe"><table><thead><tr><th>Matière</th><th>Coefficient</th><th>Statut</th><th>Actions</th></tr></thead>
               <tbody>{rows.map(row => {
                 const subject = subjects.get(row.subject);
-                return <tr key={row.id}><td>{subject?.name || "Matière"}</td><td>{Number(row.coefficient)}</td>
+                return <ContextTarget as="tr" key={row.id} actions={[
+            {id:"program",label:"Consulter le programme",run:()=>setCourse(row.id)},
+            ...(data.can_manage&&currentClass?.available?[{id:"edit",label:"Modifier la matière",write:true,disabled:busy,run:()=>edit("courses",row)}]:[])]}><td>{subject?.name || "Matière"}</td><td>{Number(row.coefficient)}</td>
                   <td><Status tone={row.active ? "green" : "gray"}>{row.active ? "Active" : "Archivée"}</Status></td>
                   <td>{data.can_manage && currentClass?.available && <button type="button" onClick={() => edit("courses", row)}>Modifier</button>}{" "}
-                    <button type="button" aria-expanded={course === row.id} onClick={() => setCourse(course === row.id ? "" : row.id)}>Programme</button></td></tr>;
+                    <button type="button" aria-expanded={course === row.id} onClick={() => setCourse(course === row.id ? "" : row.id)}>Programme</button><ContextTrigger/></td></ContextTarget>;
               })}</tbody>
             </table></TableScroll>}
         </>}

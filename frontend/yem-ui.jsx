@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import officialLogo from "./assets/yem-brand.webp";
 import React, {useId, useRef, useState} from "react";
 
@@ -111,9 +112,11 @@ export function TableScroll({children, label = "Tableau", className = ""}) {
   return <div className={`yd-table-wrap ${className}`} role="region" aria-label={label} tabIndex={0}>{children}</div>;
 }
 
-export function Table({ headers, rows, className = "", selected, align = {} }) {
+export function Table({ headers, rows, className = "", selected, align = {}, rowActions, rowKey }) {
   return <TableScroll><table className={className}><thead><tr>{headers.map((h, i) => <th key={i} className={align[i] || ""}>{h}</th>)}</tr></thead>
-    <tbody>{rows.map((r, i) => <tr key={i} className={selected === i ? "selected" : ""}>{r.map((c, j) => <td key={j} className={align[j] || ""}>{c}</td>)}</tr>)}</tbody></table></TableScroll>;
+    <tbody>{rows.map((r, i) => rowActions ? <ContextTarget as="tr" key={rowKey?.(r,i)??i} actions={rowActions(r,i)} className={selected === i ? "selected" : ""}>
+      {r.map((c,j)=><td key={j} className={align[j]||""}>{c}{j===r.length-1&&<ContextTrigger/>}</td>)}
+    </ContextTarget> : <tr key={i} className={selected === i ? "selected" : ""}>{r.map((c, j) => <td key={j} className={align[j] || ""}>{c}</td>)}</tr>)}</tbody></table></TableScroll>;
 }
 export function InfoRow({ k, v, icon, highlight, vIcon }) {
   return <div className={`yd-info-row ${highlight ? "highlight" : ""}`}><span>{icon && <Icon name={icon} size={20}/>}{k}</span><b>{vIcon && <Icon name={vIcon} size={18} className="wa"/>}<span>{v}</span></b></div>;
@@ -221,14 +224,28 @@ export const NAV = [
 /* Cadre commun : barre supérieure + menu latéral + zone de contenu. */
 export function Shell({ schoolSelector, search, headerBanner, userName = "Mme la Directrice", userMenu, notifications = 0, onNotifications, nav = NAV, active, onNavigate, children, className = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const compactSchool = className.split(" ").includes("yd-operational-compact");
+  const [mobile,setMobile]=useState(()=>typeof window.matchMedia==="function"&&window.matchMedia("(max-width: 760px)").matches);
+  const [collapsed,setCollapsed]=useState(false);
+  React.useEffect(()=>{
+    if(typeof window.matchMedia!=="function")return;
+    const media=window.matchMedia("(max-width: 760px)");
+    const update=()=>{setMobile(media.matches);setMenuOpen(false);};
+    media.addEventListener?.("change",update);
+    return()=>media.removeEventListener?.("change",update);
+  },[]);
+  const groups=[["Pilotage",["dashboard","owner"]],["Scolarité",["students","admissions","classes","parents"]],["Pédagogie",["diary","calendar","bulletins","preschool"]],["Vie scolaire",["absences"]],["Finances",["payments","arrears","expenses"]],["Personnel",["staff"]],["Communication",["notifications"]],["Administration",["settings","subscription","connection"]]];
+  const groupedIds=new Set(groups.flatMap(g=>g[1]));
+  const renderNav=([id,icon,label])=><button type="button" key={id} title={label} aria-label={label} className={active===id?"active":""} aria-current={active===id?"page":undefined} onClick={()=>{setMenuOpen(false);onNavigate?.(id);}}><Icon name={icon} size={22}/><span>{label}</span></button>;
   const navId = useId();
   const menuButton = useRef(null);
+  const bottomMenuButton = useRef(null);
   function closeMenu(event) {
-    if (event.key !== "Escape" || !menuOpen || !menuButton.current?.getClientRects().length) return;
+    if (event.key !== "Escape" || !menuOpen) return;
     setMenuOpen(false);
-    menuButton.current.focus();
+    (compactSchool&&mobile?bottomMenuButton.current:menuButton.current)?.focus();
   }
-  return <div className={`yd-app ${className}`} onKeyDown={closeMenu}>
+  return <div className={`yd-app ${className} ${compactSchool&&collapsed&&!mobile?"yd-sidebar-collapsed":""}`} onKeyDown={closeMenu}>
     <header className="yd-topbar">
       <YemLogo/>
       <div className="yd-topbar-sep"/>
@@ -245,7 +262,17 @@ export function Shell({ schoolSelector, search, headerBanner, userName = "Mme la
       </button>
       {userMenu || <div className="yd-user"><div className="yd-avatar"><Icon name="user" size={22} strokeWidth={0} className="filled"/></div><b>{userName}</b><Icon name="chevron" size={18}/></div>}
     </header>
-    <nav id={navId} className={`yd-sidebar ${menuOpen ? "is-open" : ""}`} aria-label="Navigation principale">{nav.map(([id, icon, label]) => <button type="button" key={id} aria-label={label} className={active === id ? "active" : ""} aria-current={active === id ? "page" : undefined} onClick={() => { setMenuOpen(false); onNavigate?.(id); }}><Icon name={icon} size={24} strokeWidth={1.6}/><span>{label}</span></button>)}</nav>
+    <nav id={navId} className={`yd-sidebar ${menuOpen ? "is-open" : ""}`} aria-label="Navigation principale" hidden={compactSchool&&mobile&&!menuOpen}>
+      {compactSchool&&!mobile&&<button type="button" className="yd-sidebar-collapse" aria-label={collapsed?"Développer la navigation":"Réduire la navigation"} aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}><Icon name="menu"/><span>Réduire le menu</span></button>}
+      {compactSchool?<>
+        {groups.map(([label,ids])=>{const items=ids.map(id=>nav.find(item=>item[0]===id)).filter(Boolean);return items.length?<div className="yd-nav-group" key={label}><small>{label}</small>{items.map(renderNav)}</div>:null;})}
+        {nav.filter(item=>!groupedIds.has(item[0])).map(renderNav)}
+      </>:nav.map(renderNav)}
+    </nav>
     <main className="yd-content">{children}</main>
+    {compactSchool&&mobile&&<nav className="yd-school-bottom-nav" aria-label="Navigation mobile">
+      {["dashboard","students","diary","payments"].map(id=>nav.find(item=>item[0]===id)).filter(Boolean).map(([id,icon,label])=><button key={id} type="button" aria-current={active===id?"page":undefined} onClick={()=>{setMenuOpen(false);onNavigate?.(id);}}><Icon name={icon}/><span>{({dashboard:"Accueil",students:"Élèves",diary:"Cours",payments:"Finances"})[id]||label}</span></button>)}
+      <button ref={bottomMenuButton} type="button" aria-controls={navId} aria-expanded={menuOpen} onClick={()=>setMenuOpen(open=>!open)}><Icon name="menu"/><span>Plus</span></button>
+    </nav>}
   </div>;
 }

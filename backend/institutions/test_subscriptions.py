@@ -385,7 +385,7 @@ class PlatformSubscriptionTests(TestCase):
         self.assertNotEqual(restored.json().get("code"),"commercial_workspace_read_only")
         self.assertEqual(FeePayment.objects.count(),0)
 
-    def test_commercial_trial_expiration_is_read_only(self):
+    def test_commercial_trial_expiration_never_starts_billing_or_restriction(self):
         from .subscription_models import PlatformCommercialAccessDecision
         self.assertEqual(self.post("trial_start",days=30,reason="Essai").status_code,201)
         url = f"/api/v1/platform/schools/{self.school.pk}/commercial-access"
@@ -395,9 +395,13 @@ class PlatformSubscriptionTests(TestCase):
             self.assertEqual(status["lifecycle"],"expired")
             self.assertFalse(status["restricted"])
             self.assertFalse(status["can_restrict"])
-            self.assertEqual(status["grace_days_remaining"],30)
+            self.assertIsNone(status["grace_days_remaining"])
+            self.assertFalse(status["billing_started"])
         with patch("institutions.subscription_views.timezone.localdate",return_value=date(2027,1,16)):
-            self.assertTrue(self.client.get(url).json()["can_restrict"])
+            status=self.client.get(url).json()
+            self.assertFalse(status["can_restrict"])
+            self.assertIsNone(status["restriction_eligible_on"])
+            self.assertEqual(self.client.post(url, json.dumps({"restricted":True,"reason":"Test","revision":0}),content_type="application/json").status_code,409)
         self.assertEqual(PlatformCommercialAccessDecision.objects.count(),0)
         self.assertEqual(PlatformSubscription.objects.count(),0)
         self.school.refresh_from_db()
@@ -467,6 +471,24 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(totals["unscheduled_xaf"],5000)
         self.assertEqual(totals["review_count"],1)
         self.assertEqual(totals["balance_xaf"],105000)
+
+    def test_dashboard_flags_duplicate_or_out_of_range_schedule(self):
+        self.assertEqual(self.issue().status_code,201)
+        legacy = PlatformSubscription.objects.create(year=self.foreign_year,total_xaf=5000,lines=[])
+        examples = [
+            [{"kind":"abonnement","number":1,"amount_xaf":2500,"due_date":"2026-11-17"}]*2,
+            [{"kind":"abonnement","number":1,"amount_xaf":5000,"due_date":"9999-12-31"}],
+            [{"kind":"unknown","number":1,"amount_xaf":5000,"due_date":"2026-11-17"}],
+        ]
+        for schedule in examples:
+            legacy.commercial_terms={"schedule":schedule}
+            legacy.save(update_fields=["commercial_terms"])
+            response=self.client.get("/api/v1/platform/commercial-dashboard")
+            self.assertEqual(response.status_code,200,response.content)
+            totals=response.json()["totals"]
+            self.assertEqual(totals["review_count"],1)
+            self.assertEqual(totals["unscheduled_xaf"],5000)
+            self.assertEqual(totals["balance_xaf"],105000)
 
     def test_quote_uses_real_counts_and_snapshot(self):
         self.assertEqual(self.client.get(self.path).json()["suggested_year"], str(self.year.pk))
@@ -651,3 +673,116 @@ class PlatformSubscriptionTests(TestCase):
         Enrollment.objects.create(school=self.school,year=self.year,student=pupil,
             classroom=room,enrolled_on=date(2026,10,3))
         self.assertEqual(self.post("quote").status_code,409)
+
+
+    def test_readonly_simulator_shared_real_counts_and_contract_preservation(self):
+        url=f"/api/v1/platform/schools/{self.school.pk}/subscription-simulation"
+        school_url=f"/api/v1/schools/{self.school.pk}/owner/subscription-simulation"
+        response=self.client.get(url)
+        self.assertEqual(response.status_code,200,response.content)
+        estimate=response.json()
+        self.assertEqual(estimate["simulation"]["lines"][1]["students"],2)
+        cycle = estimate["simulation"]["lines"][1]["cycle"]
+        params = {"effectif_" + cycle: "185"}
+        self.assertEqual(self.client.get(url, params).status_code,422)
+        self.assertEqual(estimate["actual_counts"], self.counts)
+        self.assertFalse(estimate["billing_started"])
+        self.assertIsNone(estimate["billing_activated_on"])
+        self.assertIsNone(estimate["first_contract_due"])
+        self.assertEqual(self.client.get(url, {"effectif_" + cycle: "-1"}).status_code, 422)
+        monthly=estimate["simulation"]["options"]["mensuel"]
+        self.assertEqual(monthly["annual_xaf"],100000)
+        self.assertEqual(sum(s["amount_xaf"] for s in monthly["schedule"]),100000)
+        self.assertEqual(len(monthly["schedule"]),12)
+        self.assertTrue(all("due_date" not in s for s in monthly["schedule"]))
+        self.assertEqual(PlatformSubscription.objects.count(),0)
+        self.assertEqual(PlatformSubscriptionPayment.objects.count(),0)
+        self.assertEqual(PlatformAudit.objects.count(),0)
+        self.assertEqual(self.client.post(url,{}).status_code,405)
+        self.assertEqual(self.client.get(url+"?year_id="+str(self.foreign_year.pk)).status_code,404)
+        self.assertEqual(self.issue().status_code,201)
+        row=PlatformSubscription.objects.get()
+        frozen=row.commercial_terms.copy()
+        self.assertTrue(self.client.get(url).json()["contracted"])
+        row.refresh_from_db()
+        self.assertEqual(row.commercial_terms,frozen)
+        role=SchoolRole.objects.create(school=self.school,code="direction",label="Direction",permissions=["school.view"])
+        member=SchoolMember.objects.create(school=self.school,user=self.ordinary,role=role)
+        self.client.force_login(self.ordinary)
+        self.assertEqual(self.client.get(school_url, params).status_code,422)
+        shared=self.client.get(school_url)
+        self.assertEqual(shared.status_code,200,shared.content)
+        self.assertEqual(shared.json()["simulation"]["options"],estimate["simulation"]["options"])
+        self.assertEqual(self.client.get(url).status_code,403)
+        self.assertEqual(self.client.get(f"/api/v1/schools/{self.other.pk}/owner/subscription-simulation").status_code,403)
+        member.access_cycle_ids=[]
+        member.save(update_fields=["access_cycle_ids"])
+        self.assertEqual(self.client.get(school_url).status_code,403)
+
+    def test_paid_activation_is_explicit_and_live_counts_keep_original_contract(self):
+        url=f"/api/v1/platform/schools/{self.school.pk}/subscription-simulation"
+        status_url=f"/api/v1/platform/schools/{self.school.pk}/commercial-access"
+        self.assertEqual(self.client.get(url).json()["actual_counts"],self.counts)
+        classroom=AcademicClass.objects.get(school=self.school,year=self.year,level__cycle__code="college")
+        student=Student.objects.create(school=self.school,student_code="live-new",first_name="Test",last_name="Nouveau")
+        Enrollment.objects.create(school=self.school,student=student,year=self.year,classroom=classroom,enrolled_on=date(2026,11,18))
+        counts=dict(self.counts,college=4)
+        self.assertEqual(self.client.get(url).json()["actual_counts"],counts)
+        self.assertEqual(self.issue().status_code,409)
+        self.assertFalse(self.client.get(status_url).json()["billing_started"])
+        self.assertEqual(PlatformSubscription.objects.count(),0)
+        with patch("institutions.subscription_views.timezone.localdate",return_value=date(2026,11,25)):
+            activated=self.issue(expected_counts=counts,period="mensuel")
+            self.assertEqual(activated.status_code,201,activated.content)
+            self.assertEqual(activated.json()["subscription"]["schedule"][0]["due_date"],"2026-11-25")
+            self.assertTrue(self.client.get(status_url).json()["billing_started"])
+            self.assertTrue(self.client.get(url).json()["billing_started"])
+            self.assertEqual(self.client.get(url).json()["first_contract_due"],"2026-11-25")
+            self.assertEqual(self.issue(expected_counts=counts).status_code,409)
+        row=PlatformSubscription.objects.get()
+        original=row.total_xaf
+        Enrollment.objects.filter(student=student).update(active=False)
+        self.assertEqual(self.client.get(url).json()["actual_counts"],self.counts)
+        row.refresh_from_db()
+        self.assertEqual(row.total_xaf,original)
+        self.assertEqual(row.commercial_terms["student_count"],sum(counts.values()))
+        self.assertEqual(PlatformSubscriptionPayment.objects.count(),0)
+
+    def test_platform_financial_estimate_uses_real_students_without_creating_debt(self):
+        self.other.is_active=False
+        self.other.save(update_fields=["is_active"])
+        url="/api/v1/platform/commercial-dashboard"
+        before=self.client.get(url+"?status=unactivated")
+        self.assertEqual(before.status_code,200,before.content)
+        totals=before.json()["totals"]
+        self.assertEqual(totals["current_students"],sum(self.counts.values()))
+        self.assertEqual(totals["current_annual_estimate_xaf"],100000)
+        self.assertEqual(totals["current_unactivated_estimate_xaf"],100000)
+        self.assertEqual(totals["contracted_xaf"],0)
+        self.assertEqual(totals["balance_xaf"],0)
+        self.assertEqual(before.json()["count"],1)
+        self.assertFalse(before.json()["schools"][0]["current_billing_active"])
+        self.assertEqual(PlatformSubscription.objects.count(),0)
+        self.assertEqual(self.issue().status_code,201)
+        after=self.client.get(url+"?status=unactivated").json()
+        self.assertEqual(after["count"],0)
+        self.assertEqual(after["totals"]["current_annual_estimate_xaf"],100000)
+        self.assertEqual(after["totals"]["current_unactivated_estimate_xaf"],0)
+        self.assertEqual(after["totals"]["contracted_xaf"],100000)
+        self.assertEqual(self.client.get(url).json()["schools"][0]["current_billing_active"],True)
+
+    def test_activation_quote_explains_ineligible_year_or_school(self):
+        self.assertTrue(self.post("quote").json()["can_issue"])
+        self.school.is_active=False
+        self.school.save(update_fields=["is_active"])
+        data=self.post("quote").json()
+        self.assertFalse(data["can_issue"])
+        self.assertIn("Établissement inactif",data["issue_blocker"])
+        self.school.is_active=True
+        self.school.save(update_fields=["is_active"])
+        self.year.active=False
+        self.year.save(update_fields=["active"])
+        data=self.post("quote").json()
+        self.assertFalse(data["can_issue"])
+        self.assertIn("Année scolaire clôturée ou inactive",data["issue_blocker"])
+        self.assertEqual(PlatformSubscription.objects.count(),0)

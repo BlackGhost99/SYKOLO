@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import React,{useEffect,useMemo,useState} from "react";
 import {Button,Card,Icon} from "./yem-ui.jsx";
 import {teacherRequest,displayNumber} from "./teacher-mobile-api.js";
@@ -265,9 +266,9 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
               {a.name}<small>{a.policy?.scale?.kind==="numeric"?"/ "+a.policy.scale.max:
                 a.policy?.scale?.kind==="percentage"?"%":"Barème configuré"}</small>
             </button></th>)}
-        </tr></thead><tbody>{entries.map(({student,grade,raw},index)=><tr key={student.enrollment_id}>
+        </tr></thead><tbody>{entries.map(({student,grade,raw},index)=><ContextTarget as="tr" key={student.enrollment_id} actions={editable?[{id:"score",label:"Saisir ou modifier la note",write:true,disabled:busy,run:()=>document.getElementById("yem-mobile-score-"+student.enrollment_id)?.focus()}]:[]}>
           <td>{index+1}</td>
-          <th scope="row" className="ym-grade-student">{student.last_name} {student.first_name}</th>
+          <th scope="row" className="ym-grade-student">{student.last_name} {student.first_name}<ContextTrigger/></th>
           {columns.map(a=>{
             const g=a.id===chosen.id?grade:(valuesByAssessment[a.id]||[]).find(item=>item.enrollment===student.enrollment_id);
             const editableCell=a.id===chosen.id&&editable;
@@ -275,11 +276,11 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
             const number=["numeric","percentage"].includes(scale.kind);
             return <td key={a.id} className={editableCell?"ym-grade-active-cell":""}>
               {a.id===chosen.id?(number?
-                <input aria-label={"Note de "+student.last_name} type="number" inputMode="decimal"
+                <input id={"yem-mobile-score-"+student.enrollment_id} aria-label={"Note de "+student.last_name} type="number" inputMode="decimal"
                   min={0} max={scale.kind==="percentage"?100:scale.max} step="any"
                   disabled={!editableCell||busy} value={raw} placeholder="—"
                   onChange={e=>setDrafts(v=>({...v,[student.enrollment_id]:e.target.value}))}/>:
-                <select aria-label={"Résultat de "+student.last_name} disabled={!editableCell||busy}
+                <select id={"yem-mobile-score-"+student.enrollment_id} aria-label={"Résultat de "+student.last_name} disabled={!editableCell||busy}
                   value={raw} onChange={e=>setDrafts(v=>({...v,[student.enrollment_id]:e.target.value}))}>
                   <option value="">—</option>
                   {(a.policy?.bands||[]).map((b,j)=><option value={b.label} key={j}>{b.label}</option>)}
@@ -287,7 +288,7 @@ export default function TeacherMobileGrades({schoolId,courses,classes,subjects,p
                   typeof g.score==="object"?(g.label||"Renseigné"):String(g.score)}</span>}
             </td>;
           })}
-        </tr>)}</tbody></table>
+        </ContextTarget>)}</tbody></table>
       </div>
       <p className="ym-grade-mobile-hint">Sur téléphone, choisissez l’évaluation à modifier dans le filtre ci-dessus.</p>
       <p className="ym-hint">Un champ vide signifie « non renseigné », jamais zéro. Sur écran large, touchez l’en-tête d’une autre colonne pour la modifier.</p>

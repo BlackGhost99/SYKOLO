@@ -1,3 +1,4 @@
+import {ContextReadOnly} from "./ContextMenu.jsx";
 import DelegationManager from "./DelegationManager.jsx";
 import React, {useEffect,useState} from "react";
 import AcademicPanel from "./AcademicPanel.jsx";
@@ -219,18 +220,29 @@ function ModuleGrid({visibleSections,navigate}) {
 
 function UserMenu({user,roleLabel,onAccount,onProfile,onTeacherWorkspace,onFamilyWorkspace,onLogout,photoUrl}) {
   const [open,setOpen]=useState(false);
+  const wrap=React.useRef(null);
+  const trigger=React.useRef(null);
+  useEffect(()=>{
+    if(!open)return;
+    const outside=e=>{if(!wrap.current?.contains(e.target))setOpen(false);};
+    const escape=e=>{if(e.key==="Escape"){setOpen(false);trigger.current?.focus();}};
+    document.addEventListener("pointerdown",outside);
+    document.addEventListener("keydown",escape);
+    return()=>{document.removeEventListener("pointerdown",outside);document.removeEventListener("keydown",escape);};
+  },[open]);
+  const menuId=React.useId();
   const name=[user?.first_name,user?.last_name].filter(Boolean).join(" ")||user?.username||"Mon compte";
-  return <div className="yd-user-wrap">
-    <button type="button" className="yd-user-btn" aria-label={`Compte de ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>
+  return <div className="yd-user-wrap" ref={wrap}>
+    <button ref={trigger} type="button" className="yd-user-btn" aria-controls={menuId} aria-label={`Compte de ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>
       <span className="yd-avatar">{photoUrl?<img src={photoUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}}/>:
         <Icon name="user" size={22} strokeWidth={0} className="filled"/>}</span>
       <span><b>{name}</b>{roleLabel&&<small>{roleLabel}</small>}</span><Icon name="chevron" size={18}/>
     </button>
-    {open&&<div className="yd-menu right" role="menu">
+    {open&&<div className="yd-menu right yd-account-popover" role="menu" id={menuId} aria-label="Menu du compte">
       {onTeacherWorkspace&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onTeacherWorkspace();}}><Icon name="cap" size={18}/>Espace professeur</button>}
       {onProfile&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onProfile();}}><Icon name="user" size={18}/>Mon profil professionnel</button>}
       <button type="button" role="menuitem" onClick={()=>{setOpen(false);onAccount();}}><Icon name="shield" size={18}/>Sécurité du compte</button>
-      {onFamilyWorkspace&&<button type="button" role="menuitem" onClick={onFamilyWorkspace}><Icon name="users" size={18}/>YEM Parents</button>}
+      {onFamilyWorkspace&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onFamilyWorkspace();}}><Icon name="users" size={18}/>YEM Parents</button>}
       {onLogout&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onLogout();}}><Icon name="logout" size={18}/>Se déconnecter</button>}
     </div>}
   </div>;
@@ -417,7 +429,11 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   if (preschoolEnabled&&can("school.academic.read")) visibleSections.preschool={
     title:"Suivi préscolaire",subtitle:"Crèche et préscolaire",modules:[],lives:[{key:"live",label:"Suivi quotidien",need:[]}],
   };
+  const canManageSubscription=Boolean(access&&chosen&&workingYearId&&(isOwner||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role)))));
+  const schoolCode = access?.school?.id === chosen && access.school.login_code;
   const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]);
+  if(canManageSubscription)nav.push(["subscription","receipt","Abonnement YEM"]);
+  if(schoolCode&&canUsers)nav.push(["connection","school","Code établissement"]);
   const hasTab=(id,tab)=>Boolean(visibleSections[id]?.modules.includes(tab)||visibleSections[id]?.lives.some(l=>l.key===tab));
   const dashboardShortcuts=[
     hasTab("diary","live")&&{id:"diary",tab:"live",icon:"file",title:"Cahier de textes",subtitle:"Cours / Devoirs / Progression"},
@@ -457,7 +473,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     canApproveScholarship:can("school.admissions.decide")&&can("school.finance.approve"),
     canConfigureFinance:can("school.settings.write"),
     canCreate:can("school.admissions.manage"),canEnroll:can("school.admissions.enroll"),
-    canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),
+    canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),canManageTimetable:can("school.timetable.manage"),
     canPublish:can("school.reports.publish"),onNavigate:navigate,
     workingYearId,onWorkingYearChange:setWorkingYearId,
     onYearsUpdated:()=>setYearCatalogVersion(v=>v+1),
@@ -487,17 +503,17 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   }
   const tabBar=tabs.length>1&&page!=="staff"?<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>:null;
   const schoolName=access?.school?.name||schools.find(s=>s.id===chosen)?.name||"Mon établissement";
-  const selector=<div className="yd-school-select-wrap"><label className="yd-school-select"><Icon name="school" size={24}/>
+  const selector=<div className="yd-school-select-wrap"><label className="yd-school-select yd-school-picker" title={schoolName}>{!schoolBranding?.logo_url&&<Icon name="school" size={20}/>}
     {schoolBranding?.logo_url&&<img className="yd-school-logo" src={schoolBranding.logo_url} alt=""/>}
     {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>{
       setAccess(null);setShowWorkspace(false);setChosen(e.target.value);navigate("dashboard");
     }}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:<b>{schoolName}</b>}
     {schools.length>1&&<Icon name="chevron" size={18} className="chev"/>}</label>
-    {academicYears.length>0&&<label className="yd-school-select" title="Année scolaire de consultation">
+    {academicYears.length>0&&<label className="yd-school-select yd-year-picker" title="Année scolaire de consultation">
       <Icon name="calendar" size={18}/>
       <select aria-label="Année de travail de l'établissement" value={workingYearId}
         onChange={e=>setWorkingYearId(e.target.value)}>
-        {academicYears.map(y=><option key={y.id} value={y.id}>{y.name} · {({preparation:"en préparation",current:"en cours",closed:"clôturée"})[y.status] || (y.active?"à vérifier":"archivée")}</option>)}
+        {academicYears.map(y=><option key={y.id} value={y.id} title={y.name+" · "+(({preparation:"en préparation",current:"en cours",closed:"clôturée"})[y.status] || (y.active?"à vérifier":"archivée"))}>{y.name}</option>)}
       </select>
     </label>}
   </div>;
@@ -529,18 +545,29 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     mobileTeacher,teacherViewRequested,Boolean(user?.is_platform_admin));
   const teacherEligible=teacherPolicy.eligible;
   const showTeacherWorkspace=teacherPolicy.show;
-  if (showTeacherWorkspace) return <TeacherMobileWorkspace
+  if (showTeacherWorkspace) return <ContextReadOnly.Provider value={commercialReadOnly}><TeacherMobileWorkspace
     key={chosen} schoolId={chosen} schoolName={schoolName} user={user}
+    schoolBrand={schoolBranding?{name:schoolName,logo:schoolBranding.logo_url||"",banner:schoolBranding.banner_url||"",city:schoolBranding.city||""}:null}
     permissions={perms} preschoolEnabled={preschoolEnabled} years={academicYears} workingYearId={workingYearId}
     onYearChange={setWorkingYearId} schools={schools} onSchoolChange={setChosen}
     onExit={()=>setTeacherViewRequested(false)}
-    onLogout={onLogout} accountView={accountView} commercialBanner={readOnlyBanner}/>;
+    onLogout={onLogout} accountView={accountView} commercialBanner={readOnlyBanner}/></ContextReadOnly.Provider>;
   let content;
   if (page==="profile") content=<><PageHeader title="Mon profil professionnel" subtitle="Photo et informations synchronisées avec la fiche Personnel"/><div className="yd-real-body"><TeacherProfile schoolId={chosen}/></div></>;
   else if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}{chosen && access && <StaffProfessionalDossier own schoolId={chosen}/>}</div></>;
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p></Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
-  else if (page==="owner"&&isOwner) content=<OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/>;
+  else if(page==="subscription"&&canManageSubscription) content=<><PageHeader title="Abonnement YEM" subtitle="BWETEK Informatyk · Contrats, simulations et échéances"/><OwnerSubscription key={chosen+":"+workingYearId} schoolId={chosen} yearId={workingYearId}/></>;
+  else if(page==="connection"&&schoolCode&&canUsers) content=<><PageHeader title="Accès de l’établissement" subtitle="Code à communiquer uniquement aux collaborateurs autorisés"/><Card title="Code de connexion de l’établissement" icon="school" className="yd-school-code-compact">
+      <div className="yd-school-code-row"><label className="field">Code à communiquer au personnel
+        <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
+      </label>
+      <Button type="button" onClick={async()=>{
+        try {await navigator.clipboard.writeText(schoolCode);setMessage("Code établissement copié.");}
+        catch {setMessage("Sélectionnez le code puis copiez-le.");}
+      }}>Copier le code</Button></div>
+    </Card></>;
+  else if (page==="owner"&&isOwner) content=<OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate} workingYearId={workingYearId} headerYearAvailable={academicYears.length>0}/>;
   else if (page==="settings"&&availableSettings.length) content=<SchoolSettings sections={availableSettings}
     selection={settingsSelection} onSelect={setSettingsSelection} render={renderSetting} isOwner={isOwner}
     onReturn={settingsReturn ? ()=>navigate(settingsReturn.page,settingsReturn.tab,settingsReturn.params) : undefined}/>;
@@ -605,27 +632,25 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         attendanceCanFinalize:can("school.attendance.finalize"),
         onSettings:can("school.settings.write")&&can("school.settings.read")?()=>navigate("settings","attendance-policy"):undefined}:{})}/>}</div>
   </>;
-  else if (isOwner && !perms.includes("school.finance.read")) content=<><OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></>;
+  else if (isOwner && page==="dashboard") content=<><OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate} workingYearId={workingYearId} headerYearAvailable={academicYears.length>0}/><details className="yd-fold"><summary>Tous les modules disponibles</summary><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></details></>;
   else if (page==="dashboard" && access?.role==="enseignant") content=<TeacherHome
     schoolName={schoolName} onNavigate={navigate}
     canNotes={ownCourseAssessment||can("school.assessments.read")}
     canAttendance={can("school.attendance.assigned")||can("school.attendance.read")}
     canDiary={hasTab("diary","live")} canClasses={can("school.academic.read")}/>;
   else if (perms.includes("school.finance.read")) content=<>
-    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId} shortcuts={dashboardShortcuts} visibleSections={visibleSections} canEnroll={can("school.students.manage")}/>
+    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} headerYearAvailable={academicYears.length>0} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId} shortcuts={dashboardShortcuts} visibleSections={visibleSections} canEnroll={can("school.students.manage")}/>
     <MySchoolFunctions schoolId={chosen}/>
-    <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
+    <details className="yd-fold"><summary>Tous les modules disponibles</summary><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></details>
   </>;
   else content=<>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={roleLabel||"Membre"} badgeIcon="crown"/>
-    <MySchoolFunctions schoolId={chosen}/>
+    <div className="yd-staff-workspace"><div className="yd-staff-shortcuts"><ModuleGrid visibleSections={Object.fromEntries(Object.entries(visibleSections).filter(([id])=>id!=="dashboard"))} navigate={navigate}/></div><div className="yd-staff-functions"><MySchoolFunctions schoolId={chosen}/></div></div>
     {restricted&&<div className="yd-real-body"><p className="hint">Ce compte est limité aux cycles autorisés. Les modules non encore sécurisés par cycle sont temporairement indisponibles.</p></div>}
-    <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
   </>;
-  const schoolCode = access?.school?.id === chosen && access.school.login_code;
   const brand={name:chosen?schoolName:"",city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
     logo:schoolBranding?.logo_url||"",banner:schoolBranding?.banner_url||"",fixedHeader:true};
-  return <BrandContext.Provider value={brand}><Shell className="yd-operational-compact" nav={nav} active={page} onNavigate={navigate} notifications={inboxCount}
+  return <ContextReadOnly.Provider value={commercialReadOnly}><BrandContext.Provider value={brand}><Shell className="yd-operational-compact" nav={nav} active={page} onNavigate={navigate} notifications={inboxCount}
     headerBanner={<SchoolHeaderBanner brand={brand}/>}
     search={<SchoolHeaderSearch key={chosen} nav={nav} canSearchStudents={hasTab("students","live")} onNavigate={navigate}/>}
     onNotifications={can("school.parents.manage")?()=>navigate("notifications","inbox"):undefined} schoolSelector={selector}
@@ -636,17 +661,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
     {readOnlyBanner}
     {message&&<p role="status" className="pc-alert">{message}</p>}
-    {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school" className="yd-school-code-compact">
-      <div className="yd-school-code-row"><label className="field">Code à communiquer au personnel
-        <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
-      </label>
-      <Button type="button" onClick={async()=>{
-        try {await navigator.clipboard.writeText(schoolCode);setMessage("Code établissement copié.");}
-        catch {setMessage("Sélectionnez le code puis copiez-le.");}
-      }}>Copier le code</Button></div>
-    </Card>}
     {content}
-    {page==="dashboard"&&access&&chosen&&workingYearId&&((isOwner&&can("school.finance.read"))||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role))))&&<OwnerSubscription key={chosen} schoolId={chosen} yearId={workingYearId}/>}
+    {page==="dashboard"&&canManageSubscription&&<div className="yd-subscription-link"><Icon name="receipt"/><span><b>Abonnement YEM</b><small>BWETEK Informatyk · Contrat et simulation</small></span><Button icon="chevronright" onClick={()=>navigate("subscription")}>Gérer</Button></div>}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
-  </Shell></BrandContext.Provider>;
+  </Shell></BrandContext.Provider></ContextReadOnly.Provider>;
 }
