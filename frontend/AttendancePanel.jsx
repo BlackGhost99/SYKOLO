@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React, {useEffect, useState} from "react";
 import {ClassField} from "./SchoolSettings.jsx";
 import SchoolConductPanel from "./SchoolConductPanel.jsx";
@@ -106,6 +107,10 @@ export default function AttendancePanel({schoolId, onSettings, attendanceAssigne
       revision:e.mark?.revision||0,
     }])));
   }
+  function showMarkHistory(e){
+    return run(async()=>{const h=await request(base+"sessions/"+selectedSession+"/marks/"+e.enrollment+"/history");
+      setHistory({name:e.first_name+" "+e.last_name,items:h.history||[]});});
+  }
   function edit(enrollment,key,value) {
     setDrafts(prev=>({...prev,[enrollment]:{...prev[enrollment],[key]:value}}));
   }
@@ -174,7 +179,10 @@ export default function AttendancePanel({schoolId, onSettings, attendanceAssigne
         {roster.filter(e=>markFilter==="all" || e.mark?.group===markFilter).map(e=>{
           const d=drafts[e.enrollment]||{};
           const readOnly=!attendanceCanWrite||sessionData.closed_at||(attendanceAssignedOnly&&e.mark?.justified);
-          return <div key={e.enrollment} style={{padding:"0.6rem 0",borderBottom:"1px solid var(--border,#ddd)"}}>
+          return <ContextTarget key={e.enrollment} showTrigger style={{padding:"0.6rem 0",borderBottom:"1px solid var(--border,#ddd)"}}
+            actions={[
+              ...(!readOnly?statuses.map(status=>({id:"mark-"+status.code,label:"Préparer : "+status.label,write:true,disabled:busy,run:()=>edit(e.enrollment,"status",status.code)})):[]),
+              ...(e.mark?[{id:"history",label:"Voir l’historique",disabled:busy,run:()=>showMarkHistory(e)}]:[])]}>
             <strong>{e.last_name} {e.first_name}</strong> <small>({e.student_code})</small>
             {e.mark && <p>{e.mark.label}{e.mark.justified?" · Justifié":""}</p>}
             {!readOnly&&statuses.length>0&&<div className="two">
@@ -197,11 +205,8 @@ export default function AttendancePanel({schoolId, onSettings, attendanceAssigne
               </label>}
               </details>
             </div>}
-            {e.mark&&<button type="button" disabled={busy} onClick={()=>run(async()=>{
-              const h=await request(base+"sessions/"+selectedSession+"/marks/"+e.enrollment+"/history");
-              setHistory({name:e.first_name+" "+e.last_name,items:h.history||[]});
-            })}>Voir l'historique</button>}
-          </div>;
+            {e.mark&&<button type="button" disabled={busy} onClick={()=>showMarkHistory(e)}>Voir l'historique</button>}
+          </ContextTarget>;
         })}
         {attendanceCanWrite&&!sessionData.closed_at&&statuses.length>0&&<>
           {prepared.some(row=>row.mark) && <label className="field">Motif de la correction

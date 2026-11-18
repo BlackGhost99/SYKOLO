@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from "react";
+import officialLogo from "./assets/yem-brand.webp";
 import FinancialDocuments from "./FinancialDocuments.jsx";
 import {FamilyTeachingDiary} from "./TeachingDiary.jsx";
 import ParentDiscovery from "./ParentDiscovery.jsx";
@@ -100,6 +101,7 @@ function ChildCard({m, detailMode=false, showStats=false, gradeStats=false}) {
   const index=children.findIndex(c=>c.student===selected);
   const move=delta=>{if(children.length>1)setSelected(children[(index+delta+children.length)%children.length].student);};
   return <section className={"yfx-card yfx-child-card"+(showStats?" yfx-with-stats":"")+(gradeStats?" yfx-grade-card":"")}>
+    {(m.schoolBrand?.logo||m.schoolBrand?.banner)&&<div className="yfx-school-brand" aria-label="Identité de l’établissement">{m.schoolBrand.banner&&<img className="yfx-school-banner" src={m.schoolBrand.banner} alt="Bannière de l’établissement"/>}{m.schoolBrand.logo&&<img className="yfx-school-logo" src={m.schoolBrand.logo} alt="Logo de l’établissement"/>}</div>}
     <div className="yfx-child-main">
       <Face child={child}/>
       <div className="yfx-child-info"><h2>{child.first_name} {child.last_name}</h2>
@@ -137,7 +139,7 @@ function Head({m}) {
  return <header className="yfx-hero">
    <div className="yfx-shell">
     <nav className="yfx-topbar" aria-label="Navigation du compte parent">
-      <div className="yfx-brand"><Icon name="cap" size={36}/><span><strong>YEM Familles</strong><small>Espace Parents</small></span></div>
+      <div className="yfx-brand"><img className="yfx-brand-emblem" src={officialLogo} alt=""/><span><strong>YEM Familles</strong><small>Espace Parents</small></span></div>
       <div className="yfx-top-actions">
         <button type="button" aria-label="Voir les notifications" onClick={()=>navTo("notifications")}>
           <Icon name="bell" size={25}/>{alerts.length>0&&<span className="yfx-red-dot"/>}</button>
@@ -166,7 +168,7 @@ function Head({m}) {
 function ActionTiles({goSchool,navTo}) {
   return <div className="yfx-action-grid">
     {[["Scolarité","cap",()=>goSchool("attendance")],["Paiements","card",()=>navTo("payments")],
-      ["Notes","chart",()=>goSchool("grades")],["Emploi du temps","calendar",()=>goSchool("timetable")]].map(([label,ic,click])=>
+      ["Notes","chart",()=>goSchool("grades")],["Emploi du temps","calendar",()=>goSchool("timetable")],["Cahier de textes","book",()=>goSchool("diary")]].map(([label,ic,click])=>
       <button className="yfx-action" type="button" key={label} onClick={click}><Icon name={ic} size={32}/><strong>{label}</strong></button>)}
   </div>;
 }
@@ -424,6 +426,7 @@ function School({m}) {
   </div>
   {m.dataErrors[tab]&&<p role="alert" className="yfx-alert">{m.dataErrors[tab]}</p>}
   {tab==="grades"?<SchoolResult m={m}/>:tab==="attendance"?<SchoolLife m={m}/>:
+   tab==="diary"?<Section title="Cahier de textes et devoirs" icon="book"><FamilyTeachingDiary key={m.childBase+":"+m.year} api={m.api} childBase={m.childBase} year={m.year}/></Section>:
    tab==="liaison"?<LiaisonBook key={m.childBase+":"+m.year} api={m.api} childBase={m.childBase} year={m.year}/>:
    tab==="timetable"?<Section title="Emploi du temps de la classe" icon="calendar">
     {m.data.timetable?.entries?.length?m.data.timetable.entries.map(e=><div className="yfx-timetable-row" key={e.id}>
@@ -459,7 +462,7 @@ function Children({m}) {
 }
 export default function YemFamillesFidele({m}) {
  const {screen,child,navTo,goDiscovery,accountView,onSchoolWorkspace,onLogout,user,family,familyLoading,familyError,refreshChildren}=m;
- return <div className="yfx-app">
+ return <div className="yfx-app yfx-compact-workspace">
    <h2 className="yfx-sr-only">Espace parents</h2>
    <Head m={m}/>
    <main className="yfx-main">

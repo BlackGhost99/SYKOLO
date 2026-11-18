@@ -23,8 +23,8 @@ const weekDay=()=>((new Date().getDay()+6)%7);
 const displayClass=(classes,id)=>classes.find(c=>c.id===id)?.name||"Classe";
 
 export default function TeacherMobileWorkspace({
-  schoolId,schoolName,user,permissions=[],preschoolEnabled=false,workingYearId="",years=[],
-  schools=[],onSchoolChange,onYearChange,onLogout,onExit,accountView,
+  schoolId,schoolName,schoolBrand,user,permissions=[],preschoolEnabled=false,workingYearId="",years=[],
+  schools=[],onSchoolChange,onYearChange,onLogout,onExit,accountView,commercialBanner,
 }){
   const [tab,setTab]=useState("accueil");
   const [data,setData]=useState({courses:[],classes:[],subjects:[],periods:[],assignments:[],entries:[]});
@@ -35,7 +35,8 @@ export default function TeacherMobileWorkspace({
   const [todayCalls,setTodayCalls]=useState(null);
   const hasCurriculum=permissions.includes("school.curriculum.read")&&permissions.includes("school.academic.read");
   const hasAcademic=permissions.includes("school.academic.read");
-  const navigation=preschoolEnabled&&hasAcademic?[...tabs,{id:"preschool",label:"Suivi",icon:"file"}]:tabs;
+  const canDiary=permissions.includes("school.curriculum.read")||permissions.includes("school.diary.read");
+  const navigation=[...tabs,...(canDiary?[{id:"diary",label:"Cahier",icon:"file"}]:[]),...(preschoolEnabled&&hasAcademic?[{id:"preschool",label:"Suivi",icon:"file"}]:[])];
   const hasTimetable=permissions.includes("school.timetable.read");
   useEffect(()=>{setTab("accueil");},[schoolId]);
   useEffect(()=>{
@@ -100,6 +101,7 @@ export default function TeacherMobileWorkspace({
           {portrait?<img src={portrait+"?v="+photoRev} alt="Ma photo"/>:<Icon name="user" size={24}/>}
         </button>
       </div>
+      {(schoolBrand?.banner||schoolBrand?.logo)&&<div className="ym-prof-school-brand" aria-label="Identité de l’établissement">{schoolBrand.banner&&<img className="ym-prof-school-banner" src={schoolBrand.banner} alt="Bannière de l’établissement"/>}{schoolBrand.logo&&<img className="ym-prof-school-logo" src={schoolBrand.logo} alt="Logo de l’établissement"/>}</div>}
       <h2 className="ym-prof-hero-title">{title}</h2>
       <div className="ym-prof-school">
         <span><Icon name="school" size={15}/> </span>
@@ -116,6 +118,7 @@ export default function TeacherMobileWorkspace({
       </label>}
     </header>
     <main className="ym-prof-body" id="ym-prof-main">
+      {commercialBanner}
       {loading&&tab!=="profil"&&<p role="status" className="ym-hint">Chargement de vos cours et de vos affectations…</p>}
       {error&&tab!=="profil"&&<p role="alert" className="ym-alert">Certaines données sont indisponibles : {error}</p>}
       {tab==="accueil"&&<div className="ym-page">
@@ -136,7 +139,7 @@ export default function TeacherMobileWorkspace({
             {[
               ["classes","users","Mes classes"],["notes","file","Notes"],["moyennes","barchart","Moyennes"],
               ["appel","check","Appel"],["emploi","calendar","Emploi du temps"],
-              ...(hasCurriculum||permissions.includes("school.diary.read")?[["diary","file","Cahier de textes"]]:[]),
+              ...(canDiary?[["diary","file","Cahier de textes"]]:[]),
             ].map(([id,icon,label])=><button type="button" className="ym-shortcut" onClick={()=>open(id)} key={id}>
               <span><Icon name={icon} size={26}/></span><strong>{label}</strong>
             </button>)}
@@ -184,7 +187,7 @@ export default function TeacherMobileWorkspace({
         key={schoolId+":"+workingYearId+":"+tab} schoolId={schoolId}
         courses={data.courses} classes={data.classes} subjects={data.subjects}
         periods={data.periods} yearId={workingYearId} mode={tab}/>}
-      {tab==="diary"&&(hasCurriculum||permissions.includes("school.diary.read"))&&<div className="ym-page"><TeachingDiary key={schoolId+":"+workingYearId} schoolId={schoolId} yearId={workingYearId}/></div>}
+      {tab==="diary"&&(canDiary)&&<div className="ym-page"><TeachingDiary key={schoolId+":"+workingYearId} schoolId={schoolId} yearId={workingYearId} audience="teacher"/></div>}
       {!loading&&tab==="appel"&&<TeacherMobileAttendance
         key={schoolId+":"+workingYearId} schoolId={schoolId} classes={data.classes}
         assignments={data.assignments} workingYearId={workingYearId}/>}

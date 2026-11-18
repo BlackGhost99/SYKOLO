@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React, {useCallback, useEffect, useState} from "react";
 import {PageHeader, Card, Button} from "./yem-ui.jsx";
 
@@ -71,7 +72,9 @@ export default function SchoolNotificationCenter({schoolId, onUnread}) {
       <Card title="Demandes de rattachement à vérifier" icon="bell">
         <p className="hint">Chaque demande est une notification du système à l’établissement. La confirmation d’identité reste obligatoire.</p>
         {!data.requests.length&&<p>Aucune demande en attente.</p>}
-        {data.requests.map(item=><article className="yp-request" key={item.id}>
+        {data.requests.map(item=><ContextTarget as="article" className="yp-request" key={item.id} showTrigger
+          actions={[{id:"examine",label:"Examiner le rattachement",write:true,disabled:busy,run:()=>examine(item)},
+            {id:"reply",label:"Préparer un message au parent",write:true,disabled:busy,run:()=>answer(item)}]}>
           <strong>{item.first_name} {item.last_name}</strong>
           <p>Matricule déclaré : <strong>{item.student_code||"non renseigné"}</strong> · Responsable : {item.account_name||item.guardian_name}</p>
           <p>Compte YEM Parents : {item.username} · Téléphone : {item.contact_phone||"non renseigné"}</p>
@@ -111,12 +114,13 @@ export default function SchoolNotificationCenter({schoolId, onUnread}) {
               <Button disabled={busy} onClick={()=>setSelected(null)}>Annuler</Button>
             </div>
           </section>}
-        </article>)}
+        </ContextTarget>)}
       </Card>
       <Card title="Messages des familles et du système" icon="bell">
         <Button disabled={busy} onClick={()=>run(async()=>{setFeedback("Notifications actualisées.");})}>Actualiser</Button>
         {!data.messages.length&&<p>Aucun message reçu.</p>}
-        {data.messages.map(item=><article key={item.id} className="yp-request">
+        {data.messages.map(item=><ContextTarget as="article" key={item.id} className="yp-request" showTrigger
+          actions={[{id:"reply",label:"Préparer une réponse",write:true,disabled:busy,run:()=>answer(item)}]}>
           <strong>{item.origin==="parent"?"Message d'un parent":"Notification YEM"}</strong>
           <p>{item.parent_username} · {item.message}</p>
           <small>{new Date(item.at).toLocaleString("fr-GA")}{item.read?" · Lu":" · Non lu"}</small>
@@ -126,7 +130,7 @@ export default function SchoolNotificationCenter({schoolId, onUnread}) {
             })}>Marquer comme lu</Button>}
             <Button disabled={busy} onClick={()=>answer(item)}>Répondre</Button>
           </div>
-        </article>)}
+        </ContextTarget>)}
       </Card>
       <Card title="Contacter un parent" icon="users">
         <p className="hint">Vous pouvez écrire au titulaire d’une demande ou d’un dossier familial vérifié dans cet établissement.</p>

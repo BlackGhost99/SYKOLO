@@ -160,7 +160,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     </Card>
     <Card title="Fournisseurs et prestataires" icon="users"
       subtitle="Annuaire des fournisseurs de l’établissement, distinct du personnel.">
-      {suppliers.length>0&&<Table headers={["Fournisseur","Contact","Téléphone","État","Action"]}
+      {suppliers.length>0&&<Table rowKey={(_,i)=>suppliers[i].id} rowActions={(_,i)=>canManage?[{id:"edit",label:"Modifier le fournisseur",write:true,disabled:busy,run:()=>editSupplier(suppliers[i])}]:[]} headers={["Fournisseur","Contact","Téléphone","État","Action"]}
         rows={suppliers.map(s=>[s.name,s.contact||"—",s.phone||"—",
           <Status tone={s.active?"green":"gray"}>{s.active?"Actif":"Archivé"}</Status>,
           canManage?<Button className="small" disabled={busy} onClick={()=>editSupplier(s)}>Modifier</Button>:"—",
@@ -195,7 +195,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     </Card>
     <Card title="Demandes de dépenses" icon="idcard"
       subtitle="Achat, facture ou intervention justifiée : préparation, validation puis règlement.">
-      {expenses.length>0&&<Table headers={["Objet","Fournisseur","Montant","Déclaré payé","Solde","État","Dossier"]}
+      {expenses.length>0&&<Table rowKey={(_,i)=>expenses[i].id} rowActions={(_,i)=>[{id:"detail",label:"Consulter la dépense",run:()=>openExpense(expenses[i].id)}]} headers={["Objet","Fournisseur","Montant","Déclaré payé","Solde","État","Dossier"]}
         rows={expenses.map(e=>[
           e.label,e.supplier_name,fmt(e.amount,e.currency),fmt(e.paid,e.currency),
           fmt(e.balance,e.currency),

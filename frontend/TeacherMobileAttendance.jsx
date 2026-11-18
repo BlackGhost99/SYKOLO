@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React,{useEffect,useMemo,useState} from "react";
 import {Button,Card,Icon} from "./yem-ui.jsx";
 import {teacherRequest} from "./teacher-mobile-api.js";
@@ -186,7 +187,7 @@ export default function TeacherMobileAttendance({schoolId,classes,assignments,wo
           const state=drafts[item.enrollment]||readState(item);
           const locked=Boolean(session.closed_at||item.mark?.justified);
           const initials=(item.first_name?.[0]||"")+(item.last_name?.[0]||"");
-          return <div className="ym-call-row" key={item.enrollment}>
+          return <ContextTarget className="ym-call-row" key={item.enrollment} showTrigger actions={locked?[]:statuses.map(s=>({id:"mark-"+s.code,label:"Préparer : "+s.label,write:true,disabled:busy,run:()=>choose(item.enrollment,s.code)}))}>
             <span className="ym-pupil-avatar" aria-hidden="true">{initials.toUpperCase()}</span>
             <div className="ym-call-pupil"><strong>{item.last_name} {item.first_name}</strong>
               {item.mark?.justified&&<small>Justificatif validé</small>}</div>
@@ -205,7 +206,7 @@ export default function TeacherMobileAttendance({schoolId,classes,assignments,wo
                   <option key={s.code} value={s.code}>{s.label}</option>)}
               </select>
             </label>}
-          </div>;
+          </ContextTarget>;
         })}
       </div>
       {!session.closed_at&&<>

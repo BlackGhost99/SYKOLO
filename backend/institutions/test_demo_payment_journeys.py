@@ -279,6 +279,11 @@ class DualPilotAdmissionTests(TestCase):
         self.assertEqual(int(recorded_cash_total(
             school=self.school,day=date(2026,11,10),
             currency="XAF",user=self.cashier)),amount)
+        for currency in ("EUR", "USD"):
+            with self.subTest(currency=currency):
+                self.assertEqual(recorded_cash_total(
+                    school=self.school, day=date(2026,11,10),
+                    currency=currency, user=self.cashier), 0)
         self.login(parent)
         state=self.client.get("/api/v1/parents/applications").json()["applications"]
         row=next(x for x in state if x["id"]==str(link.pk))

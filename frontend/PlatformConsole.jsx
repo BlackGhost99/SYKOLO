@@ -1,6 +1,9 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 import PlatformSubscriptions from "./PlatformSubscriptions.jsx";
+import CommercialReminders from "./CommercialReminders.jsx";
+import CommercialDashboard from "./CommercialDashboard.jsx";
 import PlatformTariffPolicy from "./PlatformTariffPolicy.jsx";
 import AdminPasswordReset from "./AdminPasswordReset.jsx";
 import brand from "./assets/yem-brand.webp";
@@ -31,6 +34,7 @@ const menu = [
   ["users", "Utilisateurs & rôles", "users"],
   ["audit", "Sécurité & audit", "shield"],
   ["plans", "Abonnements", "card"],
+  ["commercial", "Finances BWETEK", "card"],
   ["settings", "Paramètres plateforme", "settings"],
 ];
 const eventLabels = {
@@ -142,15 +146,16 @@ function Directory({dashboard,filters,setFilters,onSchool,selected,onNew,compact
         <option value="all">Tous les statuts</option><option value="active">Actifs</option><option value="inactive">Suspendus</option>
       </select>
     </div>
-    <div className="ya-table-overflow" role="region" aria-label="Annuaire des établissements" tabIndex={0}><table className="ya-table"><thead><tr>
+    <div className="ya-table-overflow" role="region" aria-label="Annuaire des établissements" tabIndex={0}><table className="ya-table ya-school-directory-table"><thead><tr>
       <th><button onClick={()=>change("sort",filters.sort==="name"?"-name":"name")}>Établissement ↕</button></th>
       <th>Organisation</th><th>Utilisateurs</th><th>Statut</th><th>Actions</th>
-    </tr></thead><tbody>{rows.map(s=><tr key={s.id} className={s.id===selected?"ya-selected":""}>
-      <td><div className="ya-school-name"><span className="ya-school-icon"><Icon name="school" size={21}/></span><span><strong>{s.name}</strong><small>{s.students_count} élève(s)</small></span></div></td>
-      <td>{s.organization}</td><td><span className="ya-cell-count"><Icon name="users" size={17}/>{fmt(s.members_count)}</span></td>
-      <td><Status active={s.active}/></td>
-      <td><button className="ya-btn ya-btn-table" onClick={()=>onSchool(s.id)}>Gérer <Icon name="right" size={15}/></button></td>
-    </tr>)}</tbody></table></div>
+    </tr></thead><tbody>{rows.map(s=><ContextTarget as="tr" key={s.id} className={s.id===selected?"ya-selected":""}
+      actions={[{id:"school",label:"Gérer l’établissement",run:()=>onSchool(s.id)}]}>
+      <td data-label="Établissement"><div className="ya-school-name"><span className="ya-school-icon"><Icon name="school" size={21}/></span><span className="ya-school-ident"><strong title={s.name}>{s.name}</strong><small>{s.students_count} élève(s)</small><span className="ya-school-mobile-meta"><Status active={s.active}/><span className="ya-school-mobile-members" title={`${s.members_count} utilisateurs`}><Icon name="users" size={13}/>{fmt(s.members_count)}</span></span></span></div></td>
+      <td data-label="Organisation">{s.organization}</td><td data-label="Utilisateurs"><span className="ya-cell-count"><Icon name="users" size={17}/>{fmt(s.members_count)}</span></td>
+      <td data-label="Statut"><Status active={s.active}/></td>
+      <td data-label="Actions"><button className="ya-btn ya-btn-table" onClick={()=>onSchool(s.id)}>Gérer <Icon name="right" size={15}/></button><ContextTrigger/></td>
+    </ContextTarget>)}</tbody></table></div>
     {!rows.length&&<div className="ya-empty">Aucun établissement ne correspond aux filtres.</div>}
     <div className="ya-pagination">
       <span>{dashboard.filtered_total?((dashboard.page-1)*dashboard.per_page+1):0}–{Math.min(dashboard.filtered_total||0, (dashboard.page||1)*(dashboard.per_page||5))} sur {fmt(dashboard.filtered_total||0)} établissements</span>
@@ -232,6 +237,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const [detail,setDetail]=useState(null);
   const [detailLoading,setDetailLoading]=useState(false);
   const [detailTab,setDetailTab]=useState("info");
+  const [directoryDetailOpen,setDirectoryDetailOpen]=useState(false);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState(null);
   const [refreshKey,setRefreshKey]=useState(0);
@@ -269,7 +275,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const initialRoles=initialRoleCatalog?.path===initialRolePath ? initialRoleCatalog.roles||[] : [];
   const initialRole=initialRoles.find(role=>role.code===schoolForm.role)
     || initialRoles.find(role=>role.code===initialRoleCatalog?.default_role);
-  const goto=useCallback(page=>{setView(page);setMenuOpen(false);setProfileOpen(false);setNotice(null);window.scrollTo?.(0,0);},[]);
+  const goto=useCallback(page=>{setView(page);setDirectoryDetailOpen(false);setMenuOpen(false);setProfileOpen(false);setNotice(null);window.scrollTo?.(0,0);},[]);
   const update=(setter,name,val)=>setter(old=>({...old,[name]:val}));
   const reload=()=>{setRefreshKey(k=>k+1);setDetailKey(k=>k+1);};
   useEffect(()=>{
@@ -355,6 +361,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     } catch(e) {setNotice({type:"error",message:e.message});return null;}
     finally {setBusy(false);}
   }
+  function openDirectorySchool(id) {chooseSchool(id);setDirectoryDetailOpen(true);}
   function chooseSchool(id) {if(String(id)!==schoolId)setPerson(userBlank);setSchoolId(String(id));setDetailTab("info");setMemberPage(1);}
   function openModal(type, member=null) {
     if(type==="role"&&!member) member=(selectedDetail?.members||[]).find(x=>!x.is_platform_admin)||null;
@@ -453,7 +460,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     <div className="ya-return"><img src={brand} alt="Logo YEM"/><div><b>Espace scolaire — intervention auditée</b><small>{selectedName}</small></div><button onClick={()=>goto("schools")}>← Retour à la console super-admin</button></div>
     <SchoolDashboard user={user} initialSchoolId={schoolId} accountView={accountView} onLogout={onLogout}/>
   </div>;
-  return <div className="ya-root">
+  return <div className="ya-root ya-compact-console">
     <aside className={"ya-sidebar"+(menuOpen?" ya-expanded":"")} aria-label="Navigation de super-administration">
       <div className="ya-brand"><img src={brand} alt="Logo officiel YEM"/><div><b>YEM</b><span>Console de super-administration<br/>de la plateforme</span></div></div>
       <button type="button" className="ya-mobile-toggle" aria-label="Menu de super-administration"
@@ -468,7 +475,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
       <header className="ya-top">
         <div className="ya-top-title"><p>PLATEFORME / SUPER-ADMIN</p><h1>{view==="overview"?"Console d'administration YEM":({
           organizations:"Organisations",schools:"Établissements",users:"Utilisateurs & rôles",
-          audit:"Sécurité & audit",plans:"Abonnements et limites",settings:"Paramètres de la plateforme",newSchool:"Nouvel établissement",profile:"Type et cycles de l’établissement",
+          audit:"Sécurité & audit",plans:"Abonnements et limites",commercial:"Finances BWETEK",settings:"Paramètres de la plateforme",newSchool:"Nouvel établissement",profile:"Type et cycles de l’établissement",
         }[view]||"Console d'administration YEM")}</h1><span>Administration globale de YEM — organisations, établissements, utilisateurs et droits.</span></div>
         <div className="ya-top-actions"><div className="ya-global-search"><Icon name="search" size={20}/><input ref={searchRef} type="search" aria-label="Recherche globale" placeholder="Rechercher un établissement…" value={filters.q} onChange={e=>setFilters(o=>({...o,q:e.target.value,page:1}))}/><kbd>Ctrl + K</kbd></div>
           <button className="ya-icon-button" title="Historique des opérations" aria-label="Historique des opérations" onClick={()=>goto("audit")}><Icon name="bell" size={23}/></button>
@@ -484,9 +491,9 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           <Metric icon="users" label="Utilisateurs actifs" value={dashboard.users_active} foot="Comptes des écoles actives" onClick={()=>goto("users")}/>
           <Metric icon="pause" label="Établissements suspendus" value={dashboard.schools_inactive} foot="À examiner" warning onClick={()=>{setFilters(o=>({...o,status:"inactive",page:1}));goto("schools");}}/>
         </div>
-        <div className="ya-work-grid">
-          <Directory dashboard={dashboard} filters={filters} setFilters={setFilters} onSchool={chooseSchool} selected={schoolId} onNew={()=>goto("newSchool")} compact/>
-          <Detail detail={selectedDetail} loading={detailLoading} tab={detailTab} setTab={setDetailTab} {...detailActions}/>
+        <div className={"ya-work-grid ya-directory-layout"+(directoryDetailOpen?" ya-school-detail-open":"")}>
+          <Directory dashboard={dashboard} filters={filters} setFilters={setFilters} onSchool={openDirectorySchool} selected={schoolId} onNew={()=>goto("newSchool")} compact/>
+          <div className="ya-school-detail-panel"><button type="button" className="ya-btn ya-btn-outline ya-back-directory" onClick={()=>setDirectoryDetailOpen(false)}><Icon name="left" size={17}/> Retour aux établissements</button><Detail detail={selectedDetail} loading={detailLoading} tab={detailTab} setTab={setDetailTab} {...detailActions}/></div>
         </div>
         <div className="ya-bottom-grid">
           <section className="ya-box ya-quick"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="activity" size={23}/></div><div><h2>Création rapide</h2><p>Actions courantes de super-administration.</p></div></div>
@@ -495,7 +502,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           <AuditFeed events={dashboard.recent_events||[]} onAll={()=>goto("audit")}/>
         </div>
       </>}
-      {view==="schools"&&<div className="ya-work-grid ya-directory-view"><Directory dashboard={dashboard} filters={filters} setFilters={setFilters} onSchool={chooseSchool} selected={schoolId} onNew={()=>goto("newSchool")}/><Detail detail={selectedDetail} loading={detailLoading} tab={detailTab} setTab={setDetailTab} {...detailActions}/></div>}
+      {view==="schools"&&<div className={"ya-work-grid ya-directory-layout ya-directory-view"+(directoryDetailOpen?" ya-school-detail-open":"")}><Directory dashboard={dashboard} filters={filters} setFilters={setFilters} onSchool={openDirectorySchool} selected={schoolId} onNew={()=>goto("newSchool")}/><div className="ya-school-detail-panel"><button type="button" className="ya-btn ya-btn-outline ya-back-directory" onClick={()=>setDirectoryDetailOpen(false)}><Icon name="left" size={17}/> Retour aux établissements</button><Detail detail={selectedDetail} loading={detailLoading} tab={detailTab} setTab={setDetailTab} {...detailActions}/></div></div>}
       {view==="organizations"&&<div className="ya-two-panels">
         <section className="ya-box"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="layers"/></div><div><h2>Organisations enregistrées</h2><p>Structures propriétaires et nombre d'établissements.</p></div></div>
           <div className="ya-org-list">{organizations.map(o=><button key={o.id} onClick={()=>{setFilters(x=>({...x,organization:o.id,page:1}));goto("schools");}}><span><Icon name="layers"/></span><b>{o.name}</b><small>{fmt(o.schools_count)} établissement(s)</small><Icon name="right" size={17}/></button>)}</div>
@@ -586,6 +593,8 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           </form>
         </section>
       </div>}
+      {view==="commercial"&&<CommercialDashboard api={api} onSelectSchool={id=>{chooseSchool(id);goto("plans");}}/>}
+      {view==="plans"&&<CommercialReminders platform onSelectSchool={chooseSchool}/>}
       {view==="plans"&&<PlatformTariffPolicy api={api} onSaved={()=>setTariffRevision(v=>v+1)}/>}
       {view==="plans"&&selectedDetail&&<PlatformSubscriptions key={schoolId} schoolId={schoolId} api={api} tariffRevision={tariffRevision}/>}
       {view==="settings"&&<section className="ya-settings-wrap"><div className="ya-box ya-settings-note"><h2>Paramètres et sécurité de la plateforme</h2><p>Les paramètres pédagogiques appartiennent aux établissements. Les paramètres de sécurité ci-dessous concernent uniquement votre compte de super-administration.</p></div>{accountView}</section>}

@@ -88,6 +88,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "config.middleware.SchoolSessionMiddleware",
+    "config.middleware.CommercialWorkspaceBoundaryMiddleware",
     "config.middleware.SchoolCycleBoundaryMiddleware",
     "config.middleware.ClosedYearWriteErrorMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",

@@ -1,7 +1,7 @@
 from django.urls import path
 from conduct import views as conduct_views
-from . import import_views, subscription_views, teaching_diary_views, diary_resource_views
-from . import singpay_views
+from . import import_views, subscription_views, teaching_diary_views, diary_resource_views, course_progress_views, remediation_views
+from . import singpay_views, subscription_reminders, subscription_access, subscription_dashboard
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
 from . import annual_views
@@ -42,9 +42,22 @@ urlpatterns = [
     path("schools/<uuid:school_id>/delegations", delegation_views.delegations),
     path("schools/<uuid:school_id>/delegations/<uuid:delegation_id>", delegation_views.delegations),
     path("platform/dashboard", platform_admin_views.platform_dashboard),
+    path("platform/subscription-reminders", subscription_reminders.commercial_reminders),
+    path("platform/commercial-dashboard", subscription_dashboard.financial_dashboard),
+    path("platform/schools/<uuid:school_id>/commercial-access", subscription_access.commercial_access),
+    path("schools/<uuid:school_id>/owner/commercial-access", subscription_access.commercial_access, {"school_scope": True}),
+    path("schools/<uuid:school_id>/owner/subscription-reminders", subscription_reminders.commercial_reminders),
     path("platform/subscription-pricing", subscription_views.pricing_policy),
+    path("platform/schools/<uuid:school_id>/subscription-simulation", subscription_views.subscription_simulation),
+    path("schools/<uuid:school_id>/owner/subscription-simulation", subscription_views.subscription_simulation, {"school_scope": True}),
     path("platform/schools/<uuid:school_id>/subscriptions", subscription_views.subscriptions),
     path("schools/<uuid:school_id>/owner/subscriptions", subscription_views.owner_subscriptions),
+    path("platform/schools/<uuid:school_id>/subscriptions/<int:subscription_id>/invoice", subscription_views.commercial_document),
+    path("platform/schools/<uuid:school_id>/subscriptions/<int:subscription_id>/payments/<int:payment_id>/receipt", subscription_views.commercial_document),
+    path("schools/<uuid:school_id>/owner/subscriptions/<int:subscription_id>/invoice", subscription_views.commercial_document, {"school_scope": True}),
+    path("platform/schools/<uuid:school_id>/subscriptions/<int:subscription_id>/amendments/<int:amendment_id>/document", subscription_views.commercial_document),
+    path("schools/<uuid:school_id>/owner/subscriptions/<int:subscription_id>/amendments/<int:amendment_id>/document", subscription_views.commercial_document, {"school_scope": True}),
+    path("schools/<uuid:school_id>/owner/subscriptions/<int:subscription_id>/payments/<int:payment_id>/receipt", subscription_views.commercial_document, {"school_scope": True}),
     path("platform/organizations", platform_admin_views.platform_organizations),
     path("platform/audit", platform_admin_views.platform_audit),
     path("platform/schools", platform_views.platform_schools),
@@ -202,6 +215,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/courses", curriculum_views.courses),
     path("schools/<uuid:school_id>/diary/courses", teaching_diary_views.catalog),
     path("schools/<uuid:school_id>/diary/courses/<uuid:course_id>", teaching_diary_views.diary),
+    path("schools/<uuid:school_id>/diary/courses/<uuid:course_id>/progress", course_progress_views.progress),
+    path("schools/<uuid:school_id>/diary/courses/<uuid:course_id>/remediation", remediation_views.remediation),
     path("schools/<uuid:school_id>/diary/entries/<uuid:entry_id>/resources", diary_resource_views.resources),
     path("schools/<uuid:school_id>/diary/entries/<uuid:entry_id>/resources/<uuid:resource_id>", diary_resource_views.resource_detail),
     path("schools/<uuid:school_id>/curriculum/my-courses", curriculum_views.my_courses),

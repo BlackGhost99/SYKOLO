@@ -14,6 +14,7 @@ from .cycle_scope import scoped_cycle_ids
 from .models import School
 from .parent_views import child_scope
 from .services import has_permission
+from .school_functions import SECONDARY
 from .student_models import Enrollment
 from .teaching_diary_models import TeachingDiaryEntry
 from .diary_resource_models import DiaryResource
@@ -120,7 +121,8 @@ def catalog(request, school_id):
             return error("Année invalide.")
     return JsonResponse({"courses": [
         {"id": str(c.pk), "subject": c.subject.name, "classroom": c.classroom.name,
-         "year": str(c.year_id), "year_name": c.year.name, "writable": writable(c)}
+         "classroom_id": str(c.classroom_id), "subject_id": str(c.subject_id),
+         "year": str(c.year_id), "year_name": c.year.name, "writable": writable(c), "secondary": c.classroom.level.cycle.code in SECONDARY}
         for c in rows.order_by("-year__start_date", "classroom__name", "subject__name", "pk")[:1000]]})
 
 
