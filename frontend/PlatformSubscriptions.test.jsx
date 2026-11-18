@@ -20,7 +20,10 @@ test("monthly commercial quote is selected and issued with exact total",async()=
   render(<PlatformSubscriptions schoolId="school-a" api={api}/>);
   await user.selectOptions(await screen.findByLabelText("Modalité de règlement"),"mensuel");
   await user.type(screen.getByLabelText(/Motif \/ référence du contrat/),"Contrat mensuel");
-  await user.click(screen.getByRole("button",{name:"Enregistrer l’abonnement annuel"}));
+  const activate=screen.getByRole("button",{name:"Activer la facturation"});
+  expect(activate.disabled).toBe(true);
+  await user.click(screen.getByRole("switch",{name:/Autoriser le passage au service payant/}));
+  await user.click(activate);
   await waitFor(()=>expect(api).toHaveBeenCalledWith("platform/schools/school-a/subscriptions",expect.objectContaining({action:"issue",period:"mensuel",expected_total_xaf:150000,expected_counts:{primaire:100}})));
   expect(await screen.findByText("Contrat annuel enregistré")).toBeTruthy();
 });

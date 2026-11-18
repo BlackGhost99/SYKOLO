@@ -73,9 +73,8 @@ def commercial_status(school, today):
         lifecycle = "expired"
     else:
         lifecycle = "unconfigured"
-    if trial and trial["status"] == "expired":
-        end = date.fromisoformat(trial["ends_before"])
-        last_expiry = max(last_expiry or end, end)
+    # The trial ending is not an authorization to start charging or sanctioning.
+    # Only an issued paid contract can start the commercial grace countdown.
     grace_deadlines = []
     if first_overdue:
         grace_deadlines.append(first_overdue + timedelta(days=GRACE_DAYS))
@@ -83,7 +82,7 @@ def commercial_status(school, today):
         grace_deadlines.append(last_expiry + timedelta(days=GRACE_DAYS))
     eligible_on = min(grace_deadlines) if grace_deadlines else None
     decision = last_decision(school)
-    return {"lifecycle": lifecycle, "service_ends_before": next_end.isoformat() if next_end else None,
+    return {"lifecycle": lifecycle, "billing_started": bool(contracts), "service_ends_before": next_end.isoformat() if next_end else None,
             "overdue_xaf": overdue, "late_30_xaf": late_30,
             "restricted": bool(decision and decision.restricted),
             "revision": decision.revision if decision else 0,

@@ -32,12 +32,11 @@ export default function OwnerSubscription({schoolId,yearId}){
   const sub=yearId?state.records.find(r=>r.year_id===yearId):state.records.find(r=>r.year_id===selectedYear)||state.records[0];
   return <Card title="Abonnement YEM — BWETEK Informatyk" icon="receipt">
     <p className="hint">Abonnement de l’établissement, distinct des frais de scolarité des familles. Pour régler le solde, contactez BWETEK Informatyk ; aucun paiement en ligne commercial n’est activé.</p>
-    <div className="yd-dashboard-views yd-subscription-views" role="group" aria-label="Rubriques de l’abonnement">{[["summary","Situation"],["simulation","Simuler"],["contract","Contrat et documents"],["reminders","Échéances et relances"]].map(([id,label])=><button type="button" key={id} aria-pressed={view===id} onClick={()=>setView(id)}>{label}</button>)}</div>
-    <div hidden={view!=="simulation"}><CommercialSimulator schoolId={schoolId} yearId={yearId}/></div>
-    <div hidden={view!=="summary"}><CommercialAccess key={"commercial:"+schoolId} schoolId={schoolId}/><TrialStatus trial={state.trial}/></div>
+    <div className="yd-dashboard-views yd-subscription-views" role="group" aria-label="Rubriques de l’abonnement">{[["summary","Situation"],["contract","Contrat et documents"],["reminders","Échéances et relances"]].map(([id,label])=><button type="button" key={id} aria-pressed={view===id} onClick={()=>setView(id)}>{label}</button>)}</div>
+    {view==="summary"&&<><CommercialSimulator schoolId={schoolId} yearId={yearId||sub?.year_id||undefined}/><CommercialAccess key={"commercial:"+schoolId} schoolId={schoolId}/><TrialStatus trial={state.trial}/></>}
     <div hidden={view!=="reminders"}><CommercialReminders key={schoolId} schoolId={schoolId}/></div>
     {!yearId&&state.records.length>1&&<label className="field">Année du contrat<select value={sub?.year_id||""} onChange={e=>setSelectedYear(e.target.value)}>{state.records.map(r=><option key={r.id} value={r.year_id}>{r.year}</option>)}</select></label>}
-    {state.loading?<p role="status">Chargement…</p>:state.error?<p role="alert">{state.error}</p>:!sub?<p>Aucun contrat émis pour cette année scolaire.</p>:<>
+    {state.loading?<p role="status">Chargement…</p>:state.error?<p role="alert">{state.error}</p>:!sub?<p>Aucun contrat émis pour cette année scolaire : aucune somme exigible pour cette année.</p>:<>
       <div className="yd-subscription-totals" aria-label="Synthèse contractuelle"><div><small>Total contractuel · {sub.year}</small><strong>{money(sub.total_xaf)}</strong></div><div><small>Réglé</small><strong>{money(sub.paid_xaf)}</strong></div><div><small>Solde</small><strong>{money(sub.balance_xaf)}</strong></div></div>
       {view==="contract"&&<><SubscriptionDocuments documents={sub.documents}/>
       {!!sub.amendments?.length&&<><p>Contrat initial : {money(sub.original_total_xaf)}</p>{sub.amendments.map(a=><p key={a.id}>Avenant n° {a.revision} — {a.effective_on} — {money(a.amount_xaf)}</p>)}</>}
