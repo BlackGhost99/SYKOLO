@@ -29,19 +29,37 @@ def fail(message, status=422):
     return JsonResponse({"error": message}, status=status)
 
 
-def current_counts(school, year):
-    rows = Enrollment.objects.filter(school=school, year=year, active=True, student__active=True)
-    if rows.exclude(student__school=school, classroom__school=school, classroom__year=year,
-                    classroom__level__school=school, classroom__level__cycle__school=school).exists():
-        raise ValueError("Incohérence d'inscription : corrigez la structure avant facturation.")
-    counts = {code: 0 for code in (school.education_cycles or [])}
-    for row in rows.values("classroom__level__cycle__code").annotate(number=Count("student_id", distinct=True)):
-        code = row["classroom__level__cycle__code"]
-        if code not in counts:
-            raise ValueError("Inscriptions sur un cycle non ouvert : corrigez la classification avant facturation.")
-        counts[code] = row["number"]
-    return counts
+def current_counts_by_year(school_years):
+    """Shared batched counting rule for the school quote and commercial console."""
+    counts = {year.pk: {code: 0 for code in (school.education_cycles or [])}
+              for school, year in school_years}
+    errors = {}
+    if not counts:
+        return counts, errors
+    rows = Enrollment.objects.filter(year_id__in=counts, active=True, student__active=True)
+    inconsistent = rows.exclude(school_id=F("year__school_id"), student__school_id=F("school_id"),
+        classroom__school_id=F("school_id"), classroom__year_id=F("year_id"),
+        classroom__level__school_id=F("school_id"), classroom__level__cycle__school_id=F("school_id"))
+    for year_id in inconsistent.values_list("year_id", flat=True).distinct():
+        errors[year_id] = "Incohérence d'inscription : corrigez la structure avant facturation."
+    for row in rows.values("year_id", "classroom__level__cycle__code").annotate(number=Count("student_id", distinct=True)):
+        year_id, code = row["year_id"], row["classroom__level__cycle__code"]
+        if year_id in errors:
+            continue
+        if code not in counts[year_id]:
+            errors[year_id] = "Inscriptions sur un cycle non ouvert : corrigez la classification avant facturation."
+        else:
+            counts[year_id][code] = row["number"]
+    return counts, errors
 
+
+def current_counts(school, year):
+    if year.school_id != school.pk:
+        raise ValueError("Année scolaire étrangère à l'établissement.")
+    counts, errors = current_counts_by_year([(school, year)])
+    if year.pk in errors:
+        raise ValueError(errors[year.pk])
+    return counts[year.pk]
 
 def policy_snapshot(lock=False):
     query = PlatformSubscriptionPolicy.objects
@@ -101,10 +119,13 @@ def quote_for(school, year, policy, counts):
     first_due = max(year.start_date, timezone.localdate())
     terms = calculate_terms(counts, rates, minimums, first_due=first_due, revision=policy["revision"])
     prior = PlatformSubscription.objects.filter(year__school=school).exists()
+    issue_blocker = ("Établissement inactif : réactivez-le dans le répertoire." if not school.is_active else
+        "Année scolaire clôturée ou inactive : choisissez une année ouverte." if not year.active or year.status == "closed" else
+        "Fin de l’année scolaire dépassée : choisissez une année ouverte." if timezone.localdate() > year.end_date else "")
     return {"counts": counts, "rates": rates, "minimums": minimums, "policy_revision": policy["revision"],
             "labels": {k: CYCLE_LABELS[k] for k in counts}, "terms": terms,
             "first_due": first_due.isoformat(), "setup_suggested_xaf": 0 if prior else setup_fee(sum(counts.values())),
-            "can_issue": school.is_active and year.active and year.status != "closed" and timezone.localdate() <= year.end_date}
+            "can_issue": not issue_blocker, "issue_blocker": issue_blocker}
 
 
 def representation(row):
@@ -348,7 +369,7 @@ def commercial_document(request, school_id, subscription_id, payment_id=None, am
 @require_http_methods(["GET"])
 @authorized
 def subscription_simulation(request, school_id, *, school_scope=False):
-    """Read-only estimate from the current tariff; never issues or reprices a contract."""
+    """Current enrollment-based estimate; never creates or reprices a contract."""
     from uuid import UUID
     from .school_profiles import SCHOOL_PROFILES
     if school_scope:
@@ -361,6 +382,8 @@ def subscription_simulation(request, school_id, *, school_scope=False):
         school = School.objects.filter(pk=school_id).first()
         if school is None:
             return fail("Établissement introuvable.", 404)
+    if set(request.GET) - {"year_id"}:
+        return fail("Les effectifs sont calculés à partir des inscriptions réelles.")
     years = list(AcademicYear.objects.filter(school=school).order_by("-start_date"))
     selected = request.GET.get("year_id")
     if selected:
@@ -377,26 +400,26 @@ def subscription_simulation(request, school_id, *, school_scope=False):
               "years": [{"id": str(y.pk), "name": y.name} for y in years],
               "year_id": str(year.pk) if year else None, "simulation": None, "contracted": False}
     if year is not None:
-        result["contracted"] = PlatformSubscription.objects.filter(year=year).exists()
+        contract = PlatformSubscription.objects.filter(year=year).first()
+        result["contracted"] = contract is not None
+        result["billing_started"] = contract is not None
+        result["billing_activated_on"] = timezone.localtime(contract.issued_at).date().isoformat() if contract else None
+        result["first_contract_due"] = next((s["due_date"] for s in (contract.commercial_terms or {}).get("schedule", []) if s.get("kind") == "abonnement"), None) if contract else None
         try:
             counts = current_counts(school, year)
-            actual_counts = counts.copy()
-            for key in request.GET:
-                if key.startswith("effectif_"):
-                    cycle = key.removeprefix("effectif_")
-                    value = request.GET[key]
-                    if cycle not in actual_counts or not value.isascii() or not value.isdecimal() or len(value) > 7:
-                        return fail("Effectif ou cycle invalide.")
-                    counts[cycle] = int(value)
-            result["actual_counts"] = actual_counts
+            result["actual_counts"] = counts
             policy = policy_snapshot()
             quote = quote_for(school, year, policy, counts)
+            options = {}
+            for period in PERIODS:
+                terms = calculate_terms(counts, quote["rates"], quote["minimums"], period=period,
+                    first_due=max(year.start_date, timezone.localdate()), revision=policy["revision"])
+                # Prices are live estimates only. Dates belong exclusively to the signed ledger.
+                terms["schedule"] = [{k: value for k, value in s.items() if k != "due_date"} for s in terms["schedule"]]
+                options[period] = terms
             result["simulation"] = {"policy_revision": policy["revision"],
                 "lines": quote_lines(counts, quote["rates"]),
-                "setup_suggested_xaf": quote["setup_suggested_xaf"],
-                "options": {period: calculate_terms(counts, quote["rates"], quote["minimums"],
-                    period=period, first_due=max(year.start_date, timezone.localdate()), revision=policy["revision"])
-                    for period in PERIODS}}
+                "setup_suggested_xaf": quote["setup_suggested_xaf"], "options": options}
         except (ValueError, KeyError) as exc:
             result["error"] = str(exc) if isinstance(exc, ValueError) else "Grille commerciale incomplète : contactez BWETEK."
     return JsonResponse(result)

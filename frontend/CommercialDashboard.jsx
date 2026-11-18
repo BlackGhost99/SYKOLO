@@ -1,7 +1,8 @@
 import {ContextTarget} from "./ContextMenu.jsx";
 import React,{useEffect,useState} from "react";
+import "./commercial-estimate.css";
 const money=n=>new Intl.NumberFormat("fr-GA").format(n)+" FCFA";
-const statuses=[["all","Tous"],["overdue","Impayés"],["read_only","Lecture seule"],["trial","Essais actifs"],["no_contract","Sans contrat"],["review","À contrôler"]];
+const statuses=[["all","Tous"],["overdue","Impayés"],["read_only","Lecture seule"],["trial","Essais actifs"],["no_contract","Sans contrat"],["unactivated","Facturation inactive (année en cours)"],["review","À contrôler"]];
 const methods={especes:"Espèces",mobile_money:"Mobile Money déclaré",virement:"Virement déclaré",autre:"Autres"};
 export default function CommercialDashboard({api,onSelectSchool}){
   const [year,setYear]=useState(""),[status,setStatus]=useState("all"),[search,setSearch]=useState(""),[page,setPage]=useState(1),[reload,setReload]=useState(0);
@@ -26,7 +27,7 @@ export default function CommercialDashboard({api,onSelectSchool}){
   },[api,year,status,search,page,reload]);
   const d=state.data,t=d?.totals;
   const cards=t?[["Montant contractuel cumulé",t.contracted_xaf],["Règlements déclarés nets",t.paid_xaf],["Solde à recouvrer",t.balance_xaf],["Impayés échus",t.overdue_xaf],["Échéances du jour",t.due_today_xaf],["Échéances futures",t.future_xaf],["Solde sans échéancier fiable",t.unscheduled_xaf],["Suppléments d’avenants inclus",t.amendments_xaf]]:[];
-  return <section aria-label="Finances commerciales BWETEK">
+  return <section className="yem-commercial-panel" aria-label="Finances commerciales BWETEK">
     <div className="ya-box">
       <h2>Finances commerciales — BWETEK Informatyk</h2>
       <p className="hint">Registre commercial YEM uniquement. Ni frais scolaires, ni résultat comptable de BWETEK. Montants cumulés sur tous les contrats émis, établissements inactifs inclus. Règlements déclarés, hors écritures annulées.</p>
@@ -34,6 +35,7 @@ export default function CommercialDashboard({api,onSelectSchool}){
       {state.loading&&<p role="status">Chargement des finances…</p>}{state.error&&<p role="alert">{state.error}</p>}
       {d&&<>
         <p className="hint">Situation au {d.as_of} · Actualisation toutes les 30 secondes.</p>
+        {t.current_annual_estimate_xaf!==undefined&&<div className="yem-commercial-estimate"><h3>Potentiel actuel · hors facturation</h3><div className="yem-estimate-totals"><div><small>Élèves actifs · années en cours</small><strong>{new Intl.NumberFormat("fr-GA").format(t.current_students)}</strong></div><div><small>Coût annuel estimé</small><strong>{money(t.current_annual_estimate_xaf)}</strong></div><div><small>Non activé · estimation annuelle</small><strong>{money(t.current_unactivated_estimate_xaf)}</strong></div></div><small>{t.current_estimate_schools} établissement(s) calculé(s) · {t.current_estimate_unavailable} sans estimation disponible. Ces montants ne sont pas des créances.</small></div>}
         <div className="ya-stats">{cards.map(([label,value])=><div className="ya-box" key={label}><p>{label}</p><h3>{money(value)}</h3></div>)}</div>
         <p>Établissements : {t.schools} · Sous contrat : {t.contracted_schools} · Abonnés actifs : {t.active_schools} · Essais actifs : {t.active_trials} · En impayé : {t.overdue_schools} · Lecture seule : {t.read_only_schools}</p>
         {!!(t.review_count||t.overpaid_xaf)&&<p role="note">{t.review_count} contrat(s) à contrôler · Trop-perçu : {money(t.overpaid_xaf)}. Les échéances historiques incohérentes ne sont pas estimées.</p>}
@@ -45,7 +47,7 @@ export default function CommercialDashboard({api,onSelectSchool}){
         {Array.from({length:Number(d.as_of.slice(0,4))-1999},(_,i)=>Number(d.as_of.slice(0,4))-i).map(y=><option key={y}>{y}</option>)}
       </select></label>
       <p><strong>{money(d.year_received_xaf)}</strong> déclarés et non annulés en {d.year} · {money(d.year_voided_xaf)} d’écritures annulées (mois d’enregistrement initial).</p>
-      <table><thead><tr><th>Mois</th><th>Règlements nets</th><th>Écritures annulées</th></tr></thead><tbody>{d.months.map(m=><tr key={m.month}><td>{m.month}</td><td>{money(m.received_xaf)}</td><td>{money(m.voided_xaf)}</td></tr>)}</tbody></table>
+      <div className="yem-commercial-months" aria-label="Règlements mensuels">{d.months.map(m=><div className="yem-commercial-month" key={m.month}><strong>{m.month}</strong><div><small>Règlements nets</small><b>{money(m.received_xaf)}</b></div><div><small>Écritures annulées</small><b>{money(m.voided_xaf)}</b></div></div>)}</div>
       <h4>Moyens de règlement déclarés</h4>{Object.entries(d.methods).map(([key,v])=><p key={key}>{methods[key]||key} : {money(v)}</p>)}
     </div>}
     <div className="ya-box">
@@ -56,12 +58,13 @@ export default function CommercialDashboard({api,onSelectSchool}){
       {d&&<>
         <p>{d.count} établissement(s)</p>
         {!d.schools.length&&<p>Aucun établissement correspondant.</p>}
-        {d.schools.map(s=><ContextTarget className="ya-info-row" key={s.school_id} showTrigger actions={onSelectSchool?[{id:"contract",label:"Gérer l’abonnement",run:()=>onSelectSchool(s.school_id)}]:[]}>
+        {d.schools.map(s=><ContextTarget className="ya-info-row yem-commercial-row" key={s.school_id} showTrigger actions={onSelectSchool?[{id:"contract",label:"Gérer l’abonnement",run:()=>onSelectSchool(s.school_id)}]:[]}>
           <div><strong>{s.school}</strong>{!s.enabled?" · Inactif":""}{s.read_only?" · Lecture seule":""}{s.trial==="active"?" · Essai actif":""}
+            {s.current_year&&<p><strong>{s.current_billing_active?"Facturation activée":"Facturation inactive"}</strong> · {s.current_year}{s.current_students!==null&&s.current_students!==undefined?" · "+s.current_students+" élèves":""}{s.current_annual_estimate_xaf!==null&&s.current_annual_estimate_xaf!==undefined?" · Estimation : "+money(s.current_annual_estimate_xaf):" · Effectifs/grille à vérifier"}</p>}
             <p>Contrats : {s.contracts} · {money(s.contracted_xaf)} contractualisés · {money(s.paid_xaf)} réglés · {money(s.balance_xaf)} restants</p>
             <p>Impayés : {money(s.overdue_xaf)} · Retard ≥ 30 j : {money(s.late_30_xaf)}{s.review_count?" · Historique à contrôler":""}</p>
           </div>
-          <button className="ya-btn ya-btn-outline" type="button" onClick={()=>onSelectSchool(s.school_id)}>Gérer l’abonnement</button>
+          <button className="ya-btn ya-btn-outline" type="button" onClick={()=>onSelectSchool(s.school_id)}>{s.current_year&&!s.current_billing_active?"Configurer l’activation":"Gérer l’abonnement"}</button>
         </ContextTarget>)}
         {d.pages>1&&<p><button disabled={d.page===1} onClick={()=>setPage(d.page-1)}>Précédent</button> Page {d.page} / {d.pages} <button disabled={d.page===d.pages} onClick={()=>setPage(d.page+1)}>Suivant</button></p>}
       </>}

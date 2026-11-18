@@ -360,6 +360,12 @@ export function createOfflineDemoBackend(){
         cycle_scope_restricted:false};
     }
     const schoolRoute=path.slice(`schools/${id}/`.length);
+    if(schoolRoute==="branding"&&method==="GET"){
+      const image=svg=>"data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
+      return {school_id:id,name:school.name,city:"Libreville (démo)",revision:1,
+        logo_url:image('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect rx="14" width="100" height="100" fill="#f0f7ef"/><path d="M50 8 86 23v31c0 20-18 32-36 40C32 86 14 74 14 54V23Z" fill="#23663e"/><path d="m26 43 24-12 24 12-24 12Z" fill="white"/><text x="50" y="73" font-size="15" font-family="Arial" text-anchor="middle" fill="white">DÉMO</text></svg>'),
+        banner_url:image('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="240" viewBox="0 0 900 240"><rect width="900" height="240" fill="#1e5633"/><path d="M0 185 900 95V240H0Z" fill="#d8e8d1"/><text x="450" y="86" font-size="36" font-family="Arial" text-anchor="middle" fill="white">ÉTABLISSEMENT DE DÉMONSTRATION</text><text x="450" y="141" font-size="27" font-family="Arial" text-anchor="middle" fill="white">Année scolaire fictive · YEM</text></svg>')};
+    }
 
     const roomById=roomId=>data.classes.find(room=>room.school===id&&room.id===roomId);
     if(schoolRoute==="academic/annual-snapshot"){

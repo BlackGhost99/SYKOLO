@@ -18,7 +18,7 @@ export default function PlatformTariffPolicy({api,onSaved}){
       setPolicy(saved);setReason("");setMessage("Grille enregistrée. Les contrats existants restent inchangés.");onSaved?.();
     }catch(e){setMessage(e.message);}finally{pending.current=false;setBusy(false);}
   }
-  return <section className="ya-box ya-form-box"><h2>Grille tarifaire YEM</h2><p>Tarif annuel par élève et minimum unique selon le cycle le plus élevé. Les nouveaux devis utilisent cette grille.</p>
+  return <section className="ya-box ya-form-box yem-commercial-panel"><h2>Grille tarifaire YEM</h2><p>Tarif annuel par élève et minimum unique selon le cycle le plus élevé. Les nouveaux devis utilisent cette grille.</p>
     {policy&&<form onSubmit={save}>
       <p>Révision {policy.revision}</p>
       {groups.map(([key,label])=><div key={key}><h3>{label}</h3><div className="ya-form-grid">

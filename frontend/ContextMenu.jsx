@@ -72,16 +72,19 @@ export function ContextTrigger({className="",label="Ouvrir les actions contextue
     }}>⋯</button>;
 }
 // Opt-in only. Existing native controls and form submit behavior are preserved.
-export function ContextTarget({as:Tag="div",actions=[],showTrigger=false,children,onContextMenu,onKeyDown,...props}){
+export function ContextTarget({as:Tag="div",actions=[],showTrigger=false,children,onContextMenu,onKeyDown,onPointerDown,onPointerMove,onPointerUp,onPointerCancel,onClickCapture,...props}){
   const readOnly=useContext(ContextReadOnly);
   const list=availableContextActions(actions,readOnly);
   const enabled=list.some(a=>!a.disabled);
   const [point,setPoint]=useState(null);
   const anchor=useRef(null),root=useRef(null),invoked=useRef(false),currentActions=useRef(list);
+  const press=useRef(null);
+  const suppressClickUntil=useRef(0);
+  const cancelPress=React.useCallback(()=>{if(press.current)window.clearTimeout(press.current.timer);press.current=null;},[]);
   currentActions.current=list;
   const id=useId();
   const signature=list.map(a=>a.id+":"+Boolean(a.disabled)).join("|");
-  useLayoutEffect(()=>{setPoint(null)},[signature]);
+  useLayoutEffect(()=>{setPoint(null);cancelPress();return cancelPress;},[signature,cancelPress]);
   const close=React.useCallback((restore=false)=>{
     setPoint(null);
     if(restore&&anchor.current?.isConnected)anchor.current.focus({preventScroll:true});
@@ -104,12 +107,24 @@ export function ContextTarget({as:Tag="div",actions=[],showTrigger=false,childre
     close(true);
     if(action&&root.current?.isConnected)action.run();
   }
+  function startPress(e){
+    onPointerDown?.(e);
+    if(e.defaultPrevented||!enabled||e.pointerType!=="touch"||e.isPrimary===false||nativeTarget(e)||e.target.closest("button,[role=button]")||e.target.closest("[data-context-target]")!==e.currentTarget)return;
+    cancelPress();
+    suppressClickUntil.current=0;
+    const element=e.currentTarget,x=e.clientX,y=e.clientY,id=e.pointerId;
+    press.current={x,y,id,timer:window.setTimeout(()=>{if(!press.current||!element.isConnected)return;press.current=null;suppressClickUntil.current=Date.now()+1500;show({x,y},element);},550)};
+  }
+  function movePress(e){onPointerMove?.(e);const p=press.current;if(p&&p.id===e.pointerId&&Math.hypot(e.clientX-p.x,e.clientY-p.y)>10)cancelPress()}
+  function endPress(e){onPointerUp?.(e);if(press.current?.id===e.pointerId)cancelPress()}
+  function abortPress(e){onPointerCancel?.(e);cancelPress()}
+  function captureClick(e){if(Date.now()<suppressClickUntil.current){suppressClickUntil.current=0;e.preventDefault();e.stopPropagation();return;}onClickCapture?.(e)}
   function context(e){
     onContextMenu?.(e);
     if(e.defaultPrevented||!enabled||nativeTarget(e))return;
     e.preventDefault();e.stopPropagation();
     const r=e.currentTarget.getBoundingClientRect();
-    show({x:e.clientX||r.left,y:e.clientY||r.bottom},e.currentTarget);
+    cancelPress();show({x:e.clientX||r.left,y:e.clientY||r.bottom},e.currentTarget);
   }
   function keyboard(e){
     onKeyDown?.(e);
@@ -120,7 +135,7 @@ export function ContextTarget({as:Tag="div",actions=[],showTrigger=false,childre
     show({x:r.left,y:r.top},e.target);
   }
   return <RowMenu.Provider value={{enabled,open:!!point,show,id}}>
-    <Tag {...props} ref={root} tabIndex={enabled?(props.tabIndex??0):props.tabIndex} onContextMenu={context} onKeyDown={keyboard}>
+    <Tag {...props} ref={root} data-context-target="" tabIndex={enabled?(props.tabIndex??0):props.tabIndex} onContextMenu={context} onKeyDown={keyboard} onPointerDown={startPress} onPointerMove={movePress} onPointerUp={endPress} onPointerCancel={abortPress} onClickCapture={captureClick}>
       {children}{showTrigger&&<ContextTrigger/>}
     </Tag>
     {point&&enabled&&<Menu id={id} portalTarget={root.current?.closest("dialog[open]")} point={point} actions={list} close={close} invoke={invoke}/>}

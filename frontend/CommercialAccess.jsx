@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from "react";
-const labels={active:"Abonnement actif",trial_active:"Essai actif",scheduled:"Abonnement à venir",expired:"Abonnement ou essai expiré",review:"Contrat historique à vérifier",unconfigured:"Aucun abonnement configuré"};
+const labels={active:"Abonnement actif",trial_active:"Essai actif",scheduled:"Abonnement à venir",expired:"Abonnement ou essai expiré",review:"Contrat historique à vérifier",unconfigured:"Service gratuit"};
 const money=value=>new Intl.NumberFormat("fr-GA").format(value)+" FCFA";
 export default function CommercialAccess({schoolId,api=null}){
   const [state,setState]=useState(null),[reason,setReason]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
@@ -35,10 +35,10 @@ export default function CommercialAccess({schoolId,api=null}){
     catch(e){setError(e.message);}
     finally{pending.current=false;setBusy(false);}
   }
-  return <section className={api?"ya-box":"card"} aria-label="État commercial et accès">
+  return <section className={api?"ya-box yem-commercial-panel":"card"} aria-label="État commercial et accès">
     <h3>État commercial YEM</h3>
     {state?<><p><strong>{labels[state.lifecycle]||state.lifecycle}</strong>{state.service_ends_before?" · Fin de service (exclue) : "+state.service_ends_before:""}</p>
-      <p>Échu : {money(state.overdue_xaf)} · Retard de 30 jours ou plus : {money(state.late_30_xaf)}</p>
+      {state.billing_started===false?<p>Facturation inactive : aucun décompte commercial avant activation par BWETEK.</p>:<p>Échu : {money(state.overdue_xaf)} · Retard de 30 jours ou plus : {money(state.late_30_xaf)}</p>}
       <p role="status">{state.restricted?"Établissement en lecture seule":"Accès établissement normal"}</p>
       {state.restriction_eligible_on&&<p>Fin de grâce : {state.restriction_eligible_on} · {state.grace_days_remaining} jour(s) restant(s)</p>}
       <p className="hint">Après 30 jours de grâce, le passage manuel en lecture seule bloque toutes les modifications scolaires. La consultation et la régularisation commerciale restent possibles. Aucun blocage automatique.</p>

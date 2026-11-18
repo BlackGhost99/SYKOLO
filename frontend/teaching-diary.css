@@ -1,1 +1,47 @@
-.yem-diary{display:grid;gap:1rem;min-width:0}.yem-diary-form,.yem-diary-list article{display:grid;gap:.55rem;border:1px solid #d7e3dc;border-radius:12px;padding:1rem;background:#fff;color:#263b32;min-width:0}.yem-diary-form .field{display:grid;gap:.35rem}.yem-diary-form input:not([type=checkbox]),.yem-diary-form textarea,.yem-diary select{box-sizing:border-box;max-width:100%;width:100%;font:inherit}.yem-diary-list{display:grid;gap:.8rem}.yem-diary-entry-head{display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start}.yem-diary-entry-head h3,.yem-diary-list p{margin:.35rem 0}.yem-diary-text{white-space:pre-wrap;overflow-wrap:anywhere}.yem-diary-homework{padding:.7rem;border-left:3px solid #1b664c;background:#eef7f1}.yem-diary-form .actions{display:flex;gap:.5rem;flex-wrap:wrap}.yem-diary-entry-head small{color:#536e60}
+/* Shared administration and teacher diary; scoped to the diary. */
+.yem-diary{--diary-green:#1b664c;--diary-ink:#203a2c;--diary-line:#dce6df;display:grid;gap:1rem;min-width:0;color:var(--diary-ink)}
+.diary-overview,.yem-diary-form,.diary-history,.yem-diary-list article{border:1px solid #dce6df;border-radius:12px;background:#fff;min-width:0}
+.diary-overview{padding:1rem 1.2rem;background:linear-gradient(120deg,#edf6ef,#fff 78%)}
+.diary-context-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
+.diary-eyebrow{font-size:.72rem;letter-spacing:.075em;font-weight:750;color:#39684c}
+.diary-context-head h2{font-size:1.3rem;line-height:1.4;margin:.25rem 0;color:var(--diary-ink)}
+.diary-context-head p,.diary-section-heading p{color:#5f7265;margin:.2rem 0;font-size:.85rem}
+.diary-summary{display:grid;grid-template-columns:auto auto;gap:.15rem .5rem;align-items:baseline;background:#fff;border:1px solid #dce6df;padding:.6rem .8rem;border-radius:9px;font-size:.8rem;color:#526b5c}
+.diary-summary strong{font-size:1.05rem;color:#1b664c;text-align:right}
+.diary-context-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.4fr);gap:.75rem}
+.yem-diary .field{display:grid;gap:.35rem;min-width:0;font-size:.82rem;font-weight:600;margin:0}
+.yem-diary input:not([type=checkbox]):not([type=file]),.yem-diary textarea,.yem-diary select{box-sizing:border-box;width:100%;max-width:100%;min-width:0;font:inherit;font-weight:400;min-height:39px;padding:.6rem .7rem;border:1px solid #cddbd0;border-radius:7px;background:#fff;color:#203a2c}
+.yem-diary input:focus,.yem-diary textarea:focus,.yem-diary select:focus{outline:2px solid #43865d;outline-offset:1px}
+.yem-diary textarea{resize:vertical;line-height:1.55}
+.diary-tabs{display:flex;flex-wrap:wrap;gap:.45rem;border-bottom:1px solid #dce6df;padding-bottom:.6rem}
+.diary-tabs button[aria-pressed=true]{background:#e4f1e6;color:#1b664c;border-color:#8cb49a;font-weight:700}
+.diary-workspace{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:1rem;align-items:start;min-width:0}
+.diary-workspace:has(>.diary-history:only-child){grid-template-columns:1fr}
+.yem-diary-form,.diary-history{display:grid;gap:.85rem;padding:1rem 1.15rem;min-width:0}
+.diary-section-heading h3{margin:.25rem 0;font-size:1.08rem;line-height:1.3;color:#203a2c}
+.diary-homework-form{display:grid;gap:.7rem;padding:.85rem 0;border-top:1px solid #dce6df;border-bottom:1px solid #dce6df}
+.diary-publication{display:grid;gap:.45rem;padding:.7rem .85rem;background:#f2f7f3;border-radius:8px}
+.diary-publication label{display:flex;align-items:flex-start;gap:.5rem;font-size:.85rem;font-weight:600}
+.diary-publication input{accent-color:#1b664c;flex:none;margin-top:.16rem}
+.diary-publication p{font-size:.77rem;color:#5f7265;margin:0;line-height:1.4}
+.diary-actions{display:flex;justify-content:flex-end;gap:.5rem;flex-wrap:wrap;padding-top:.3rem}
+.diary-history-filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.65rem}
+.diary-history-filters label:first-child{grid-column:1/-1}
+.yem-diary-list{display:grid;gap:.75rem;min-width:0}
+.yem-diary-list article{display:grid;gap:.55rem;padding:.9rem;color:#263b32;border-left:3px solid #77a087}
+.yem-diary-entry-head{display:flex;justify-content:space-between;gap:.65rem;align-items:flex-start}
+.yem-diary-entry-head>div{min-width:0;overflow-wrap:anywhere}
+.yem-diary-entry-head h3,.yem-diary-list p{margin:.35rem 0}
+.yem-diary-entry-head h3{font-size:1rem;line-height:1.35}
+.yem-diary-entry-head small{color:#536e60}
+.diary-status{white-space:nowrap;border-radius:5px;font-weight:650;font-size:.72rem;padding:.28rem .45rem;line-height:1.3}
+.diary-status.is-published{background:#e1f1e5;color:#245f3b}.diary-status.is-draft{background:#f4eee0;color:#77561e}
+.yem-diary-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.yem-diary-homework{padding:.7rem;border-left:3px solid #1b664c;background:#eef7f1}
+.yem-diary-resources{display:grid;gap:.45rem;border-top:1px solid #dce6df;padding-top:.6rem;overflow-wrap:anywhere}
+.yem-diary-resources form{display:grid;gap:.45rem}.yem-diary-resources input{max-width:100%}
+.diary-feedback{margin:0;border-left:3px solid #3a8456;padding:.65rem;background:#edf7ef}.diary-error{border-color:#b24a42;background:#fff2f0;color:#842b26}
+.diary-empty{padding:.7rem 0;margin:0;color:#536e60}
+.diary-teacher .diary-workspace{grid-template-columns:1fr}
+@media(max-width:1100px){.diary-workspace{grid-template-columns:1fr}}
+@media(max-width:600px){.diary-overview,.yem-diary-form,.diary-history{padding:.8rem}.diary-context-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}.diary-context-grid .field:first-child:has(input){grid-column:1/-1}.diary-context-head{gap:.6rem}.diary-context-head h2{font-size:1.1rem}.diary-summary{display:flex;gap:.35rem;align-items:baseline}.diary-tabs{display:grid;grid-template-columns:1fr}.diary-tabs button{white-space:normal;text-align:left}.diary-actions{justify-content:stretch}.diary-actions button{flex:1;white-space:normal;min-height:42px}.diary-history-filters{gap:.5rem}.diary-history-filters input,.diary-history-filters select{min-width:0}.yem-diary-entry-head{flex-wrap:wrap}.diary-context-grid .field,.diary-history-filters .field{min-width:0}}
