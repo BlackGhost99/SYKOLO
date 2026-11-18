@@ -684,7 +684,7 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(projection["actual_counts"][cycle], 2)
         self.assertEqual(projection["simulation"]["lines"][1]["students"], 185)
         self.assertGreater(projection["simulation"]["options"]["annuel"]["annual_xaf"], 100000)
-        self.assertEqual(self.client.get(url, {"effectif_" + cycle: "-1"}).status_code, 400)
+        self.assertEqual(self.client.get(url, {"effectif_" + cycle: "-1"}).status_code, 422)
         monthly=estimate["simulation"]["options"]["mensuel"]
         self.assertEqual(monthly["annual_xaf"],100000)
         self.assertEqual(sum(s["amount_xaf"] for s in monthly["schedule"]),100000)
