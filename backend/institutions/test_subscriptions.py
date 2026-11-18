@@ -678,6 +678,13 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(response.status_code,200,response.content)
         estimate=response.json()
         self.assertEqual(estimate["simulation"]["lines"][1]["students"],2)
+        cycle = estimate["simulation"]["lines"][1]["cycle"]
+        params = {"effectif_" + cycle: "185"}
+        projection = self.client.get(url, params).json()
+        self.assertEqual(projection["actual_counts"][cycle], 2)
+        self.assertEqual(projection["simulation"]["lines"][1]["students"], 185)
+        self.assertGreater(projection["simulation"]["options"]["annuel"]["annual_xaf"], 100000)
+        self.assertEqual(self.client.get(url, {"effectif_" + cycle: "-1"}).status_code, 400)
         monthly=estimate["simulation"]["options"]["mensuel"]
         self.assertEqual(monthly["annual_xaf"],100000)
         self.assertEqual(sum(s["amount_xaf"] for s in monthly["schedule"]),100000)
@@ -696,6 +703,7 @@ class PlatformSubscriptionTests(TestCase):
         role=SchoolRole.objects.create(school=self.school,code="direction",label="Direction",permissions=["school.view"])
         member=SchoolMember.objects.create(school=self.school,user=self.ordinary,role=role)
         self.client.force_login(self.ordinary)
+        self.assertEqual(self.client.get(school_url, params).json()["simulation"]["options"], projection["simulation"]["options"])
         shared=self.client.get(school_url)
         self.assertEqual(shared.status_code,200,shared.content)
         self.assertEqual(shared.json()["simulation"]["options"],estimate["simulation"]["options"])

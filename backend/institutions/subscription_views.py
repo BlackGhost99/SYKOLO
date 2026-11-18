@@ -380,6 +380,15 @@ def subscription_simulation(request, school_id, *, school_scope=False):
         result["contracted"] = PlatformSubscription.objects.filter(year=year).exists()
         try:
             counts = current_counts(school, year)
+            actual_counts = counts.copy()
+            for key in request.GET:
+                if key.startswith("effectif_"):
+                    cycle = key.removeprefix("effectif_")
+                    value = request.GET[key]
+                    if cycle not in actual_counts or not value.isascii() or not value.isdecimal() or len(value) > 7:
+                        return fail("Effectif ou cycle invalide.")
+                    counts[cycle] = int(value)
+            result["actual_counts"] = actual_counts
             policy = policy_snapshot()
             quote = quote_for(school, year, policy, counts)
             result["simulation"] = {"policy_revision": policy["revision"],
