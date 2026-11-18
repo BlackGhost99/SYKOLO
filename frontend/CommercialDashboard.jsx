@@ -34,6 +34,7 @@ export default function CommercialDashboard({api,onSelectSchool}){
       {state.loading&&<p role="status">Chargement des finances…</p>}{state.error&&<p role="alert">{state.error}</p>}
       {d&&<>
         <p className="hint">Situation au {d.as_of} · Actualisation toutes les 30 secondes.</p>
+        {t.current_annual_estimate_xaf!==undefined&&<div className="yem-commercial-estimate"><h3>Potentiel actuel · hors facturation</h3><div className="yem-estimate-totals"><div><small>Élèves actifs · années en cours</small><strong>{new Intl.NumberFormat("fr-GA").format(t.current_students)}</strong></div><div><small>Coût annuel estimé</small><strong>{money(t.current_annual_estimate_xaf)}</strong></div><div><small>Non activé · estimation annuelle</small><strong>{money(t.current_unactivated_estimate_xaf)}</strong></div></div><small>{t.current_estimate_schools} établissement(s) calculé(s) · {t.current_estimate_unavailable} sans estimation disponible. Ces montants ne sont pas des créances.</small></div>}
         <div className="ya-stats">{cards.map(([label,value])=><div className="ya-box" key={label}><p>{label}</p><h3>{money(value)}</h3></div>)}</div>
         <p>Établissements : {t.schools} · Sous contrat : {t.contracted_schools} · Abonnés actifs : {t.active_schools} · Essais actifs : {t.active_trials} · En impayé : {t.overdue_schools} · Lecture seule : {t.read_only_schools}</p>
         {!!(t.review_count||t.overpaid_xaf)&&<p role="note">{t.review_count} contrat(s) à contrôler · Trop-perçu : {money(t.overpaid_xaf)}. Les échéances historiques incohérentes ne sont pas estimées.</p>}
@@ -58,6 +59,7 @@ export default function CommercialDashboard({api,onSelectSchool}){
         {!d.schools.length&&<p>Aucun établissement correspondant.</p>}
         {d.schools.map(s=><ContextTarget className="ya-info-row" key={s.school_id} showTrigger actions={onSelectSchool?[{id:"contract",label:"Gérer l’abonnement",run:()=>onSelectSchool(s.school_id)}]:[]}>
           <div><strong>{s.school}</strong>{!s.enabled?" · Inactif":""}{s.read_only?" · Lecture seule":""}{s.trial==="active"?" · Essai actif":""}
+            {s.current_year&&<p><strong>{s.current_billing_active?"Facturation activée":"Facturation inactive"}</strong> · {s.current_year}{s.current_students!==null&&s.current_students!==undefined?" · "+s.current_students+" élèves":""}{s.current_annual_estimate_xaf!==null&&s.current_annual_estimate_xaf!==undefined?" · Estimation : "+money(s.current_annual_estimate_xaf):" · Effectifs/grille à vérifier"}</p>}
             <p>Contrats : {s.contracts} · {money(s.contracted_xaf)} contractualisés · {money(s.paid_xaf)} réglés · {money(s.balance_xaf)} restants</p>
             <p>Impayés : {money(s.overdue_xaf)} · Retard ≥ 30 j : {money(s.late_30_xaf)}{s.review_count?" · Historique à contrôler":""}</p>
           </div>
