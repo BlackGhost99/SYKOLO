@@ -210,3 +210,24 @@
  .yd-owner-quick-grid .yd-card {padding:8px;}
  .yd-owner-quick-grid .yd-card-title h2 {font-size:13px;}
 }
+
+.yd-list-pagination {display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding-top:10px;font-size:12px;color:var(--yd-muted);}
+.yd-list-pagination>span {margin-right:auto;}
+.yd-list-pagination label {display:flex;align-items:center;gap:4px;}
+.yd-list-pagination select {min-height:34px;}
+.yd-list-pagination .yd-btn {min-height:36px;padding:6px 10px;}
+@media screen and (max-width:760px){
+ .yd-operational-compact .students-grid {grid-template-columns:minmax(0,1fr);}
+ .yd-operational-compact .students-grid>.yd-card {min-width:0;}
+ .yd-operational-compact .yd-student-roster {display:block;min-width:0;width:100%;white-space:normal;}
+ .yd-operational-compact .yd-student-roster thead {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
+ .yd-operational-compact .yd-student-roster tbody {display:grid;gap:8px;}
+ .yd-operational-compact .yd-student-roster tr {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:8px;min-width:0;border:1px solid var(--yd-line);border-radius:8px;}
+ .yd-operational-compact .yd-student-roster td {display:block;min-width:0;white-space:normal;overflow-wrap:anywhere;padding:4px 6px;border:0;}
+ .yd-operational-compact .yd-student-roster td[data-label="#"] {display:none;}
+ .yd-operational-compact .yd-student-roster td[data-label="Élève"] {grid-column:1/-1;font-size:14px;}
+ .yd-operational-compact .yd-student-roster td:not([data-label="Élève"]):not([data-label="Actions"])::before {content:attr(data-label);display:block;color:var(--yd-muted);font-size:10px;line-height:1.2;margin-bottom:2px;}
+ .yd-operational-compact .yd-student-roster td[data-label="Actions"] {grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;gap:8px;}
+ .yd-operational-compact .yd-student-roster td[data-label="Actions"] button {min-height:44px;}
+ .yd-list-pagination .yd-btn {min-height:44px;}
+}
