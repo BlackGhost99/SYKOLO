@@ -770,3 +770,19 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(after["totals"]["current_unactivated_estimate_xaf"],0)
         self.assertEqual(after["totals"]["contracted_xaf"],100000)
         self.assertEqual(self.client.get(url).json()["schools"][0]["current_billing_active"],True)
+
+    def test_activation_quote_explains_ineligible_year_or_school(self):
+        self.assertTrue(self.post("quote").json()["can_issue"])
+        self.school.is_active=False
+        self.school.save(update_fields=["is_active"])
+        data=self.post("quote").json()
+        self.assertFalse(data["can_issue"])
+        self.assertIn("Établissement inactif",data["issue_blocker"])
+        self.school.is_active=True
+        self.school.save(update_fields=["is_active"])
+        self.year.active=False
+        self.year.save(update_fields=["active"])
+        data=self.post("quote").json()
+        self.assertFalse(data["can_issue"])
+        self.assertIn("Année scolaire clôturée ou inactive",data["issue_blocker"])
+        self.assertEqual(PlatformSubscription.objects.count(),0)
