@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import React, {useEffect, useState} from "react";
 import AnnualWorkspace from "./AnnualWorkspace.jsx";
 import PrimaryCriteria from "./PrimaryCriteria.jsx";
@@ -281,7 +282,8 @@ export default function PedagogicalCalendar({
           <p>Les périodes de publication et les paliers ont des dates indépendantes.</p>
           {periods.length? <div style={{overflowX:"auto"}}><table className="xs">
             <thead><tr><th>Période</th><th>Dates</th><th>Statut</th><th>Actions</th></tr></thead>
-            <tbody>{periods.map(item=><tr key={item.id}>
+            <tbody>{periods.map(item=><ContextTarget as="tr" key={item.id} actions={canEditPeriods&&!item.frozen&&(!selectedCycle||!item.historical)?[
+              {id:"edit",label:"Modifier la période",write:true,disabled:busy,run:()=>{setPeriodDraft({...item});setEventDraft(null);}}]:[]}>
               <td><strong>{item.name}</strong>{item.historical?" · Période commune historique":item.kind==="milestone"?" · Palier":" · Publication"}
                 {item.learning_weeks!=null&&<div>{item.learning_weeks} sem. d’apprentissage</div>}
                 {item.evaluation_weeks!=null&&<div>{item.evaluation_weeks} sem. d’évaluation</div>}
@@ -294,8 +296,8 @@ export default function PedagogicalCalendar({
                 </button>{" "}
                 {item.cycle&&item.active&&<button type="button" className="yf-link" disabled={busy}
                   onClick={()=>{if(window.confirm("Clôturer définitivement cette période ?")) closePeriod(item);}}>Clôturer</button>}
-              </>}</td>
-            </tr>)}</tbody>
+              </>}<ContextTrigger/></td>
+            </ContextTarget>)}</tbody>
           </table></div>:<p className="hint">Aucune période créée.</p>}
           {canAddPeriod&&<div className="yf-inline-form wrap">
             <button type="button" disabled={busy} onClick={()=>{setPeriodDraft({...blankPeriod,
@@ -357,7 +359,8 @@ export default function PedagogicalCalendar({
           <p>Ajoutez les rentrées, vacances, arrêts des notes, remises de bulletins, réunions et examens. Ces repères n'activent pas automatiquement une évaluation ou une clôture comptable.</p>
           {events.length?<div style={{overflowX:"auto"}}><table className="xs">
             <thead><tr><th>Date</th><th>Événement</th><th>Cycle</th><th>Statut</th><th>Actions</th></tr></thead>
-            <tbody>{events.map(item=><tr key={item.id}>
+            <tbody>{events.map(item=><ContextTarget as="tr" key={item.id} actions={canManage&&(catalog.can_manage_shared_events!==false||item.scope!=="all")?[
+              {id:"edit",label:"Modifier l’événement",write:true,disabled:busy,run:()=>{setEventDraft({...item});setPeriodDraft(null);}}]:[]}>
               <td>{dateLabel(item.start_date)}{item.end_date!==item.start_date?
                 " — "+dateLabel(item.end_date):""}</td>
               <td><strong>{item.title}</strong><br/><small>{kindLabel(catalog.kinds,item.kind)}
@@ -370,8 +373,8 @@ export default function PedagogicalCalendar({
                   onClick={()=>{setEventDraft({...item});setPeriodDraft(null);}}>Modifier</button>{" "}
                 <button type="button" className="yf-link" disabled={busy} onClick={()=>toggleEvent(item)}>
                   {item.active?"Archiver":"Réactiver"}</button>
-              </>}</td>
-            </tr>)}</tbody>
+              </>}<ContextTrigger/></td>
+            </ContextTarget>)}</tbody>
           </table></div>:<p className="hint">Aucun événement ajouté pour cette année.</p>}
           {canManage&&<button type="button" disabled={busy}
             onClick={()=>{setEventDraft({...blankEvent,scope:selectedCycle?.code||catalog.scopes?.[0]?.code||"all",start_date:selectedYear.start_date,

@@ -1,3 +1,4 @@
+import {ContextReadOnly} from "./ContextMenu.jsx";
 import DelegationManager from "./DelegationManager.jsx";
 import React, {useEffect,useState} from "react";
 import AcademicPanel from "./AcademicPanel.jsx";
@@ -457,7 +458,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     canApproveScholarship:can("school.admissions.decide")&&can("school.finance.approve"),
     canConfigureFinance:can("school.settings.write"),
     canCreate:can("school.admissions.manage"),canEnroll:can("school.admissions.enroll"),
-    canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),
+    canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),canManageTimetable:can("school.timetable.manage"),
     canPublish:can("school.reports.publish"),onNavigate:navigate,
     workingYearId,onWorkingYearChange:setWorkingYearId,
     onYearsUpdated:()=>setYearCatalogVersion(v=>v+1),
@@ -529,12 +530,12 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     mobileTeacher,teacherViewRequested,Boolean(user?.is_platform_admin));
   const teacherEligible=teacherPolicy.eligible;
   const showTeacherWorkspace=teacherPolicy.show;
-  if (showTeacherWorkspace) return <TeacherMobileWorkspace
+  if (showTeacherWorkspace) return <ContextReadOnly.Provider value={commercialReadOnly}><TeacherMobileWorkspace
     key={chosen} schoolId={chosen} schoolName={schoolName} user={user}
     permissions={perms} preschoolEnabled={preschoolEnabled} years={academicYears} workingYearId={workingYearId}
     onYearChange={setWorkingYearId} schools={schools} onSchoolChange={setChosen}
     onExit={()=>setTeacherViewRequested(false)}
-    onLogout={onLogout} accountView={accountView} commercialBanner={readOnlyBanner}/>;
+    onLogout={onLogout} accountView={accountView} commercialBanner={readOnlyBanner}/></ContextReadOnly.Provider>;
   let content;
   if (page==="profile") content=<><PageHeader title="Mon profil professionnel" subtitle="Photo et informations synchronisées avec la fiche Personnel"/><div className="yd-real-body"><TeacherProfile schoolId={chosen}/></div></>;
   else if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}{chosen && access && <StaffProfessionalDossier own schoolId={chosen}/>}</div></>;
@@ -625,7 +626,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
   const brand={name:chosen?schoolName:"",city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
     logo:schoolBranding?.logo_url||"",banner:schoolBranding?.banner_url||"",fixedHeader:true};
-  return <BrandContext.Provider value={brand}><Shell className="yd-operational-compact" nav={nav} active={page} onNavigate={navigate} notifications={inboxCount}
+  return <ContextReadOnly.Provider value={commercialReadOnly}><BrandContext.Provider value={brand}><Shell className="yd-operational-compact" nav={nav} active={page} onNavigate={navigate} notifications={inboxCount}
     headerBanner={<SchoolHeaderBanner brand={brand}/>}
     search={<SchoolHeaderSearch key={chosen} nav={nav} canSearchStudents={hasTab("students","live")} onNavigate={navigate}/>}
     onNotifications={can("school.parents.manage")?()=>navigate("notifications","inbox"):undefined} schoolSelector={selector}
@@ -648,5 +649,5 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     {content}
     {page==="dashboard"&&access&&chosen&&workingYearId&&(isOwner||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role))))&&<OwnerSubscription key={chosen} schoolId={chosen} yearId={workingYearId}/>}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
-  </Shell></BrandContext.Provider>;
+  </Shell></BrandContext.Provider></ContextReadOnly.Provider>;
 }

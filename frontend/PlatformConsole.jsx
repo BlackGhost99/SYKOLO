@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 import PlatformSubscriptions from "./PlatformSubscriptions.jsx";
@@ -148,12 +149,13 @@ function Directory({dashboard,filters,setFilters,onSchool,selected,onNew,compact
     <div className="ya-table-overflow" role="region" aria-label="Annuaire des établissements" tabIndex={0}><table className="ya-table"><thead><tr>
       <th><button onClick={()=>change("sort",filters.sort==="name"?"-name":"name")}>Établissement ↕</button></th>
       <th>Organisation</th><th>Utilisateurs</th><th>Statut</th><th>Actions</th>
-    </tr></thead><tbody>{rows.map(s=><tr key={s.id} className={s.id===selected?"ya-selected":""}>
+    </tr></thead><tbody>{rows.map(s=><ContextTarget as="tr" key={s.id} className={s.id===selected?"ya-selected":""}
+      actions={[{id:"school",label:"Gérer l’établissement",run:()=>onSchool(s.id)}]}>
       <td><div className="ya-school-name"><span className="ya-school-icon"><Icon name="school" size={21}/></span><span><strong>{s.name}</strong><small>{s.students_count} élève(s)</small></span></div></td>
       <td>{s.organization}</td><td><span className="ya-cell-count"><Icon name="users" size={17}/>{fmt(s.members_count)}</span></td>
       <td><Status active={s.active}/></td>
-      <td><button className="ya-btn ya-btn-table" onClick={()=>onSchool(s.id)}>Gérer <Icon name="right" size={15}/></button></td>
-    </tr>)}</tbody></table></div>
+      <td><button className="ya-btn ya-btn-table" onClick={()=>onSchool(s.id)}>Gérer <Icon name="right" size={15}/></button><ContextTrigger/></td>
+    </ContextTarget>)}</tbody></table></div>
     {!rows.length&&<div className="ya-empty">Aucun établissement ne correspond aux filtres.</div>}
     <div className="ya-pagination">
       <span>{dashboard.filtered_total?((dashboard.page-1)*dashboard.per_page+1):0}–{Math.min(dashboard.filtered_total||0, (dashboard.page||1)*(dashboard.per_page||5))} sur {fmt(dashboard.filtered_total||0)} établissements</span>

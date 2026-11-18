@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger,ContextReadOnly} from "./ContextMenu.jsx";
 import FinancialDocuments, {PdfLinks} from "./FinancialDocuments.jsx";
 import React, { useEffect, useMemo, useState } from "react";
 import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Check, Donut, PageHeader } from "./yem-ui.jsx";
@@ -196,6 +197,13 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
   const [destination, setDestination] = useState("");
   const [transfer, setTransfer] = useState("");
   const d = dossier.data;
+  const menuReadOnly=React.useContext(ContextReadOnly);
+  const [shortcutConsumed,setShortcutConsumed]=useState(false);
+  useEffect(()=>{
+    if(shortcutConsumed||menuReadOnly||!d?.student)return;
+    if(params?.action==="edit"&&canEditAdministration){startEdit();setShortcutConsumed(true);}
+    if(params?.action==="assignment"&&canManage){setShowClassAssignment(true);setShortcutConsumed(true);}
+  },[shortcutConsumed,menuReadOnly,d,params?.action,canEditAdministration,canManage]);
   async function run(fn, ok) {
     setBusy(true); setMessage({ text: "" });
     try { await fn(); setMessage({ text: ok }); dossier.reload(); classes.reload?.(); assignment.reload?.(); history.reload?.(); }
@@ -212,6 +220,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
   const history = useLoad(canManage && current && showAssignmentHistory
     ? `schools/${schoolId}/enrollments/${current.id}/history` : "");
   function startEdit() {
+    const s=d.student;
     const base = {first_name:s.first_name,last_name:s.last_name};
     setDraft(d.sensitive_visible ? {...base, date_of_birth:s.date_of_birth||"",
       gender:s.gender,place_of_birth:s.place_of_birth,nationality:s.nationality,
@@ -421,7 +430,7 @@ export function StudentFile({ schoolId, params, canManage, canEditAdministration
 }
 
 /* ---------- Inscriptions par classe ---------- */
-export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange }) {
+export function ClassEnrollments({ schoolId, canManage, canEditAdministration=false, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange }) {
   const [year, setYear] = useState(workingYearId);
   useEffect(() => {setYear(workingYearId);setSelected("");setPicking(false);setPicked({});}, [schoolId, workingYearId]);
   const overview = useLoad(`schools/${schoolId}/overview/classes${year ? `?year=${year}` : ""}`);
@@ -464,13 +473,15 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
         <Metric icon="alert" label="Élèves sans classe" value={num(o.unassigned_students)} trend="none" trendLabel="dossiers actifs non inscrits"/>
         {o.finance_visible ? <Metric icon="scale" label="Reste à payer" value={money(o.classes.reduce((a, c) => a + Number(c.finance?.balance || 0), 0), o.currency)} trend="none" trendLabel="toutes classes"/> : <Metric icon="cap" label="Classes complètes" value={num(o.classes.filter(c => c.remaining === 0).length)} trend="none" trendLabel="capacité atteinte"/>}
       </div>
-      <div className="yc-cards">{o.classes.filter(c => c.active).map(c => <button type="button" key={c.id} className={`yc-card ${klass?.id === c.id ? "active" : ""}`} onClick={() => { setSelected(c.id); setPicking(false); }}>
+      <div className="yc-cards">{o.classes.filter(c => c.active).map(c => <ContextTarget as="button" type="button" key={c.id} className={`yc-card ${klass?.id === c.id ? "active" : ""}`} onClick={() => { setSelected(c.id); setPicking(false); }}
+        actions={[{id:"roster",label:"Consulter les inscrits",run:()=>{setSelected(c.id);setPicking(false)}},
+          ...(canManage?[{id:"enroll",label:"Préparer une nouvelle inscription",write:true,run:()=>onNavigate("students","new",{classroom:c.id})}]:[])]}>
         <span className="yc-head"><b>{c.name}</b><small>{c.level.name}</small></span>
         <span className="yc-count"><strong>{c.enrolled}</strong>{c.capacity ? ` / ${c.capacity}` : " inscrits"}</span>
         {c.capacity ? <span className="yc-bar"><i style={{ width: `${Math.min(100, c.enrolled / c.capacity * 100)}%` }}/></span> : null}
         <small>{c.remaining == null ? "Capacité libre" : c.remaining === 0 ? "Classe complète" : `${c.remaining} place(s) restante(s)`}</small>
         {fin(c) && c.enrolled > 0 && <span className="yc-fin">{fin(c).a_jour > 0 && <em className="ok">{fin(c).a_jour} payé</em>}{fin(c).partiel > 0 && <em className="mid">{fin(c).partiel} partiel</em>}{fin(c).impaye > 0 && <em className="ko">{fin(c).impaye} impayé</em>}{fin(c).sans_frais > 0 && <em>{fin(c).sans_frais} sans frais</em>}</span>}
-      </button>)}</div>
+      </ContextTarget>)}</div>
       {klass && <Card title={`Élèves de ${klass.name}`} count={`(${members.length})`} icon="users" right={<div className="yf-head-actions">
         {canManage && <Button className="small" icon="adduser" primary onClick={() => onNavigate("students", "new", { classroom: klass.id })}>Nouvel élève</Button>}
         {canManage && <Button className="small" icon="users" onClick={() => setPicking(p => !p)}>Inscrire des élèves existants</Button>}
@@ -484,12 +495,16 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
         </div>}
         <Loading state={roster}>{members.length === 0 ? <Empty>Aucun élève inscrit dans cette classe.</Empty> :
           <TableScroll label="Élèves de la classe"><table className="xs nowrap clickable"><thead><tr>{["#", "Élève", "Responsable", "Téléphone", ...(o.finance_visible ? ["Payé", "Reste", "Situation", "Moyens"] : []), "Pièces", ""].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-            <tbody>{members.map((s, i) => <tr key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}>
+            <tbody>{members.map((s, i) => <ContextTarget as="tr" key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}
+              actions={[{id:"file",label:"Ouvrir le dossier élève",run:()=>onNavigate("students","fiche",{student:s.id})},
+                ...(canEditAdministration?[{id:"edit",label:"Modifier le dossier",write:true,run:()=>onNavigate("students","fiche",{student:s.id,action:"edit"})}]:[]),
+                ...(canManage?[{id:"assignment",label:"Préparer un changement de classe",write:true,run:()=>onNavigate("students","fiche",{student:s.id,action:"assignment"})}]:[]),
+                ...(canReceive&&s.enrollment&&Number(s.finance?.balance)>0?[{id:"payment",label:"Préparer un encaissement",write:true,run:()=>onNavigate("payments","live",{enrollment:s.enrollment.id})}]:[])]}>
               <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td>
               {o.finance_visible && <><td>{money(s.finance?.paid, roster.data.currency)}</td><td><b>{money(s.finance?.balance, roster.data.currency)}</b></td><td>{s.finance && <Status tone={FIN[s.finance.status][0]}>{FIN[s.finance.status][1]}</Status>}</td><td>{(s.finance?.methods || []).map(methodLabel).join(", ") || "—"}</td></>}
               <td>{s.missing_documents ? <Status tone="yellow">{s.missing_documents} manquante(s)</Status> : <Status>Complet</Status>}</td>
-              <td>{canReceive && Number(s.finance?.balance) > 0 ? <button type="button" className="yf-link" onClick={e => { e.stopPropagation(); onNavigate("payments", "live", { enrollment: s.enrollment.id }); }}>Encaisser</button> : <Icon name="chevronright" size={18}/>}</td>
-            </tr>)}</tbody></table></TableScroll>}</Loading>
+              <td>{canReceive && Number(s.finance?.balance) > 0 ? <button type="button" className="yf-link" onClick={e => { e.stopPropagation(); onNavigate("payments", "live", { enrollment: s.enrollment.id }); }}>Encaisser</button> : <Icon name="chevronright" size={18}/>}<ContextTrigger/></td>
+            </ContextTarget>)}</tbody></table></TableScroll>}</Loading>
       </Card>}
     </>)}</Loading>
   </>;
@@ -757,7 +772,10 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
           </form></>}
           {d.classes.length === 0 ? <Empty>Aucune classe pour cette année.</Empty> :
             <TableScroll label="Classes de l’année"><table className="xs"><thead><tr>{["Classe", "Inscrits", "Capacité", "Statut", "Actions"].map(h => <th key={h}>{h}</th>)}</tr></thead>
-              <tbody>{d.classes.map(c => <tr key={c.id}>
+              <tbody>{d.classes.map(c => <ContextTarget as="tr" key={c.id} actions={canManageClasses&&cycleAllowed(c.level.cycle_code)?[
+                {id:"edit",label:"Modifier la classe",write:true,disabled:busy,run:()=>{setCloning(null);setMessage({text:""});setEditing({...c,capacity:c.capacity??"",originalName:c.name});}},
+                ...(d.year.active!==false&&c.active?[{id:"copy",label:"Préparer une duplication",write:true,disabled:busy,run:()=>{setEditing(null);setMessage({text:""});setCloning({id:c.id,name:proposeCloneName(c),originalName:c.name});}}]:[])
+              ]:[]}>
                 <td><b>{c.name}</b><br/><small>{c.level.name}</small></td><td>{c.enrolled}</td><td>{c.capacity ?? "—"}</td>
                 <td><Status tone={c.active ? "green" : "gray"}>{c.active ? "Active" : "Archivée"}</Status></td>
                 <td>{canManageClasses && cycleAllowed(c.level.cycle_code) && <button type="button" className="yf-link" aria-label={`Modifier ${c.name}`} disabled={busy} onClick={() => { setCloning(null); setMessage({text: ""}); setEditing({ ...c, capacity: c.capacity ?? "", originalName: c.name }); }}>Modifier</button>}
@@ -768,8 +786,8 @@ export function ClassSetup({ schoolId, tabs, workingYearId = "", onWorkingYearCh
                     }}>Dupliquer</button>}
                   {canManageClasses && d.year.active !== false && cycleAllowed(c.level.cycle_code) &&
                     <button type="button" className="yf-link" aria-label={`${c.active ? "Archiver" : "Réactiver"} ${c.name}`}
-                      disabled={busy} onClick={() => toggleArchive(c)}>{c.active ? "Archiver" : "Réactiver"}</button>}</td>
-              </tr>)}</tbody></table></TableScroll>}
+                      disabled={busy} onClick={() => toggleArchive(c)}>{c.active ? "Archiver" : "Réactiver"}</button>}<ContextTrigger/></td>
+              </ContextTarget>)}</tbody></table></TableScroll>}
           {d.can_manage_academic && (onNavigate ? <div className="yf-inline-form"><button type="button" className="yf-link" onClick={()=>onNavigate("calendar")}>Gérer les années dans le Calendrier pédagogique</button></div> : <details className="yf-details"><summary>Créer une autre année scolaire</summary>{yearForm}</details>)}
         </Card>
       </div>}
@@ -891,14 +909,16 @@ export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs, advanc
         <Card title="Situation par élève" count={`(${rows.length})`} icon="users">
           {rows.length === 0 ? <Empty>Aucun élève ne correspond aux filtres.</Empty> :
             <TableScroll label="Suivi des paiements"><table className="xs nowrap clickable"><thead><tr>{["Élève", "Classe", "Total dû", "Payé", "Reste", "Situation", "Moyens utilisés", "Dernier paiement", ""].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-              <tbody>{rows.map(s => <tr key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}>
+              <tbody>{rows.map(s => <ContextTarget as="tr" key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}
+                 actions={[{id:"file",label:"Consulter le dossier financier de l’élève",run:()=>onNavigate("students","fiche",{student:s.id})},
+                   ...(canReceive&&Number(s.finance.balance)>0?[{id:"receive",label:"Préparer un encaissement",write:true,run:()=>onNavigate("payments","live",{enrollment:s.enrollment.id})}]:[])]}>
                 <td><b>{s.last_name} {s.first_name}</b><br/><small>{s.guardian?.full_name || "—"}</small></td><td>{s.enrollment.classroom.name}</td>
                 <td>{money(s.finance.billed, currency)}</td><td>{money(s.finance.paid, currency)}</td><td><b>{money(s.finance.balance, currency)}</b></td>
                 <td><Status tone={FIN[s.finance.status][0]}>{FIN[s.finance.status][1]}</Status></td>
                 <td>{s.finance.methods.length ? s.finance.methods.map(m => <span key={m} className="yf-chip">{methodLabel(m)}</span>) : "—"}</td>
                 <td>{fmtDate(s.finance.last_payment)}</td>
-                <td>{canReceive && Number(s.finance.balance) > 0 ? <button type="button" className="yf-link" onClick={e => { e.stopPropagation(); onNavigate("payments", "live", { enrollment: s.enrollment.id }); }}>Encaisser</button> : <Icon name="chevronright" size={18}/>}</td>
-              </tr>)}</tbody></table></TableScroll>}
+                <td>{canReceive && Number(s.finance.balance) > 0 ? <button type="button" className="yf-link" onClick={e => { e.stopPropagation(); onNavigate("payments", "live", { enrollment: s.enrollment.id }); }}>Encaisser</button> : <Icon name="chevronright" size={18}/>}<ContextTrigger/></td>
+              </ContextTarget>)}</tbody></table></TableScroll>}
         </Card>
         <div className="yd-stack">
           <Card title="Encaissé par moyen de paiement" icon="wallet" subtitle={fin.data?.year ? `Année ${fin.data.year.name}` : ""}>

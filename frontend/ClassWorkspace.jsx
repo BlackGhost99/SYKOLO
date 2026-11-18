@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import React, {useEffect, useId, useLayoutEffect, useRef, useState} from "react";
 import {Empty, Field, Loading, Msg, req, useLoad} from "./EnrollmentScreens.jsx";
 import {Button, Card, Icon, PageHeader, Status, TableScroll} from "./yem-ui.jsx";
@@ -82,10 +83,10 @@ function ClassRoster({schoolId, year, classroom, onClose, onStudent, canOpenStud
   return <ClassDialog title={`Élèves de ${classroom.name}`} subtitle={year.name} onClose={onClose}>
     <Loading state={roster}>{students?.length ? <TableScroll label={`Élèves de ${classroom.name}`}>
       <table className="xs"><thead><tr><th>Élève</th><th>Matricule</th></tr></thead>
-        <tbody>{students.map(student => <tr key={student.id}>
+        <tbody>{students.map(student => <ContextTarget as="tr" key={student.id} actions={canOpenStudentFile?[{id:"file",label:"Ouvrir le dossier élève",run:()=>onStudent(student.id)}]:[]}>
           <td>{canOpenStudentFile ? <button type="button" className="yf-link" onClick={() => onStudent(student.id)}>{student.last_name} {student.first_name}</button> : <span>{student.last_name} {student.first_name}</span>}</td>
-          <td>{student.student_code}</td>
-        </tr>)}</tbody>
+          <td>{student.student_code}<ContextTrigger/></td>
+        </ContextTarget>)}</tbody>
       </table>
     </TableScroll> : <Empty>Aucun élève inscrit dans cette classe.</Empty>}</Loading>
   </ClassDialog>;
@@ -130,7 +131,7 @@ export default function ClassWorkspace({schoolId, canReadStudents, canReadRoster
         const Tile = canReadRoster ? "button" : "div";
         const count = `${classroom.enrolled} élève${classroom.enrolled > 1 ? "s" : ""}`;
         const enrollmentSummary = classroom.capacity == null ? `${count} dans la classe` : `${count} / ${classroom.capacity} places`;
-        return <Tile key={classroom.id} className="ycl-tile" {...(canReadRoster ? {
+        return <ContextTarget as={Tile} key={classroom.id} actions={canReadRoster?[{id:"roster",label:"Consulter les élèves de la classe",run:()=>setSelected(classroom)}]:[]} className="ycl-tile" {...(canReadRoster ? {
           type: "button", "aria-haspopup": "dialog",
           "aria-label": `${classroom.name}, ${enrollmentSummary}${classroom.active ? "" : ", classe archivée"}. Consulter les élèves`,
           onClick: () => setSelected(classroom),
@@ -139,7 +140,7 @@ export default function ClassWorkspace({schoolId, canReadStudents, canReadRoster
           <b>{classroom.name}</b>
           <small>{enrollmentSummary}</small>
           {canReadRoster && <span className="ycl-tile-link">Consulter les élèves <Icon name="chevronright" size={16}/></span>}
-        </Tile>;
+        </ContextTarget>;
       })}</div>
     </>}</Loading>
     {creating && <CreateClassDialog schoolId={schoolId} year={currentYear} levels={levels}

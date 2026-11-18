@@ -4,6 +4,7 @@ import {afterEach, expect, test, vi} from "vitest";
 import {cleanup, fireEvent, render, screen} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TeachingDiary, {FamilyTeachingDiary} from "./TeachingDiary.jsx";
+import {ContextReadOnly} from "./ContextMenu.jsx";
 
 afterEach(()=>cleanup());
 
@@ -75,4 +76,34 @@ test("historique filtrable par texte, statut et date; édition existante",async(
   expect(screen.getByRole("heading",{name:"Géométrie"})).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Date de séance"),{target:{value:"2026-11-16"}});
   expect(screen.getByText(/Aucune séance ne correspond/)).toBeTruthy();
+});
+
+test("clic droit et trois points ouvrent le menu de la séance filtrée; duplication sans publication ni envoi",async()=>{
+  const api=vi.fn(async(path)=>path.includes("?year=")?{courses:[{id:"course",subject:"Maths",classroom:"6e A",year_name:"2026"}]}:{writable:true,entries:[
+    {id:"one",revision:2,published:true,title:"Géométrie",day:"2026-11-17",lesson:"Triangles",subject:"Maths",classroom:"6e A",homework:"Exercice",due_on:"2026-11-20",resources:[]},
+    {id:"two",revision:1,published:false,title:"Fractions",day:"2026-11-16",lesson:"Exercices",subject:"Maths",classroom:"6e A",homework:"",resources:[]}
+  ]});
+  render(<TeachingDiary schoolId="school" yearId="year" api={api}/>);
+  await screen.findByRole("heading",{name:"Géométrie"});
+  const user=userEvent.setup();
+  await user.selectOptions(screen.getByLabelText("Statut"),"published");
+  fireEvent.contextMenu(screen.getByRole("heading",{name:"Géométrie"}));
+  fireEvent.click(screen.getByRole("menuitem",{name:"Dupliquer en nouveau brouillon"}));
+  expect(screen.getByLabelText("Titre du cours").value).toBe("Géométrie");
+  expect(screen.getByLabelText("Échéance du devoir").value).toBe("");
+  expect(screen.getByRole("checkbox",{name:"Publier pour les familles de cette classe"}).checked).toBe(false);
+  expect(api.mock.calls.every(([,body])=>!body)).toBe(true);
+  fireEvent.click(screen.getByRole("button",{name:"Ouvrir les actions contextuelles"}));
+  expect(screen.getByRole("menuitem",{name:"Modifier la séance"})).toBeTruthy();
+});
+test("lecture seule commerciale: séances et statuts visibles, aucune action d'écriture",async()=>{
+  const api=vi.fn(async(path)=>path.includes("?year=")?{courses:[{id:"course",subject:"Maths",classroom:"6e A",year_name:"2026"}]}:{writable:true,entries:[
+    {id:"one",revision:2,published:true,title:"Géométrie",day:"2026-11-17",lesson:"Triangles",subject:"Maths",classroom:"6e A",homework:"",resources:[]}
+  ]});
+  render(<ContextReadOnly.Provider value={true}><TeachingDiary schoolId="school" yearId="year" api={api}/></ContextReadOnly.Provider>);
+  await screen.findByRole("heading",{name:"Géométrie"});
+  expect(screen.queryByRole("button",{name:"Modifier la séance"})).toBeNull();
+  expect(screen.queryByRole("button",{name:"Ouvrir les actions contextuelles"})).toBeNull();
+  expect(screen.queryByRole("button",{name:"Enregistrer le brouillon"})).toBeNull();
+  expect(fireEvent.contextMenu(screen.getByRole("heading",{name:"Géométrie"}))).toBe(true);
 });

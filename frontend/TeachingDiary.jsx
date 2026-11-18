@@ -1,3 +1,4 @@
+import {ContextTarget, ContextReadOnly} from "./ContextMenu.jsx";
 import React, {useEffect, useRef, useState} from "react";
 import {teacherRequest} from "./teacher-mobile-api.js";
 import "./teaching-diary.css";
@@ -55,17 +56,18 @@ function ResourceUpload({entry,schoolId,onRefresh,api}) {
 const formatDay=value=>value ? value.split("-").reverse().join("/") : "—";
 const classKey=c=>JSON.stringify([c.year||c.year_name||"",c.classroom_id||c.classroom]);
 const normalized=value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("fr");
-function Entries({entries, onEdit, resourceHref, schoolId, onRefresh, api}) {
+function Entries({entries, onEdit, onDuplicate, resourceHref, schoolId, onRefresh, api}) {
   if (!entries.length) return <p>Aucune séance enregistrée.</p>;
-  return <div className="yem-diary-list">{entries.map(e=><article key={e.id}>
+  return <div className="yem-diary-list">{entries.map(e=><ContextTarget as="article" key={e.id} showTrigger actions={onEdit?[{id:"edit",label:"Modifier la séance",write:true,run:()=>onEdit(e)},
+      ...(onDuplicate?[{id:"copy",label:"Dupliquer en nouveau brouillon",write:true,run:()=>onDuplicate(e)}]:[])]:[]}>
     <div className="yem-diary-entry-head"><div><small>{formatDay(e.day)} · {e.classroom} · {e.subject}</small>
-      <h3>{e.title}</h3></div>{onEdit&&<span className={"diary-status "+(e.published?"is-published":"is-draft")}>{e.published?"Publié":"Brouillon"}</span>}</div>
+      <h3>{e.title}</h3></div>{typeof e.published==="boolean"&&<span className={"diary-status "+(e.published?"is-published":"is-draft")}>{e.published?"Publié":"Brouillon"}</span>}</div>
     <p className="yem-diary-text">{e.lesson}</p>
     {e.homework&&<div className="yem-diary-homework"><strong>Travail à faire{e.due_on?" pour le "+formatDay(e.due_on):""}</strong><p className="yem-diary-text">{e.homework}</p></div>}
     {resourceHref&&<ResourceLinks resources={e.resources} href={r=>resourceHref(e,r)}/>}
     {onEdit&&<button className="yd-btn" type="button" onClick={()=>onEdit(e)}>Modifier la séance</button>}
     {onEdit&&schoolId&&<ResourceUpload entry={e} schoolId={schoolId} onRefresh={onRefresh} api={api}/>}
-  </article>)}
+  </ContextTarget>)}
   {entries.length>=200&&<p>Les 200 dernières séances sont affichées.</p>}</div>;
 }
 
@@ -80,7 +82,9 @@ export default function TeachingDiary({schoolId, yearId="", api=teacherRequest, 
   const [status,setStatus]=useState("all");
   const [historyDay,setHistoryDay]=useState("");
   const formRef=useRef(null);
-  const [writable,setWritable]=useState(false);
+  const [courseWritable,setWritable]=useState(false);
+  const readOnly=React.useContext(ContextReadOnly);
+  const writable=courseWritable&&!readOnly;
   const [form,setForm]=useState(blank);
   const [error,setError]=useState("");
   const [message,setMessage]=useState("");
@@ -128,6 +132,12 @@ export default function TeachingDiary({schoolId, yearId="", api=teacherRequest, 
     finally{running.current=false;setBusy(false);}
   }
   const setEntry=e=>{setMessage("");setError("");setForm({...e,due_on:e.due_on||""});formRef.current?.scrollIntoView?.({block:"start",behavior:"smooth"});};
+  const duplicateEntry=e=>{
+    if((form.id||form.title||form.lesson||form.homework)&&!window.confirm("Remplacer la saisie en cours par une nouvelle copie non publiée ?"))return;
+    setError("");setMessage("Nouvelle copie préparée. Vérifiez la date et les devoirs avant l’enregistrement. Les pièces jointes ne sont pas recopiées.");
+    setForm({...blank(),title:e.title,lesson:e.lesson,homework:e.homework||""});
+    formRef.current?.scrollIntoView?.({block:"start",behavior:"smooth"});
+  };
   const selected=courses.find(c=>c.id===course);
   const classes=[...new Map(courses.map(c=>[classKey(c),c])).values()];
   const classCourses=selected?courses.filter(c=>classKey(c)===classKey(selected)):[];
@@ -170,7 +180,7 @@ export default function TeachingDiary({schoolId, yearId="", api=teacherRequest, 
         <label className="field">Date de séance<input type="date" value={historyDay} onChange={e=>setHistoryDay(e.target.value)}/></label>
       </div>
       {shown.length!==entries.length&&<p role="status">{shown.length} résultat{shown.length!==1?"s":""}</p>}
-      {entries.length>0&&!shown.length?<p className="diary-empty">Aucune séance ne correspond aux filtres. <button type="button" className="yd-btn" onClick={()=>{setQuery("");setStatus("all");setHistoryDay("");}}>Réinitialiser</button></p>:<Entries entries={shown} onEdit={writable&&!busy?setEntry:null} schoolId={schoolId} api={api} onRefresh={()=>setRefresh(n=>n+1)} resourceHref={(e,r)=>"/api/v1/schools/"+schoolId+"/diary/entries/"+e.id+"/resources/"+r.id}/>}
+      {entries.length>0&&!shown.length?<p className="diary-empty">Aucune séance ne correspond aux filtres. <button type="button" className="yd-btn" onClick={()=>{setQuery("");setStatus("all");setHistoryDay("");}}>Réinitialiser</button></p>:<Entries entries={shown} onEdit={writable&&!busy?setEntry:null} onDuplicate={writable&&!busy?duplicateEntry:null} schoolId={schoolId} api={api} onRefresh={()=>setRefresh(n=>n+1)} resourceHref={(e,r)=>"/api/v1/schools/"+schoolId+"/diary/entries/"+e.id+"/resources/"+r.id}/>}
     </section></div>}
   </section>;
 }

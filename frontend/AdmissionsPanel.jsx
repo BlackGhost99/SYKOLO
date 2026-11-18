@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React, {useEffect, useState} from "react";
 import {AdmissionPolicyEditor,AdmissionProofPanel,AdmissionDecisionReadiness,ROUTES} from "./AdmissionRoutesPanel.jsx";
 import {SchoolCatalogSettings} from "./ParentDiscovery.jsx";
@@ -120,6 +121,12 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
   }
   if(loadError)return <p role="alert">{loadError}</p>;
   const current=applications.find(x=>x.id===chosen);
+  function inspectHistory(){
+    if(!current||busy)return;
+    const panel=document.getElementById("yem-admission-history-"+current.id);
+    if(panel)panel.open=true;
+    run(async()=>{const result=await admissionApi(base+"/"+current.id+"/history");setHistory(result.history||[]);});
+  }
   const availableClasses=classes.filter(x=>x.active&&x.year===year);
   return <section className="card" style={{marginTop:"1rem"}} aria-label="Admissions et préinscriptions">
     <h2>Admissions et préinscriptions</h2>
@@ -214,7 +221,9 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
         {applications.map(x=><option key={x.id} value={x.id}>{x.last_name} {x.first_name} · {STATES[x.status]||x.status}</option>)}
       </select>
     </label>
-    {current&&<div>
+    {current&&<ContextTarget key={current.id} showTrigger actions={[
+      {id:"history",label:"Voir l’historique des décisions",disabled:busy,run:inspectHistory},
+      ...(current.status==="accepted"&&onNavigate?[{id:"cash",label:"Ouvrir la caisse des admissions",run:()=>onNavigate("payments","finance")}]:[])]}>
       <p><strong>{current.last_name} {current.first_name}</strong> · {STATES[current.status]} ·
         {ROUTES[current.route]||"Inscription directe"} ·
         {classes.find(c=>c.id===current.classroom)?.name||"Classe"}
@@ -290,18 +299,15 @@ export default function AdmissionsPanel({schoolId,canDecide=false,canCreate=true
           <p className="hint">Ces références sont conservées dans la fiche officielle de l'élève. Une réinscription ultérieure ne crée pas un nouveau matricule.</p>
         </> : <p>Inscription réalisée. Actualisez les candidatures pour consulter les références officielles.</p>}
       </section>}
-      <details className="ar-options">
+      <details className="ar-options" id={"yem-admission-history-"+current.id}>
         <summary>Options avancées — historique des décisions</summary>
-        <button type="button" disabled={busy} onClick={()=>run(async()=>{
-          const result=await admissionApi(base+"/"+current.id+"/history");
-          setHistory(result.history||[]);
-        })}>Voir l'historique des décisions</button>
+        <button type="button" disabled={busy} onClick={inspectHistory}>Voir l'historique des décisions</button>
         {history&&<div>
           {history.map((h,i)=><p key={i}><strong>{STATES[h.status]||h.status}</strong> · {new Date(h.at).toLocaleString("fr-FR")}
             {h.reason?" — "+h.reason:""}</p>)}
         </div>}
       </details>
-    </div>}
+    </ContextTarget>}
     {message&&<p role="status" aria-live="polite">{message}</p>}
   </section>;
 }
