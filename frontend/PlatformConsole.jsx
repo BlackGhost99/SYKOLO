@@ -237,6 +237,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const [detail,setDetail]=useState(null);
   const [detailLoading,setDetailLoading]=useState(false);
   const [detailTab,setDetailTab]=useState("info");
+  const [directoryDetailOpen,setDirectoryDetailOpen]=useState(false);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState(null);
   const [refreshKey,setRefreshKey]=useState(0);
@@ -274,7 +275,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
   const initialRoles=initialRoleCatalog?.path===initialRolePath ? initialRoleCatalog.roles||[] : [];
   const initialRole=initialRoles.find(role=>role.code===schoolForm.role)
     || initialRoles.find(role=>role.code===initialRoleCatalog?.default_role);
-  const goto=useCallback(page=>{setView(page);setMenuOpen(false);setProfileOpen(false);setNotice(null);window.scrollTo?.(0,0);},[]);
+  const goto=useCallback(page=>{setView(page);setDirectoryDetailOpen(false);setMenuOpen(false);setProfileOpen(false);setNotice(null);window.scrollTo?.(0,0);},[]);
   const update=(setter,name,val)=>setter(old=>({...old,[name]:val}));
   const reload=()=>{setRefreshKey(k=>k+1);setDetailKey(k=>k+1);};
   useEffect(()=>{
@@ -360,6 +361,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
     } catch(e) {setNotice({type:"error",message:e.message});return null;}
     finally {setBusy(false);}
   }
+  function openDirectorySchool(id) {chooseSchool(id);setDirectoryDetailOpen(true);}
   function chooseSchool(id) {if(String(id)!==schoolId)setPerson(userBlank);setSchoolId(String(id));setDetailTab("info");setMemberPage(1);}
   function openModal(type, member=null) {
     if(type==="role"&&!member) member=(selectedDetail?.members||[]).find(x=>!x.is_platform_admin)||null;
@@ -489,9 +491,9 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           <Metric icon="users" label="Utilisateurs actifs" value={dashboard.users_active} foot="Comptes des écoles actives" onClick={()=>goto("users")}/>
           <Metric icon="pause" label="Établissements suspendus" value={dashboard.schools_inactive} foot="À examiner" warning onClick={()=>{setFilters(o=>({...o,status:"inactive",page:1}));goto("schools");}}/>
         </div>
-        <div className="ya-work-grid">
-          <Directory dashboard={dashboard} filters={filters} setFilters={setFilters} onSchool={chooseSchool} selected={schoolId} onNew={()=>goto("newSchool")} compact/>
-          <Detail detail={selectedDetail} loading={detailLoading} tab={detailTab} setTab={setDetailTab} {...detailActions}/>
+        <div className={"ya-work-grid ya-directory-layout"+(directoryDetailOpen?" ya-school-detail-open":"")}>
+          <Directory dashboard={dashboard} filters={filters} setFilters={setFilters} onSchool={openDirectorySchool} selected={schoolId} onNew={()=>goto("newSchool")} compact/>
+          <div className="ya-school-detail-panel"><button type="button" className="ya-btn ya-btn-outline ya-back-directory" onClick={()=>setDirectoryDetailOpen(false)}><Icon name="left" size={17}/> Retour aux établissements</button><Detail detail={selectedDetail} loading={detailLoading} tab={detailTab} setTab={setDetailTab} {...detailActions}/></div>
         </div>
         <div className="ya-bottom-grid">
           <section className="ya-box ya-quick"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="activity" size={23}/></div><div><h2>Création rapide</h2><p>Actions courantes de super-administration.</p></div></div>
@@ -500,7 +502,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           <AuditFeed events={dashboard.recent_events||[]} onAll={()=>goto("audit")}/>
         </div>
       </>}
-      {view==="schools"&&<div className="ya-work-grid ya-directory-view"><Directory dashboard={dashboard} filters={filters} setFilters={setFilters} onSchool={chooseSchool} selected={schoolId} onNew={()=>goto("newSchool")}/><Detail detail={selectedDetail} loading={detailLoading} tab={detailTab} setTab={setDetailTab} {...detailActions}/></div>}
+      {view==="schools"&&<div className={"ya-work-grid ya-directory-layout ya-directory-view"+(directoryDetailOpen?" ya-school-detail-open":"")}><Directory dashboard={dashboard} filters={filters} setFilters={setFilters} onSchool={openDirectorySchool} selected={schoolId} onNew={()=>goto("newSchool")}/><div className="ya-school-detail-panel"><button type="button" className="ya-btn ya-btn-outline ya-back-directory" onClick={()=>setDirectoryDetailOpen(false)}><Icon name="left" size={17}/> Retour aux établissements</button><Detail detail={selectedDetail} loading={detailLoading} tab={detailTab} setTab={setDetailTab} {...detailActions}/></div></div>}
       {view==="organizations"&&<div className="ya-two-panels">
         <section className="ya-box"><div className="ya-box-head"><div className="ya-heading-icon"><Icon name="layers"/></div><div><h2>Organisations enregistrées</h2><p>Structures propriétaires et nombre d'établissements.</p></div></div>
           <div className="ya-org-list">{organizations.map(o=><button key={o.id} onClick={()=>{setFilters(x=>({...x,organization:o.id,page:1}));goto("schools");}}><span><Icon name="layers"/></span><b>{o.name}</b><small>{fmt(o.schools_count)} établissement(s)</small><Icon name="right" size={17}/></button>)}</div>
