@@ -78,7 +78,7 @@ function scale(values) {
 function Empty({ children }) { return <p className="yd-card-sub yd-empty">{children}</p>; }
 
 /* ---------- Élèves ---------- */
-export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange, initialQuery = "" }) {
+export function LiveStudents({ schoolId, canManage, canEditAdministration=false, canReceive, onNavigate, tabs, advancedSettings, workingYearId = "", onWorkingYearChange, initialQuery = "" }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
@@ -132,6 +132,8 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
               <tbody>{rows.map((s, i) => { const f = s.finance && FIN[s.finance.status]; return <ContextTarget as="tr" key={s.id} className={current?.id === s.id ? "selected" : ""} onClick={() => setSelected(s.id)}
                 actions={[{id:"preview",label:"Afficher l’aperçu",run:()=>setSelected(s.id)},
                   {id:"file",label:"Ouvrir la fiche",run:()=>onNavigate("students","fiche",{student:s.id})},
+                  ...(canEditAdministration?[{id:"edit",label:"Modifier le dossier",write:true,run:()=>onNavigate("students","fiche",{student:s.id,action:"edit"})}]:[]),
+                  ...(canManage?[{id:"assignment",label:"Préparer un changement de classe",write:true,run:()=>onNavigate("students","fiche",{student:s.id,action:"assignment"})}]:[]),
                   ...(canReceive&&s.enrollment?[{id:"payment",label:"Préparer un encaissement",write:true,run:()=>onNavigate("payments","live",{enrollment:s.enrollment.id})}]:[])]}>
                 <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.enrollment?.classroom.name || "—"}</td>{d.sensitive_visible&&<><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td></>}
                 <td>{f ? f[1] : "—"}</td><td>{s.enrollment ? (f ? <Status tone={f[0]}>{f[1]}</Status> : <Status>Inscrit</Status>) : <Status tone="gray">Non inscrit</Status>}</td>
