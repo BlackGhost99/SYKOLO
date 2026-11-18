@@ -327,3 +327,25 @@
  .yd-operational-compact header.yd-topbar{flex-wrap:wrap;height:auto;}
  .yd-operational-compact .yd-topbar>.yd-fixed-banner{order:20;flex:1 0 100%;width:100%;}
 }
+
+/* Consistent operational layout for owner and staff workspaces. */
+.yd-owner-workspace{display:grid;gap:10px;min-width:0}
+.yd-owner-workspace .yd-card,.yd-owner-workspace .yd-metrics,.yd-owner-workspace .yd-owner-quick-grid{margin:0;min-width:0}
+.yd-owner-workspace .yd-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:9px}
+.yd-owner-workspace .yd-metric{min-width:0;padding:10px;min-height:76px}
+.yd-owner-toolbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap}
+.yd-owner-toolbar .field{max-width:260px;margin-right:auto}
+.yd-owner-tabs{display:flex;flex-wrap:wrap;gap:4px;margin:0;padding:4px;background:var(--yd-green-softer);border-radius:8px}
+.yd-owner-tabs button{flex:1 1 auto;min-height:38px;white-space:normal;padding:7px 10px}
+.yd-owner-overview-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:10px;align-items:start}
+.yd-owner-overview-grid>.yd-card:only-child{grid-column:1/-1}
+.yd-owner-workspace .yd-owner-quick-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:8px}
+.yd-owner-workspace .yd-owner-quick-grid .yd-card{display:flex;flex-direction:column;gap:5px;padding:10px}
+.yd-owner-workspace .yd-owner-quick-grid .yd-card p{flex:1;font-size:12px}
+.yd-owner-responsibilities{margin:0}
+.yd-staff-workspace{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:start}
+.yd-staff-workspace>div{min-width:0}
+.yd-staff-shortcuts .pc-module-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:9px}
+.yd-staff-shortcuts .pc-module-grid button{min-height:84px;text-align:left;padding:10px;min-width:0;overflow-wrap:anywhere}
+@media(max-width:1050px){.yd-owner-overview-grid,.yd-staff-workspace{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){.yd-owner-workspace .yd-metrics,.yd-owner-workspace .yd-owner-quick-grid,.yd-staff-shortcuts .pc-module-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.yd-owner-tabs button{font-size:11px;flex:1 1 28%;padding:6px}.yd-owner-toolbar{justify-content:flex-start}}
