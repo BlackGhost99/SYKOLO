@@ -52,19 +52,17 @@ try{
         if(width>760&&["direction","proprietaire","econome"].includes(role)){
           const banner=root.locator(".yd-fixed-banner.has-image");
           await banner.waitFor({state:"visible"});
-          const geometry=await banner.evaluate(el=>{
-            const img=el.querySelector(".yd-fixed-banner-art"),mark=el.querySelector(".yd-fixed-banner-mark");
-            const b=el.getBoundingClientRect(),a=img.getBoundingClientRect();
-            const crest=el.closest(".yd-topbar")?.querySelector(".yd-school-picker .yd-school-logo");
-            return {bannerWidth:b.width,bannerHeight:b.height,imageWidth:a.width,imageHeight:a.height,
-              xDelta:Math.abs(a.x-b.x),yDelta:Math.abs(a.y-b.y),fit:getComputedStyle(img).objectFit,
-              loaded:img.complete&&img.naturalWidth>0,markHidden:getComputedStyle(mark).display==="none",
-              logoVisible:!!crest&&crest.getClientRects().length>0&&crest.complete&&crest.naturalWidth>0};
+          const g=await banner.evaluate(el=>{
+            const img=el.querySelector(".yd-fixed-banner-art"),mark=el.querySelector(".yd-fixed-banner-mark"),logo=mark.querySelector("img");
+            const b=el.getBoundingClientRect(),a=img.getBoundingClientRect(),m=mark.getBoundingClientRect(),l=logo.getBoundingClientRect();
+            return {width:b.width,height:b.height,artWidth:a.width,artHeight:a.height,badgeWidth:m.width,badgeHeight:m.height,logoHeight:l.height,
+              gap:Math.abs(a.right-m.left),left:Math.abs(a.left-b.left),right:Math.abs(m.right-b.right),
+              fit:getComputedStyle(img).objectFit,logoFit:getComputedStyle(logo).objectFit,
+              loaded:img.complete&&img.naturalWidth>0&&logo.complete&&logo.naturalWidth>0};
           });
-          if(!geometry.loaded||geometry.fit!=="cover"||geometry.bannerWidth<40||
-            Math.abs(geometry.bannerWidth-geometry.imageWidth)>1||Math.abs(geometry.bannerHeight-geometry.imageHeight)>1||
-            geometry.xDelta>1||geometry.yDelta>1||!geometry.markHidden||!geometry.logoVisible)
-            failures.push("Bannière PC incomplète : "+JSON.stringify(geometry));
+          if(!g.loaded||g.fit!=="cover"||g.logoFit!=="contain"||g.gap>1||g.left>1||g.right>1||
+             Math.abs(g.artHeight-g.height)>1||Math.abs(g.badgeHeight-g.height)>1||g.logoHeight<g.height*.8||g.artWidth<=0)
+            failures.push("Bannière et badge PC mal alignés : "+JSON.stringify(g));
         }
         if(width<=760&&role==="direction"){
           const toolbar=await root.locator(".yd-topbar").evaluate(el=>{
