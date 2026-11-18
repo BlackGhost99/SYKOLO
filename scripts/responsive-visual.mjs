@@ -79,10 +79,13 @@ try{
           const detail=root.locator(".ya-school-detail-panel");
           if(await detail.isVisible())failures.push("Fiche école affichée d’office sous le répertoire");
           if(width<=760){
-            const row=directory.locator("tbody tr").first();
-            if(await row.count()){
-              const box=await row.boundingBox();
-              if(!box||box.height>100)failures.push("Ligne établissement trop haute sur mobile");
+            const rows=await directory.locator("tbody tr").evaluateAll(rows=>rows.map(row=>{
+              const r=row.getBoundingClientRect(),name=row.querySelector('[data-label="Établissement"]'),actions=row.querySelector('[data-label="Actions"]');
+              const n=name?.getBoundingClientRect(),a=actions?.getBoundingClientRect();
+              return {name:row.querySelector("strong")?.textContent,width:r.width,height:r.height,nameWidth:n?.width,actionWidth:a?.width,aligned:!!n&&!!a&&Math.abs(n.top+n.height/2-a.top-a.height/2)<5};
+            }));
+            for(const row of rows){
+              if(row.height>100||row.nameWidth<100||!row.aligned)failures.push("Ligne établissement mal dimensionnée : "+JSON.stringify(row));
             }
           }
           const manage=directory.getByRole("button",{name:/^Gérer/}).first();
