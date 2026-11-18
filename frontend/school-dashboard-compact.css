@@ -287,30 +287,32 @@
 }
 
 
-/* Desktop: the uploaded school banner is the entire artwork of its reserved slot.
- * The name and crest already appear in the school picker; do not reserve a second
- * column inside the image. Keep the mobile contain mode and the no-image fallback. */
+/* Keep the school artwork and its crest in adjacent, independent desktop slots. */
 @media screen and (min-width:761px) {
  .yd-operational-compact .yd-fixed-banner.has-image {
-   display:block;
-   position:relative;
-   isolation:isolate;
-   flex:1 1 0;
-   min-width:0;
+   display:grid;
+   grid-template-columns:minmax(0,1fr);
+   align-items:stretch;
    overflow:hidden;
  }
+ .yd-operational-compact .yd-fixed-banner.has-image:has(.yd-fixed-banner-mark img) {
+   grid-template-columns:minmax(0,1fr) clamp(72px,15%,120px);
+ }
  .yd-operational-compact .yd-fixed-banner.has-image .yd-fixed-banner-art {
-   position:absolute;
-   inset:0;
-   display:block;
-   width:100%;
-   height:100%;
-   object-fit:cover;
-   object-position:center;
-   z-index:0;
+   position:static;display:block;width:100%;height:100%;min-width:0;min-height:0;
+   object-fit:cover;object-position:center;
  }
  .yd-operational-compact .yd-fixed-banner.has-image .yd-fixed-banner-mark {
    display:none;
  }
+ .yd-operational-compact .yd-fixed-banner.has-image .yd-fixed-banner-mark:has(img) {
+   display:flex;align-items:center;justify-content:center;position:static;
+   width:100%;max-width:none;height:100%;min-width:0;margin:0;padding:3px;
+   background:white;border-radius:0;box-sizing:border-box;
+ }
+ .yd-operational-compact .yd-fixed-banner.has-image .yd-fixed-banner-mark img {
+   width:100%;height:100%;max-width:100%;max-height:100%;flex:0 1 auto;object-fit:contain;
+ }
+ .yd-operational-compact .yd-fixed-banner.has-image .yd-fixed-banner-mark span {display:none;}
  .yd-operational-compact .yd-fixed-banner.has-image::after {display:none;}
 }
