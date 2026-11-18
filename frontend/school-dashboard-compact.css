@@ -148,3 +148,43 @@
  .yd-operational-compact .yd-fixed-banner-mark span {padding-left:5px;}
  .yd-operational-compact .yd-fixed-banner-mark strong {white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
 }
+
+/* Dashboard views use the existing theme, without duplicating navigation or data. */
+.yd-dashboard-control-row {display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;}
+.yd-dashboard-control-row .yd-view-filters {display:flex;gap:8px;flex-wrap:wrap;margin:0;max-width:100%;}
+.yd-dashboard-control-row .yd-view-filters label {display:flex;align-items:center;gap:6px;font-size:12px;min-width:0;}
+.yd-dashboard-control-row .yd-view-filters select {min-width:0;max-width:100%;min-height:34px;}
+.yd-dashboard-views {display:flex;align-items:center;gap:3px;background:var(--yd-green-softer);border:1px solid var(--yd-line);border-radius:9px;padding:3px;flex-wrap:wrap;}
+.yd-dashboard-views button {border:0;background:transparent;color:var(--yd-text);font-size:13px;border-radius:6px;padding:8px 12px;cursor:pointer;}
+.yd-dashboard-views button[aria-pressed="true"] {background:white;color:var(--yd-green-dark);font-weight:700;box-shadow:var(--yd-shadow);}
+.yd-dashboard-views button:focus-visible {outline:2px solid var(--yd-green);outline-offset:2px;}
+.yd-dashboard-compact .yd-overview-grid {grid-template-columns:minmax(0,2fr) minmax(200px,1fr);}
+.yd-dashboard-compact .yd-financial-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+.yd-dashboard-compact .yd-grid>.yd-card {min-width:0;}
+.yd-dashboard-compact .yd-linechart {width:100%;max-width:100%;height:auto;}
+.yd-dashboard-compact .yd-card-title {gap:8px;flex-wrap:wrap;}
+.yd-dashboard-compact .yd-card-title h2 {font-size:16px;min-width:0;overflow-wrap:anywhere;}
+.yd-dashboard-compact .yd-card-title h2 .yd-icon {flex-shrink:0;}
+.yd-dashboard-compact .yd-dashboard-shortcuts {flex:auto;grid-template-columns:repeat(auto-fit,minmax(min(100%,165px),1fr));}
+.yd-operational-compact .yd-table-wrap {max-width:100%;min-width:0;overflow-x:auto;}
+@media screen and (max-width:1000px){
+ .yd-dashboard-compact .yd-overview-grid,.yd-dashboard-compact .yd-financial-grid {grid-template-columns:minmax(0,1fr);}
+}
+@media screen and (max-width:760px){
+ .yd-dashboard-control-row {display:grid;grid-template-columns:minmax(0,1fr);}
+ .yd-dashboard-views {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));}
+ .yd-dashboard-views button {padding:8px 3px;font-size:11px;min-height:44px;white-space:normal;}
+ .yd-dashboard-control-row .yd-view-filters {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
+ .yd-dashboard-control-row .yd-view-filters label {display:grid;gap:3px;}
+ .yd-dashboard-compact .yd-grid {grid-template-columns:minmax(0,1fr);}
+ .yd-dashboard-compact .yd-card {padding:10px;}
+ .yd-dashboard-compact .yd-metrics.five>.yd-metric:last-child {grid-column:1/-1;}
+ .yd-dashboard-compact .yd-card-title h2 {font-size:14px;}
+ .yd-operational-compact .yd-topbar .yd-mobile-toggle {display:none;}
+ .yd-operational-compact .yd-topbar {gap:4px;}
+ .yd-operational-compact .yd-topbar .yd-logo {min-width:0;flex:1 1 auto;}
+ .yd-operational-compact .yd-topbar .yd-logo b {font-size:26px;}
+ .yd-operational-compact .yd-topbar .yd-logo span {font-size:10px;}
+ .yd-operational-compact .yd-school-bottom-nav button:focus-visible {outline:2px solid var(--yd-green);outline-offset:-2px;}
+}
+@media print {.yd-dashboard-control-row,.yd-subscription-link {display:none!important;}}
