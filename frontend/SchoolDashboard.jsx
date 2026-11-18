@@ -255,6 +255,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const [chosen,setChosen]=useState("");
   const [schoolBranding,setSchoolBranding]=useState(null);
   const [access,setAccess]=useState(null);
+  const [commercialStatus,setCommercialStatus]=useState(null);
   const [regularizationSchool,setRegularizationSchool]=useState("");
   const [myPhotoUrl,setMyPhotoUrl]=useState(null);
   const [hasStaffProfile,setHasStaffProfile]=useState(false);
@@ -296,6 +297,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     return()=>{active=false;window.removeEventListener("yem:school-branding-updated",refresh);};
   },[chosen]);
   useEffect(()=>{
+    setCommercialStatus(null);
     if (!chosen) {setAccess(null);return;}
     let alive=true,busy=false;setAccess(null);
     async function refresh(force=false){
@@ -303,7 +305,11 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       busy=true;
       try{
         const x=await get("schools/"+chosen+"/my-access");
-        if(alive)setAccess(old=>old&&JSON.stringify(old)===JSON.stringify(x)?old:x);
+        if(alive){
+          const {commercial_workspace_status:status,...permissions}=x;
+          setCommercialStatus(status?{schoolId:chosen,status}:null);
+          setAccess(old=>old&&JSON.stringify(old)===JSON.stringify(permissions)?old:permissions);
+        }
       }catch(e){if(alive)setMessage(e.message);}
       finally{busy=false;}
     }
@@ -430,7 +436,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   if (preschoolEnabled&&can("school.academic.read")) visibleSections.preschool={
     title:"Suivi préscolaire",subtitle:"Crèche et préscolaire",modules:[],lives:[{key:"live",label:"Suivi quotidien",need:[]}],
   };
-  const canManageSubscription=Boolean(access&&chosen&&workingYearId&&(isOwner||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role)))));
+  const canManageSubscription=Boolean(access&&chosen&&(isOwner||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role)))));
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
   const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]);
   if(canManageSubscription)nav.push(["subscription","receipt","Abonnement YEM"]);
@@ -520,7 +526,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   </div>;
   const commercialReadOnly=Boolean(access?.commercial_workspace_restricted);
   const commercialBanner=access?.school?.id===chosen&&access.role!=="parent"?
-    <SchoolCommercialStatus status={access.commercial_workspace_status} restricted={commercialReadOnly}
+    <SchoolCommercialStatus status={commercialStatus?.schoolId===chosen?commercialStatus.status:null} restricted={commercialReadOnly}
       canManage={canManageSubscription} onManage={()=>navigate("subscription")}
       onRegularize={()=>setRegularizationSchool(chosen)}/>:null;
   if(commercialReadOnly&&regularizationSchool===chosen){
@@ -558,7 +564,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}{chosen && access && <StaffProfessionalDossier own schoolId={chosen}/>}</div></>;
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p></Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
-  else if(page==="subscription"&&canManageSubscription) content=<><PageHeader title="Abonnement YEM" subtitle="BWETEK Informatyk · Contrats, simulations et échéances"/><OwnerSubscription key={chosen+":"+workingYearId} schoolId={chosen} yearId={workingYearId}/></>;
+  else if(page==="subscription"&&canManageSubscription) content=<><PageHeader title="Abonnement YEM" subtitle="BWETEK Informatyk · Contrats, effectifs et échéances"/><OwnerSubscription key={chosen+":"+workingYearId} schoolId={chosen} yearId={workingYearId}/></>;
   else if(page==="connection"&&schoolCode&&canUsers) content=<><PageHeader title="Accès de l’établissement" subtitle="Code à communiquer uniquement aux collaborateurs autorisés"/><Card title="Code de connexion de l’établissement" icon="school" className="yd-school-code-compact">
       <div className="yd-school-code-row"><label className="field">Code à communiquer au personnel
         <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
