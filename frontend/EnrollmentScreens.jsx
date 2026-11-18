@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import FinancialDocuments, {PdfLinks} from "./FinancialDocuments.jsx";
 import React, { useEffect, useMemo, useState } from "react";
 import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Check, Donut, PageHeader } from "./yem-ui.jsx";
@@ -464,13 +465,15 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
         <Metric icon="alert" label="Élèves sans classe" value={num(o.unassigned_students)} trend="none" trendLabel="dossiers actifs non inscrits"/>
         {o.finance_visible ? <Metric icon="scale" label="Reste à payer" value={money(o.classes.reduce((a, c) => a + Number(c.finance?.balance || 0), 0), o.currency)} trend="none" trendLabel="toutes classes"/> : <Metric icon="cap" label="Classes complètes" value={num(o.classes.filter(c => c.remaining === 0).length)} trend="none" trendLabel="capacité atteinte"/>}
       </div>
-      <div className="yc-cards">{o.classes.filter(c => c.active).map(c => <button type="button" key={c.id} className={`yc-card ${klass?.id === c.id ? "active" : ""}`} onClick={() => { setSelected(c.id); setPicking(false); }}>
+      <div className="yc-cards">{o.classes.filter(c => c.active).map(c => <ContextTarget as="button" type="button" key={c.id} className={`yc-card ${klass?.id === c.id ? "active" : ""}`} onClick={() => { setSelected(c.id); setPicking(false); }}
+        actions={[{id:"roster",label:"Consulter les inscrits",run:()=>{setSelected(c.id);setPicking(false)}},
+          ...(canManage?[{id:"enroll",label:"Préparer une nouvelle inscription",write:true,run:()=>onNavigate("students","new",{classroom:c.id})}]:[])]}>
         <span className="yc-head"><b>{c.name}</b><small>{c.level.name}</small></span>
         <span className="yc-count"><strong>{c.enrolled}</strong>{c.capacity ? ` / ${c.capacity}` : " inscrits"}</span>
         {c.capacity ? <span className="yc-bar"><i style={{ width: `${Math.min(100, c.enrolled / c.capacity * 100)}%` }}/></span> : null}
         <small>{c.remaining == null ? "Capacité libre" : c.remaining === 0 ? "Classe complète" : `${c.remaining} place(s) restante(s)`}</small>
         {fin(c) && c.enrolled > 0 && <span className="yc-fin">{fin(c).a_jour > 0 && <em className="ok">{fin(c).a_jour} payé</em>}{fin(c).partiel > 0 && <em className="mid">{fin(c).partiel} partiel</em>}{fin(c).impaye > 0 && <em className="ko">{fin(c).impaye} impayé</em>}{fin(c).sans_frais > 0 && <em>{fin(c).sans_frais} sans frais</em>}</span>}
-      </button>)}</div>
+      </ContextTarget>)}</div>
       {klass && <Card title={`Élèves de ${klass.name}`} count={`(${members.length})`} icon="users" right={<div className="yf-head-actions">
         {canManage && <Button className="small" icon="adduser" primary onClick={() => onNavigate("students", "new", { classroom: klass.id })}>Nouvel élève</Button>}
         {canManage && <Button className="small" icon="users" onClick={() => setPicking(p => !p)}>Inscrire des élèves existants</Button>}
@@ -484,12 +487,14 @@ export function ClassEnrollments({ schoolId, canManage, canReceive, onNavigate, 
         </div>}
         <Loading state={roster}>{members.length === 0 ? <Empty>Aucun élève inscrit dans cette classe.</Empty> :
           <TableScroll label="Élèves de la classe"><table className="xs nowrap clickable"><thead><tr>{["#", "Élève", "Responsable", "Téléphone", ...(o.finance_visible ? ["Payé", "Reste", "Situation", "Moyens"] : []), "Pièces", ""].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-            <tbody>{members.map((s, i) => <tr key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}>
+            <tbody>{members.map((s, i) => <ContextTarget as="tr" key={s.id} onClick={() => onNavigate("students", "fiche", { student: s.id })}
+              actions={[{id:"file",label:"Ouvrir le dossier élève",run:()=>onNavigate("students","fiche",{student:s.id})},
+                ...(canReceive&&s.enrollment&&Number(s.finance?.balance)>0?[{id:"payment",label:"Préparer un encaissement",write:true,run:()=>onNavigate("payments","live",{enrollment:s.enrollment.id})}]:[])]}>
               <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td>
               {o.finance_visible && <><td>{money(s.finance?.paid, roster.data.currency)}</td><td><b>{money(s.finance?.balance, roster.data.currency)}</b></td><td>{s.finance && <Status tone={FIN[s.finance.status][0]}>{FIN[s.finance.status][1]}</Status>}</td><td>{(s.finance?.methods || []).map(methodLabel).join(", ") || "—"}</td></>}
               <td>{s.missing_documents ? <Status tone="yellow">{s.missing_documents} manquante(s)</Status> : <Status>Complet</Status>}</td>
-              <td>{canReceive && Number(s.finance?.balance) > 0 ? <button type="button" className="yf-link" onClick={e => { e.stopPropagation(); onNavigate("payments", "live", { enrollment: s.enrollment.id }); }}>Encaisser</button> : <Icon name="chevronright" size={18}/>}</td>
-            </tr>)}</tbody></table></TableScroll>}</Loading>
+              <td>{canReceive && Number(s.finance?.balance) > 0 ? <button type="button" className="yf-link" onClick={e => { e.stopPropagation(); onNavigate("payments", "live", { enrollment: s.enrollment.id }); }}>Encaisser</button> : <Icon name="chevronright" size={18}/>}<ContextTrigger/></td>
+            </ContextTarget>)}</tbody></table></TableScroll>}</Loading>
       </Card>}
     </>)}</Loading>
   </>;
