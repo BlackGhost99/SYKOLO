@@ -802,7 +802,8 @@ class PlatformSubscriptionTests(TestCase):
             status=response.json()["commercial_workspace_status"]
             self.assertEqual(set(status),{"mode","service_ends_before","next_payment_due","oldest_overdue_on",
                 "grace_days_remaining","restriction_eligible_on","trial_ends_before","last_service_ended_on"})
-            self.assertEqual(self.client.get(url.replace(str(self.school.pk),str(self.other.pk))).status_code,403)
+            # my-access deliberately hides an inaccessible school behind 404.
+            self.assertEqual(self.client.get(url.replace(str(self.school.pk),str(self.other.pk))).status_code,404)
             self.client.force_login(self.admin)
             self.mfa()
             return status
