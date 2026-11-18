@@ -1,0 +1,8 @@
+.yem-context-menu{position:fixed;z-index:2147483000;min-width:180px;max-width:min(320px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;padding:5px;border:1px solid #b8c3ce;border-radius:9px;background:#fff;color:#192634;box-shadow:0 10px 30px #17283a33;font:inherit}
+.yem-context-menu button{display:block;width:100%;margin:0;border:0;border-radius:5px;background:transparent;color:inherit;text-align:left;padding:9px 12px;font:inherit;cursor:pointer;white-space:normal}
+.yem-context-menu button:hover:not(:disabled),.yem-context-menu button:focus-visible{background:#e8f0fa;outline:2px solid #3169aa;outline-offset:-2px}
+.yem-context-menu button:disabled{opacity:.5;cursor:not-allowed}
+.yem-context-menu button.yem-context-danger{color:#a52a2a}
+.yem-context-trigger{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;padding:2px 7px;cursor:pointer;line-height:1;font-size:20px;border:1px solid #c5ced8;border-radius:6px;color:inherit;background:transparent;vertical-align:middle;margin-inline-start:6px}
+.yem-context-trigger:focus-visible{outline:2px solid #3169aa;outline-offset:2px}
+@media (prefers-color-scheme:dark){.yem-context-menu{background:#202b38;color:#eef3f8;border-color:#526274}.yem-context-menu button:hover:not(:disabled),.yem-context-menu button:focus-visible{background:#344860}.yem-context-menu button.yem-context-danger{color:#ffacac}}
