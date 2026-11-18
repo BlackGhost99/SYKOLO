@@ -1,4 +1,4 @@
-"""Commercial lifecycle and explicit full school workspace restrictions.
+"""Commercial lifecycle and explicit school workspace read-only restrictions.
 
 Expiry and late payments never change a school's activation or access by themselves.
 """
@@ -36,28 +36,43 @@ def commercial_status(school, today):
     next_end = None
     last_expiry = None
     first_overdue = None
+    next_due = None
+    due_today = False
     for row in contracts:
-        _, terms = effective_ledger(row)
-        paid = sum(p.amount_xaf for p in row.payments.all() if p.voided_at is None)
-        initial = [s for s in (row.commercial_terms or {}).get("schedule", []) if s["kind"] == "abonnement"]
-        if not initial:
-            unknown = True
-        else:
+        try:
+            total, terms = effective_ledger(row)
+            paid = sum(p.amount_xaf for p in row.payments.all() if p.voided_at is None)
+            schedule = terms.get("schedule", [])
+            identities = [(s["kind"], s["number"]) for s in schedule]
+            initial = [s for s in (row.commercial_terms or {}).get("schedule", []) if s["kind"] == "abonnement"]
+            if (not initial or not schedule or len(set(identities)) != len(identities)
+                or any(type(s["amount_xaf"]) is not int or s["amount_xaf"] < 0 for s in schedule)
+                or sum(s["amount_xaf"] for s in schedule) != total):
+                raise ValueError("Invalid schedule")
             start = date.fromisoformat(initial[0]["due_date"])
             end = add_months(start, 12)
-            if start <= today < end:
-                active = True
-                next_end = max(next_end or end, end)
-            elif today < start:
-                future = True
-            else:
-                expired = True
-                last_expiry = max(last_expiry or end, end)
-        for item in schedule_balances(terms, paid, today):
+            balances = schedule_balances(terms, paid, today)
+        except (KeyError, TypeError, ValueError, OverflowError, AttributeError):
+            unknown = True
+            continue
+        if start <= today < end:
+            active = True
+            next_end = max(next_end or end, end)
+        elif today < start:
+            future = True
+        else:
+            expired = True
+            last_expiry = max(last_expiry or end, end)
+        for item in balances:
+            if not item["balance_xaf"]:
+                continue
+            due = date.fromisoformat(item["due_date"])
             if item["days_overdue"]:
                 overdue += item["balance_xaf"]
-                due = date.fromisoformat(item["due_date"])
                 first_overdue = min(first_overdue or due, due)
+            else:
+                next_due = min(next_due or due, due)
+                due_today = due_today or due == today
             if item["days_overdue"] >= GRACE_DAYS:
                 late_30 += item["balance_xaf"]
     trial = trial_summary(school, today)
@@ -83,6 +98,10 @@ def commercial_status(school, today):
     eligible_on = min(grace_deadlines) if grace_deadlines else None
     decision = last_decision(school)
     return {"lifecycle": lifecycle, "billing_started": bool(contracts), "service_ends_before": next_end.isoformat() if next_end else None,
+            "next_payment_due": next_due.isoformat() if next_due else None,
+            "oldest_overdue_on": first_overdue.isoformat() if first_overdue else None,
+            "payment_due_today": due_today, "schedule_review": unknown,
+            "last_service_ended_on": last_expiry.isoformat() if last_expiry else None,
             "overdue_xaf": overdue, "late_30_xaf": late_30,
             "restricted": bool(decision and decision.restricted),
             "revision": decision.revision if decision else 0,
@@ -92,6 +111,30 @@ def commercial_status(school, today):
             "can_restrict": bool(school.is_active and eligible_on and today >= eligible_on),
             "decision_at": decision.created_at.isoformat() if decision else None,
             "trial": trial}
+
+
+def workspace_commercial_status(school, today):
+    """Service status for school staff, without amounts or private contract details."""
+    status = commercial_status(school, today)
+    trial = status["trial"]
+    if status["restricted"]:
+        mode = "read_only"
+    elif not status["billing_started"]:
+        mode = "trial" if trial and trial["status"] == "active" else "free"
+    elif status["oldest_overdue_on"]:
+        mode = "overdue"
+    elif status["schedule_review"]:
+        mode = "review"
+    elif status["payment_due_today"]:
+        mode = "due_today"
+    else:
+        mode = {"active": "active", "scheduled": "scheduled", "expired": "expired"}.get(status["lifecycle"], "review")
+    return {"mode": mode, "service_ends_before": status["service_ends_before"],
+            "next_payment_due": status["next_payment_due"], "oldest_overdue_on": status["oldest_overdue_on"],
+            "grace_days_remaining": status["grace_days_remaining"],
+            "restriction_eligible_on": status["restriction_eligible_on"],
+            "trial_ends_before": trial["ends_before"] if mode == "trial" else None,
+            "last_service_ended_on": status["last_service_ended_on"] if status["billing_started"] else None}
 
 
 @never_cache
@@ -116,7 +159,8 @@ def commercial_access(request, school_id, *, school_scope=False):
     data, error = parse_body(request)
     if error is not None:
         return error
-    if (not isinstance(data, dict) or set(data) != {"restricted", "revision", "reason"} or
+    if (not isinstance(data, dict) or set(data) not in ({"restricted", "revision", "reason"}, {"restricted", "revision", "reason", "override_grace"}) or
+        type(data.get("override_grace", False)) is not bool or
         type(data["restricted"]) is not bool or type(data["revision"]) is not int or
         not isinstance(data["reason"], str) or not 1 <= len(data["reason"].strip()) <= 240):
         return JsonResponse({"error": "Décision, révision et motif requis."}, status=422)
@@ -127,11 +171,16 @@ def commercial_access(request, school_id, *, school_scope=False):
             return JsonResponse({"error": "Décision modifiée. Actualisez."}, status=409)
         if data["restricted"] == status["restricted"]:
             return JsonResponse({"error": "État déjà appliqué."}, status=409)
-        if data["restricted"] and not status["can_restrict"]:
+        override = data.get("override_grace", False)
+        if override and (not data["restricted"] or not school.is_active or status["can_restrict"]):
+            return JsonResponse({"error": "Dérogation non applicable à cet état."}, status=409)
+        if data["restricted"] and (not school.is_active or (not status["can_restrict"] and not override)):
             return JsonResponse({"error": "Restriction non éligible : délai de grâce de 30 jours non écoulé."}, status=409)
         decision = PlatformCommercialAccessDecision.objects.create(
             school=school, revision=status["revision"]+1, restricted=data["restricted"],
             reason=data["reason"].strip(), actor=request.user)
-        audit(request, "subscription_access_restricted" if decision.restricted else "subscription_access_restored",
+        event = ("subscription_access_override" if override else
+                 "subscription_access_restricted" if decision.restricted else "subscription_access_restored")
+        audit(request, event,
               decision.pk, school=school, reason=decision.reason)
         return JsonResponse(commercial_status(school, timezone.localdate()), status=201)

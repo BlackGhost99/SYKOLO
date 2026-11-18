@@ -1,0 +1,14 @@
+.yd-commercial-status{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 12px;min-width:0;max-width:100%;padding:9px 12px;margin:8px 12px 10px;border:1px solid #dce7e0;border-radius:10px;background:#f5f9f6;color:#254a38;word-break:normal;overflow-wrap:normal;writing-mode:horizontal-tb}
+.yd-commercial-status-main{display:flex;gap:9px;min-width:0;align-items:center;flex:1 1 200px}
+.yd-commercial-status-marker{width:9px;height:9px;flex:0 0 9px;border-radius:50%;background:#73857d}
+.yd-commercial-status-text{display:grid;gap:3px;min-width:0;line-height:1.35}
+.yd-commercial-status-text strong{font-size:.91rem;font-weight:700;color:inherit}
+.yd-commercial-status-text>span,.yd-commercial-status-contact{font-size:.76rem;color:inherit;white-space:normal}
+.yd-commercial-status--active .yd-commercial-status-marker,.yd-commercial-status--scheduled .yd-commercial-status-marker{background:#17804d}
+.yd-commercial-status--due_today,.yd-commercial-status--overdue,.yd-commercial-status--expired,.yd-commercial-status--review{background:#fffbef;color:#815509;border-color:#ecdba9}
+.yd-commercial-status--due_today .yd-commercial-status-marker,.yd-commercial-status--overdue .yd-commercial-status-marker,.yd-commercial-status--expired .yd-commercial-status-marker,.yd-commercial-status--review .yd-commercial-status-marker{background:#bd8617}
+.yd-commercial-status--read_only{background:#fff2f2;color:#982e30;border-color:#f1d0d0}
+.yd-commercial-status--read_only .yd-commercial-status-marker{background:#be3939}
+.yd-commercial-status>button{background:#fff;color:inherit;border:1px solid currentColor;border-radius:7px;padding:5px 9px;font-size:.78rem;line-height:1.3;font-weight:650;white-space:normal;max-width:100%;flex:0 0 auto}
+.ym-prof-body>.yd-commercial-status{margin:0 0 10px}
+@media(max-width:600px){.yd-commercial-status{margin:6px 9px 8px;padding:8px 10px;gap:5px 8px}.yd-commercial-status-main{flex-basis:100%}.yd-commercial-status>button,.yd-commercial-status-contact{margin-left:18px}.yd-commercial-status-text strong{font-size:.88rem}.yd-commercial-status-text>span{font-size:.75rem}}

@@ -189,7 +189,10 @@ class CommercialWorkspaceBoundaryMiddleware:
             # Django emits transaction control for nested atomic blocks. SQL
             # mutation is blocked even on SQLite and in Django's TestCase.
             verb = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ""
-            if verb not in {"SELECT", "WITH", "EXPLAIN", "SAVEPOINT", "RELEASE", "ROLLBACK"}:
+            # WITH can conceal data-modifying CTEs; EXPLAIN ANALYZE can execute
+            # writes. Deny both in this boundary unless a future audited read
+            # requires an explicitly safe alternative.
+            if verb not in {"SELECT", "SAVEPOINT", "RELEASE", "ROLLBACK"}:
                 request._commercial_write_attempted = True
                 raise CommercialReadOnlyViolation("Tentative de modification durant une lecture.")
             return execute(sql, params, many, context)

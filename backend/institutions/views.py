@@ -286,20 +286,23 @@ def school_members(request, school_id):
 def my_school_access(request, school_id):
     from .cycle_scope import scoped_cycle_ids, allowed_school_permissions
     from .academic_models import AcademicCycle
-    from .subscription_access import last_decision
+    from django.utils import timezone
+    from .subscription_access import last_decision, workspace_commercial_status
     school, error = access(request, school_id)
     if error is not None:
         return error
     member = SchoolMember.objects.select_related("role").filter(
-        school=school, user=request.user, active=True
+        school=school, user=request.user, active=True, role__school=school
     ).first()
     owner = owns_school(request.user, school)
     cycle_ids = scoped_cycle_ids(request.user,school)
     permitted = effective_permissions(request.user,school) if member else ({"school.view", "school.members.write"} if owner else set())
     scoped_cycles = list(AcademicCycle.objects.filter(school=school,pk__in=cycle_ids).values("id","name")) if cycle_ids is not None else []
     decision = last_decision(school)
-    return JsonResponse({
+    commercial = workspace_commercial_status(school, timezone.localdate()) if owner or (member and member.role.code != "parent") else None
+    response = JsonResponse({
         "commercial_workspace_restricted": bool(decision and decision.restricted),
+        "commercial_workspace_status": commercial,
         "school": school_response(school),
         "role": member.role.code if member else (OWNER_ROLE_CODE if owner else None),
         "role_label": public_role_label(member.role, school) if member else ("Propriétaire" if owner else ""),
@@ -311,6 +314,8 @@ def my_school_access(request, school_id):
         "access_cycle_ids": sorted(cycle_ids) if cycle_ids is not None else None,
         "access_cycles": [{"id": str(row["id"]), "name": row["name"]} for row in scoped_cycles],
     })
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @require_http_methods(["POST"])

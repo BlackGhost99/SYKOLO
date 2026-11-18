@@ -22,6 +22,7 @@ async function authApi(path, body) {
     const error = Error(data.error || "Requête refusée.");
     error.status = response.status;
     error.mfaRequired = data.mfa_required;
+    if (response.status===403 && data.code==="school_suspended") error.suspension={school:data.school_name,reason:data.reason,at:data.suspended_at};
     throw error;
   }
   return data;
@@ -43,6 +44,8 @@ export default function AuthPanel({parentOnly = false} = {}) {
   const [registerLast, setRegisterLast] = useState("");
   const [registrationStatus, setRegistrationStatus] = useState(null);
   const [message, setMessage] = useState("");
+  const [suspension, setSuspension] = useState(null);
+  useEffect(()=>{setSuspension(null)},[loginScope,schoolCode,username,tab]);
   const [pending, setPending] = useState(null);
   const [recovery, setRecovery] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -77,9 +80,11 @@ export default function AuthPanel({parentOnly = false} = {}) {
   async function run(task) {
     setBusy(true);
     setMessage("");
+    setSuspension(null);
     try { await task(); }
     catch (e) {
-      if (e.mfaRequired) setMessage("Ajoutez votre code d’authentification pour vous connecter.");
+      if (e.suspension) {setSuspension(e.suspension);setPassword("");setCode("");}
+      else if (e.mfaRequired) setMessage("Ajoutez votre code d’authentification pour vous connecter.");
       else setMessage(e.message);
     } finally { setBusy(false); }
   }
@@ -303,6 +308,13 @@ export default function AuthPanel({parentOnly = false} = {}) {
           )}
         </>
       )}
+      {suspension && <div role="alert" className="yem-auth-message" style={{border:"1px solid #b91c1c",borderRadius:8,padding:12,overflowWrap:"anywhere"}}>
+        <h3>Établissement suspendu</h3>
+        <p>L’accès à {suspension.school} a été suspendu par l’administration de YEM.</p>
+        <p><strong>Motif :</strong> {suspension.reason}</p>
+        {suspension.at && Number.isFinite(Date.parse(suspension.at)) && <p><strong>Date :</strong> {new Date(suspension.at).toLocaleDateString("fr-GA",{timeZone:"Africa/Libreville"})}</p>}
+        <p>Veuillez contacter BWETEK Informatyk pour régulariser votre situation.</p>
+      </div>}
       {message && <p role="status" aria-live="polite" className="yem-auth-message">{message}</p>}
     </section>
   );
