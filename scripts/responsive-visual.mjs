@@ -56,6 +56,13 @@ try{
           });
           if(!toolbar.aligned)failures.push("Les quatre commandes de l’en-tête ne sont pas alignées");
           if(toolbar.height>195)failures.push("En-tête mobile trop haut : "+toolbar.height);
+          const art=root.locator(".yd-fixed-banner-art");
+          const crest=root.locator(".yd-school-picker .yd-school-logo");
+          if(!await art.isVisible()||!await crest.isVisible())failures.push("Visuels d’établissement absents");
+          else{
+            const artInfo=await art.evaluate(img=>({loaded:img.complete&&img.naturalWidth>0,fit:getComputedStyle(img).objectFit,width:img.getBoundingClientRect().width}));
+            if(!artInfo.loaded||artInfo.fit!=="contain"||artInfo.width<width*.8)failures.push("Bannière rognée ou trop étroite");
+          }
           const account=root.getByRole("button",{name:/^Compte de/});
           await account.click();
           const menu=root.getByRole("menu",{name:"Menu du compte"});
