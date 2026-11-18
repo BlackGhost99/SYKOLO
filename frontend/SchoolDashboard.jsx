@@ -527,7 +527,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   const commercialReadOnly=Boolean(access?.commercial_workspace_restricted);
   const commercialBanner=access?.school?.id===chosen&&access.role!=="parent"?
     <SchoolCommercialStatus status={commercialStatus?.schoolId===chosen?commercialStatus.status:null} restricted={commercialReadOnly}
-      canManage={canManageSubscription} onManage={()=>navigate("subscription")}
+      canManage={canManageSubscription} onManage={()=>{setTeacherViewRequested(false);navigate("subscription");}}
       onRegularize={()=>setRegularizationSchool(chosen)}/>:null;
   if(commercialReadOnly&&regularizationSchool===chosen){
     const canRegularize=access.is_owner||(!access.cycle_scope_restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role)));
