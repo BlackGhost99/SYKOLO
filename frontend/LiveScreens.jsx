@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CashClosingPanel from "./CashClosingPanel.jsx";
 import {DashboardShortcuts} from "./SchoolDashboardHeader.jsx";
@@ -128,10 +129,13 @@ export function LiveStudents({ schoolId, canManage, canReceive, onNavigate, tabs
         <Card title="Liste des élèves" count={`(${rows.length})`} icon="users">
           {rows.length === 0 ? <Empty>Aucun élève ne correspond. Créez une fiche depuis « Nouvel élève » ou importez votre liste Excel.</Empty> :
             <TableScroll label="Liste des élèves"><table className="clickable nowrap dense"><thead><tr>{["#", "Élève", "Classe", ...(d.sensitive_visible?["Parent / Tuteur", "Téléphone"]:[]), <>Situation<br/>financière</>, "Statut", "Actions"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-              <tbody>{rows.map((s, i) => { const f = s.finance && FIN[s.finance.status]; return <tr key={s.id} className={current?.id === s.id ? "selected" : ""} onClick={() => setSelected(s.id)}>
+              <tbody>{rows.map((s, i) => { const f = s.finance && FIN[s.finance.status]; return <ContextTarget as="tr" key={s.id} className={current?.id === s.id ? "selected" : ""} onClick={() => setSelected(s.id)}
+                actions={[{id:"preview",label:"Afficher l’aperçu",run:()=>setSelected(s.id)},
+                  {id:"file",label:"Ouvrir la fiche",run:()=>onNavigate("students","fiche",{student:s.id})},
+                  ...(canReceive&&s.enrollment?[{id:"payment",label:"Préparer un encaissement",write:true,run:()=>onNavigate("payments","live",{enrollment:s.enrollment.id})}]:[])]}>
                 <td>{i + 1}</td><td><b>{s.last_name} {s.first_name}</b></td><td>{s.enrollment?.classroom.name || "—"}</td>{d.sensitive_visible&&<><td>{s.guardian?.full_name || "—"}</td><td>{s.guardian?.phone || "—"}</td></>}
                 <td>{f ? f[1] : "—"}</td><td>{s.enrollment ? (f ? <Status tone={f[0]}>{f[1]}</Status> : <Status>Inscrit</Status>) : <Status tone="gray">Non inscrit</Status>}</td>
-                <td><button type="button" className="yd-dots" aria-label="Ouvrir la fiche" onClick={e => { e.stopPropagation(); onNavigate("students", "fiche", { student: s.id }); }}><Icon name="dots" size={22}/></button></td></tr>; })}</tbody></table></TableScroll>}
+                <td><ContextTrigger/><button type="button" className="yd-link" aria-label="Ouvrir la fiche" onClick={e=>{e.stopPropagation();onNavigate("students","fiche",{student:s.id});}}>Fiche</button></td></ContextTarget>; })}</tbody></table></TableScroll>}
         </Card>
         {current ? <Card title="Aperçu de l’élève" icon="user" className="student-preview">
           <div className="yd-person"><div className="yd-avatar big"><Icon name="user" size={46} strokeWidth={0} className="filled"/></div><div><h3>{current.last_name} {current.first_name}</h3><span>Classe : {current.enrollment?.classroom.name || "non inscrit"}</span><span>Matricule : {current.student_code}</span>{current.matricule_yem && current.matricule_yem !== current.student_code && <small>Identifiant YEM : {current.matricule_yem}</small>}</div></div>
@@ -429,7 +433,8 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
           {d.arrears.length === 0 ? <Empty>Aucune famille en retard de paiement.</Empty> :
             <TableScroll label="Impayés par élève"><table className="xs clickable"><thead><tr>{["", "Élève", "Classe", "Responsable", "Plus ancienne échéance impayée", "Total en retard", <>Dernier<br/>paiement</>, "Statut"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>{d.arrears.map((row, index) => (
-                <tr key={row.enrollment} className={a === row ? "selected" : ""}
+                <ContextTarget as="tr" key={row.enrollment} className={a === row ? "selected" : ""}
+                    actions={[{id:"details",label:canRemind?"Consulter les échéances et options de relance":"Consulter les échéances",disabled:sending,run:()=>selectEnrollment(row.enrollment)}]}
                     onClick={() => selectEnrollment(row.enrollment)}>
                   <td>{index + 1}</td>
                   <td className="nowrap">
@@ -444,8 +449,8 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
                   <td className="nowrap">{fmtDate(row.due_date)}</td>
                   <td className="nowrap"><b>{fmtMoney(row.amount_due, d.currency)}</b></td>
                   <td className="nowrap">{fmtDate(row.last_payment)}</td>
-                  <td><Status tone={row.last_payment ? "yellow" : "red"}>{row.last_payment ? "À relancer" : "En retard"}</Status></td>
-                </tr>
+                  <td><Status tone={row.last_payment ? "yellow" : "red"}>{row.last_payment ? "À relancer" : "En retard"}</Status><ContextTrigger/></td>
+                </ContextTarget>
               ))}</tbody>
             </table></TableScroll>}
         </Card>
