@@ -458,7 +458,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     canApproveScholarship:can("school.admissions.decide")&&can("school.finance.approve"),
     canConfigureFinance:can("school.settings.write"),
     canCreate:can("school.admissions.manage"),canEnroll:can("school.admissions.enroll"),
-    canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),
+    canManage:can("school.organization.manage"),canManageRoles:can("school.roles.manage"),canManageTimetable:can("school.timetable.manage"),
     canPublish:can("school.reports.publish"),onNavigate:navigate,
     workingYearId,onWorkingYearChange:setWorkingYearId,
     onYearsUpdated:()=>setYearCatalogVersion(v=>v+1),
