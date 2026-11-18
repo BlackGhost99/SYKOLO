@@ -316,3 +316,14 @@
  .yd-operational-compact .yd-fixed-banner.has-image .yd-fixed-banner-mark span {display:none;}
  .yd-operational-compact .yd-fixed-banner.has-image::after {display:none;}
 }
+
+@media screen and (min-width:761px){
+ .yd-operational-compact .yd-fixed-banner.has-image{grid-template-rows:minmax(0,1fr);gap:0;}
+ .yd-operational-compact .yd-fixed-banner.has-image:has(.yd-fixed-banner-mark img){grid-template-columns:minmax(0,1fr) min(120px, max(40px,18%));}
+ .yd-operational-compact .yd-fixed-banner.has-image .yd-fixed-banner-mark:has(img){min-height:0;overflow:hidden;}
+ .yd-operational-compact .yd-fixed-banner.has-image .yd-fixed-banner-mark img{min-height:0;min-width:0;}
+}
+@media screen and (min-width:761px) and (max-width:1050px){
+ .yd-operational-compact header.yd-topbar{flex-wrap:wrap;height:auto;}
+ .yd-operational-compact .yd-topbar>.yd-fixed-banner{order:20;flex:1 0 100%;width:100%;}
+}
