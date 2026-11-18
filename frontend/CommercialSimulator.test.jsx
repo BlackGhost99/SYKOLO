@@ -11,6 +11,7 @@ test("school sees real estimate before issuing anything and can compare periods"
   const fetcher=vi.fn(async()=>Response.json(fixture()));vi.stubGlobal("fetch",fetcher);
   render(<CommercialSimulator schoolId="a" yearId="y"/>);
   await screen.findByText(/Abonnement annuel estimé/);
+  await userEvent.click(screen.getByText("Voir les 12 échéances"));
   expect(screen.getAllByRole("listitem")).toHaveLength(12);
   await userEvent.selectOptions(screen.getByLabelText("Fractionnement de l’estimation"),"trimestriel");
   expect(screen.getAllByRole("listitem")).toHaveLength(4);
@@ -25,4 +26,24 @@ test("platform uses the same read-only simulation and handles access refusal",as
   render(<CommercialSimulator schoolId="a" platform api={api}/>);
   expect(await screen.findByRole("alert")).toHaveProperty("textContent","Accès refusé");
   await waitFor(()=>expect(api).toHaveBeenCalledWith("platform/schools/a/subscription-simulation"));
+});
+test("direction can project a cycle and return to registered counts",async()=>{
+  vi.spyOn(document,"hidden","get").mockReturnValue(false);
+  const fetcher=vi.fn(async url=>{
+    const data=fixture();
+    data.actual_counts={primaire:2};
+    if(url.includes("effectif_primaire=80"))data.simulation.lines[0].students=80;
+    return Response.json(data);
+  });
+  vi.stubGlobal("fetch",fetcher);
+  render(<CommercialSimulator schoolId="a" yearId="y"/>);
+  const input=await screen.findByRole("spinbutton");
+  await userEvent.clear(input);
+  await userEvent.type(input,"80");
+  await userEvent.click(screen.getByText("Calculer la projection"));
+  await screen.findByText("Projection sur effectifs simulés");
+  expect(screen.getByRole("spinbutton").value).toBe("80");
+  await userEvent.click(screen.getByText("Revenir aux effectifs réels"));
+  await screen.findByText("Estimation sur effectifs réels");
+  expect(screen.getByRole("spinbutton").value).toBe("2");
 });
