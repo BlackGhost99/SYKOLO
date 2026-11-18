@@ -49,6 +49,55 @@ try{
         if(metrics.demoError)failures.push("Erreur du composant de démonstration");
         if(errors.length)failures.push(...errors);
         if(width<=760&&["direction","proprietaire","econome","parent"].includes(role)&&!metrics.navVisible)failures.push("Navigation mobile absente");
+        if(width<=760&&role==="direction"){
+          const toolbar=await root.locator(".yd-topbar").evaluate(el=>{
+            const boxes=[".yd-logo",".yd-header-search",".yd-bell",".yd-user-wrap"].map(s=>el.querySelector(s)?.getBoundingClientRect());
+            return {aligned:boxes.every(b=>b&&Math.abs(b.top+ b.height/2-(boxes[0].top+boxes[0].height/2))<5),height:el.getBoundingClientRect().height};
+          });
+          if(!toolbar.aligned)failures.push("Les quatre commandes de l’en-tête ne sont pas alignées");
+          if(toolbar.height>195)failures.push("En-tête mobile trop haut : "+toolbar.height);
+          const art=root.locator(".yd-fixed-banner-art");
+          const crest=root.locator(".yd-school-picker .yd-school-logo");
+          if(!await art.isVisible()||!await crest.isVisible())failures.push("Visuels d’établissement absents");
+          else{
+            const artInfo=await art.evaluate(img=>({loaded:img.complete&&img.naturalWidth>0,fit:getComputedStyle(img).objectFit,width:img.getBoundingClientRect().width}));
+            if(!artInfo.loaded||artInfo.fit!=="contain"||artInfo.width<width*.8)failures.push("Bannière rognée ou trop étroite");
+          }
+          const account=root.getByRole("button",{name:/^Compte de/});
+          await account.click();
+          const menu=root.getByRole("menu",{name:"Menu du compte"});
+          await menu.waitFor();
+          const bounds=await menu.boundingBox();
+          if(!bounds||bounds.x<0||bounds.x+bounds.width>width+1||bounds.y<0||bounds.y+bounds.height>height+1)failures.push("Menu du compte hors écran");
+          await page.screenshot({path:output+"/"+name+"-compte.png",animations:"disabled",style:".yem-demo-pilot{visibility:hidden!important}"});
+          await page.keyboard.press("Escape");
+          if(await menu.isVisible())failures.push("Échap ne ferme pas le compte");
+          if(await root.locator(".yd-year-picker").count()&&await root.getByRole("combobox",{name:"Année scolaire",exact:true}).count())failures.push("Sélecteur d’année dupliqué");
+        }
+        if(width<=1150&&role==="platform"){
+          const directory=root.locator(".ya-directory");
+          const detail=root.locator(".ya-school-detail-panel");
+          if(await detail.isVisible())failures.push("Fiche école affichée d’office sous le répertoire");
+          if(width<=760){
+            const rows=await directory.locator("tbody tr").evaluateAll(rows=>rows.map(row=>{
+              const r=row.getBoundingClientRect(),name=row.querySelector('[data-label="Établissement"]'),actions=row.querySelector('[data-label="Actions"]');
+              const n=name?.getBoundingClientRect(),a=actions?.getBoundingClientRect();
+              return {name:row.querySelector("strong")?.textContent,width:r.width,height:r.height,nameWidth:n?.width,actionWidth:a?.width,aligned:!!n&&!!a&&Math.abs(n.top+n.height/2-a.top-a.height/2)<5};
+            }));
+            for(const row of rows){
+              if(row.height>100||row.nameWidth<100||!row.aligned)failures.push("Ligne établissement mal dimensionnée : "+JSON.stringify(row));
+            }
+          }
+          const manage=directory.getByRole("button",{name:/^Gérer/}).first();
+          if(await manage.count()){
+            await manage.click();
+            await detail.waitFor({state:"visible"});
+            if(await directory.isVisible())failures.push("Répertoire et fiche empilés");
+            await page.screenshot({path:output+"/"+name+"-fiche.png",animations:"disabled",style:".yem-demo-pilot{visibility:hidden!important}"});
+            await detail.getByRole("button",{name:"Retour aux établissements"}).click();
+            await directory.waitFor({state:"visible"});
+          }
+        }
         report.push({role,width,height,...metrics,failures});
       }catch(e){report.push({role,width,height,failures:[String(e)]});}
     }
