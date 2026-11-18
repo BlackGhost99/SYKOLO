@@ -747,3 +747,26 @@ class PlatformSubscriptionTests(TestCase):
         self.assertEqual(row.total_xaf,original)
         self.assertEqual(row.commercial_terms["student_count"],sum(counts.values()))
         self.assertEqual(PlatformSubscriptionPayment.objects.count(),0)
+
+    def test_platform_financial_estimate_uses_real_students_without_creating_debt(self):
+        self.other.is_active=False
+        self.other.save(update_fields=["is_active"])
+        url="/api/v1/platform/commercial-dashboard"
+        before=self.client.get(url+"?status=unactivated")
+        self.assertEqual(before.status_code,200,before.content)
+        totals=before.json()["totals"]
+        self.assertEqual(totals["current_students"],sum(self.counts.values()))
+        self.assertEqual(totals["current_annual_estimate_xaf"],100000)
+        self.assertEqual(totals["current_unactivated_estimate_xaf"],100000)
+        self.assertEqual(totals["contracted_xaf"],0)
+        self.assertEqual(totals["balance_xaf"],0)
+        self.assertEqual(before.json()["count"],1)
+        self.assertFalse(before.json()["schools"][0]["current_billing_active"])
+        self.assertEqual(PlatformSubscription.objects.count(),0)
+        self.assertEqual(self.issue().status_code,201)
+        after=self.client.get(url+"?status=unactivated").json()
+        self.assertEqual(after["count"],0)
+        self.assertEqual(after["totals"]["current_annual_estimate_xaf"],100000)
+        self.assertEqual(after["totals"]["current_unactivated_estimate_xaf"],0)
+        self.assertEqual(after["totals"]["contracted_xaf"],100000)
+        self.assertEqual(self.client.get(url).json()["schools"][0]["current_billing_active"],True)
