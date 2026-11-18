@@ -385,6 +385,29 @@ class PlatformSubscriptionTests(TestCase):
         self.assertNotEqual(restored.json().get("code"),"commercial_workspace_read_only")
         self.assertEqual(FeePayment.objects.count(),0)
 
+    def test_manual_override_free_school_does_not_create_contract(self):
+        from .subscription_models import PlatformCommercialAccessDecision
+        from .models import PlatformAudit
+        url = f"/api/v1/platform/schools/{self.school.pk}/commercial-access"
+        def decide(restricted, revision, **extra):
+            return self.client.post(url, json.dumps({"restricted":restricted,"revision":revision,"reason":"Simulation contrôlée",**extra}), content_type="application/json")
+        self.assertFalse(self.client.get(url).json()["can_restrict"])
+        self.assertEqual(decide(True,0).status_code,409)
+        self.assertEqual(decide(True,0,override_grace="true").status_code,422)
+        result = decide(True,0,override_grace=True)
+        self.assertEqual(result.status_code,201,result.content)
+        self.assertTrue(result.json()["restricted"])
+        self.assertFalse(result.json()["billing_started"])
+        self.assertTrue(PlatformAudit.objects.filter(school=self.school,event="subscription_access_override").exists())
+        self.assertEqual(PlatformSubscription.objects.count(),0)
+        self.assertEqual(decide(True,0,override_grace=True).status_code,409)
+        self.assertEqual(decide(False,1).status_code,201)
+        self.assertFalse(self.client.get(url).json()["restricted"])
+        self.assertEqual(PlatformCommercialAccessDecision.objects.count(),2)
+        self.school.refresh_from_db()
+        self.assertTrue(self.school.is_active)
+        self.assertFalse(self.client.get(url).json()["billing_started"])
+
     def test_commercial_trial_expiration_never_starts_billing_or_restriction(self):
         from .subscription_models import PlatformCommercialAccessDecision
         self.assertEqual(self.post("trial_start",days=30,reason="Essai").status_code,201)

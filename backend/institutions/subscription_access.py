@@ -159,7 +159,8 @@ def commercial_access(request, school_id, *, school_scope=False):
     data, error = parse_body(request)
     if error is not None:
         return error
-    if (not isinstance(data, dict) or set(data) != {"restricted", "revision", "reason"} or
+    if (not isinstance(data, dict) or set(data) not in ({"restricted", "revision", "reason"}, {"restricted", "revision", "reason", "override_grace"}) or
+        type(data.get("override_grace", False)) is not bool or
         type(data["restricted"]) is not bool or type(data["revision"]) is not int or
         not isinstance(data["reason"], str) or not 1 <= len(data["reason"].strip()) <= 240):
         return JsonResponse({"error": "Décision, révision et motif requis."}, status=422)
@@ -170,11 +171,16 @@ def commercial_access(request, school_id, *, school_scope=False):
             return JsonResponse({"error": "Décision modifiée. Actualisez."}, status=409)
         if data["restricted"] == status["restricted"]:
             return JsonResponse({"error": "État déjà appliqué."}, status=409)
-        if data["restricted"] and not status["can_restrict"]:
+        override = data.get("override_grace", False)
+        if override and (not data["restricted"] or not school.is_active or status["can_restrict"]):
+            return JsonResponse({"error": "Dérogation non applicable à cet état."}, status=409)
+        if data["restricted"] and (not school.is_active or (not status["can_restrict"] and not override)):
             return JsonResponse({"error": "Restriction non éligible : délai de grâce de 30 jours non écoulé."}, status=409)
         decision = PlatformCommercialAccessDecision.objects.create(
             school=school, revision=status["revision"]+1, restricted=data["restricted"],
             reason=data["reason"].strip(), actor=request.user)
-        audit(request, "subscription_access_restricted" if decision.restricted else "subscription_access_restored",
+        event = ("subscription_access_override" if override else
+                 "subscription_access_restricted" if decision.restricted else "subscription_access_restored")
+        audit(request, event,
               decision.pk, school=school, reason=decision.reason)
         return JsonResponse(commercial_status(school, timezone.localdate()), status=201)
