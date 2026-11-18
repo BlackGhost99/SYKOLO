@@ -574,7 +574,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         catch {setMessage("Sélectionnez le code puis copiez-le.");}
       }}>Copier le code</Button></div>
     </Card></>;
-  else if (page==="owner"&&isOwner) content=<OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/>;
+  else if (page==="owner"&&isOwner) content=<OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate} workingYearId={workingYearId} headerYearAvailable={academicYears.length>0}/>;
   else if (page==="settings"&&availableSettings.length) content=<SchoolSettings sections={availableSettings}
     selection={settingsSelection} onSelect={setSettingsSelection} render={renderSetting} isOwner={isOwner}
     onReturn={settingsReturn ? ()=>navigate(settingsReturn.page,settingsReturn.tab,settingsReturn.params) : undefined}/>;
@@ -639,7 +639,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         attendanceCanFinalize:can("school.attendance.finalize"),
         onSettings:can("school.settings.write")&&can("school.settings.read")?()=>navigate("settings","attendance-policy"):undefined}:{})}/>}</div>
   </>;
-  else if (isOwner && !perms.includes("school.finance.read")) content=<><OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/><details className="yd-fold"><summary>Tous les modules disponibles</summary><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></details></>;
+  else if (isOwner && page==="dashboard") content=<><OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate} workingYearId={workingYearId} headerYearAvailable={academicYears.length>0}/><details className="yd-fold"><summary>Tous les modules disponibles</summary><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></details></>;
   else if (page==="dashboard" && access?.role==="enseignant") content=<TeacherHome
     schoolName={schoolName} onNavigate={navigate}
     canNotes={ownCourseAssessment||can("school.assessments.read")}
@@ -652,9 +652,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   </>;
   else content=<>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={roleLabel||"Membre"} badgeIcon="crown"/>
-    <MySchoolFunctions schoolId={chosen}/>
+    <div className="yd-staff-workspace"><div className="yd-staff-shortcuts"><ModuleGrid visibleSections={Object.fromEntries(Object.entries(visibleSections).filter(([id])=>id!=="dashboard"))} navigate={navigate}/></div><div className="yd-staff-functions"><MySchoolFunctions schoolId={chosen}/></div></div>
     {restricted&&<div className="yd-real-body"><p className="hint">Ce compte est limité aux cycles autorisés. Les modules non encore sécurisés par cycle sont temporairement indisponibles.</p></div>}
-    <details className="yd-fold"><summary>Tous les modules disponibles</summary><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></details>
   </>;
   const brand={name:chosen?schoolName:"",city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
     logo:schoolBranding?.logo_url||"",banner:schoolBranding?.banner_url||"",fixedHeader:true};
