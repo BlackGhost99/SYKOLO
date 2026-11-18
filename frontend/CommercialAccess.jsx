@@ -35,7 +35,7 @@ export default function CommercialAccess({schoolId,api=null}){
     catch(e){setError(e.message);}
     finally{pending.current=false;setBusy(false);}
   }
-  return <section className={api?"ya-box":"card"} aria-label="État commercial et accès">
+  return <section className={api?"ya-box yem-commercial-panel":"card"} aria-label="État commercial et accès">
     <h3>État commercial YEM</h3>
     {state?<><p><strong>{labels[state.lifecycle]||state.lifecycle}</strong>{state.service_ends_before?" · Fin de service (exclue) : "+state.service_ends_before:""}</p>
       {state.billing_started===false?<p>Facturation inactive : aucun décompte commercial avant activation par BWETEK.</p>:<p>Échu : {money(state.overdue_xaf)} · Retard de 30 jours ou plus : {money(state.late_30_xaf)}</p>}
