@@ -22,8 +22,8 @@ async function api(path, body) {
   if (!r.ok) throw Error(data.error || "Requête refusée.");
   return data;
 }
-function CurrencyChoice({data, value, onChange, year, onYearChange}) {
-  return <div className="yd-view-filters"><label>Année scolaire <select aria-label="Année scolaire" value={year || data?.year?.id || ""} onChange={e=>onYearChange(e.target.value)}>{(data?.years||[]).map(y=><option key={y.id} value={y.id}>{y.name}</option>)}</select></label><label>Devise de consultation <select aria-label="Devise de consultation" value={value || data?.currency || "XAF"} onChange={e=>onChange(e.target.value)}>
+function CurrencyChoice({data, value, onChange, year, onYearChange, showYear=true}) {
+  return <div className="yd-view-filters">{showYear&&<label>Année scolaire <select aria-label="Année scolaire" value={year || data?.year?.id || ""} onChange={e=>onYearChange(e.target.value)}>{(data?.years||[]).map(y=><option key={y.id} value={y.id}>{y.name}</option>)}</select></label>}<label className="yd-currency-choice">Devise de consultation <select aria-label="Devise de consultation" value={value || data?.currency || "XAF"} onChange={e=>onChange(e.target.value)}>
     {(data?.currencies?.length ? data.currencies : [data?.currency || "XAF"]).map(c=><option key={c} value={c}>{c}</option>)}
   </select></label></div>;
 }
@@ -497,7 +497,7 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
 }
 
 /* ---------- Tableau de bord ---------- */
-export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange, shortcuts=[], visibleSections, canEnroll=true }) {
+export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, canReceive, tabs, workingYearId = "", onWorkingYearChange, shortcuts=[], visibleSections, canEnroll=true, headerYearAvailable=false }) {
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
@@ -512,11 +512,11 @@ export function LiveDashboard({ schoolId, schoolName, roleLabel, onNavigate, can
   const share = v => monthTotal ? `${Math.round(v / monthTotal * 100)} %` : "0 %";
   const canOpen=(id,tab)=>!visibleSections||Boolean(visibleSections[id]&&(!tab||visibleSections[id].modules.includes(tab)||visibleSections[id].lives.some(l=>l.key===tab)));
   return <div className="yd-dashboard-compact">
-    <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName} — ${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}`} badge={roleLabel || "Membre"} badgeIcon="crown"/>
-    <div className="yd-dashboard-control-row"><div className="yd-dashboard-views" role="group" aria-label="Vue du tableau de bord">{[["overview","Vue générale"],["finance","Écritures et paiements"],["actions","Accès rapides"]].map(([id,label])=><button key={id} type="button" aria-pressed={dashboardView===id} onClick={()=>setDashboardView(id)}>{label}</button>)}</div><CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/></div>
+    <PageHeader title="Tableau de bord" subtitle={`${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })} · ${schoolName}`} badge={roleLabel || "Membre"} badgeIcon="crown"/>
+    <div className="yd-dashboard-control-row"><div className="yd-dashboard-views" role="group" aria-label="Vue du tableau de bord">{[["overview","Vue générale"],["finance","Écritures et paiements"],["actions","Accès rapides"]].map(([id,label])=><button key={id} type="button" aria-pressed={dashboardView===id} onClick={()=>setDashboardView(id)}>{label}</button>)}</div><CurrencyChoice showYear={!headerYearAvailable} data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/></div>
     {tabs}
     <Loading state={fin}>{d && <>
-      <FinanceEvidenceNotice data={d}/>
+      {d.revenue_certified===false&&<details className="yd-dashboard-evidence"><summary><Icon name="alert" size={16}/> Écritures non certifiées · à rapprocher</summary><FinanceEvidenceNotice data={d}/></details>}
       <div className="yd-metrics five">
         <Metric icon="coins" label="Enregistré ce mois" value={fmtMoney(d.month.total, d.currency)} trend={monthTotal >= Number(d.month.previous) ? "up" : "down"} trendValue={pct(d.month.total, d.month.previous) || ""} trendLabel="vs. mois précédent"/>
         <Metric icon="file" label="Restant dû" value={fmtMoney(d.outstanding, d.currency)} trend="none" trendLabel="toutes échéances"/>
