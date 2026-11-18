@@ -605,7 +605,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         attendanceCanFinalize:can("school.attendance.finalize"),
         onSettings:can("school.settings.write")&&can("school.settings.read")?()=>navigate("settings","attendance-policy"):undefined}:{})}/>}</div>
   </>;
-  else if (isOwner && !perms.includes("school.finance.read")) content=<><OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></>;
+  else if (isOwner && !perms.includes("school.finance.read")) content=<><OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/><details className="yd-fold"><summary>Tous les modules disponibles</summary><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></details></>;
   else if (page==="dashboard" && access?.role==="enseignant") content=<TeacherHome
     schoolName={schoolName} onNavigate={navigate}
     canNotes={ownCourseAssessment||can("school.assessments.read")}
@@ -614,13 +614,13 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else if (perms.includes("school.finance.read")) content=<>
     <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId} shortcuts={dashboardShortcuts} visibleSections={visibleSections} canEnroll={can("school.students.manage")}/>
     <MySchoolFunctions schoolId={chosen}/>
-    <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
+    <details className="yd-fold"><summary>Tous les modules disponibles</summary><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></details>
   </>;
   else content=<>
     <PageHeader title="Tableau de bord" subtitle={`Vue de pilotage de ${schoolName}`} badge={roleLabel||"Membre"} badgeIcon="crown"/>
     <MySchoolFunctions schoolId={chosen}/>
     {restricted&&<div className="yd-real-body"><p className="hint">Ce compte est limité aux cycles autorisés. Les modules non encore sécurisés par cycle sont temporairement indisponibles.</p></div>}
-    <ModuleGrid visibleSections={visibleSections} navigate={navigate}/>
+    <details className="yd-fold"><summary>Tous les modules disponibles</summary><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></details>
   </>;
   const schoolCode = access?.school?.id === chosen && access.school.login_code;
   const brand={name:chosen?schoolName:"",city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
@@ -636,7 +636,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
     {readOnlyBanner}
     {message&&<p role="status" className="pc-alert">{message}</p>}
-    {page==="dashboard"&&schoolCode&&canUsers&&<Card title="Code de connexion de l’établissement" icon="school" className="yd-school-code-compact">
+    {page==="dashboard"&&schoolCode&&canUsers&&<details className="yd-fold"><summary>Code de connexion de l’établissement</summary><Card className="yd-school-code-compact">
       <div className="yd-school-code-row"><label className="field">Code à communiquer au personnel
         <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
       </label>
@@ -644,9 +644,9 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         try {await navigator.clipboard.writeText(schoolCode);setMessage("Code établissement copié.");}
         catch {setMessage("Sélectionnez le code puis copiez-le.");}
       }}>Copier le code</Button></div>
-    </Card>}
+    </Card></details>}
     {content}
-    {page==="dashboard"&&access&&chosen&&workingYearId&&(isOwner||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role))))&&<OwnerSubscription key={chosen} schoolId={chosen} yearId={workingYearId}/>}
+    {page==="dashboard"&&access&&chosen&&workingYearId&&(isOwner||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role))))&&<details className="yd-fold"><summary>Abonnement YEM — BWETEK Informatyk</summary><OwnerSubscription key={chosen} schoolId={chosen} yearId={workingYearId}/></details>}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
   </Shell></BrandContext.Provider>;
 }
