@@ -285,3 +285,32 @@
  .yd-dashboard-compact .yd-metrics,.yd-dashboard-compact .yd-grid{gap:7px;margin-bottom:8px;}
  .yd-operational-compact .yd-school-bottom-nav button{min-height:46px;}
 }
+
+
+/* Desktop: the uploaded school banner is the entire artwork of its reserved slot.
+ * The name and crest already appear in the school picker; do not reserve a second
+ * column inside the image. Keep the mobile contain mode and the no-image fallback. */
+@media screen and (min-width:761px) {
+ .yd-operational-compact .yd-fixed-banner.has-image {
+   display:block;
+   position:relative;
+   isolation:isolate;
+   flex:1 1 0;
+   min-width:0;
+   overflow:hidden;
+ }
+ .yd-operational-compact .yd-fixed-banner.has-image .yd-fixed-banner-art {
+   position:absolute;
+   inset:0;
+   display:block;
+   width:100%;
+   height:100%;
+   object-fit:cover;
+   object-position:center;
+   z-index:0;
+ }
+ .yd-operational-compact .yd-fixed-banner.has-image .yd-fixed-banner-mark {
+   display:none;
+ }
+ .yd-operational-compact .yd-fixed-banner.has-image::after {display:none;}
+}

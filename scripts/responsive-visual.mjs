@@ -49,6 +49,23 @@ try{
         if(metrics.demoError)failures.push("Erreur du composant de démonstration");
         if(errors.length)failures.push(...errors);
         if(width<=760&&["direction","proprietaire","econome","parent"].includes(role)&&!metrics.navVisible)failures.push("Navigation mobile absente");
+        if(width>760&&["direction","proprietaire","econome"].includes(role)){
+          const banner=root.locator(".yd-fixed-banner.has-image");
+          await banner.waitFor({state:"visible"});
+          const geometry=await banner.evaluate(el=>{
+            const img=el.querySelector(".yd-fixed-banner-art"),mark=el.querySelector(".yd-fixed-banner-mark");
+            const b=el.getBoundingClientRect(),a=img.getBoundingClientRect();
+            const crest=el.closest(".yd-topbar")?.querySelector(".yd-school-picker .yd-school-logo");
+            return {bannerWidth:b.width,bannerHeight:b.height,imageWidth:a.width,imageHeight:a.height,
+              xDelta:Math.abs(a.x-b.x),yDelta:Math.abs(a.y-b.y),fit:getComputedStyle(img).objectFit,
+              loaded:img.complete&&img.naturalWidth>0,markHidden:getComputedStyle(mark).display==="none",
+              logoVisible:!!crest&&crest.getClientRects().length>0&&crest.complete&&crest.naturalWidth>0};
+          });
+          if(!geometry.loaded||geometry.fit!=="cover"||geometry.bannerWidth<40||
+            Math.abs(geometry.bannerWidth-geometry.imageWidth)>1||Math.abs(geometry.bannerHeight-geometry.imageHeight)>1||
+            geometry.xDelta>1||geometry.yDelta>1||!geometry.markHidden||!geometry.logoVisible)
+            failures.push("Bannière PC incomplète : "+JSON.stringify(geometry));
+        }
         if(width<=760&&role==="direction"){
           const toolbar=await root.locator(".yd-topbar").evaluate(el=>{
             const boxes=[".yd-logo",".yd-header-search",".yd-bell",".yd-user-wrap"].map(s=>el.querySelector(s)?.getBoundingClientRect());
