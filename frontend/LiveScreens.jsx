@@ -339,7 +339,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
           </Card>
           <Card title="Derniers paiements du jour" icon="receipt">
             {d.today.payments.length === 0 ? <Empty>Aucun paiement enregistré aujourd’hui.</Empty> :
-              <Table className="nowrap xs" headers={["# Reçu", "Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.map(p => [<PdfLinks url={`/api/v1/schools/${schoolId}/finance/payments/${p.id}/receipt`} label={`Reçu ${p.id.slice(0, 8).toUpperCase()}`} openText={`R-${p.id.slice(0, 8).toUpperCase()}`} openLabel={`R-${p.id.slice(0, 8).toUpperCase()}`}/>, p.student, p.classroom, fmtMoney(p.amount, d.currency), <span className="yd-mode"><Icon name={methodIcon(p.method)} size={18}/>{methodLabel(p.method)}</span>, fmtTime(p.recorded_at)])}/>}
+              <Table rowKey={(_,i)=>d.today.payments[i].id} rowActions={(_,i)=>[{id:"receipt",label:"Ouvrir le reçu du paiement",run:()=>window.open("/api/v1/schools/"+schoolId+"/finance/payments/"+d.today.payments[i].id+"/receipt","_blank","noopener,noreferrer")}]} className="nowrap xs" headers={["# Reçu", "Élève", "Classe", "Montant", "Mode", "Heure"]} rows={d.today.payments.map(p => [<PdfLinks url={`/api/v1/schools/${schoolId}/finance/payments/${p.id}/receipt`} label={`Reçu ${p.id.slice(0, 8).toUpperCase()}`} openText={`R-${p.id.slice(0, 8).toUpperCase()}`} openLabel={`R-${p.id.slice(0, 8).toUpperCase()}`}/>, p.student, p.classroom, fmtMoney(p.amount, d.currency), <span className="yd-mode"><Icon name={methodIcon(p.method)} size={18}/>{methodLabel(p.method)}</span>, fmtTime(p.recorded_at)])}/>}
           </Card>
           <Card title="Caisse du jour" icon="layers">
             <div className="cash-row">
