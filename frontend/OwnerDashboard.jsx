@@ -100,6 +100,9 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
               {" "}{number(metrics.total_defined_places)} places. Les classes sans capacité définie ne sont pas incluses dans ce total.</p>
           </Card>
         </>}
+        {tab==="synthese"&&finance.length>0&&<Card title="Situation financière — synthèse" icon="coins" subtitle="Écritures enregistrées, non certifiées">
+          <Table headers={["Devise","Enregistré","Solde comptable","Échu comptable"]} rows={finance.map(row=>[row.currency,amount(row.paid,row.currency),amount(row.outstanding,row.currency),amount(row.overdue,row.currency)])}/>
+        </Card>}
         {tab==="synthese"&&<div className="yd-owner-quick-grid">{[["finances","coins","Situation financière","Consulter les écritures et les soldes"],["admissions","adduser","Admissions",number(admission.pending)+" en attente"],["personnel","idcard","Personnel",number(staff.active)+" collaborateurs actifs"],["activite","calendar","Activité",number(activity.total_30d)+" opérations sur 30 jours"],["abonnement","receipt","Abonnement YEM","Contrat, simulation et échéances"]].map(([id,icon,label,desc])=><Card key={id} title={label} icon={icon}><p>{desc}</p><Button onClick={()=>setTab(id)}>Consulter</Button></Card>)}</div>}
         {tab==="finances"&&<Card title="Situation financière de l’établissement" icon="coins"
           subtitle="Total des frais et règlements enregistrés ; aucune caisse ni modification depuis cet espace">
