@@ -151,7 +151,7 @@ function Directory({dashboard,filters,setFilters,onSchool,selected,onNew,compact
       <th>Organisation</th><th>Utilisateurs</th><th>Statut</th><th>Actions</th>
     </tr></thead><tbody>{rows.map(s=><ContextTarget as="tr" key={s.id} className={s.id===selected?"ya-selected":""}
       actions={[{id:"school",label:"Gérer l’établissement",run:()=>onSchool(s.id)}]}>
-      <td data-label="Établissement"><div className="ya-school-name"><span className="ya-school-icon"><Icon name="school" size={21}/></span><span><strong>{s.name}</strong><small>{s.students_count} élève(s)</small></span></div></td>
+      <td data-label="Établissement"><div className="ya-school-name"><span className="ya-school-icon"><Icon name="school" size={21}/></span><span className="ya-school-ident"><strong title={s.name}>{s.name}</strong><small>{s.students_count} élève(s)</small><span className="ya-school-mobile-meta"><Status active={s.active}/><span className="ya-school-mobile-members" title={`${s.members_count} utilisateurs`}><Icon name="users" size={13}/>{fmt(s.members_count)}</span></span></span></div></td>
       <td data-label="Organisation">{s.organization}</td><td data-label="Utilisateurs"><span className="ya-cell-count"><Icon name="users" size={17}/>{fmt(s.members_count)}</span></td>
       <td data-label="Statut"><Status active={s.active}/></td>
       <td data-label="Actions"><button className="ya-btn ya-btn-table" onClick={()=>onSchool(s.id)}>Gérer <Icon name="right" size={15}/></button><ContextTrigger/></td>
