@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React,{useEffect,useState} from "react";
 import {TableScroll} from "./yem-ui.jsx";
 async function api(path,body,method){
@@ -92,13 +93,14 @@ export default function TimetablePanel({schoolId,workingYearId="",onWorkingYearC
         <thead><tr>{DAYS.map(d=><th key={d} style={{padding:8,textAlign:"left"}}>{d}</th>)}</tr></thead>
         <tbody><tr>{DAYS.map((_,i)=><td key={i} style={{verticalAlign:"top",padding:6,minWidth:145}}>
           {selected.filter(x=>x.weekday===i).sort((a,b)=>a.start_time.localeCompare(b.start_time)).map(x=>
-            <div key={x.id} style={{border:"1px solid #bbb",borderRadius:7,padding:7,marginBottom:6}}>
+            <ContextTarget key={x.id} showTrigger style={{border:"1px solid #bbb",borderRadius:7,padding:7,marginBottom:6}}
+              actions={[{id:"edit",label:"Modifier ou déplacer la séance",write:true,disabled:busy,run:()=>edit(x)}]}>
               <strong>{x.start_time}–{x.end_time}</strong>
               <div>{subject(x.course)}</div>
               <small>{classes.find(c=>c.id===x.classroom)?.name||"Classe"} · {x.teacher}</small>
               <div><small>{rooms.find(r=>r.id===x.room)?.name||"Salle non attribuée"}</small></div>
               <button type="button" disabled={busy} onClick={()=>edit(x)}>Modifier</button>
-            </div>)}
+            </ContextTarget>)}
         </td>)}</tr></tbody>
       </table></TableScroll>
     <h3>{editing?"Déplacer une séance":"Programmer une séance"}</h3>
