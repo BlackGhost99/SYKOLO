@@ -45,3 +45,13 @@ test("trial and expired service are distinct states; unknown status is not assum
   rerender(<SchoolCommercialStatus status={null}/>);
   expect(screen.queryByRole("status")).toBeNull();
 });
+
+test("annual service coverage and monthly installments are distinct, free restrictions do not imply debt",()=>{
+  const {rerender}=render(<SchoolCommercialStatus status={{mode:"active",billing_started:true,service_period_start:"2026-11-17",service_period_end:"2027-11-17",payment_period:"mensuel"}}/>);
+  expect(screen.getByText(/Contrat annuel : du 17\/11\/2026 au 17\/11\/2027/)).toBeTruthy();
+  expect(screen.getByText(/Règlement mensuel/)).toBeTruthy();
+  rerender(<SchoolCommercialStatus status={{mode:"read_only",billing_started:false}} restricted canManage onRegularize={()=>{}}/>);
+  expect(screen.getByText(/Facturation non activée/)).toBeTruthy();
+  expect(screen.queryByText(/Abonnement à régulariser/)).toBeNull();
+  expect(screen.getByRole("button",{name:"Contacter BWETEK"})).toBeTruthy();
+});

@@ -38,6 +38,7 @@ def commercial_status(school, today):
     first_overdue = None
     next_due = None
     due_today = False
+    available_periods = []
     for row in contracts:
         try:
             total, terms = effective_ledger(row)
@@ -55,6 +56,10 @@ def commercial_status(school, today):
         except (KeyError, TypeError, ValueError, OverflowError, AttributeError):
             unknown = True
             continue
+        period = (row.commercial_terms or {}).get("period")
+        if period not in ("annuel", "semestriel", "trimestriel", "mensuel"):
+            period = None
+        available_periods.append((start, end, period, str(row.pk)))
         if start <= today < end:
             active = True
             next_end = max(next_end or end, end)
@@ -96,8 +101,17 @@ def commercial_status(school, today):
     if lifecycle == "expired" and last_expiry:
         grace_deadlines.append(last_expiry + timedelta(days=GRACE_DAYS))
     eligible_on = min(grace_deadlines) if grace_deadlines else None
+    current_periods = [p for p in available_periods if p[0] <= today < p[1]]
+    future_periods = [p for p in available_periods if today < p[0]]
+    past_periods = [p for p in available_periods if p[1] <= today]
+    selected = (max(current_periods, key=lambda p: (p[1], p[0], p[3])) if current_periods else
+                min(future_periods, key=lambda p: (p[0], p[1], p[3])) if future_periods else
+                max(past_periods, key=lambda p: (p[1], p[0], p[3])) if past_periods else None)
     decision = last_decision(school)
     return {"lifecycle": lifecycle, "billing_started": bool(contracts), "service_ends_before": next_end.isoformat() if next_end else None,
+            "service_period_start": selected[0].isoformat() if selected else None,
+            "service_period_end": selected[1].isoformat() if selected else None,
+            "payment_period": selected[2] if selected else None,
             "next_payment_due": next_due.isoformat() if next_due else None,
             "oldest_overdue_on": first_overdue.isoformat() if first_overdue else None,
             "payment_due_today": due_today, "schedule_review": unknown,
@@ -129,7 +143,11 @@ def workspace_commercial_status(school, today):
         mode = "due_today"
     else:
         mode = {"active": "active", "scheduled": "scheduled", "expired": "expired"}.get(status["lifecycle"], "review")
-    return {"mode": mode, "service_ends_before": status["service_ends_before"],
+    return {"mode": mode, "billing_started": status["billing_started"],
+            "service_period_start": status["service_period_start"], "service_period_end": status["service_period_end"],
+            "payment_period": status["payment_period"],
+            "trial_starts_on": trial["starts_on"] if trial and trial["status"] == "active" and not status["billing_started"] else None,
+            "service_ends_before": status["service_ends_before"],
             "next_payment_due": status["next_payment_due"], "oldest_overdue_on": status["oldest_overdue_on"],
             "grace_days_remaining": status["grace_days_remaining"],
             "restriction_eligible_on": status["restriction_eligible_on"],

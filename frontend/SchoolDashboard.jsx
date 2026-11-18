@@ -531,15 +531,16 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       onRegularize={()=>setRegularizationSchool(chosen)}/>:null;
   if(commercialReadOnly&&regularizationSchool===chosen){
     const canRegularize=access.is_owner||(!access.cycle_scope_restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role)));
-    return <main className="yd-real-body" aria-label="Régularisation de l’abonnement YEM">
-      <PageHeader title="Abonnement YEM à régulariser" subtitle={schoolName}/>
+    const isFreeRestriction=commercialStatus?.schoolId===chosen&&commercialStatus.status?.billing_started===false;
+    return <main className="yd-real-body" aria-label="Réactivation de l’accès YEM">
+      <PageHeader title={isFreeRestriction?"Accès YEM à réactiver":"Accès YEM en lecture seule"} subtitle={schoolName}/>
       <Card title="Modification indisponible" icon="lock">
-        <p role="alert">Le délai de régularisation est dépassé. L’établissement est en lecture seule jusqu’à réactivation.</p>
-        <p>{canRegularize?"Consultez le solde et les factures ci-dessous, puis contactez BWETEK Informatyk pour effectuer et faire valider le règlement.":"Contactez le propriétaire ou la direction pour régulariser l’abonnement."}</p>
+        <p role="alert">L’établissement est en lecture seule sur décision de l’administration de YEM, jusqu’à réactivation.</p>
+        <p>{isFreeRestriction?"La facturation n’est pas activée. Aucun paiement n’est exigé au titre de cette restriction. Contactez la direction ou BWETEK Informatyk.":canRegularize?"Consultez les éventuelles échéances ci-dessous et contactez BWETEK Informatyk pour connaître les conditions de réactivation.":"Contactez le propriétaire ou la direction pour demander la réactivation."}</p>
         <Button type="button" onClick={()=>setRegularizationSchool("")}>Retour à la consultation</Button>
         <Button type="button" onClick={onLogout}>Se déconnecter</Button>
       </Card>
-      {canRegularize&&<OwnerSubscription key={chosen} schoolId={chosen}/>}
+      {canRegularize&&!isFreeRestriction&&<OwnerSubscription key={chosen} schoolId={chosen}/>}
     </main>;
   }
   const isSchoolParent=access?.role==="parent"&&!user?.is_platform_admin;
