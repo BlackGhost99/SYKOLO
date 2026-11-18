@@ -350,3 +350,44 @@
  .ya-compact-console .ya-detail-tabs button{min-height:44px}
  .ya-compact-console .ya-quick-grid button{min-height:62px}
 }
+
+/* Directory: landscape records, with details on demand rather than a long stacked page. */
+.ya-compact-console .ya-directory-layout{align-items:start;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);}
+.ya-compact-console .ya-school-detail-panel{min-width:0;}
+.ya-compact-console .ya-back-directory{display:none;}
+.ya-compact-console .ya-school-directory-table td[data-label="Actions"]{white-space:nowrap;}
+.ya-compact-console .ya-school-directory-table td[data-label="Actions"] .ya-btn{vertical-align:middle;}
+@media(min-width:1151px){
+ .ya-compact-console .ya-school-directory-table th,.ya-compact-console .ya-school-directory-table td{padding:9px 5px;}
+ .ya-compact-console .ya-school-directory-table .ya-school-name strong{max-width:none;}
+ .ya-compact-console .ya-directory-filters{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,.8fr);}
+}
+@media(max-width:1150px){
+ .ya-compact-console .ya-directory-layout{grid-template-columns:minmax(0,1fr);}
+ .ya-compact-console .ya-directory-layout:not(.ya-school-detail-open)>.ya-school-detail-panel{display:none;}
+ .ya-compact-console .ya-directory-layout.ya-school-detail-open>.ya-directory{display:none;}
+ .ya-compact-console .ya-school-detail-open .ya-back-directory{display:inline-flex;margin-bottom:8px;min-height:42px;}
+}
+@media(max-width:760px){
+ .ya-compact-console .ya-school-directory-table tbody{gap:6px;}
+ .ya-compact-console .ya-school-directory-table tr{grid-template-columns:minmax(0,1fr) auto auto;grid-template-rows:auto auto;gap:2px 6px;padding:9px 7px;align-items:center;}
+ .ya-compact-console .ya-school-directory-table td[data-label="Établissement"]{grid-column:1;grid-row:1;padding:0;}
+ .ya-compact-console .ya-school-directory-table td[data-label="Organisation"]{grid-column:1;grid-row:2;padding:0 0 0 34px;font-size:10px;color:#68786c;}
+ .ya-compact-console .ya-school-directory-table td[data-label="Utilisateurs"]{grid-column:2;grid-row:2;padding:0;font-size:10px;justify-self:center;}
+ .ya-compact-console .ya-school-directory-table td[data-label="Statut"]{grid-column:2;grid-row:1;padding:0;justify-self:center;}
+ .ya-compact-console .ya-school-directory-table td[data-label="Actions"]{grid-column:3;grid-row:1/3;padding:0;gap:3px;flex-direction:row;}
+ .ya-compact-console .ya-school-directory-table td[data-label]::before{display:none!important;}
+ .ya-compact-console .ya-school-name{gap:6px;align-items:center;}
+ .ya-compact-console .ya-school-name>span:last-child{min-width:0;}
+ .ya-compact-console .ya-school-icon{width:28px;height:28px;border-radius:6px;}
+ .ya-compact-console .ya-school-icon svg{width:18px;height:18px;}
+ .ya-compact-console .ya-school-name strong{font-size:12px;line-height:1.25;white-space:normal;overflow-wrap:anywhere;}
+ .ya-compact-console .ya-school-name small{font-size:10px;}
+ .ya-compact-console .ya-school-directory-table td[data-label="Actions"] button{min-width:34px;min-height:38px;padding:5px;}
+ .ya-compact-console .ya-school-directory-table .ya-btn-table{font-size:10px!important;}
+ .ya-compact-console .ya-school-directory-table .ya-btn-table svg{display:none;}
+ .ya-compact-console .ya-school-directory-table .ya-status{padding:3px 5px;font-size:9px;}
+ .ya-compact-console .ya-school-directory-table .ya-cell-count svg{width:13px;height:13px;}
+ .ya-compact-console .ya-directory-filters select{font-size:12px!important;min-height:40px;}
+ .ya-compact-console .ya-quick-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
