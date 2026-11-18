@@ -1,3 +1,4 @@
+import CommercialSimulator from "./CommercialSimulator.jsx";
 import React,{useEffect,useState} from "react";
 import {Card} from "./yem-ui.jsx";
 import SubscriptionDocuments from "./SubscriptionDocuments.jsx";
@@ -30,6 +31,7 @@ export default function OwnerSubscription({schoolId,yearId}){
   const sub=yearId?state.records.find(r=>r.year_id===yearId):state.records.find(r=>r.year_id===selectedYear)||state.records[0];
   return <Card title="Abonnement YEM — BWETEK Informatyk" icon="receipt">
     <p className="hint">Abonnement de l’établissement, distinct des frais de scolarité des familles. Pour régler le solde, contactez BWETEK Informatyk ; aucun paiement en ligne commercial n’est activé.</p>
+    <CommercialSimulator schoolId={schoolId} yearId={yearId}/>
     <CommercialAccess key={"commercial:"+schoolId} schoolId={schoolId}/>
     <CommercialReminders key={schoolId} schoolId={schoolId}/>
     <TrialStatus trial={state.trial}/>

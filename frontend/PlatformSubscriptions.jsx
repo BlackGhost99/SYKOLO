@@ -1,3 +1,4 @@
+import CommercialSimulator from "./CommercialSimulator.jsx";
 import React, {useEffect, useRef, useState} from "react";
 import SubscriptionDocuments from "./SubscriptionDocuments.jsx";
 import CommercialAdjustments from "./CommercialAdjustments.jsx";
@@ -67,6 +68,7 @@ export default function PlatformSubscriptions({schoolId, api, tariffRevision=0})
   const validReason=reason.trim().length>0&&reason.trim().length<=240;
   return <section className="ya-box ya-form-box" aria-label="Abonnement commercial YEM">
     <h2>Abonnement annuel YEM</h2>
+    <CommercialSimulator platform schoolId={schoolId} yearId={year} api={api} tariffRevision={tariffRevision}/>
     <CommercialAccess key={schoolId+":"+reload} schoolId={schoolId} api={api}/>
     <p>Facturation de la plateforme, distincte des frais de scolarité. Un seul contrat par établissement et année, ventilé par cycle. Aucun prélèvement ni suspension automatique. Les tarifs sont définis dans la grille centrale.</p>
     <label className="ya-field"><span>Année scolaire</span><select value={year} disabled={busy} onChange={e=>setYear(e.target.value)}>

@@ -342,3 +342,52 @@ def commercial_document(request, school_id, subscription_id, payment_id=None, am
         return render_commercial_document(row, payment, amendment=amendment)
     except (ValueError, TypeError, KeyError):
         return fail("Données contractuelles incohérentes. Contactez BWETEK.", 409)
+
+
+@never_cache
+@require_http_methods(["GET"])
+@authorized
+def subscription_simulation(request, school_id, *, school_scope=False):
+    """Read-only estimate from the current tariff; never issues or reprices a contract."""
+    from uuid import UUID
+    from .school_profiles import SCHOOL_PROFILES
+    if school_scope:
+        school = school_access(request.user, school_id)
+        if school is None or not can_consult_commercial(request.user, school):
+            return denied()
+    else:
+        if not platform_only(request):
+            return denied()
+        school = School.objects.filter(pk=school_id).first()
+        if school is None:
+            return fail("Établissement introuvable.", 404)
+    years = list(AcademicYear.objects.filter(school=school).order_by("-start_date"))
+    selected = request.GET.get("year_id")
+    if selected:
+        try:
+            selected = UUID(selected)
+        except (ValueError, TypeError, AttributeError):
+            return fail("Année invalide.")
+        year = next((y for y in years if y.pk == selected), None)
+        if year is None:
+            return fail("Année introuvable pour cet établissement.", 404)
+    else:
+        year = next((y for y in years if y.status == "current"), years[0] if years else None)
+    result = {"school": {"name": school.name, "type_label": SCHOOL_PROFILES.get(school.school_type, {}).get("label", "Établissement")},
+              "years": [{"id": str(y.pk), "name": y.name} for y in years],
+              "year_id": str(year.pk) if year else None, "simulation": None, "contracted": False}
+    if year is not None:
+        result["contracted"] = PlatformSubscription.objects.filter(year=year).exists()
+        try:
+            counts = current_counts(school, year)
+            policy = policy_snapshot()
+            quote = quote_for(school, year, policy, counts)
+            result["simulation"] = {"policy_revision": policy["revision"],
+                "lines": quote_lines(counts, quote["rates"]),
+                "setup_suggested_xaf": quote["setup_suggested_xaf"],
+                "options": {period: calculate_terms(counts, quote["rates"], quote["minimums"],
+                    period=period, first_due=max(year.start_date, timezone.localdate()), revision=policy["revision"])
+                    for period in PERIODS}}
+        except (ValueError, KeyError) as exc:
+            result["error"] = str(exc) if isinstance(exc, ValueError) else "Grille commerciale incomplète : contactez BWETEK."
+    return JsonResponse(result)

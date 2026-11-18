@@ -646,7 +646,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       }}>Copier le code</Button></div>
     </Card>}
     {content}
-    {page==="dashboard"&&access&&chosen&&workingYearId&&((isOwner&&can("school.finance.read"))||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role))))&&<OwnerSubscription key={chosen} schoolId={chosen} yearId={workingYearId}/>}
+    {page==="dashboard"&&access&&chosen&&workingYearId&&(isOwner||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role))))&&<OwnerSubscription key={chosen} schoolId={chosen} yearId={workingYearId}/>}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
   </Shell></BrandContext.Provider>;
 }
