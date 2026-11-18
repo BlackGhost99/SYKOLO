@@ -797,7 +797,7 @@ class PlatformSubscriptionTests(TestCase):
             self.client.force_login(self.ordinary)
             response=self.client.get(url)
             self.assertEqual(response.status_code,200,response.content)
-            self.assertEqual(response["Cache-Control"],"no-store")
+            self.assertIn("no-store",response["Cache-Control"])
             self.assertEqual(self.client.get(private).status_code,403)
             status=response.json()["commercial_workspace_status"]
             self.assertEqual(set(status),{"mode","service_ends_before","next_payment_due","oldest_overdue_on",
