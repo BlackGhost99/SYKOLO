@@ -1,0 +1,20 @@
+
+.yem-commercial-estimate{min-width:0;display:grid;gap:10px;padding:12px;border:1px solid var(--line,#dde4e2);border-radius:12px}
+.yem-commercial-estimate p,.yem-commercial-estimate h3{margin:0}
+.yem-estimate-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.yem-estimate-head button{font-size:.85rem;padding:6px 10px}
+.yem-estimate-state{display:grid;gap:3px;padding:9px 11px;border-radius:8px;background:var(--soft,#eff6f2);color:var(--ink,#183c34)}
+.yem-estimate-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,135px),1fr));gap:8px}
+.yem-estimate-totals>div{min-width:0;padding:9px;border:1px solid var(--line,#dde4e2);border-radius:8px;display:grid;gap:4px}
+.yem-estimate-totals strong{font-size:clamp(1rem,3.2vw,1.25rem);font-variant-numeric:tabular-nums;overflow-wrap:normal}
+.yem-estimate-cycles{display:grid;gap:0}
+.yem-estimate-cycle{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 10px;padding:8px 0;border-bottom:1px solid var(--line,#dde4e2)}
+.yem-estimate-cycle>div{display:grid;gap:3px;min-width:0}
+.yem-estimate-cycle small,.yem-estimate-totals small{font-size:.8rem}
+.yem-estimate-cycle b{white-space:nowrap;word-break:normal;font-variant-numeric:tabular-nums}
+.yem-commercial-estimate .field{margin:0;display:grid;gap:4px}
+.yem-estimate-installment{font-size:.9rem}
+.yem-billing-toggle{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line,#dde4e2);border-radius:10px;cursor:pointer}
+.yem-billing-toggle input{accent-color:#17634e;flex:none;width:20px;height:20px;margin:2px 0 0}
+.yem-billing-toggle span{display:grid;gap:3px}
+.yem-billing-toggle small{font-weight:400}
