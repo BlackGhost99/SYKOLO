@@ -28,7 +28,8 @@ function ClassFamilies({root, room, onNavigate}) {
     {error && <p role="alert">{error}</p>}
     {!data && !error && <p role="status">Chargement des familles…</p>}
     {data?.families.length === 0 && <p>Aucun élève inscrit dans cette classe.</p>}
-    {data?.families.length > 0 && <Table headers={["Élève", "Responsables légaux", "Contact", "Dossier"]}
+    {data?.families.length > 0 && <Table rowKey={(_,i)=>data.families[i].student_id}
+      rowActions={(_,i)=>[{id:"file",label:"Ouvrir le dossier élève",run:()=>onNavigate("students","fiche",{student:data.families[i].student_id})}]} headers={["Élève", "Responsables légaux", "Contact", "Dossier"]}
       rows={data.families.map(student => [
         student.student_name,
         student.guardians.length ? student.guardians.map(guardian => <div key={guardian.id}>
@@ -72,7 +73,7 @@ export function StaffDirectory({schoolId,onAdd,onAssign,canReadDossiers=false,ca
   const staff=all.filter(person=>(!category||person.displayCategory===category)&&normalize(
     [person.first_name,person.last_name,person.position,person.staff_code,person.displayCategory].join(" ")
   ).includes(normalize(search)));
-  const open=id=>{setSelectedStaff(id);setTab("professional");};
+  const open=(id,nextTab="professional")=>{setSelectedStaff(id);setTab(nextTab);};
   const close=()=>{setSelectedStaff("");setTab("professional");};
   const selected=all.find(p=>p.id===selectedStaff);
   if(canReadDossiers&&selectedStaff)return <section aria-label="Fiche individuelle du personnel">
@@ -109,7 +110,9 @@ export function StaffDirectory({schoolId,onAdd,onAssign,canReadDossiers=false,ca
         </label>
       </div>
       <p className="hint">Les catégories suggérées à partir des postes existants restent à confirmer dans la fiche professionnelle.</p>
-      {!staff.length?<p>Aucun collaborateur pour ce filtre.</p>:<Table
+      {!staff.length?<p>Aucun collaborateur pour ce filtre.</p>:<Table rowKey={(_,i)=>staff[i].id}
+        rowActions={(_,i)=>canReadDossiers?[{id:"file",label:"Consulter la fiche professionnelle",run:()=>open(staff[i].id)},
+          ...(canReadPayroll?[{id:"payroll",label:"Rémunérations et versements",run:()=>open(staff[i].id,"payroll")}]:[])]:[]}
         headers={["Nom","Poste","Catégorie","Matricule","Accès YEM","Fiche technique"]}
         rows={staff.map(person=>[
           <span className="yd-staff-person">

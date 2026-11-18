@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React, {useEffect, useState} from "react";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
 import MonthlyTariffSetup from "./MonthlyTariffSetup.jsx";
@@ -213,7 +214,11 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
     {settings ? <div>
       <h3>Tarifs enregistrés</h3>
       {schedules.length === 0 && <p>Aucun tarif configuré.</p>}
-      {schedules.filter(item=>!selectedYear||item.year===selectedYear).map(item => <div key={item.id}>
+      {schedules.filter(item=>!selectedYear||item.year===selectedYear).map(item => <ContextTarget key={item.id} showTrigger
+        actions={canConfigureTariffs&&years.some(year=>year.id===item.year&&year.active)?[
+          {id:"amount",label:"Modifier le montant du tarif",write:true,disabled:busy||amountEdit?.id===item.id,run:()=>{setDateEdit(null);setAmountEdit({id:item.id,revision:item.revision,amount:String(item.amount)});}},
+          {id:"date",label:"Modifier l’échéance du tarif",write:true,disabled:busy||dateEdit?.id===item.id,run:()=>{setAmountEdit(null);setDateEdit({id:item.id,revision:item.revision,date:item.due_date||""});}}
+        ]:[]}>
         <p><strong>{item.label}</strong> · {item.amount} {item.currency} · {
           years.find(year => year.id === item.year)?.name || "Année archivée"
         } · {item.classroom ? classes.find(room => room.id === item.classroom)?.name || "Classe archivée" : "Toutes les classes"} · {item.due_date ? "Échéance : "+item.due_date : "Sans échéance"}</p>
@@ -267,7 +272,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
             onClick={()=>{setAmountEdit(null);setDateEdit({id:item.id,revision:item.revision,date:item.due_date||""});}}>
             Modifier l’échéance
           </button>)}
-      </div>)}
+      </ContextTarget>)}
     </div> : <>
     {financeQuality && <aside className="hint" aria-label="Contrôle de qualité des écritures financières" style={{marginBottom:"1rem"}}>
       <strong>Contrôle des écritures — rapprochement requis</strong>
@@ -360,11 +365,13 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
     </form>}
     {current&&<>
       <h3>Historique des encaissements</h3>
-      {payments.length===0?<p className="hint">Aucun encaissement pour ce frais.</p>:payments.map(p=><p key={p.id}>
+      {payments.length===0?<p className="hint">Aucun encaissement pour ce frais.</p>:payments.map(p=><ContextTarget as="div" key={p.id} showTrigger actions={[
+        {id:"receipt",label:"Ouvrir le reçu PDF",run:()=>window.open("/api/v1/"+finance+"payments/"+p.id+"/receipt","_blank","noopener,noreferrer")},
+        ...(canReverse&&!p.voided?[{id:"void",label:"Préparer une demande d’annulation",write:true,danger:true,disabled:busy,run:()=>{setCancelPayment(p.id);setCancelReason("");}}]:[])]}>
         <strong>{p.amount} {p.currency}</strong> · {p.paid_on} · {p.method} · {p.voided?"Annulé":p.evidence_class==="simulation"?"SIMULATION — aucune recette":p.evidence_class==="legacy_unverified"?"À rapprocher — paiement historique non vérifié":"Enregistré (déclaratif)"} ·
         {" "}<a href={"/api/v1/"+finance+"payments/"+p.id+"/receipt"}>Reçu PDF</a>
         {canReverse&&!p.voided&&<button type="button" disabled={busy} style={{marginLeft:"0.5rem"}} onClick={()=>{setCancelPayment(p.id);setCancelReason("");}}>Demander une annulation</button>}
-      </p>)}
+      </ContextTarget>)}
       {canReverse && cancelPayment && <form onSubmit={e=>{e.preventDefault();run(async()=>{
         await financeApi(finance+"payments/"+cancelPayment+"/void",{reason:cancelReason});
         setCancelPayment("");setCancelReason("");setMessage("Encaissement annulé avec trace d'audit.");

@@ -1,3 +1,4 @@
+import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import officialLogo from "./assets/yem-brand.webp";
 import React, {useId, useRef, useState} from "react";
 
@@ -111,9 +112,11 @@ export function TableScroll({children, label = "Tableau", className = ""}) {
   return <div className={`yd-table-wrap ${className}`} role="region" aria-label={label} tabIndex={0}>{children}</div>;
 }
 
-export function Table({ headers, rows, className = "", selected, align = {} }) {
+export function Table({ headers, rows, className = "", selected, align = {}, rowActions, rowKey }) {
   return <TableScroll><table className={className}><thead><tr>{headers.map((h, i) => <th key={i} className={align[i] || ""}>{h}</th>)}</tr></thead>
-    <tbody>{rows.map((r, i) => <tr key={i} className={selected === i ? "selected" : ""}>{r.map((c, j) => <td key={j} className={align[j] || ""}>{c}</td>)}</tr>)}</tbody></table></TableScroll>;
+    <tbody>{rows.map((r, i) => rowActions ? <ContextTarget as="tr" key={rowKey?.(r,i)??i} actions={rowActions(r,i)} className={selected === i ? "selected" : ""}>
+      {r.map((c,j)=><td key={j} className={align[j]||""}>{c}{j===r.length-1&&<ContextTrigger/>}</td>)}
+    </ContextTarget> : <tr key={i} className={selected === i ? "selected" : ""}>{r.map((c, j) => <td key={j} className={align[j] || ""}>{c}</td>)}</tr>)}</tbody></table></TableScroll>;
 }
 export function InfoRow({ k, v, icon, highlight, vIcon }) {
   return <div className={`yd-info-row ${highlight ? "highlight" : ""}`}><span>{icon && <Icon name={icon} size={20}/>}{k}</span><b>{vIcon && <Icon name={vIcon} size={18} className="wa"/>}<span>{v}</span></b></div>;

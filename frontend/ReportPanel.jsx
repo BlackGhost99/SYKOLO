@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React, {useEffect,useState} from "react";
 import {TableScroll} from "./yem-ui.jsx";
 import {ClassField} from "./SchoolSettings.jsx";
@@ -121,7 +122,7 @@ export default function ReportPanel({schoolId, canPrepare = true, canPublish = t
       </select>
     </label>
     </>}
-    {preview&&snapshot&&<>
+    {preview&&snapshot&&<ContextTarget key={preview.id} showTrigger actions={[{id:"pdf",label:"Ouvrir le bulletin PDF",run:()=>window.open("/api/v1/"+base+"reports/"+preview.id+"/pdf","_blank","noopener,noreferrer")}]} >
       <h3>{snapshot.template.title} · {preview.status==="published"?"Publié":"Brouillon"}</h3>
       <p><strong>{snapshot.student.last_name} {snapshot.student.first_name}</strong> — {snapshot.student.code}</p>
       <p>{snapshot.class.name} · {snapshot.year.name} · {snapshot.period?.name||"Année complète"}</p>
@@ -145,7 +146,7 @@ export default function ReportPanel({schoolId, canPrepare = true, canPublish = t
           await updateReports();setPreview(issued);setMessage("Bulletin publié et verrouillé.");
         })}>Publier le bulletin</button>}
       </div>
-    </>}
+    </ContextTarget>}
     {message&&<p role="status" aria-live="polite">{message}</p>}
   </section>;
 }

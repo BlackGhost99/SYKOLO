@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React, {useEffect, useRef, useState} from "react";
 import {teacherRequest} from "./teacher-mobile-api.js";
 import "./teaching-diary.css";
@@ -52,9 +53,10 @@ function ResourceUpload({entry,schoolId,onRefresh,api}) {
   </div>;
 }
 
-function Entries({entries, onEdit, resourceHref, schoolId, onRefresh, api}) {
+function Entries({entries, onEdit, onDuplicate, resourceHref, schoolId, onRefresh, api}) {
   if (!entries.length) return <p>Aucune séance enregistrée.</p>;
-  return <div className="yem-diary-list">{entries.map(e=><article key={e.id}>
+  return <div className="yem-diary-list">{entries.map(e=><ContextTarget as="article" key={e.id} showTrigger actions={onEdit?[{id:"edit",label:"Modifier la séance",write:true,run:()=>onEdit(e)},
+      ...(onDuplicate?[{id:"copy",label:"Dupliquer en nouveau brouillon",write:true,run:()=>onDuplicate(e)}]:[])]:[]}>
     <div className="yem-diary-entry-head"><div><small>{e.day} · {e.classroom} · {e.subject}</small>
       <h3>{e.title}</h3></div>{onEdit&&<span>{e.published?"Publié":"Brouillon"}</span>}</div>
     <p className="yem-diary-text">{e.lesson}</p>
@@ -62,7 +64,7 @@ function Entries({entries, onEdit, resourceHref, schoolId, onRefresh, api}) {
     {resourceHref&&<ResourceLinks resources={e.resources} href={r=>resourceHref(e,r)}/>}
     {onEdit&&<button className="yd-btn" type="button" onClick={()=>onEdit(e)}>Modifier la séance</button>}
     {onEdit&&schoolId&&<ResourceUpload entry={e} schoolId={schoolId} onRefresh={onRefresh} api={api}/>}
-  </article>)}
+  </ContextTarget>)}
   {entries.length>=200&&<p>Les 200 dernières séances sont affichées.</p>}</div>;
 }
 
@@ -121,6 +123,11 @@ export default function TeachingDiary({schoolId, yearId="", api=teacherRequest})
     finally{running.current=false;setBusy(false);}
   }
   const setEntry=e=>{setMessage("");setError("");setForm({...e,due_on:e.due_on||""});};
+  const duplicateEntry=e=>{
+    if((form.id||form.title||form.lesson||form.homework)&&!window.confirm("Remplacer la saisie en cours par une nouvelle copie non publiée ?"))return;
+    setError("");setMessage("Nouvelle copie préparée. Vérifiez la date et les devoirs avant l’enregistrement. Les pièces jointes ne sont pas recopiées.");
+    setForm({...blank(),title:e.title,lesson:e.lesson,homework:e.homework||""});
+  };
   return <section className="yem-diary" aria-label="Cahier de textes">
     <label className="field">Classe et matière<select value={course} disabled={busy||!courses.length}
       onChange={e=>choose(e.target.value)}><option value="">Choisir un cours</option>
@@ -144,7 +151,7 @@ export default function TeachingDiary({schoolId, yearId="", api=teacherRequest})
       <div className="actions"><button className="yd-btn primary" type="submit" disabled={busy}>{form.published?"Enregistrer et publier":"Enregistrer le brouillon"}</button>
       <button className="yd-btn" type="button" disabled={busy} onClick={()=>{setForm(blank());setError("");}}>Nouvelle saisie</button></div>
     </form>}
-    {!showMastery&&!showProgress&&!loading&&course&&<Entries entries={entries} onEdit={writable&&!busy?setEntry:null} schoolId={schoolId} api={api} onRefresh={()=>setRefresh(n=>n+1)} resourceHref={(e,r)=>"/api/v1/schools/"+schoolId+"/diary/entries/"+e.id+"/resources/"+r.id}/>}
+    {!showMastery&&!showProgress&&!loading&&course&&<Entries entries={entries} onEdit={writable&&!busy?setEntry:null} onDuplicate={writable&&!busy?duplicateEntry:null} schoolId={schoolId} api={api} onRefresh={()=>setRefresh(n=>n+1)} resourceHref={(e,r)=>"/api/v1/schools/"+schoolId+"/diary/entries/"+e.id+"/resources/"+r.id}/>}
   </section>;
 }
 

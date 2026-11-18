@@ -1,3 +1,4 @@
+import {ContextTarget} from "./ContextMenu.jsx";
 import React, {useEffect,useState} from "react";
 import {ClassField} from "./SchoolSettings.jsx";
 
@@ -91,10 +92,10 @@ export default function AssessmentPanel({schoolId, canEdit = true, canPublish = 
     const value=Object.hasOwn(scoreDraft,student.enrollment_id)?scoreDraft[student.enrollment_id]:(current?.score??"");
     const scale=chosen?.policy?.scale||{};
     const numeric=["numeric","percentage"].includes(scale.kind);
-    if(numeric)return <input type="number" step="any" min="0" max={scale.kind==="percentage"?100:scale.max}
+    if(numeric)return <input id={"yem-assessment-score-"+student.enrollment_id} type="number" step="any" min="0" max={scale.kind==="percentage"?100:scale.max}
       aria-label={"Note de "+student.last_name} value={value}
       onChange={e=>setScoreDraft(d=>({...d,[student.enrollment_id]:e.target.value}))}/>;
-    return <select aria-label={"Résultat de "+student.last_name} value={value}
+    return <select id={"yem-assessment-score-"+student.enrollment_id} aria-label={"Résultat de "+student.last_name} value={value}
       onChange={e=>setScoreDraft(d=>({...d,[student.enrollment_id]:e.target.value}))}>
       <option value="">Absent / sans résultat</option>
       {(chosen?.policy?.bands||[]).map((b,i)=><option key={i} value={b.label}>{b.label}</option>)}
@@ -174,7 +175,7 @@ export default function AssessmentPanel({schoolId, canEdit = true, canPublish = 
             if (!canEdit || chosen.published) return <p key={s.enrollment_id}>
               <strong>{s.first_name} {s.last_name}</strong> · {existing?.score ?? "Sans note"} {existing?.label || ""}
             </p>;
-            return <form key={s.enrollment_id} onSubmit={e=>{e.preventDefault();run(async()=>{
+            return <ContextTarget as="form" key={s.enrollment_id} showTrigger actions={[{id:"score",label:"Saisir ou corriger la note",write:true,disabled:busy,run:()=>document.getElementById("yem-assessment-score-"+s.enrollment_id)?.focus()}]} onSubmit={e=>{e.preventDefault();run(async()=>{
               const raw=Object.hasOwn(scoreDraft,s.enrollment_id)?scoreDraft[s.enrollment_id]:(existing?.score??"");
               const numeric=["numeric","percentage"].includes(chosen.policy.scale.kind);
               const score=raw===""?null:numeric?Number(raw):raw;
@@ -193,7 +194,7 @@ export default function AssessmentPanel({schoolId, canEdit = true, canPublish = 
                 <label className="field">Résultat {inputFor(s)}</label>
               </div>
               <button disabled={busy} type="submit">Enregistrer cette note</button>
-            </form>;
+            </ContextTarget>;
           })}
         </div>}
     </>}

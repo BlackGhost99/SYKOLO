@@ -140,7 +140,10 @@ export default function PayrollPanel({schoolId,workingYearId="",canManage=false,
           <span style={{display:"block"}}>Déclaré : {fmt(t.paid,unit)} · Reste : {fmt(t.balance,unit)}</span>
         </p>)}
       </div>
-      {!filtered.length?<p>Aucune rémunération saisie pour ce filtre.</p>:<Table headers={["Collaborateur","Période","Net prévu","Déjà déclaré","Reste","Statut","Fiche"]} rows={filtered.map(run=>[
+      {!filtered.length?<p>Aucune rémunération saisie pour ce filtre.</p>:<Table rowKey={(_,i)=>filtered[i].id}
+        rowActions={(_,i)=>[{id:"detail",label:"Consulter la rémunération",run:()=>openRun(filtered[i].id)},
+          ...(canPay&&["approved","partially_paid"].includes(filtered[i].status)?[{id:"pay",label:"Préparer le versement",write:true,disabled:busy,run:()=>openRun(filtered[i].id)}]:[])]}
+        headers={["Collaborateur","Période","Net prévu","Déjà déclaré","Reste","Statut","Fiche"]} rows={filtered.map(run=>[
         run.staff_name,run.period.slice(0,7),fmt(run.net_amount,run.currency),fmt(run.paid,run.currency),
         fmt(run.balance,run.currency),
         <Status tone={statusTone(run.status)}>{statusText[run.status]||run.status}</Status>,
