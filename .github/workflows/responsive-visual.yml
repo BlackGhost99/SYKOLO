@@ -1,0 +1,36 @@
+name: Responsive visual audit
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'scripts/responsive-visual.mjs'
+      - '.github/workflows/responsive-visual.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  responsive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm install --no-save --package-lock=false --ignore-scripts playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - name: Run local browser checks
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 --strictPort > /tmp/yem-preview.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:4173/ > /dev/null && break
+            sleep 1
+          done
+          node scripts/responsive-visual.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yem-responsive-screens
+          path: responsive-results/
