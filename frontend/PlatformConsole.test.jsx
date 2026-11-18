@@ -98,6 +98,9 @@ test("un changement de statut exige un motif",async()=>{
   const u=userEvent.setup();
   await u.click(await screen.findByRole("button",{name:"Suspendre"}));
   const dialog=screen.getByRole("dialog");
+  expect(dialog.tagName).toBe("DIALOG");
+  expect(dialog.parentElement).toBe(document.body);
+  expect(dialog.hasAttribute("open")).toBe(true);
   const confirm=within(dialog).getByRole("button",{name:"Confirmer"});
   expect(confirm.disabled).toBe(true);
   await u.type(within(dialog).getByRole("textbox",{name:"Motif obligatoire"}),"Établissement temporairement fermé");
@@ -143,4 +146,24 @@ test("le MFA bloque totalement la console",()=>{
   expect(screen.getByText("Formulaire MFA")).toBeTruthy();
   expect(screen.queryByRole("heading",{name:"Console d'administration YEM"})).toBeNull();
   expect(fetch).not.toHaveBeenCalled();
+});
+
+test("sur mobile, le motif reçoit le focus, reste éditable et le formulaire conserve le contrôle obligatoire",async()=>{
+  const u=userEvent.setup();
+  Object.defineProperty(window,"innerWidth",{configurable:true,value:390});
+  mount();
+  await screen.findAllByText("Lycée Test");
+  await u.click(await screen.findByRole("button",{name:"Suspendre"}));
+  const dialog=screen.getByRole("dialog");
+  const reason=within(dialog).getByRole("textbox",{name:"Motif obligatoire"});
+  await u.click(reason);
+  expect(document.activeElement).toBe(reason);
+  await u.type(reason,"Motif saisi depuis le téléphone");
+  expect(reason.value).toBe("Motif saisi depuis le téléphone");
+  await u.clear(reason);
+  expect(within(dialog).getByRole("button",{name:"Confirmer"}).disabled).toBe(true);
+  await u.type(reason,"Test de saisie");
+  await u.click(within(dialog).getByRole("button",{name:"Confirmer"}));
+  await waitFor(()=>expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/action"),
+    expect.objectContaining({method:"POST",body:JSON.stringify({reason:"Test de saisie",action:"status",active:false})})));
 });

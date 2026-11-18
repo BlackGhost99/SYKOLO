@@ -1,5 +1,6 @@
 import {ContextTarget,ContextTrigger} from "./ContextMenu.jsx";
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {createPortal} from "react-dom";
 import SchoolDashboard from "./SchoolDashboard.jsx";
 import PlatformSubscriptions from "./PlatformSubscriptions.jsx";
 import CommercialReminders from "./CommercialReminders.jsx";
@@ -216,18 +217,42 @@ function Detail({detail,loading,tab,setTab,onCreate,onRole,onStatus,onAccess,onP
   </section>;
 }
 function Modal({modal,detail,reason,setReason,roleId,setRoleId,onCancel,onConfirm,busy}) {
+  const dialogRef=useRef(null),headingRef=useRef(null);
+  const opened=Boolean(modal);
+  useEffect(()=>{
+    if(!opened)return;
+    const dialog=dialogRef.current;
+    if(!dialog)return;
+    const previous=document.activeElement;
+    const viewport=window.visualViewport;
+    function resize(){
+      if(viewport)dialog.style.setProperty("--ya-action-viewport-height",Math.max(120,viewport.height-24)+"px");
+    }
+    resize();viewport?.addEventListener("resize",resize);
+    if(typeof dialog.showModal==="function")dialog.showModal();
+    else dialog.setAttribute("open","");
+    headingRef.current?.focus({preventScroll:true});
+    return()=>{
+      viewport?.removeEventListener("resize",resize);
+      if(dialog.open&&typeof dialog.close==="function")dialog.close();
+      else dialog.removeAttribute("open");
+      if(previous?.isConnected)previous.focus?.({preventScroll:true});
+    };
+  },[opened]);
   if (!modal) return null;
   const title={role:"Attribuer un rôle",memberStatus:"Modifier l'accès du compte",schoolStatus:"Modifier le statut de l'établissement",rename:"Renommer l'établissement"}[modal.type];
-  return <div className="ya-modal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onCancel();}}>
-    <div className="ya-modal" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="ya-modal-heading"><h2>{title}</h2><button aria-label="Fermer" onClick={onCancel}>×</button></div>
-      <p>{modal.member?.name || detail?.school?.name}. Toute modification est enregistrée dans le journal d'audit.</p>
-      {modal.type==="role"&&<Field label="Rôle attribué"><select value={roleId} onChange={e=>setRoleId(e.target.value)}>{(detail?.roles||[]).map(r=><option key={r.id} value={r.id}>{r.label}</option>)}</select></Field>}
-      {modal.type==="rename"&&<Field label="Nouveau nom"><input value={modal.name||""} onChange={e=>modal.setName(e.target.value)} maxLength={180} required/></Field>}
-      <Field label="Motif obligatoire"><textarea value={reason} onChange={e=>setReason(e.target.value)} maxLength={240} rows={3} placeholder="Expliquez pourquoi vous effectuez cette modification…"/></Field>
-      <div className="ya-modal-footer"><button className="ya-btn ya-btn-outline" onClick={onCancel}>Annuler</button><button className="ya-btn ya-btn-primary" disabled={busy||!reason.trim()||(modal.type==="role"&&!roleId)||(modal.type==="rename"&&!modal.name?.trim())} onClick={onConfirm}>{busy?"Enregistrement…":"Confirmer"}</button></div>
-    </div>
-  </div>;
+  const disabled=busy||!reason.trim()||(modal.type==="role"&&!roleId)||(modal.type==="rename"&&!modal.name?.trim());
+  return createPortal(<dialog ref={dialogRef} className="ya-modal ya-action-dialog" aria-modal="true" aria-label={title}
+      onCancel={e=>{e.preventDefault();if(!busy)onCancel();}}>
+      <form onSubmit={e=>{e.preventDefault();if(!disabled)onConfirm();}}>
+        <div className="ya-modal-heading"><h2 ref={headingRef} tabIndex={-1}>{title}</h2><button type="button" aria-label="Fermer" disabled={busy} onClick={onCancel}>×</button></div>
+        <p>{modal.member?.name || detail?.school?.name}. Toute modification est enregistrée dans le journal d'audit.</p>
+        {modal.type==="role"&&<Field label="Rôle attribué"><select value={roleId} onChange={e=>setRoleId(e.target.value)}>{(detail?.roles||[]).map(r=><option key={r.id} value={r.id}>{r.label}</option>)}</select></Field>}
+        {modal.type==="rename"&&<Field label="Nouveau nom"><input type="text" value={modal.name||""} onChange={e=>modal.setName(e.target.value)} maxLength={180} required/></Field>}
+        <Field label="Motif obligatoire"><textarea name="reason" value={reason} onChange={e=>setReason(e.target.value)} required maxLength={240} rows={3} inputMode="text" placeholder="Expliquez pourquoi vous effectuez cette modification…"/></Field>
+        <div className="ya-modal-footer"><button type="button" className="ya-btn ya-btn-outline" disabled={busy} onClick={onCancel}>Annuler</button><button type="submit" className="ya-btn ya-btn-primary" disabled={disabled}>{busy?"Enregistrement…":"Confirmer"}</button></div>
+      </form>
+    </dialog>,document.body);
 }
 export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) {
   const [view,setView]=useState("overview");
