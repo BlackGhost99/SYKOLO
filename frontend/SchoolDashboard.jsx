@@ -220,18 +220,29 @@ function ModuleGrid({visibleSections,navigate}) {
 
 function UserMenu({user,roleLabel,onAccount,onProfile,onTeacherWorkspace,onFamilyWorkspace,onLogout,photoUrl}) {
   const [open,setOpen]=useState(false);
+  const wrap=React.useRef(null);
+  const trigger=React.useRef(null);
+  useEffect(()=>{
+    if(!open)return;
+    const outside=e=>{if(!wrap.current?.contains(e.target))setOpen(false);};
+    const escape=e=>{if(e.key==="Escape"){setOpen(false);trigger.current?.focus();}};
+    document.addEventListener("pointerdown",outside);
+    document.addEventListener("keydown",escape);
+    return()=>{document.removeEventListener("pointerdown",outside);document.removeEventListener("keydown",escape);};
+  },[open]);
+  const menuId=React.useId();
   const name=[user?.first_name,user?.last_name].filter(Boolean).join(" ")||user?.username||"Mon compte";
-  return <div className="yd-user-wrap">
-    <button type="button" className="yd-user-btn" aria-label={`Compte de ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>
+  return <div className="yd-user-wrap" ref={wrap}>
+    <button ref={trigger} type="button" className="yd-user-btn" aria-controls={menuId} aria-label={`Compte de ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>
       <span className="yd-avatar">{photoUrl?<img src={photoUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}}/>:
         <Icon name="user" size={22} strokeWidth={0} className="filled"/>}</span>
       <span><b>{name}</b>{roleLabel&&<small>{roleLabel}</small>}</span><Icon name="chevron" size={18}/>
     </button>
-    {open&&<div className="yd-menu right" role="menu">
+    {open&&<div className="yd-menu right yd-account-popover" role="menu" id={menuId} aria-label="Menu du compte">
       {onTeacherWorkspace&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onTeacherWorkspace();}}><Icon name="cap" size={18}/>Espace professeur</button>}
       {onProfile&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onProfile();}}><Icon name="user" size={18}/>Mon profil professionnel</button>}
       <button type="button" role="menuitem" onClick={()=>{setOpen(false);onAccount();}}><Icon name="shield" size={18}/>Sécurité du compte</button>
-      {onFamilyWorkspace&&<button type="button" role="menuitem" onClick={onFamilyWorkspace}><Icon name="users" size={18}/>YEM Parents</button>}
+      {onFamilyWorkspace&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onFamilyWorkspace();}}><Icon name="users" size={18}/>YEM Parents</button>}
       {onLogout&&<button type="button" role="menuitem" onClick={()=>{setOpen(false);onLogout();}}><Icon name="logout" size={18}/>Se déconnecter</button>}
     </div>}
   </div>;
@@ -492,17 +503,17 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   }
   const tabBar=tabs.length>1&&page!=="staff"?<div className="yd-real-tabs" role="tablist">{tabs.map(([k,l])=><button type="button" role="tab" aria-selected={tab===k} key={k} className={tab===k?"active":""} onClick={()=>setSub(k)}>{l}</button>)}</div>:null;
   const schoolName=access?.school?.name||schools.find(s=>s.id===chosen)?.name||"Mon établissement";
-  const selector=<div className="yd-school-select-wrap"><label className="yd-school-select"><Icon name="school" size={24}/>
+  const selector=<div className="yd-school-select-wrap"><label className="yd-school-select yd-school-picker" title={schoolName}>{!schoolBranding?.logo_url&&<Icon name="school" size={20}/>}
     {schoolBranding?.logo_url&&<img className="yd-school-logo" src={schoolBranding.logo_url} alt=""/>}
     {schools.length>1?<select aria-label="Établissement" value={chosen} onChange={e=>{
       setAccess(null);setShowWorkspace(false);setChosen(e.target.value);navigate("dashboard");
     }}>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:<b>{schoolName}</b>}
     {schools.length>1&&<Icon name="chevron" size={18} className="chev"/>}</label>
-    {academicYears.length>0&&<label className="yd-school-select" title="Année scolaire de consultation">
+    {academicYears.length>0&&<label className="yd-school-select yd-year-picker" title="Année scolaire de consultation">
       <Icon name="calendar" size={18}/>
       <select aria-label="Année de travail de l'établissement" value={workingYearId}
         onChange={e=>setWorkingYearId(e.target.value)}>
-        {academicYears.map(y=><option key={y.id} value={y.id}>{y.name} · {({preparation:"en préparation",current:"en cours",closed:"clôturée"})[y.status] || (y.active?"à vérifier":"archivée")}</option>)}
+        {academicYears.map(y=><option key={y.id} value={y.id} title={y.name+" · "+(({preparation:"en préparation",current:"en cours",closed:"clôturée"})[y.status] || (y.active?"à vérifier":"archivée"))}>{y.name}</option>)}
       </select>
     </label>}
   </div>;
@@ -628,7 +639,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     canAttendance={can("school.attendance.assigned")||can("school.attendance.read")}
     canDiary={hasTab("diary","live")} canClasses={can("school.academic.read")}/>;
   else if (perms.includes("school.finance.read")) content=<>
-    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId} shortcuts={dashboardShortcuts} visibleSections={visibleSections} canEnroll={can("school.students.manage")}/>
+    <LiveDashboard key={chosen} schoolId={chosen} schoolName={schoolName} roleLabel={roleLabel} onNavigate={navigate} canReceive={perms.includes("school.finance.receive")} headerYearAvailable={academicYears.length>0} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId} shortcuts={dashboardShortcuts} visibleSections={visibleSections} canEnroll={can("school.students.manage")}/>
     <MySchoolFunctions schoolId={chosen}/>
     <details className="yd-fold"><summary>Tous les modules disponibles</summary><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></details>
   </>;
