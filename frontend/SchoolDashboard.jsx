@@ -417,7 +417,11 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   if (preschoolEnabled&&can("school.academic.read")) visibleSections.preschool={
     title:"Suivi préscolaire",subtitle:"Crèche et préscolaire",modules:[],lives:[{key:"live",label:"Suivi quotidien",need:[]}],
   };
+  const canManageSubscription=Boolean(access&&chosen&&workingYearId&&(isOwner||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role)))));
+  const schoolCode = access?.school?.id === chosen && access.school.login_code;
   const nav=schoolNav.filter(([id])=>id==="dashboard"||visibleSections[id]);
+  if(canManageSubscription)nav.push(["subscription","receipt","Abonnement YEM"]);
+  if(schoolCode&&canUsers)nav.push(["connection","school","Code établissement"]);
   const hasTab=(id,tab)=>Boolean(visibleSections[id]?.modules.includes(tab)||visibleSections[id]?.lives.some(l=>l.key===tab));
   const dashboardShortcuts=[
     hasTab("diary","live")&&{id:"diary",tab:"live",icon:"file",title:"Cahier de textes",subtitle:"Cours / Devoirs / Progression"},
@@ -540,6 +544,16 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   else if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}{chosen && access && <StaffProfessionalDossier own schoolId={chosen}/>}</div></>;
   else if (loaded&&schools.length===0) content=<><PageHeader title="Tableau de bord" subtitle="Aucun établissement n'est encore rattaché à ce compte"/><Card title="Aucun établissement attribué" icon="school"><p className="yd-card-sub">Contactez l'administrateur de YEM pour recevoir un compte rattaché à votre établissement.</p></Card></>;
   else if (!access) content=<Card title="Chargement de vos droits…" icon="shield"/>;
+  else if(page==="subscription"&&canManageSubscription) content=<><PageHeader title="Abonnement YEM" subtitle="BWETEK Informatyk · Contrats, simulations et échéances"/><OwnerSubscription key={chosen+":"+workingYearId} schoolId={chosen} yearId={workingYearId}/></>;
+  else if(page==="connection"&&schoolCode&&canUsers) content=<><PageHeader title="Accès de l’établissement" subtitle="Code à communiquer uniquement aux collaborateurs autorisés"/><Card title="Code de connexion de l’établissement" icon="school" className="yd-school-code-compact">
+      <div className="yd-school-code-row"><label className="field">Code à communiquer au personnel
+        <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
+      </label>
+      <Button type="button" onClick={async()=>{
+        try {await navigator.clipboard.writeText(schoolCode);setMessage("Code établissement copié.");}
+        catch {setMessage("Sélectionnez le code puis copiez-le.");}
+      }}>Copier le code</Button></div>
+    </Card></>;
   else if (page==="owner"&&isOwner) content=<OwnerDashboard key={chosen} schoolId={chosen} schoolName={schoolName} onNavigate={navigate}/>;
   else if (page==="settings"&&availableSettings.length) content=<SchoolSettings sections={availableSettings}
     selection={settingsSelection} onSelect={setSettingsSelection} render={renderSetting} isOwner={isOwner}
@@ -622,7 +636,6 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     {restricted&&<div className="yd-real-body"><p className="hint">Ce compte est limité aux cycles autorisés. Les modules non encore sécurisés par cycle sont temporairement indisponibles.</p></div>}
     <details className="yd-fold"><summary>Tous les modules disponibles</summary><ModuleGrid visibleSections={visibleSections} navigate={navigate}/></details>
   </>;
-  const schoolCode = access?.school?.id === chosen && access.school.login_code;
   const brand={name:chosen?schoolName:"",city:schoolBranding?.city||"",tagline:schoolBranding?.tagline||"",
     logo:schoolBranding?.logo_url||"",banner:schoolBranding?.banner_url||"",fixedHeader:true};
   return <BrandContext.Provider value={brand}><Shell className="yd-operational-compact" nav={nav} active={page} onNavigate={navigate} notifications={inboxCount}
@@ -636,17 +649,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
     {readOnlyBanner}
     {message&&<p role="status" className="pc-alert">{message}</p>}
-    {page==="dashboard"&&schoolCode&&canUsers&&<details className="yd-fold"><summary>Code de connexion de l’établissement</summary><Card className="yd-school-code-compact">
-      <div className="yd-school-code-row"><label className="field">Code à communiquer au personnel
-        <input readOnly value={schoolCode} onFocus={event=>event.target.select()} />
-      </label>
-      <Button type="button" onClick={async()=>{
-        try {await navigator.clipboard.writeText(schoolCode);setMessage("Code établissement copié.");}
-        catch {setMessage("Sélectionnez le code puis copiez-le.");}
-      }}>Copier le code</Button></div>
-    </Card></details>}
     {content}
-    {page==="dashboard"&&access&&chosen&&workingYearId&&(isOwner||(!isOwner&&!restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role))))&&<details className="yd-fold"><summary>Abonnement YEM — BWETEK Informatyk</summary><OwnerSubscription key={chosen} schoolId={chosen} yearId={workingYearId}/></details>}
+    {page==="dashboard"&&canManageSubscription&&<div className="yd-subscription-link"><Icon name="receipt"/><span><b>Abonnement YEM</b><small>BWETEK Informatyk · Contrat et simulation</small></span><Button icon="chevronright" onClick={()=>navigate("subscription")}>Gérer</Button></div>}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
   </Shell></BrandContext.Provider>;
 }
