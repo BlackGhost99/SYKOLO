@@ -247,5 +247,9 @@ export function Shell({ schoolSelector, search, headerBanner, userName = "Mme la
     </header>
     <nav id={navId} className={`yd-sidebar ${menuOpen ? "is-open" : ""}`} aria-label="Navigation principale">{nav.map(([id, icon, label]) => <button type="button" key={id} aria-label={label} className={active === id ? "active" : ""} aria-current={active === id ? "page" : undefined} onClick={() => { setMenuOpen(false); onNavigate?.(id); }}><Icon name={icon} size={24} strokeWidth={1.6}/><span>{label}</span></button>)}</nav>
     <main className="yd-content">{children}</main>
+    {className.split(" ").includes("yd-operational-compact")&&<nav className="yd-school-bottom-nav" aria-label="Navigation mobile">
+      {["dashboard","students","diary","payments"].map(id=>nav.find(item=>item[0]===id)).filter(Boolean).map(([id,icon,label])=><button key={id} type="button" aria-current={active===id?"page":undefined} onClick={()=>{setMenuOpen(false);onNavigate?.(id);}}><Icon name={icon}/><span>{({dashboard:"Accueil",students:"Élèves",diary:"Cours",payments:"Finances"})[id]||label}</span></button>)}
+      <button type="button" aria-controls={navId} aria-expanded={menuOpen} onClick={()=>setMenuOpen(open=>!open)}><Icon name="menu"/><span>Plus</span></button>
+    </nav>}
   </div>;
 }
