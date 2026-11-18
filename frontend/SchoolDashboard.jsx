@@ -15,6 +15,7 @@ import TeacherProfile from "./TeacherProfile.jsx";
 import StaffOnboarding from "./StaffOnboarding.jsx";
 import OwnerDashboard from "./OwnerDashboard.jsx";
 import OwnerSubscription from "./OwnerSubscription.jsx";
+import SchoolCommercialStatus from "./SchoolCommercialStatus.jsx";
 import CycleWorkspace from "./CycleWorkspace.jsx";
 import OrganisationPanel, {MySchoolFunctions} from "./OrganisationPanel.jsx";
 import RoleManager from "./RoleManager.jsx";
@@ -518,10 +519,10 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     </label>}
   </div>;
   const commercialReadOnly=Boolean(access?.commercial_workspace_restricted);
-  const readOnlyBanner=commercialReadOnly?<Card title="Abonnement YEM à régulariser" icon="lock">
-    <p role="status">Mode lecture seule : vos données restent consultables, mais toute modification est bloquée.</p>
-    <Button type="button" onClick={()=>setRegularizationSchool(chosen)}>Régulariser l’abonnement</Button>
-  </Card>:null;
+  const commercialBanner=access?.school?.id===chosen&&access.role!=="parent"?
+    <SchoolCommercialStatus status={access.commercial_workspace_status} restricted={commercialReadOnly}
+      canManage={canManageSubscription} onManage={()=>navigate("subscription")}
+      onRegularize={()=>setRegularizationSchool(chosen)}/>:null;
   if(commercialReadOnly&&regularizationSchool===chosen){
     const canRegularize=access.is_owner||(!access.cycle_scope_restricted&&[access.role,...(access.roles||[])].some(role=>["direction","principal","proviseur"].includes(role)));
     return <main className="yd-real-body" aria-label="Régularisation de l’abonnement YEM">
@@ -551,7 +552,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     permissions={perms} preschoolEnabled={preschoolEnabled} years={academicYears} workingYearId={workingYearId}
     onYearChange={setWorkingYearId} schools={schools} onSchoolChange={setChosen}
     onExit={()=>setTeacherViewRequested(false)}
-    onLogout={onLogout} accountView={accountView} commercialBanner={readOnlyBanner}/></ContextReadOnly.Provider>;
+    onLogout={onLogout} accountView={accountView} commercialBanner={commercialBanner}/></ContextReadOnly.Provider>;
   let content;
   if (page==="profile") content=<><PageHeader title="Mon profil professionnel" subtitle="Photo et informations synchronisées avec la fiche Personnel"/><div className="yd-real-body"><TeacherProfile schoolId={chosen}/></div></>;
   else if (page==="account") content=<><PageHeader title="Sécurité du compte" subtitle="Mot de passe, double authentification et déconnexion" banner={false}/><div className="yd-real-body">{accountView}{chosen && access && <StaffProfessionalDossier own schoolId={chosen}/>}</div></>;
@@ -660,10 +661,9 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
        onProfile={hasStaffProfile?()=>navigate("profile"):undefined}
        photoUrl={myPhotoUrl?myPhotoUrl+"?rev="+photoRevision:undefined}
       onFamilyWorkspace={isSchoolParent?()=>setShowWorkspace(false):undefined} onLogout={onLogout}/>}>
-    {readOnlyBanner}
+    {commercialBanner}
     {message&&<p role="status" className="pc-alert">{message}</p>}
     {content}
-    {page==="dashboard"&&canManageSubscription&&<div className="yd-subscription-link"><Icon name="receipt"/><span><b>Abonnement YEM</b><small>BWETEK Informatyk · Contrat et simulation</small></span><Button icon="chevronright" onClick={()=>navigate("subscription")}>Gérer</Button></div>}
     <footer className="yd-brand-footer"><span>YEM — Gestion scolaire &amp; universitaire</span><span>Développé par <strong>BWETEK Informatyk</strong></span></footer>
   </Shell></BrandContext.Provider></ContextReadOnly.Provider>;
 }
