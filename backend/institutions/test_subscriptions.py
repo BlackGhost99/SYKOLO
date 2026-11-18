@@ -786,3 +786,63 @@ class PlatformSubscriptionTests(TestCase):
         self.assertFalse(data["can_issue"])
         self.assertIn("Année scolaire clôturée ou inactive",data["issue_blocker"])
         self.assertEqual(PlatformSubscription.objects.count(),0)
+
+    def test_school_staff_sees_commercial_status_but_not_private_ledger(self):
+        from .subscription_models import PlatformCommercialAccessDecision
+        role=SchoolRole.objects.create(school=self.school,code="secretariat",label="Secrétariat",permissions=["school.view"])
+        member=SchoolMember.objects.create(school=self.school,user=self.ordinary,role=role)
+        url=f"/api/v1/schools/{self.school.pk}/my-access"
+        private=f"/api/v1/schools/{self.school.pk}/owner/subscriptions"
+        def read():
+            self.client.force_login(self.ordinary)
+            response=self.client.get(url)
+            self.assertEqual(response.status_code,200,response.content)
+            self.assertIn("no-store",response["Cache-Control"])
+            self.assertEqual(self.client.get(private).status_code,403)
+            status=response.json()["commercial_workspace_status"]
+            self.assertEqual(set(status),{"mode","service_ends_before","next_payment_due","oldest_overdue_on",
+                "grace_days_remaining","restriction_eligible_on","trial_ends_before","last_service_ended_on"})
+            # my-access deliberately hides an inaccessible school behind 404.
+            self.assertEqual(self.client.get(url.replace(str(self.school.pk),str(self.other.pk))).status_code,404)
+            self.client.force_login(self.admin)
+            self.mfa()
+            return status
+        self.assertEqual(read()["mode"],"free")
+        self.assertEqual(self.post("trial_start",days=30,reason="Essai synthétique").status_code,201)
+        self.assertEqual(read()["mode"],"trial")
+        with patch("institutions.subscription_views.timezone.localdate",return_value=date(2026,12,18)):
+            self.assertEqual(read()["mode"],"free")
+            self.assertIsNone(read()["next_payment_due"])
+        self.assertEqual(self.issue(period="mensuel").status_code,201)
+        due=read()
+        self.assertEqual(due["mode"],"due_today")
+        self.assertEqual(due["next_payment_due"],"2026-11-17")
+        self.assertEqual(due["service_ends_before"],"2027-11-17")
+        self.assertEqual(self.post("payment",reference="session-paid",method="especes",amount_xaf=8334,reason="Test").status_code,201)
+        paid=read()
+        self.assertEqual(paid["mode"],"active")
+        self.assertEqual(paid["next_payment_due"],"2026-12-17")
+        with patch("institutions.subscription_views.timezone.localdate",return_value=date(2026,12,18)):
+            late=read()
+            self.assertEqual(late["mode"],"overdue")
+            self.assertEqual(late["oldest_overdue_on"],"2026-12-17")
+            self.assertEqual(late["grace_days_remaining"],29)
+        PlatformCommercialAccessDecision.objects.create(school=self.school,revision=1,restricted=True,reason="Test synthétique")
+        self.assertEqual(read()["mode"],"read_only")
+        PlatformCommercialAccessDecision.objects.create(school=self.school,revision=2,restricted=False,reason="Test réactivation")
+        self.assertEqual(read()["mode"],"active")
+        member.access_cycle_ids=[]
+        member.save(update_fields=["access_cycle_ids"])
+        self.assertEqual(read()["mode"],"active")
+        self.assertEqual(FeePayment.objects.count(),0)
+
+    def test_session_commercial_status_does_not_break_on_legacy_contract(self):
+        role=SchoolRole.objects.create(school=self.school,code="secretariat",label="Secrétariat",permissions=["school.view"])
+        SchoolMember.objects.create(school=self.school,user=self.ordinary,role=role)
+        PlatformSubscription.objects.create(year=self.year,total_xaf=100000,lines=[],commercial_terms={"schedule":[{"invalid":True}]})
+        self.client.force_login(self.ordinary)
+        response=self.client.get(f"/api/v1/schools/{self.school.pk}/my-access")
+        self.assertEqual(response.status_code,200,response.content)
+        status=response.json()["commercial_workspace_status"]
+        self.assertEqual(status["mode"],"review")
+        self.assertIsNone(status["next_payment_due"])
