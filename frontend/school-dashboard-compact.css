@@ -75,3 +75,39 @@
   .yd-dashboard-shortcuts button>.yd-icon {width:22px;height:22px;}
 }
 @media print { .yd-dashboard-toolbar,.yd-school-code-compact {display:none!important;} }
+
+
+/* Responsive school shell: preserve the uploaded artwork, logos and theme tokens. */
+.yd-operational-compact .yd-sidebar {overflow-x:hidden;padding:12px 8px;gap:4px;}
+.yd-operational-compact .yd-sidebar button {min-width:0;height:auto;min-height:42px;padding:8px 10px;gap:9px;white-space:normal;font-size:14px;}
+.yd-operational-compact .yd-sidebar button span {min-width:0;overflow-wrap:anywhere;}
+.yd-operational-compact .yd-fixed-banner-art {object-fit:contain;}
+.yd-operational-compact .yd-fixed-banner-mark {background:var(--yd-green-dark);color:white;border-radius:6px;padding:4px 8px;top:6px;bottom:6px;}
+.yd-operational-compact .yd-content {min-width:0;}
+.yd-dashboard-compact .yd-metric > div {min-width:0;}
+.yd-dashboard-compact .yd-metric strong {font-size:clamp(15px,1.35vw,23px);overflow-wrap:anywhere;}
+.yd-dashboard-compact .yd-linechart {max-height:220px;}
+.yd-dashboard-compact .yd-donut {max-width:100%;height:auto;}
+.yd-operational-compact .yd-fold {border:1px solid var(--yd-line);background:white;border-radius:9px;margin:0 0 10px;}
+.yd-operational-compact .yd-fold > summary {cursor:pointer;padding:12px 14px;font-weight:650;color:var(--yd-text);}
+.yd-operational-compact .yd-fold > summary:focus-visible {outline:2px solid var(--yd-green);outline-offset:2px;}
+.yd-operational-compact .yd-fold > .yd-card {margin:0;box-shadow:none;border:0;}
+.yd-school-bottom-nav {display:none;}
+@media screen and (max-width:760px) {
+  .yd-operational-compact header.yd-topbar {position:relative;height:auto;flex-wrap:wrap;}
+  .yd-operational-compact .yd-fixed-banner {height:clamp(76px,22vw,120px);}
+  .yd-operational-compact .yd-fixed-banner-mark {max-width:65%;}
+  .yd-operational-compact .yd-header-search-panel {position:fixed;}
+  .yd-operational-compact .yd-sidebar.is-open {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));position:fixed;inset:auto 0 calc(62px + env(safe-area-inset-bottom)) 0;max-height:60dvh;height:auto;overflow:auto;z-index:35;background:white;border-top:1px solid var(--yd-line);box-shadow:0 -8px 24px #0002;}
+  .yd-operational-compact .yd-content {padding:10px 10px calc(76px + env(safe-area-inset-bottom));}
+  .yd-operational-compact .yd-topbar .yd-bell {display:grid;place-items:center;}
+  .yd-operational-compact .yd-metrics.five,.yd-operational-compact .yd-metrics.four,.yd-operational-compact .yd-metrics.three {grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+  .yd-dashboard-compact .yd-metric {min-height:76px;padding:10px 8px;gap:6px;}
+  .yd-dashboard-compact .yd-metric > .yd-icon {width:20px;height:20px;flex-shrink:0;}
+  .yd-dashboard-compact .yd-metric strong {font-size:16px;}
+  .yd-dashboard-compact .yd-metric-label,.yd-dashboard-compact .yd-trend {font-size:11px;}
+  .yd-operational-compact .yd-school-bottom-nav {position:fixed;bottom:0;left:0;right:0;z-index:36;display:flex;justify-content:space-around;background:white;border-top:1px solid var(--yd-line);padding:4px 4px calc(4px + env(safe-area-inset-bottom));}
+  .yd-school-bottom-nav button {flex:1;min-width:0;display:grid;justify-items:center;align-content:center;gap:3px;min-height:52px;border:0;background:transparent;padding:4px;color:var(--yd-text);font-size:11px;overflow-wrap:anywhere;}
+  .yd-school-bottom-nav button[aria-current="page"] {background:var(--yd-green-soft);color:var(--yd-green-dark);border-radius:8px;}
+}
+@media print {.yd-operational-compact .yd-school-bottom-nav {display:none!important;}}
