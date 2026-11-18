@@ -27,7 +27,7 @@ export default function CommercialDashboard({api,onSelectSchool}){
   },[api,year,status,search,page,reload]);
   const d=state.data,t=d?.totals;
   const cards=t?[["Montant contractuel cumulé",t.contracted_xaf],["Règlements déclarés nets",t.paid_xaf],["Solde à recouvrer",t.balance_xaf],["Impayés échus",t.overdue_xaf],["Échéances du jour",t.due_today_xaf],["Échéances futures",t.future_xaf],["Solde sans échéancier fiable",t.unscheduled_xaf],["Suppléments d’avenants inclus",t.amendments_xaf]]:[];
-  return <section aria-label="Finances commerciales BWETEK">
+  return <section className="yem-commercial-panel" aria-label="Finances commerciales BWETEK">
     <div className="ya-box">
       <h2>Finances commerciales — BWETEK Informatyk</h2>
       <p className="hint">Registre commercial YEM uniquement. Ni frais scolaires, ni résultat comptable de BWETEK. Montants cumulés sur tous les contrats émis, établissements inactifs inclus. Règlements déclarés, hors écritures annulées.</p>
@@ -47,7 +47,7 @@ export default function CommercialDashboard({api,onSelectSchool}){
         {Array.from({length:Number(d.as_of.slice(0,4))-1999},(_,i)=>Number(d.as_of.slice(0,4))-i).map(y=><option key={y}>{y}</option>)}
       </select></label>
       <p><strong>{money(d.year_received_xaf)}</strong> déclarés et non annulés en {d.year} · {money(d.year_voided_xaf)} d’écritures annulées (mois d’enregistrement initial).</p>
-      <table><thead><tr><th>Mois</th><th>Règlements nets</th><th>Écritures annulées</th></tr></thead><tbody>{d.months.map(m=><tr key={m.month}><td>{m.month}</td><td>{money(m.received_xaf)}</td><td>{money(m.voided_xaf)}</td></tr>)}</tbody></table>
+      <div className="yem-commercial-months" aria-label="Règlements mensuels">{d.months.map(m=><div className="yem-commercial-month" key={m.month}><strong>{m.month}</strong><div><small>Règlements nets</small><b>{money(m.received_xaf)}</b></div><div><small>Écritures annulées</small><b>{money(m.voided_xaf)}</b></div></div>)}</div>
       <h4>Moyens de règlement déclarés</h4>{Object.entries(d.methods).map(([key,v])=><p key={key}>{methods[key]||key} : {money(v)}</p>)}
     </div>}
     <div className="ya-box">
@@ -58,7 +58,7 @@ export default function CommercialDashboard({api,onSelectSchool}){
       {d&&<>
         <p>{d.count} établissement(s)</p>
         {!d.schools.length&&<p>Aucun établissement correspondant.</p>}
-        {d.schools.map(s=><ContextTarget className="ya-info-row" key={s.school_id} showTrigger actions={onSelectSchool?[{id:"contract",label:"Gérer l’abonnement",run:()=>onSelectSchool(s.school_id)}]:[]}>
+        {d.schools.map(s=><ContextTarget className="ya-info-row yem-commercial-row" key={s.school_id} showTrigger actions={onSelectSchool?[{id:"contract",label:"Gérer l’abonnement",run:()=>onSelectSchool(s.school_id)}]:[]}>
           <div><strong>{s.school}</strong>{!s.enabled?" · Inactif":""}{s.read_only?" · Lecture seule":""}{s.trial==="active"?" · Essai actif":""}
             {s.current_year&&<p><strong>{s.current_billing_active?"Facturation activée":"Facturation inactive"}</strong> · {s.current_year}{s.current_students!==null&&s.current_students!==undefined?" · "+s.current_students+" élèves":""}{s.current_annual_estimate_xaf!==null&&s.current_annual_estimate_xaf!==undefined?" · Estimation : "+money(s.current_annual_estimate_xaf):" · Effectifs/grille à vérifier"}</p>}
             <p>Contrats : {s.contracts} · {money(s.contracted_xaf)} contractualisés · {money(s.paid_xaf)} réglés · {money(s.balance_xaf)} restants</p>
