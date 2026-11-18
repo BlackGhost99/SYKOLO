@@ -7,7 +7,7 @@ const amount = (value,currency) => `${number(value)} ${currency}`;
 const SECTIONS = [
   ["synthese","Vue d’ensemble"],["scolarite","Scolarité"],
   ["finances","Finances"],["admissions","Admissions"],
-  ["personnel","Personnel"],["activite","Activité"],
+  ["personnel","Personnel"],["activite","Activité"],["abonnement","Abonnement YEM"],
 ];
 
 export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
@@ -81,7 +81,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
             aria-selected={tab===key} className={tab===key?"active":""}
             onClick={()=>setTab(key)}>{label}</button>)}
         </div>
-        {tab==="synthese"&&data.year?.id&&<OwnerSubscription key={schoolId} schoolId={schoolId} yearId={data.year.id}/>}
+        {tab==="abonnement"&&<OwnerSubscription key={schoolId} schoolId={schoolId} yearId={data.year?.id}/>}
         {(tab==="synthese"||tab==="scolarite")&&<>
           <div className="yd-metrics five">
             <Metric icon="users" label="Élèves inscrits" value={number(metrics.active_students)} trend="none" trendLabel={data.year?.name||"Aucune année active"}/>
@@ -100,7 +100,11 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
               {" "}{number(metrics.total_defined_places)} places. Les classes sans capacité définie ne sont pas incluses dans ce total.</p>
           </Card>
         </>}
-        {(tab==="synthese"||tab==="finances")&&<Card title="Situation financière de l’établissement" icon="coins"
+        {tab==="synthese"&&finance.length>0&&<Card title="Situation financière — synthèse" icon="coins" subtitle="Écritures enregistrées, non certifiées">
+          <Table headers={["Devise","Enregistré","Solde comptable","Échu comptable"]} rows={finance.map(row=>[row.currency,amount(row.paid,row.currency),amount(row.outstanding,row.currency),amount(row.overdue,row.currency)])}/>
+        </Card>}
+        {tab==="synthese"&&<div className="yd-owner-quick-grid">{[["finances","coins","Situation financière","Consulter les écritures et les soldes"],["admissions","adduser","Admissions",number(admission.pending)+" en attente"],["personnel","idcard","Personnel",number(staff.active)+" collaborateurs actifs"],["activite","calendar","Activité",number(activity.total_30d)+" opérations sur 30 jours"],["abonnement","receipt","Abonnement YEM","Contrat, simulation et échéances"]].map(([id,icon,label,desc])=><Card key={id} title={label} icon={icon}><p>{desc}</p><Button onClick={()=>setTab(id)}>Consulter</Button></Card>)}</div>}
+        {tab==="finances"&&<Card title="Situation financière de l’établissement" icon="coins"
           subtitle="Total des frais et règlements enregistrés ; aucune caisse ni modification depuis cet espace">
           {financialTable}
           <p className="hint" role="note">Ce tableau est un relevé d'écritures, pas un état de recettes certifiées. Les montants à justifier ne sont pas considérés comme vérifiés.</p>
@@ -113,7 +117,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
               rows={data.finance.monthly.map(item=>[item.month,item.currency,amount(item.total,item.currency)])}/>
           </>}
         </Card>}
-        {(tab==="synthese"||tab==="admissions")&&<Card title="Admissions et demandes" icon="adduser">
+        {tab==="admissions"&&<Card title="Admissions et demandes" icon="adduser">
           <div className="yd-metrics">
             <Metric icon="file" label="Demandes reçues" value={number(admission.total)} trend="none"/>
             <Metric icon="hourglass" label="En attente" value={number(admission.pending)} trend="none"/>
@@ -123,7 +127,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
           </div>
           <p className="hint">La direction garde la responsabilité d'instruire et de décider les admissions.</p>
         </Card>}
-        {(tab==="synthese"||tab==="personnel")&&<Card title="Équipe et organisation" icon="idcard">
+        {tab==="personnel"&&<Card title="Équipe et organisation" icon="idcard">
           <div className="yd-metrics">
             <Metric icon="users" label="Collaborateurs actifs" value={number(staff.active)} trend="none"/>
             <Metric icon="check" label="Comptes YEM liés" value={number(staff.with_account)} trend="none"/>
@@ -142,7 +146,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate}) {
           </div>
           <p className="hint">Ces chiffres mesurent l'activité enregistrée, pas les résultats individuels des élèves.</p>
         </Card>}
-        {(tab==="synthese"||tab==="activite")&&<Card title="Activité récente de l’établissement" icon="calendar"
+        {tab==="activite"&&<Card title="Activité récente de l’établissement" icon="calendar"
           subtitle="30 derniers jours — volumes d'opérations, sans noms, identifiants ni contenus des dossiers">
           <p><strong>{number(activity.total_30d)} opération(s) tracée(s)</strong></p>
           {activity.by_type?.length

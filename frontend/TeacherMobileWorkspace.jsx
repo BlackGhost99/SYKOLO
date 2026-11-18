@@ -23,7 +23,7 @@ const weekDay=()=>((new Date().getDay()+6)%7);
 const displayClass=(classes,id)=>classes.find(c=>c.id===id)?.name||"Classe";
 
 export default function TeacherMobileWorkspace({
-  schoolId,schoolName,user,permissions=[],preschoolEnabled=false,workingYearId="",years=[],
+  schoolId,schoolName,schoolBrand,user,permissions=[],preschoolEnabled=false,workingYearId="",years=[],
   schools=[],onSchoolChange,onYearChange,onLogout,onExit,accountView,commercialBanner,
 }){
   const [tab,setTab]=useState("accueil");
@@ -101,6 +101,7 @@ export default function TeacherMobileWorkspace({
           {portrait?<img src={portrait+"?v="+photoRev} alt="Ma photo"/>:<Icon name="user" size={24}/>}
         </button>
       </div>
+      {(schoolBrand?.banner||schoolBrand?.logo)&&<div className="ym-prof-school-brand" aria-label="Identité de l’établissement">{schoolBrand.banner&&<img className="ym-prof-school-banner" src={schoolBrand.banner} alt="Bannière de l’établissement"/>}{schoolBrand.logo&&<img className="ym-prof-school-logo" src={schoolBrand.logo} alt="Logo de l’établissement"/>}</div>}
       <h2 className="ym-prof-hero-title">{title}</h2>
       <div className="ym-prof-school">
         <span><Icon name="school" size={15}/> </span>
