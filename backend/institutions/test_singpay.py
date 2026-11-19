@@ -203,7 +203,23 @@ class SingPayTests(TestCase):
         body={"revision":1,"wallet_id":"wallet-school-a","disbursement_id":"destination-a",
               "client_id":"fake-id","client_secret":"fake-secret","beneficiary_name":"École P15",
               "contract_reference":"test-contract","mode":"live","enabled":True,"fee_basis_points":250,"fee_fixed_xaf":25}
-        self.assertEqual(self.write(path,body).status_code,409)
+        with override_settings(YEM_SINGPAY_APPROVED_DESTINATIONS=""), patch("institutions.singpay_views.verify_wallet_access") as verify:
+            self.assertEqual(self.write(path,body).status_code,409)
+            verify.assert_not_called()
+        approved = f"{self.school.pk}:wallet-school-a:destination-a:live"
+        with override_settings(YEM_SINGPAY_APPROVED_DESTINATIONS=approved):
+            with override_settings(YEM_SINGPAY_ENABLED=False), patch("institutions.singpay_views.verify_wallet_access") as verify:
+                self.assertEqual(self.write(path,body).status_code,409)
+                verify.assert_not_called()
+            from .singpay_service import WalletVerificationError
+            with patch("institutions.singpay_views.verify_wallet_access", side_effect=WalletVerificationError("denied")):
+                self.assertEqual(self.write(path,body).status_code,409)
+            with patch("institutions.singpay_views.verify_wallet_access") as verify:
+                result = self.write(path,body)
+                self.assertEqual(result.status_code,200,result.content)
+                self.assertTrue(result.json()["enabled"])
+                self.assertNotIn("fake-secret",result.content.decode())
+                verify.assert_called_once()
 
     def test_school_owner_can_save_merchant_for_own_school_only(self):
         from .models import SchoolMember, SchoolRole
