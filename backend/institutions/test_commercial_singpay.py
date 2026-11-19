@@ -104,3 +104,53 @@ class CommercialSingPayTests(TestCase):
         r=self.client.post(f"/api/v1/platform/schools/{self.school.pk}/subscriptions",json.dumps({"year_id":str(self.sub.year_id),"action":"void","payment_id":row.payment_id,"reason":"Test interdiction"}),content_type="application/json")
         self.assertEqual(r.status_code,409,r.content)
         self.assertIsNone(PlatformSubscriptionPayment.objects.get().voided_at)
+    def test_restricted_school_can_pay_contract_without_unrestricting_school(self):
+        from .subscription_models import PlatformCommercialAccessDecision
+        decision=PlatformCommercialAccessDecision.objects.create(school=self.school,revision=1,restricted=True,reason="Contrat impayé")
+        r,p=self.start();self.assertEqual(r.status_code,201,r.content);p.assert_called_once()
+        decision.refresh_from_db();self.assertTrue(decision.restricted)
+        r=self.client.post(f"/api/v1/schools/{self.school.pk}/owner/subscriptions/{self.sub.pk}/singpay/invalid/refresh", "{}",content_type="application/json")
+        self.assertEqual(r.status_code,403)
+
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from unittest import skipUnless
+from django.db import connection, connections
+from django.test import TransactionTestCase, Client
+
+@skipUnless(connection.vendor == "postgresql", "PostgreSQL row-lock concurrency runs in CI")
+@override_settings(YEM_SINGPAY_ENABLED=True,YEM_PAYMENTS_LIVE_ENABLED=True,
+ YEM_PAYMENT_ENCRYPTION_KEY="test-encryption-key-abcdefghijklmnopqrstuvwxyz",AUTH_PUBLIC_BASE_URL="https://yem.example.test")
+class CommercialSingPayConcurrencyTests(TransactionTestCase):
+    def setUp(self):
+        CommercialSingPayTests.setUp(self)
+    def test_two_requests_issue_one_debit_and_one_credit(self):
+        cookies=self.client.cookies.copy()
+        gate=Barrier(2)
+        def send(_):
+            connections.close_all()
+            client=Client();client.cookies=cookies.copy()
+            try:
+                gate.wait(timeout=10)
+                return client.post(self.path,json.dumps(self.body),content_type="application/json").status_code
+            finally:
+                connections.close_all()
+        with patch("institutions.commercial_singpay.provider_request",return_value={}) as provider:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results=list(executor.map(send,range(2)))
+        self.assertEqual(sorted(results),[200,201]);self.assertEqual(provider.call_count,1)
+        self.assertEqual(Intent.objects.count(),1)
+        row=Intent.objects.get()
+        proof=CommercialSingPayTests.evidence(self,row)
+        gate=Barrier(2)
+        def confirm(_):
+            connections.close_all()
+            try:
+                gate.wait(timeout=10)
+                return reconcile(Intent.objects.get(pk=row.pk),PlatformSingPayMerchant.objects.get()).state
+            finally:
+                connections.close_all()
+        with patch("institutions.commercial_singpay.provider_request",return_value=proof):
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                self.assertEqual(list(executor.map(confirm,range(2))),["success","success"])
+        self.assertEqual(PlatformSubscriptionPayment.objects.count(),1)

@@ -86,6 +86,8 @@ def intent_view(row):
 @require_http_methods(["GET", "POST"])
 @authorized
 def payment(request, school_id, subscription_id):
+    if not 1 <= subscription_id <= 2**63-1:
+        return fail("Contrat introuvable.",404)
     school = School.objects.filter(pk=school_id).first()
     if not school or not permitted(request, school):
         return denied()
@@ -140,6 +142,8 @@ def payment(request, school_id, subscription_id):
 @require_http_methods(["POST"])
 @authorized
 def refresh(request, school_id, subscription_id, intent_id):
+    if not 1 <= subscription_id <= 2**63-1:
+        return fail("Contrat introuvable.",404)
     school = School.objects.filter(pk=school_id).first()
     if not school or not permitted(request,school):
         return denied()
