@@ -22,7 +22,7 @@ class Command(BaseCommand):
         cutoff = timezone.now() - timedelta(minutes=2)
         merchants = SingPayMerchant.objects.filter(enabled=True)
         rows = SingPayIntent.objects.filter(
-            state__in=("pending", "unknown"),
+            state__in=("initiating", "pending", "unknown"),
             school_id__in=merchants.values("school_id"),
             created_at__lte=cutoff,
         ).filter(Q(checked_at__isnull=True) | Q(checked_at__lte=cutoff))
@@ -44,6 +44,22 @@ class Command(BaseCommand):
                 # Back off without changing the financial state.
                 SingPayIntent.objects.filter(pk=row.pk, state=row.state,
                     checked_at=row.checked_at).update(checked_at=timezone.now())
+        # Independent platform wallet; never reuse a school merchant for subscriptions.
+        from institutions.commercial_singpay_models import PlatformSingPayMerchant, SubscriptionSingPayIntent
+        from institutions.commercial_singpay import reconcile as reconcile_subscription
+        platform = PlatformSingPayMerchant.objects.first()
+        if merchant_ready(platform):
+            candidates = SubscriptionSingPayIntent.objects.filter(
+                state__in=("initiating", "pending", "unknown"), created_at__lte=cutoff,
+            ).filter(Q(checked_at__isnull=True) | Q(checked_at__lte=cutoff))
+            for row in candidates.order_by(F("checked_at").asc(nulls_first=True), "created_at", "pk")[:limit]:
+                try:
+                    reconcile_subscription(row, platform)
+                    checked += 1
+                except ProviderError:
+                    failures += 1
+                    SubscriptionSingPayIntent.objects.filter(pk=row.pk, state=row.state,
+                        checked_at=row.checked_at).update(checked_at=timezone.now())
         self.stdout.write(f"Checked: {checked}; provider errors: {failures}")
         if failures:
             raise CommandError("Some reconciliations require another check.")

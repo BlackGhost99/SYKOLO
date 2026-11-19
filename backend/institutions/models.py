@@ -231,3 +231,4 @@ from .diary_resource_models import DiaryResource  # noqa: E402,F401
 from .course_progress_models import CourseUnitProgress  # noqa: E402,F401
 
 from .remediation_models import SecondaryMastery  # noqa: E402,F401
+from .commercial_singpay_models import PlatformSingPayMerchant, SubscriptionSingPayIntent, SubscriptionSingPayEvent  # noqa: E402,F401

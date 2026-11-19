@@ -179,6 +179,11 @@ class CommercialWorkspaceBoundaryMiddleware:
         decision = last_decision(school)
         if not (decision and decision.restricted):
             return self.get_response(request)
+        # A restricted school must still be able to settle its YEM contract.
+        # Only these exact owner endpoints are exempt; their views enforce
+        # owner access, school scope, CSRF, amount and idempotency checks.
+        if re.fullmatch(rf"owner/subscriptions/[1-9][0-9]*/singpay(?:/{self._UUID}/refresh)?", match.group(2) or ""):
+            return self.get_response(request)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             return self.blocked(school.pk)
 

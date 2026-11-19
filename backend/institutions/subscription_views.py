@@ -290,6 +290,8 @@ def subscriptions(request, school_id):
         payment = row.payments.filter(pk=payment_id).first()
         if not payment:
             return fail("Règlement introuvable.", 404)
+        if payment.method == "singpay":
+            return fail("Un reçu SingPay exige une écriture compensatoire après revue.", 409)
         if payment.voided_at is not None:
             return fail("Règlement déjà annulé.", 409)
         payment.voided_at = timezone.now()

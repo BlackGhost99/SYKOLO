@@ -55,7 +55,7 @@ test("ineligible quote shows the actual server blocker",async()=>{
 test("management reads refreshed balances from the school endpoint",async()=>{
   const contract={id:1,year:"2026–2027",year_id:"y",lines:[],total_xaf:150000,paid_xaf:0,balance_xaf:150000,terms:{period:"mensuel",minimum_xaf:75000,discount_xaf:0,setup_xaf:0},schedule:[]};
   let contractReads=0;
-  const fetcher=vi.fn(async url=>url.includes("commercial-access")?Response.json({revision:0,lifecycle:"active",overdue_xaf:0,late_30_xaf:0,restricted:false,can_restrict:false}):url.includes("subscription-reminders")?Response.json({reminders:[],count:0,overdue_count:0,due_count:0,upcoming_count:0,window_days:7,pages:1,page:1}):Response.json({subscriptions:[contractReads++===0?contract:{...contract,paid_xaf:12500,balance_xaf:137500}]}));
+  const fetcher=vi.fn(async url=>url.endsWith("/singpay")?Response.json({merchant:{active:false},balance_xaf:0,payments:[]}):url.includes("commercial-access")?Response.json({revision:0,lifecycle:"active",overdue_xaf:0,late_30_xaf:0,restricted:false,can_restrict:false}):url.includes("subscription-reminders")?Response.json({reminders:[],count:0,overdue_count:0,due_count:0,upcoming_count:0,window_days:7,pages:1,page:1}):Response.json({subscriptions:[contractReads++===0?contract:{...contract,paid_xaf:12500,balance_xaf:137500}]}));
   vi.stubGlobal("fetch",fetcher);
   const hidden=vi.spyOn(document,"hidden","get").mockReturnValue(false);
   render(<OwnerSubscription schoolId="school-a" yearId="y"/>);
