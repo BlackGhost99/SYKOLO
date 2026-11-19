@@ -22,7 +22,7 @@ TEXT = colors.HexColor("#1E293B")
 MUTED = colors.HexColor("#64748B")
 PAPER = colors.HexColor("#F2F6F5")
 RED = colors.HexColor("#A11D32")
-METHODS = {"especes": "Espèces", "mobile_money": "Mobile Money déclaré",
+METHODS = {"singpay": "SingPay — paiement vérifié", "especes": "Espèces", "mobile_money": "Mobile Money déclaré",
            "virement": "Virement déclaré", "autre": "Autre règlement déclaré"}
 LOC = ZoneInfo("Africa/Libreville")
 

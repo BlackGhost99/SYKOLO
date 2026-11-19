@@ -1,3 +1,4 @@
+from . import commercial_singpay_views
 from django.urls import path
 from conduct import views as conduct_views
 from . import import_views, subscription_views, teaching_diary_views, diary_resource_views, course_progress_views, remediation_views
@@ -20,6 +21,10 @@ from . import cycle_access_views
 from . import views, platform_views, platform_admin_views, academic_views, student_views, staff_views, curriculum_views, assessment_views, report_views, council_views, finance_views, attendance_views, timetable_views, admission_views, admission_route_views, parent_views, parent_admission_views, parent_payment_views, overview_views, organization_views, registration_views, enrollment_form
 
 urlpatterns = [
+    path("platform/singpay/merchant", commercial_singpay_views.merchant),
+    path("schools/<uuid:school_id>/owner/subscriptions/<int:subscription_id>/singpay", commercial_singpay_views.payment),
+    path("schools/<uuid:school_id>/owner/subscriptions/<int:subscription_id>/singpay/<uuid:intent_id>/refresh", commercial_singpay_views.refresh),
+
     path("schools/<uuid:school_id>/branding", school_branding_views.school_branding),
     path("schools/<uuid:school_id>/branding/<str:kind>", school_branding_views.school_brand_image),
     path("schools/<uuid:school_id>/owner/overview", owner_overview_views.owner_overview),

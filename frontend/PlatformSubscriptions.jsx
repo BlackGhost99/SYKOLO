@@ -1,3 +1,4 @@
+import SingPayControl from "./SingPayControl.jsx";
 import CommercialSimulator from "./CommercialSimulator.jsx";
 import React, {useEffect, useRef, useState} from "react";
 import SubscriptionDocuments from "./SubscriptionDocuments.jsx";
@@ -83,6 +84,7 @@ export default function PlatformSubscriptions({schoolId, api, tariffRevision=0})
   const validReason=reason.trim().length>0&&reason.trim().length<=240;
   const activationBlocker=busy?"Activation en cours…":!data?.can_issue?(data?.issue_blocker||"Cette année scolaire ou cet établissement ne permet pas une activation."):!Object.keys(data?.counts||{}).length?"Aucun cycle configuré.":!discountOK?"Renseignez une remise valide (0 si aucune).":Number(discount)>0&&!validReason?"Justifiez la remise exceptionnelle.":!activate?"Cochez l’autorisation de passage au service payant.":"";
   return <section className="ya-box ya-form-box yem-commercial-panel" aria-label="Abonnement commercial YEM">
+    <SingPayControl merchantOnly platform/>
     <h2>Abonnement annuel YEM</h2>
     {year&&<CommercialSimulator platform schoolId={schoolId} yearId={year} api={api} tariffRevision={tariffRevision} refreshKey={sub?.id||0}/> }
     <CommercialAccess key={schoolId+":"+reload+":"+(sub?.id||0)} schoolId={schoolId} api={api}/>

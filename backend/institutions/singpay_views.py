@@ -75,6 +75,9 @@ def merchant_config(request, school_id):
             return fail("Secret, bénéficiaire et justificatif de contrat requis.")
     if not settings.AUTH_PUBLIC_BASE_URL.startswith("https://") or len(settings.YEM_PAYMENT_ENCRYPTION_KEY) < 32:
         return fail("HTTPS public et chiffrement serveur requis.", 503)
+    from .commercial_singpay_models import PlatformSingPayMerchant
+    if PlatformSingPayMerchant.objects.filter(wallet_id=data["wallet_id"]).exists():
+        return fail("Le compte BWETEK ne peut recevoir les frais de scolarité.", 409)
     if data["enabled"]:
         if not getattr(settings, "YEM_SINGPAY_ENABLED", False) or (data["mode"] == "live" and not settings.YEM_PAYMENTS_LIVE_ENABLED):
             return fail("Activation non autorisée par la plateforme.", 409)

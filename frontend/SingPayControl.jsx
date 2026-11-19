@@ -10,10 +10,10 @@ async function api(path,body) {
   return response.json();
 }
 
-export default function SingPayControl({schoolId, merchantOnly=false}) {
+export default function SingPayControl({schoolId, merchantOnly=false, platform=false}) {
   const [merchant,setMerchant]=useState(null),[payments,setPayments]=useState(null);
   const [message,setMessage]=useState(""),[busy,setBusy]=useState(false);
-  const base="schools/"+schoolId+"/singpay";
+  const base=platform?"platform/singpay":"schools/"+schoolId+"/singpay";
   useEffect(()=>{
     let alive=true;setMerchant(null);setPayments(null);setMessage("");
     api(base+"/merchant").then(v=>{if(alive&&Number.isInteger(v.revision))setMerchant(v)}).catch(error=>{if(alive&&merchantOnly)setMessage(error.message)});
@@ -29,7 +29,7 @@ export default function SingPayControl({schoolId, merchantOnly=false}) {
   return <section className="yd-card" style={{padding:"1rem",marginTop:"1rem"}}>
     <h3>{merchantOnly?"Compte bénéficiaire SingPay":"SingPay — compte école et rapprochement"}</h3>
     <p>L'activation nécessite un compte marchand autorisé et la vérification SingPay. Aucun transfert n'est déclenché ici.</p>
-    {merchant&&<details><summary>Préparer le compte marchand de l'établissement</summary>
+    {merchant&&<details><summary>Préparer le compte marchand</summary>
       <p>Bénéficiaire enregistré : {merchant.beneficiary||"À renseigner"}. Fournissez uniquement les identifiants du compte de cette école et sa distribution autorisée.</p>
       <form aria-label="Compte marchand école" onSubmit={event=>{
         event.preventDefault();const form=event.currentTarget, data=new FormData(form);
@@ -52,7 +52,7 @@ export default function SingPayControl({schoolId, merchantOnly=false}) {
         <button type="submit" disabled={busy}>Enregistrer le compte marchand</button>
       </form>
     </details>}
-    {merchant?.configured&&<button type="button" disabled={busy} onClick={()=>run(async()=>{
+    {merchant?.configured&&!platform&&<button type="button" disabled={busy} onClick={()=>run(async()=>{
       await api(base+"/merchant/verify",{});
       return "SingPay a confirmé l’accès au portefeuille.";
     })}>Vérifier la connexion à SingPay</button>}
