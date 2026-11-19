@@ -48,6 +48,7 @@ import "./school-dashboard-compact.css";
    chaque entrée du menu ouvrant les modules existants autorisés pour le rôle du compte. */
 const modules = {
   onboarding:{label:"Ajouter un collaborateur",read:"school.staff.manage",view:StaffOnboarding},
+  assignments:{label:"Affectations pédagogiques",read:"school.staff.read",view:StaffPanel},
   academic:{label:"Années, cycles et classes",read:"school.academic.read",view:AcademicPanel},
   staff:{label:"Personnel et enseignants",read:"school.staff.read",view:StaffPanel},
   organization:{label:"Organigramme et fonctions",read:"school.organization.read",view:OrganisationPanel},
@@ -70,6 +71,7 @@ const sections = {
     {key:"live",label:"Liste des élèves",need:["school.students.profile.read"]},
     {key:"byclass",label:"Inscriptions par classe",need:["school.students.profile.read","school.academic.read"]}],
     hidden:{new:"school.students.manage",import:"school.students.manage",fiche:"school.students.profile.read"}},
+  teaching:{title:"Organisation pédagogique",subtitle:"Affectations, matières et emplois du temps",modules:["assignments","curriculum","timetable"],lives:[]},
   classes:{modules:[],lives:[{key:"live",label:"Classes et effectifs",need:["school.academic.read"]}]},
   diary:{title:"Cahier de textes",subtitle:"Séances de cours et travail à faire",modules:[],lives:[{key:"live",label:"Cahier de textes",need:["school.curriculum.read"]}]},
   calendar:{title:"Calendrier pédagogique",subtitle:"Année, trimestres, vacances et événements",modules:[],lives:[
@@ -89,7 +91,7 @@ const sections = {
     {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]},
     {key:"payroll",label:"Rémunérations (RH)",need:["school.payroll.read"]}]},
 };
-const schoolNav = [...NAV.slice(0,1), ["notifications","bell","Notifications"], ["owner","barchart","Pilotage propriétaire"], ...NAV.slice(1,2), ["classes","layers","Classes"], ["calendar","calendar","Calendrier pédagogique"], ["diary","file","Cahier de textes"], ["preschool","file","Suivi préscolaire"], ["expenses","receipt","Dépenses et budgets"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
+const schoolNav = [...NAV.slice(0,1), ["notifications","bell","Notifications"], ["owner","barchart","Pilotage propriétaire"], ...NAV.slice(1,2), ["classes","layers","Classes"], ["teaching","calendar","Organisation pédagogique"], ["calendar","calendar","Calendrier pédagogique"], ["diary","file","Cahier de textes"], ["preschool","file","Suivi préscolaire"], ["expenses","receipt","Dépenses et budgets"], ...NAV.slice(2)].map(([id, icon, label]) => [id, icon, id === "bulletins" ? "Évaluations et notes" : label]);
 const sectionIcon=Object.fromEntries(schoolNav.map(([id,icon])=>[id,icon]));
 
 const settingsSections = [
@@ -405,7 +407,8 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
   // A teacher can grade assigned courses without a school-wide grade permission.
   // The API still checks the course instructor assignment for each operation.
   const ownCourseAssessment = can("school.academic.read") && can("school.curriculum.read") && !can("school.assessments.read");
-  const allowed = key => key === "onboarding"
+  const canAssignTeaching=can("school.staff.read")&&can("school.academic.read")&&(can("school.staff.manage")||can("school.curriculum.manage"));
+  const allowed = key => key==="assignments" ? canAssignTeaching : key === "onboarding"
     ? can("school.staff.manage") || isOwner
     : can(modules[key].read) || (key==="assessments" && ownCourseAssessment)
       || (key==="attendance" && can("school.attendance.assigned"));
@@ -447,7 +450,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     hasTab("admissions","admissions")&&{id:"admissions",tab:"admissions",icon:"adduser",title:"Admissions",subtitle:"Inscriptions / Concours"},
     hasTab("payments","live")&&{id:"payments",tab:"live",icon:"wallet",title:"Paiements",subtitle:"Encaissements / Reçus"},
     hasTab("bulletins","assessments")&&{id:"bulletins",tab:"assessments",icon:"barchart",title:"Évaluations",subtitle:"Notes / Moyennes"},
-    availableSettings.some(g=>g.items.some(i=>i.id==="timetable"))&&{id:"settings",tab:"timetable",icon:"calendar",title:"Emplois du temps",subtitle:"Classes / Enseignants"},
+    hasTab("teaching","timetable")&&{id:"teaching",tab:"timetable",icon:"calendar",title:"Emplois du temps",subtitle:"Classes / Enseignants"},
     hasTab("bulletins","reports")&&{id:"bulletins",tab:"reports",icon:"file",title:"Bulletins",subtitle:"Génération / Consultation"},
   ].filter(Boolean);
   function navigate(id,subTab="",extra=null){
@@ -613,8 +616,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
           canManagePayroll={can("school.payroll.manage")} canApprovePayroll={can("school.payroll.approve")}
           canPayPayroll={can("school.payroll.pay")} canReversePayroll={can("school.payroll.reverse")}
           onAdd={allowed("onboarding")?()=>navigate("staff","onboarding"):undefined}
-          onAssign={availableSettings.some(group=>group.items.some(item=>item.id==="staff-setup"))
-            ?()=>navigate("settings","staff-setup"):undefined}/></div></>,
+          onAssign={hasTab("teaching","assignments")?()=>navigate("teaching","assignments"):undefined}/></div></>,
       "staff:payroll":<><PageHeader title="Rémunérations du personnel" subtitle="Module RH confidentiel et séparé de la caisse scolaire"
         actions={can("school.staff.read")||can("school.staff.dossier.read")?
           <Button onClick={()=>navigate("staff","directory")}>Retour au personnel</Button>:null}/>
@@ -630,6 +632,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
     {tabBar}
     <div className="yd-real-body">{View&&<View key={chosen+"-"+tab} {...panelProps}
       {...(["finance","onboarding"].includes(tab)?{mode:"daily"}:{})}
+      {...(tab==="assignments"?{mode:"assignments"}:{})}
       {...(tab==="assessments"?{canEdit:can("school.assessments.manage")||ownCourseAssessment,
         canPublish:can("school.reports.publish"), limitedToMyCourses:ownCourseAssessment}:{})}
       {...(tab==="reports"?{canPrepare:can("school.reports.manage")}:{})}
