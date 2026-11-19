@@ -78,12 +78,16 @@ def merchant_config(request, school_id):
     if data["enabled"]:
         if not getattr(settings, "YEM_SINGPAY_ENABLED", False) or (data["mode"] == "live" and not settings.YEM_PAYMENTS_LIVE_ENABLED):
             return fail("Activation non autorisée par la plateforme.", 409)
+        approved = getattr(settings, "YEM_SINGPAY_APPROVED_DESTINATIONS", "")
+        destination = f'{school.pk}:{data["wallet_id"]}:{data["disbursement_id"]}:{data["mode"]}'
+        if destination not in approved.split(","):
+            return fail("Destination marchande non approuvée par la plateforme.", 409)
         try:
             candidate = SingPayMerchant(wallet_id=data["wallet_id"], encrypted_credentials=encrypt_secret(json.dumps({
                 "client_id": data["client_id"], "client_secret": data["client_secret"],
             })))
             verify_wallet_access(candidate)
-        except ProviderError:
+        except (ProviderError, WalletVerificationError):
             return fail("Accès marchand non confirmé par SingPay.", 409)
     try:
         with transaction.atomic():
