@@ -82,6 +82,22 @@ class StaffAssignmentTests(TestCase):
         self.login(self.teacher)
         self.assertEqual(self.client.get("/api/v1/schools/"+str(self.other.pk)+"/staff/me/assignments").status_code,404)
 
+    def test_studies_can_assign_teachers_without_hr_management(self):
+        from .services import SECONDARY_STUDIES_PERMISSIONS
+        staff = self.record()
+        studies = get_user_model().objects.create_user(username="studies06")
+        role = SchoolRole.objects.create(school=self.school, code="etudes", label="Études", permissions=list(SECONDARY_STUDIES_PERMISSIONS))
+        SchoolMember.objects.create(school=self.school, user=studies, role=role)
+        payload = {"staff":staff["id"], "year":str(self.year.id), "classroom":str(self.classroom.id)}
+        self.login(studies)
+        self.assertEqual(self.write("staff-assignments", {**payload, "duty":"surveillant"}).status_code,403)
+        created = self.write("staff-assignments", {**payload, "duty":"enseignant"})
+        self.assertEqual(created.status_code,201,created.content.decode())
+        assignment_id = created.json()["id"]
+        self.assertEqual(self.write("staff-assignments/"+assignment_id, {"revision":1,"duty":"surveillant"}, method="patch").status_code,403)
+        self.assertEqual(self.write("staff/"+staff["id"], {"revision":1,"position":"Surveillant"}, method="patch").status_code,403)
+        self.assertEqual(self.write("staff-assignments/"+assignment_id, {"revision":1,"active":False}, method="patch").status_code,200)
+
     def test_revocation_csrf_anonymous(self):
         staff=self.record()
         self.assertEqual(self.client.post(self.base+"staff",json.dumps({"staff_code":"A"}),content_type="application/json").status_code,403)
