@@ -46,6 +46,19 @@ class CommercialSingPayTests(TestCase):
         self.assertEqual(self.client.get(quote["payments"][0]["receipt"]).status_code,200)
         self.client.force_login(self.other)
         self.assertEqual(self.client.get(quote["payments"][0]["receipt"]).status_code,403)
+    def test_canonical_wallet_id_for_subscription_reconciliation(self):
+        self.start()
+        row = Intent.objects.get()
+        wrong = self.evidence(row, portefeuille={"id": row.wallet_id, "_id": "other-wallet"})
+        with patch("institutions.commercial_singpay.provider_request", return_value=wrong):
+            self.assertEqual(reconcile(row, self.merchant).state, "review")
+        self.assertFalse(PlatformSubscriptionPayment.objects.exists())
+        valid = self.evidence(row, portefeuille={"id": "other-provider-id", "_id": row.wallet_id})
+        with patch("institutions.commercial_singpay.provider_request", return_value=valid):
+            reconcile(row, self.merchant)
+            reconcile(row, self.merchant)
+        self.assertEqual(PlatformSubscriptionPayment.objects.count(), 1)
+
     def test_duplicate_key_never_reposts_and_conflict_refused(self):
         self.start();r,p=self.start();self.assertEqual(r.status_code,200);p.assert_not_called()
         r,p=self.start(self.body|{"amount_xaf":3000});self.assertEqual(r.status_code,409);p.assert_not_called()
