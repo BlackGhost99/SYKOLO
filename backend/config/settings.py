@@ -159,3 +159,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Opt-in native push: disabled unless explicitly configured by the operator.
 YEM_PARENT_PUSH_ENABLED = os.environ.get("YEM_PARENT_PUSH_ENABLED", "false").lower() == "true"
 YEM_PARENT_PUSH_KEY = os.environ.get("YEM_PARENT_PUSH_KEY", "")
+
+# Comma-separated school:wallet:distribution:mode tuples approved after contract checks.
+YEM_SINGPAY_APPROVED_DESTINATIONS = os.environ.get("YEM_SINGPAY_APPROVED_DESTINATIONS", "")
