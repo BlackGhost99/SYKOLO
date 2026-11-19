@@ -55,7 +55,7 @@ jobs:
       - run: docker build -t yem:ci .
       - name: Smoke test Docker with PostgreSQL
         run: |
-          docker run -d --name yem-ci --network host -e APP_ENV=staging -e PORT=8000 -e DATABASE_URL="$DATABASE_URL" -e DJANGO_ALLOWED_HOSTS=127.0.0.1 -e DJANGO_SECRET_KEY=ci-container-only-not-a-runtime-secret-abcdefghijklmnopqrstuvwxyz123456789 -e MFA_ENCRYPTION_KEY=ci-not-a-secret-totp-abcdefghijklmnopqrstuvwxyz123456 yem:ci
+          docker run -d --name yem-ci --network host -e APP_ENV=staging -e YEM_SINGPAY_RECONCILIATION_ENABLED=true -e PORT=8000 -e DATABASE_URL="$DATABASE_URL" -e DJANGO_ALLOWED_HOSTS=127.0.0.1 -e DJANGO_SECRET_KEY=ci-container-only-not-a-runtime-secret-abcdefghijklmnopqrstuvwxyz123456789 -e MFA_ENCRYPTION_KEY=ci-not-a-secret-totp-abcdefghijklmnopqrstuvwxyz123456 yem:ci
           for attempt in $(seq 1 30); do
             if curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/readyz; then break; fi
             sleep 2
@@ -64,6 +64,7 @@ jobs:
           curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/healthz
           curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/ > /dev/null
           curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/parents-app/ > /dev/null
+          docker logs yem-ci 2>&1 | grep -q "Checked: 0; provider errors: 0"
           login_styles=$(find dist/assets -maxdepth 1 -name 'index-*.css' -print -quit)
           test -n "$login_styles"
           curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:8000/${login_styles#dist/}" -o "$RUNNER_TEMP/yem-styles.css"
