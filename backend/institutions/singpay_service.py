@@ -91,7 +91,19 @@ def verify_wallet_access(merchant):
     if not records:
         raise WalletVerificationError("SingPay a répondu sans identifiant de portefeuille reconnu.")
     if any((record.get("id") or record.get("_id")) != merchant.wallet_id for record in records):
-        raise WalletVerificationError("SingPay a renvoyé un Wallet ID différent de celui enregistré dans YEM.")
+        # Only structural facts and equality flags are safe to return. Never
+        # expose provider payloads, IDs, credentials or beneficiary details.
+        observations = []
+        for field in ("id", "_id"):
+            values = [record[field] for record in records if field in record]
+            if values:
+                matches = sum(isinstance(value, str) and value == merchant.wallet_id for value in values)
+                observations.append(f"{field} : {matches}/{len(values)} correspondance(s)")
+        raise WalletVerificationError(
+            "Identité du portefeuille non confirmée par la réponse SingPay. "
+            + "; ".join(observations)
+            + ". Aucun paiement n’a été activé. Comparez le Wallet ID officiel avant toute modification."
+        )
 
 
 def _request(merchant, method, path, payload=None, *, include_wallet_header=True):

@@ -272,6 +272,20 @@ class SingPayTests(TestCase):
         self.assertNotIn("provider-private", refused.content.decode())
         self.assertFalse(SingPayIntent.objects.exists())
 
+    def test_wallet_mismatch_diagnostic_exposes_only_field_match_counts(self):
+        from .singpay_service import verify_wallet_access, WalletVerificationError
+        payload = {"id": "private-provider-id", "_id": self.merchant.wallet_id,
+                   "client_secret": "private-secret", "merchant_msisdn": "private-phone"}
+        with patch("institutions.singpay_service._request", return_value=payload):
+            with self.assertRaises(WalletVerificationError) as caught:
+                verify_wallet_access(self.merchant)
+        message = str(caught.exception)
+        self.assertIn("id : 0/1", message)
+        self.assertIn("_id : 1/1", message)
+        for private in ("private-provider-id", self.merchant.wallet_id, "private-secret", "private-phone"):
+            self.assertNotIn(private, message)
+        self.assertFalse(SingPayIntent.objects.exists())
+
     def test_changed_merchant_cannot_reconcile_old_payment(self):
         self.start();intent=SingPayIntent.objects.get()
         self.merchant.wallet_id="other-wallet"
