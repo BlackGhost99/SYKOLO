@@ -40,7 +40,7 @@ def merchant_view(row):
             "enabled": row.enabled if row else False,
             "fee_basis_points": row.fee_basis_points if row else 0,
             "fee_fixed_xaf": row.fee_fixed_xaf if row else 0,
-            "notice": "Activation suspendue jusqu'à validation du contrat de confirmation SingPay."}
+            "notice": "Activation soumise à autorisation du compte marchand et vérification SingPay."}
 
 
 @never_cache
@@ -76,8 +76,19 @@ def merchant_config(request, school_id):
     if not settings.AUTH_PUBLIC_BASE_URL.startswith("https://") or len(settings.YEM_PAYMENT_ENCRYPTION_KEY) < 32:
         return fail("HTTPS public et chiffrement serveur requis.", 503)
     if data["enabled"]:
-        # Do not turn an unverified callback scheme into an operational payment gateway.
-        return fail("Activation bloquée : recette et authentification callback à confirmer avec SingPay.", 409)
+        if not getattr(settings, "YEM_SINGPAY_ENABLED", False) or (data["mode"] == "live" and not settings.YEM_PAYMENTS_LIVE_ENABLED):
+            return fail("Activation non autorisée par la plateforme.", 409)
+        approved = getattr(settings, "YEM_SINGPAY_APPROVED_DESTINATIONS", "")
+        destination = f'{school.pk}:{data["wallet_id"]}:{data["disbursement_id"]}:{data["mode"]}'
+        if destination not in approved.split(","):
+            return fail("Destination marchande non approuvée par la plateforme.", 409)
+        try:
+            candidate = SingPayMerchant(wallet_id=data["wallet_id"], encrypted_credentials=encrypt_secret(json.dumps({
+                "client_id": data["client_id"], "client_secret": data["client_secret"],
+            })))
+            verify_wallet_access(candidate)
+        except (ProviderError, WalletVerificationError):
+            return fail("Accès marchand non confirmé par SingPay.", 409)
     try:
         with transaction.atomic():
             School.objects.select_for_update().get(pk=school.pk)
@@ -95,7 +106,7 @@ def merchant_config(request, school_id):
             row.encrypted_credentials = encrypt_secret(json.dumps({
                 "client_id": data["client_id"], "client_secret": data["client_secret"],
             }))
-            row.enabled = False
+            row.enabled = data["enabled"]
             row.save()
             log_event(school, request, "singpay_merchant_configured", school.pk)
     except IntegrityError:
