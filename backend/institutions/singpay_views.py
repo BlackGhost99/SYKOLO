@@ -40,7 +40,7 @@ def merchant_view(row):
             "enabled": row.enabled if row else False,
             "fee_basis_points": row.fee_basis_points if row else 0,
             "fee_fixed_xaf": row.fee_fixed_xaf if row else 0,
-            "notice": "Activation suspendue jusqu'à validation du contrat de confirmation SingPay."}
+            "notice": "Activation soumise à autorisation du compte marchand et vérification SingPay."}
 
 
 @never_cache
