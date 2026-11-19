@@ -28,13 +28,13 @@ export default function SingPayControl({schoolId, merchantOnly=false}) {
   if(!merchant&&payments===null)return merchantOnly?<p role="status">{message||"Chargement du compte SingPay…"}</p>:null;
   return <section className="yd-card" style={{padding:"1rem",marginTop:"1rem"}}>
     <h3>{merchantOnly?"Compte bénéficiaire SingPay":"SingPay — compte école et rapprochement"}</h3>
-    <p>L'activation des paiements reste suspendue à la validation du prestataire. Aucun transfert n'est déclenché ici.</p>
+    <p>L'activation nécessite un compte marchand autorisé et la vérification SingPay. Aucun transfert n'est déclenché ici.</p>
     {merchant&&<details><summary>Préparer le compte marchand de l'établissement</summary>
       <p>Bénéficiaire enregistré : {merchant.beneficiary||"À renseigner"}. Fournissez uniquement les identifiants du compte de cette école et sa distribution autorisée.</p>
       <form aria-label="Compte marchand école" onSubmit={event=>{
         event.preventDefault();const form=event.currentTarget, data=new FormData(form);
         const body=Object.fromEntries(data);
-        body.revision=merchant.revision;body.enabled=false;
+        body.revision=merchant.revision;body.enabled=data.get('enabled')==='on';
         body.fee_basis_points=Number(body.fee_basis_points);body.fee_fixed_xaf=Number(body.fee_fixed_xaf);
         run(async()=>{setMerchant(await api(base+"/merchant",body));form.reset()});
       }}>
@@ -44,11 +44,12 @@ export default function SingPayControl({schoolId, merchantOnly=false}) {
             <label key={name} className="field">{label}<input name={name} required maxLength={max}
               type={name==="client_secret"?"password":"text"} autoComplete="off" disabled={busy}/></label>)}
         <label className="field">Environnement<select name="mode" defaultValue="test" disabled={busy}>
-          <option value="test">Test prestataire</option><option value="live">Production — préparation uniquement</option>
+          <option value="test">Test prestataire</option><option value="live">Production</option>
         </select></label>
         <label className="field">Frais contractuels en points de base (100 = 1 %)<input name="fee_basis_points" type="number" min="0" max="10000" step="1" defaultValue={merchant.fee_basis_points} required disabled={busy}/></label>
         <label className="field">Frais fixes contractuels XAF<input name="fee_fixed_xaf" type="number" min="0" max="100000" step="1" defaultValue={merchant.fee_fixed_xaf} required disabled={busy}/></label>
-        <button type="submit" disabled={busy}>Enregistrer sans activer les paiements</button>
+        <label className="field"><input type="checkbox" name="enabled" disabled={busy}/> Activer les paiements (compte et distribution autorisés par SingPay)</label>
+        <button type="submit" disabled={busy}>Enregistrer le compte marchand</button>
       </form>
     </details>}
     {merchant?.configured&&<button type="button" disabled={busy} onClick={()=>run(async()=>{
