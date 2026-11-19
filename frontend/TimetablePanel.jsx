@@ -46,7 +46,7 @@ export default function TimetablePanel({schoolId,workingYearId="",onWorkingYearC
         setYears(y.years||[]);setClasses(c.classes||[]);setCourses(co.courses||[]);
         setSubjects(s.subjects||[]);setRooms(r.rooms||[]);setSlots(t.slots||[]);
         setEntries(e.entries||[]);setStaff(st.staff||[]);setAssignments(a.assignments||[]);
-      }).catch(()=>{if(active)setVisible(false)});
+      }).catch(e=>{if(active){setError(e.message);setVisible(false);}});
     return()=>{active=false};
   },[schoolId]);
   useEffect(()=>{
@@ -69,10 +69,10 @@ export default function TimetablePanel({schoolId,workingYearId="",onWorkingYearC
   }
   function edit(e){
     setYear(e.year);setClassroom(e.classroom);setCourse(e.course);setEditing(e.id);
-    setSlot(e.slot);setRoom(e.room||"");setWeekday(String(e.weekday));
+    setInstructor(e.instructor);setSlot(e.slot);setRoom(e.room||"");setWeekday(String(e.weekday));
     setFrom(e.effective_from);setTo(e.effective_to);
   }
-  if(!visible)return null;
+  if(!visible)return <section className="card"><h2>Emplois du temps</h2><p role="alert">Impossible de charger les données : {error}</p></section>;
   const selected=entries.filter(e=>e.active&&(!year||e.year===year)&&(!classroom||e.classroom===classroom));
   const selectedCourses=courses.filter(c=>c.active&&c.year===year&&c.classroom===classroom);
   return <section className="card" aria-label="Emplois du temps" style={{marginTop:"1rem"}}>
@@ -102,11 +102,14 @@ export default function TimetablePanel({schoolId,workingYearId="",onWorkingYearC
               <div>{subject(x.course)}</div>
               <small>{classes.find(c=>c.id===x.classroom)?.name||"Classe"} · {x.teacher}</small>
               <div><small>{rooms.find(r=>r.id===x.room)?.name||"Salle non attribuée"}</small></div>
-              <button type="button" disabled={busy} onClick={()=>edit(x)}>Modifier</button>
+              {canManageTimetable&&years.some(y=>y.id===x.year&&y.active)&&<button type="button" disabled={busy} onClick={()=>edit(x)}>Modifier</button>}
             </ContextTarget>)}
         </td>)}</tr></tbody>
       </table></TableScroll>
+    {canManageTimetable&&<>
     <h3>{editing?"Déplacer une séance":"Programmer une séance"}</h3>
+    {(!year||!classroom)&&<p className="hint">Choisissez une année et une classe pour programmer un cours.</p>}
+    {year&&classroom&&!selectedCourses.length&&<p className="hint">Aucun cours pour cette classe. Affectez les matières et les professeurs dans Organisation pédagogique.</p>}
     <form onSubmit={e=>{e.preventDefault();run(async()=>{
       if(editing){
         const current=entries.find(x=>x.id===editing);
@@ -174,6 +177,7 @@ export default function TimetablePanel({schoolId,workingYearId="",onWorkingYearC
       </div>
       <button disabled={busy||!year} type="submit">Ajouter un créneau</button>
     </form>
+    </>}
     {error&&<p role="status" aria-live="polite">{error}</p>}
   </section>;
 }
