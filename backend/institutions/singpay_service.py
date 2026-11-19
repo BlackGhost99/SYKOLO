@@ -62,6 +62,19 @@ class WalletVerificationError(ProviderError):
     """A fixed, safe explanation for the owner. Provider payloads stay private."""
 
 
+def wallet_identifier(record):
+    """Resolve a wallet object, not a transaction ID.
+
+    SingPay's wallet _id is canonical when present; id may be a different
+    identifier. Retain compatibility with id-only wallet representations.
+    A present but invalid _id is not grounds to fall back to id.
+    """
+    if not isinstance(record, dict):
+        return None
+    value = record["_id"] if "_id" in record else record.get("id")
+    return value if isinstance(value, str) and IDENTIFIER.fullmatch(value) else None
+
+
 def verify_wallet_access(merchant):
     if not merchant.encrypted_credentials or not IDENTIFIER.fullmatch(merchant.wallet_id):
         raise WalletVerificationError("Enregistrez un Wallet ID et des identifiants API SingPay valides.")
@@ -90,7 +103,7 @@ def verify_wallet_access(merchant):
                if isinstance(record, dict) and ("id" in record or "_id" in record)]
     if not records:
         raise WalletVerificationError("SingPay a répondu sans identifiant de portefeuille reconnu.")
-    if any((record.get("id") or record.get("_id")) != merchant.wallet_id for record in records):
+    if any(wallet_identifier(record) != merchant.wallet_id for record in records):
         # Only structural facts and equality flags are safe to return. Never
         # expose provider payloads, IDs, credentials or beneficiary details.
         observations = []
@@ -175,7 +188,7 @@ def verified_transaction(intent, response):
     data = response
     wallet = data.get("portefeuille")
     if isinstance(wallet, dict):
-        wallet = wallet.get("id") or wallet.get("_id")
+        wallet = wallet_identifier(wallet)
     txid = data.get("id") or data.get("_id")
     try:
         amount = Decimal(str(data.get("amount")))
