@@ -286,3 +286,51 @@ class FinancialMigrationPreviewTests(TestCase):
         self.assertEqual(self.client.get(root+batch).status_code, 403)
         self.assertEqual(self.client.get(root+"batches").status_code, 403)
         self.assertFalse(FeeCharge.objects.exists())
+
+    def test_multiclass_maps_real_enrollment_not_claimed_class(self):
+        klass = self.enrollment.classroom
+        other = AcademicClass.objects.create(school=self.school, year=self.year, level=klass.level,
+            code="6b", name="6B")
+        student = Student.objects.create(school=self.school, student_code="0002", first_name="Autre", last_name="Fictif")
+        Enrollment.objects.create(school=self.school, year=self.year, student=student, classroom=other,
+                                  enrolled_on=self.today-timedelta(days=60))
+        cheap = self.tariff
+        cheap.classroom = klass
+        cheap.scope_key = str(klass.pk)
+        cheap.save(update_fields=["classroom", "scope_key"])
+        expensive = FeeSchedule.objects.create(school=self.school, year=self.year, classroom=other,
+            scope_key=str(other.pk), code=cheap.code, label="Scolarité 6B", amount=75000,
+            currency="XAF", due_date=cheap.due_date)
+        mapping = json.dumps({"student_code": 0, "amounts": [{"column": 1,
+            "schedules": [str(cheap.pk), str(expensive.pk)]}]})
+        response = self.preview("0001;25000\n0002;25000", mapping=mapping)
+        self.assertEqual(response.status_code, 200, response.content)
+        cells = [row["cells"][0] for row in response.json()["rows"]]
+        self.assertEqual([c["net_due"] for c in cells], ["50000.00","75000.00"])
+        self.assertEqual([c["declared_balance"] for c in cells], ["25000.00","50000.00"])
+        self.assertEqual([c["schedule"] for c in cells], [str(cheap.pk),str(expensive.pk)])
+        self.assertFalse(FeeCharge.objects.exists())
+        response = self.preview("0001;25000\n0002;25000")
+        self.assertEqual(response.json()["rows"][1]["cells"][0]["status"], "invalid")
+        self.client.force_login(self.econome)
+        response = self.client.post(f"/api/v1/schools/{self.school.pk}/imports/finance/prepare", {
+            "file": SimpleUploadedFile("classes.csv", b"Matricule;Octobre\n0001;25000\n0002;25000"),
+            "year":str(self.year.pk), "cutoff":self.today.isoformat(), "mapping":mapping,
+        })
+        self.assertEqual(response.status_code, 200, response.content)
+        batch = response.json()["batch"]
+        self.client.force_login(self.comptabilite)
+        approved = self.client.post(f"/api/v1/schools/{self.school.pk}/imports/finance/{batch}/approve",
+                                    {"reason":"Registre historique contrôlé"})
+        self.assertEqual(approved.status_code, 200, approved.content)
+        self.assertEqual(FeeCharge.objects.count(), 2)
+        self.assertEqual(HistoricalFeeAdjustment.objects.count(), 2)
+        self.assertFalse(FeePayment.objects.exists())
+
+    def test_multiclass_rejects_mixed_periods(self):
+        other = FeeSchedule.objects.create(school=self.school, year=self.year, code="novembre",
+            label="Novembre", amount=50000, currency="XAF")
+        mapping = json.dumps({"student_code": 0, "amounts": [{"column":1,
+            "schedules":[str(self.tariff.pk),str(other.pk)]}]})
+        self.assertEqual(self.preview(mapping=mapping).status_code, 422)
+        self.assertFalse(FeeCharge.objects.exists())
