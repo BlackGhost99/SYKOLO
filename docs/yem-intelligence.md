@@ -66,3 +66,5 @@ Références des formats utilisés : [OpenAI Chat Completions](https://developer
 ### Préparation du test Gemini dans BWETEK
 
 La carte YEM Intelligence détecte la présence de YEM_GEMINI_API_KEY (ou GEMINI_API_KEY) et de YEM_GEMINI_MODEL dans le processus Django. Elle affiche un statut de préparation. Les valeurs restent côté serveur. Le bouton de simulation utilise des indices fictifs et une réponse injectée. La simulation vérifie le format et le repli local des colonnes ambiguës. La validité de la clé auprès de Google nécessite un essai réel, absent de ce parcours.
+
+Le test réel hors production se lance avec `python backend/manage.py yem_test_gemini` depuis un environnement explicitement prévu à cet effet. Il émet une seule requête Gemini, avec deux colonnes fictives, et peut consommer du quota ou être facturé selon le projet Google. Le test échoue si le classement attendu est incorrect. Le moteur de l’application reste local pendant et après le test.
