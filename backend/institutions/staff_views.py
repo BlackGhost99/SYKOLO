@@ -167,6 +167,25 @@ def staff_detail(request,school_id,staff_id):
     return JsonResponse(staff_repr(record))
 
 
+TEACHING_DUTIES = frozenset({"enseignant", "professeur", "professeur_principal"})
+
+
+def assignment_scope(request, school_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return None, error, False
+    if scoped_cycle_ids(request.user, school) is not None:
+        return None, refuse(), False
+    if request.method == "GET":
+        return (school, None, False) if has_permission(request.user, school, "school.staff.read") else (None, refuse(), False)
+    if has_permission(request.user, school, "school.staff.manage"):
+        return school, None, False
+    if (has_permission(request.user, school, "school.staff.read") and
+            has_permission(request.user, school, "school.curriculum.manage")):
+        return school, None, True
+    return None, refuse(), False
+
+
 def assignment_fields(data,editing=False):
     allowed={"staff","year","classroom","duty","active"}
     if editing:allowed={"duty","active"}
@@ -192,7 +211,7 @@ def assignment_fields(data,editing=False):
 @require_http_methods(["GET","POST"])
 @authorized
 def assignments(request,school_id):
-    school,error=scope(request,school_id,"school.staff.read" if request.method=="GET" else "school.staff.manage")
+    school,error,teaching_only=assignment_scope(request,school_id)
     if error is not None:return error
     if request.method=="GET":
         return JsonResponse({"assignments":[assignment_repr(a) for a in StaffAssignment.objects.filter(school=school).order_by("duty","pk")[:500]]})
@@ -200,6 +219,10 @@ def assignments(request,school_id):
     if error is not None:return error
     try:
         fields=assignment_fields(data)
+        if teaching_only and fields.get("duty", "enseignant") not in TEACHING_DUTIES:
+            return refuse()
+        if teaching_only:
+            fields.setdefault("duty", "enseignant")
         staff_record=StaffRecord.objects.filter(school=school,pk=fields["staff_id"]).first()
         year=AcademicYear.objects.filter(school=school,pk=fields["year_id"]).first()
         classroom=AcademicClass.objects.filter(school=school,pk=fields["classroom_id"]).first()
@@ -218,7 +241,7 @@ def assignments(request,school_id):
 @require_http_methods(["GET","PATCH"])
 @authorized
 def assignment_detail(request,school_id,assignment_id):
-    school,error=scope(request,school_id,"school.staff.read" if request.method=="GET" else "school.staff.manage")
+    school,error,teaching_only=assignment_scope(request,school_id)
     if error is not None:return error
     if request.method=="GET":
         obj=StaffAssignment.objects.filter(school=school,pk=assignment_id).first()
@@ -231,6 +254,8 @@ def assignment_detail(request,school_id,assignment_id):
         with transaction.atomic():
             obj=StaffAssignment.objects.select_for_update().filter(school=school,pk=assignment_id).first()
             if obj is None:return JsonResponse({"error":"Affectation introuvable."},status=404)
+            if teaching_only and (obj.duty not in TEACHING_DUTIES or fields.get("duty", obj.duty) not in TEACHING_DUTIES):
+                return refuse()
             if obj.revision!=data["revision"]:return JsonResponse({"error":"Conflit de version.","revision":obj.revision},status=409)
             for k,v in fields.items():setattr(obj,k,v)
             obj.full_clean();obj.revision+=1;obj.save()

@@ -57,7 +57,7 @@ export default function StaffPanel({schoolId, mode = "all", workingYearId="", on
   if(!visible)return <p role="alert">{error}</p>;
   return (
     <section className="card" aria-label="Personnel et affectations" style={{marginTop:"1rem"}}>
-      <h2>Personnel et affectations</h2>
+      <h2>{mode==="assignments"?"Affectations pédagogiques":"Personnel et affectations"}</h2>
       <p className="hint">Une fiche du personnel peut être créée avant son compte YEM. L'affectation relie le personnel à une classe et une année.</p>
       {mode === "all" && <form onSubmit={e=>{e.preventDefault();run(async()=>{
         await api(base+"staff",{staff_code:staffCode,first_name:first,last_name:last,position,username:username||null});
@@ -83,7 +83,7 @@ export default function StaffPanel({schoolId, mode = "all", workingYearId="", on
         </div>
         <button disabled={busy} type="submit">Enregistrer le personnel</button>
       </form>}
-      <form onSubmit={e=>{e.preventDefault();run(async()=>{
+      {mode!=="assignments"&&<form onSubmit={e=>{e.preventDefault();run(async()=>{
         const record=staff.find(p=>p.id===linkStaff);
         if(!record)throw Error("Sélectionnez une fiche du personnel.");
         await api(base+"staff/"+linkStaff,{revision:record.revision,username:linkUsername.trim()},"PATCH");
@@ -104,7 +104,7 @@ export default function StaffPanel({schoolId, mode = "all", workingYearId="", on
           </label>
         </div>
         <button disabled={busy||!linkStaff||!linkUsername.trim()} type="submit">Associer le compte à cette fiche</button>
-      </form>
+      </form>}
       <form onSubmit={e=>{e.preventDefault();run(async()=>{
         await api(base+"staff-assignments",{staff:selectedStaff,year:selectedYear,classroom:selectedClass,duty});
         setError("Affectation enregistrée.");
@@ -129,12 +129,17 @@ export default function StaffPanel({schoolId, mode = "all", workingYearId="", on
               {classes.filter(c=>c.active&&c.year===selectedYear).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
-          <label className="field">Responsabilité (code libre)
-            <input pattern="[a-z][a-z0-9_-]*" value={duty} maxLength={50} required onChange={e=>setDuty(e.target.value)} />
+          <label className="field">Responsabilité
+            {mode==="assignments"?<select value={duty} onChange={e=>setDuty(e.target.value)}><option value="enseignant">Enseignant</option><option value="professeur">Professeur</option><option value="professeur_principal">Professeur principal</option></select>:<input pattern="[a-z][a-z0-9_-]*" value={duty} maxLength={50} required onChange={e=>setDuty(e.target.value)} />}
           </label>
         </div>
         <button disabled={busy} type="submit">Enregistrer l'affectation</button>
       </form>
+      {mode==="assignments"&&<><h3>Affectations enregistrées</h3>
+        <ul>{assignments.filter(a=>a.active&&(!selectedYear||a.year===selectedYear)&&["enseignant","professeur","professeur_principal"].includes(a.duty)).map(a=>{
+          const p=staff.find(s=>s.id===a.staff),c=classes.find(x=>x.id===a.classroom);
+          return <li key={a.id}>{p?[p.last_name,p.first_name].join(" "):"Personnel"} — {c?.name||"Classe"} · {a.duty==="professeur_principal"?"Professeur principal":"Enseignant"}</li>;
+        })}</ul></>}
       <p className="hint">{staff.length} fiche(s) de personnel · {assignments.filter(a=>a.active).length} affectation(s) active(s). Les droits sont contrôlés par établissement.</p>
       {error&&<p role="status" aria-live="polite">{error}</p>}
     </section>
