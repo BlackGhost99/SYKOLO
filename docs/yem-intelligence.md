@@ -56,3 +56,9 @@ Le contrat du moteur d’analyse limite les résultats à une catégorie autoris
 Les écrans de migration et de paramétrage des matricules utilisent le même orchestrateur. La tâche financière peut être testée avec un adaptateur simulé. Celui-ci reçoit les indices candidats et un vocabulaire financier autorisé extrait des en-têtes. Les en-têtes complets, les valeurs du classeur et les matricules restent dans les tâches locales. Les catégories et les indices renvoyés sont validés avant affichage. Une réponse invalide ou une indisponibilité déclenche l'analyse déterministe et un journal technique sans données du classeur.
 
 Le produit instancie l'orchestrateur avec ses traitements locaux. La vue d'ensemble BWETEK, réservée aux super-administrateurs authentifiés par MFA, affiche les tâches disponibles et l'état de raccordement. La gestion des fournisseurs, clés, quotas et budgets reste à intégrer.
+
+### Adaptateurs fournisseurs
+
+Les adaptateurs OpenAI, Gemini et Mistral sont disponibles pour les tests simulés. Le moteur utilisé par YEM continue de fonctionner localement. Chaque adaptateur accepte au plus 24 colonnes d’indices et de mots autorisés. Il demande une réponse JSON de taille bornée et refuse les indices ou catégories inattendus. Une erreur déclenche le repli local. Aucun accès réseau de fournisseur ne fait partie des tests.
+
+Références des formats utilisés : [OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create), [Gemini GenerateContent](https://ai.google.dev/api/generate-content) et [Mistral Chat Completions](https://docs.mistral.ai/api/endpoint/chat).
