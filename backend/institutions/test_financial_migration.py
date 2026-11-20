@@ -203,3 +203,60 @@ class FinancialMigrationPreviewTests(TestCase):
         self.assertFalse(FeeCharge.objects.exists())
         self.client.force_login(self.econome)
         self.assertEqual(inspect().status_code, 403)
+
+    def prepare_history(self, value="25000"):
+        self.client.force_login(self.econome)
+        return self.client.post(f"/api/v1/schools/{self.school.pk}/imports/finance/prepare", {
+            "file": SimpleUploadedFile("historique.csv", ("Matricule;Octobre\n0001;"+value).encode("utf-8")),
+            "year": str(self.year.pk), "cutoff": self.today.isoformat(),
+            "mapping": json.dumps({"student_code": 0, "amounts": [{"column": 1, "schedule": str(self.tariff.pk)}]}),
+        })
+
+    def test_unknown_payment_is_not_a_zero_or_debt(self):
+        response = self.prepare_history("")
+        self.assertEqual(response.status_code, 422, response.content)
+        self.assertFalse(HistoricalFinancialMigration.objects.exists())
+        self.assertFalse(FeeCharge.objects.exists())
+
+    def test_approval_rejects_stale_tariff(self):
+        response = self.prepare_history()
+        self.assertEqual(response.status_code, 200, response.content)
+        batch_id = response.json()["batch"]
+        FeeSchedule.objects.filter(pk=self.tariff.pk).update(amount=60000)
+        self.client.force_login(self.comptabilite)
+        result = self.client.post(f"/api/v1/schools/{self.school.pk}/imports/finance/{batch_id}/approve",
+                                  {"reason": "Justificatif vérifié"})
+        self.assertEqual(result.status_code, 422, result.content)
+        self.assertFalse(FeeCharge.objects.exists())
+        self.assertFalse(HistoricalFeeAdjustment.objects.exists())
+        self.assertEqual(HistoricalFinancialMigration.objects.get(pk=batch_id).status, "prepared")
+
+    def test_credit_changes_balance_not_received(self):
+        response = self.prepare_history()
+        self.assertEqual(response.status_code, 200, response.content)
+        batch_id = response.json()["batch"]
+        self.client.force_login(self.comptabilite)
+        result = self.client.post(f"/api/v1/schools/{self.school.pk}/imports/finance/{batch_id}/approve",
+                                  {"reason": "Justificatif vérifié"})
+        self.assertEqual(result.status_code, 200, result.content)
+        from .finance_views import charge_data
+        from .overview_views import enrollment_balances
+        from .year_closure import annual_closure_snapshot
+        charge = FeeCharge.objects.get(enrollment=self.enrollment)
+        data = charge_data(charge)
+        self.assertEqual(data["historical_credit"], "25000.00")
+        self.assertEqual(data["recorded_payments"], "0.00")
+        self.assertEqual(data["balance"], "25000.00")
+        _, balances = enrollment_balances(self.school, [self.enrollment.pk])
+        self.assertEqual(balances[self.enrollment.pk]["paid"], Decimal("25000"))
+        summary = self.client.get(f"/api/v1/schools/{self.school.pk}/finance/summary?year={self.year.pk}")
+        self.assertEqual(summary.status_code, 200, summary.content)
+        totals = summary.json()["currencies"]["XAF"]
+        self.assertEqual(totals["paid"], "0.00")
+        self.assertEqual(totals["historical_credit"], "25000.00")
+        self.assertEqual(totals["balance"], "25000.00")
+        snapshot = annual_closure_snapshot(self.school, self.year)["finance"]["XAF"]
+        self.assertEqual(Decimal(snapshot["received"]), 0)
+        self.assertEqual(Decimal(snapshot["historical_credit"]), 25000)
+        self.assertEqual(Decimal(snapshot["outstanding"]), 25000)
+        self.assertFalse(FeePayment.objects.exists())
