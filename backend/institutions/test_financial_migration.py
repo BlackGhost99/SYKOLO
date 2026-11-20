@@ -333,4 +333,42 @@ class FinancialMigrationPreviewTests(TestCase):
         mapping = json.dumps({"student_code": 0, "amounts": [{"column":1,
             "schedules":[str(self.tariff.pk),str(other.pk)]}]})
         self.assertEqual(self.preview(mapping=mapping).status_code, 422)
+
+    def test_preparation_ignores_mapping_order_and_can_replace_cancelled_batch(self):
+        other_tariff = FeeSchedule.objects.create(
+            school=self.school, year=self.year, code="novembre",
+            label="Novembre", amount=50000, currency="XAF",
+        )
+        amounts = [
+            {"column": 1, "schedule": str(self.tariff.pk)},
+            {"column": 2, "schedule": str(other_tariff.pk)},
+        ]
+        endpoint = f"/api/v1/schools/{self.school.pk}/imports/finance"
+        self.client.force_login(self.econome)
+
+        def prepare(mapping):
+            return self.client.post(f"{endpoint}/prepare", {
+                "file": SimpleUploadedFile("historique.csv", b"Matricule;Octobre;Novembre\n0001;0;5000"),
+                "year": str(self.year.pk), "cutoff": self.today.isoformat(),
+                "mapping": json.dumps({"student_code": 0, "amounts": mapping}),
+            })
+
+        first = prepare(amounts)
+        self.assertEqual(first.status_code, 200, first.content)
+        batch = first.json()["batch"]
+        duplicate = prepare([
+            {"column": item["column"], "schedules": [item["schedule"]]}
+            for item in reversed(amounts)
+        ])
+        self.assertEqual(duplicate.status_code, 200, duplicate.content)
+        self.assertEqual(duplicate.json()["batch"], batch)
+        self.assertTrue(duplicate.json()["idempotent"])
+
+        cancelled = self.client.post(f"{endpoint}/{batch}/cancel", {"reason": "Erreur initiale"})
+        self.assertEqual(cancelled.status_code, 200, cancelled.content)
+        replacement = prepare(amounts[::-1])
+        self.assertEqual(replacement.status_code, 200, replacement.content)
+        self.assertNotEqual(replacement.json()["batch"], batch)
+        self.assertEqual(prepare(amounts).json()["batch"], replacement.json()["batch"])
+        self.assertEqual(HistoricalFinancialMigration.objects.count(), 2)
         self.assertFalse(FeeCharge.objects.exists())
