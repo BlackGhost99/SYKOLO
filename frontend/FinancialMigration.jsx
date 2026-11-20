@@ -1,5 +1,6 @@
 import React, {useState} from "react";
 import {Button, Card, PageHeader} from "./yem-ui.jsx";
+import {useLoad} from "./EnrollmentScreens.jsx";
 
 const statusLabels = {
   proposed:"Montant déclaré à vérifier", zero:"Zéro déclaré", unknown:"Montant inconnu",
@@ -21,12 +22,18 @@ export default function FinancialMigration({schoolId,tabs,workingYearId}) {
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [onlyReview,setOnlyReview] = useState(false);
+  const [selectedBatch,setSelectedBatch] = useState("");
+  const [reason,setReason] = useState("");
+  const [confirmed,setConfirmed] = useState(false);
+  const [message,setMessage] = useState("");
+  const root = `schools/${schoolId}/imports/finance/`;
+  const lots = useLoad(root+"batches");
+  const lot = useLoad(selectedBatch?root+selectedBatch:null);
+  const activeLot = lot.data?.id===selectedBatch?lot.data:null;
 
   async function send(action, selectedFile, selectedSheet, selectedHeader, extra={}) {
     const body = new FormData();
-    body.append("file", selectedFile);
-    body.append("sheet", selectedSheet);
-    body.append("header_row", String(selectedHeader));
+    if(selectedFile){body.append("file", selectedFile);body.append("sheet", selectedSheet);body.append("header_row", String(selectedHeader));}
     Object.entries(extra).forEach(([k,v])=>body.append(k,v));
     await fetch("/api/v1/auth/csrf",{credentials:"same-origin"});
     const csrf = document.cookie.split("; ").find(x=>x.startsWith("csrftoken="))?.split("=")[1]||"";
@@ -65,6 +72,25 @@ export default function FinancialMigration({schoolId,tabs,workingYearId}) {
     } catch(e){setError(e.message);}
     finally {setBusy(false);}
   }
+  function chooseBatch(id){setSelectedBatch(id);setReason("");setConfirmed(false);setError("");}
+  async function prepareBatch(){
+    if(busy||!canPrepare||!valid||!rows.length||rows.some(r=>!["proposed","zero"].includes(r.status)))return;
+    setBusy(true);setError("");setMessage("");
+    try{
+      const amounts=Object.entries(mapping).filter(([,v])=>v).map(([column,schedule])=>({column:Number(column),schedule}));
+      const data=await send("prepare",file,sheet,header,{year,cutoff,mapping:JSON.stringify({student_code:Number(code),amounts})});
+      chooseBatch(data.batch);setMessage("Lot préparé. Aucun paiement ni solde modifié avant approbation indépendante.");lots.reload();lot.reload();setResult(null);
+    }catch(e){setError(e.message);}finally{setBusy(false);}
+  }
+  async function decide(action){
+    if(busy||!activeLot||!confirmed||reason.trim().length<5)return;
+    setBusy(true);setError("");setMessage("");
+    try{
+      await send(activeLot.id+"/"+action,null,"",1,{reason:reason.trim()});
+      setMessage(action==="approve"?"Lot approuvé : crédits historiques distincts des encaissements.":"Lot annulé sans écriture financière.");
+      setReason("");setConfirmed(false);lots.reload();lot.reload();
+    }catch(e){setError(e.message);}finally{setBusy(false);}
+  }
   function changeCode(v) {
     setCode(v);setMapping(old=>{const next={...old};delete next[v];return next;});setResult(null);
   }
@@ -74,10 +100,35 @@ export default function FinancialMigration({schoolId,tabs,workingYearId}) {
   const valid = !!file&&!!meta&&!!year&&!!cutoff&&code!==""&&selected.length>0&&selected.length<=12&&selected.length*meta.row_count<=2000&&new Set(selected).size===selected.length;
   const rows = (result?.rows||[]).flatMap(row=>row.status==="identity_review"?[{line:row.line,status:row.status}]:row.cells.map(cell=>({...cell,line:row.line})));
   const visibleRows = onlyReview?rows.filter(row=>!["proposed","zero"].includes(row.status)):rows;
+  const canPrepare=!!lots.data?.can_prepare;
   return <>
-    <PageHeader title="Reprise financière" subtitle="YEM Intelligence — migration des historiques, aperçu sans écriture" banner={false}/>
+    <PageHeader title="Reprise financière" subtitle="YEM Intelligence — migration des historiques avec validation indépendante" banner={false}/>
     {tabs}
     <div className="yd-real-body">
+      {message&&<p role="status" className="yd-form-msg">{message}</p>}
+      <Card title="Lots de reprise" icon="file">
+        {lots.error&&<p role="alert">{lots.error}</p>}
+        <Button type="button" disabled={busy||lots.loading} onClick={()=>lots.reload()}>Actualiser les lots</Button>
+        {(lots.data?.batches||[]).map(b=><div key={b.id} style={{padding:"10px 0"}}>
+          <p><strong>{b.source_reference}</strong> · {b.year_name} · {b.row_count} lignes · {({prepared:"À approuver",approved:"Approuvé",cancelled:"Annulé"})[b.status]||b.status}</p>
+          <Button type="button" disabled={busy} onClick={()=>chooseBatch(b.id)}>Examiner le lot</Button>
+        </div>)}
+        {lots.data&&!lots.data.batches.length&&<p className="hint">Aucun lot disponible.</p>}
+        {lot.error&&<p role="alert">{lot.error}</p>}
+        {activeLot&&<section aria-label="Détail du lot">
+          <h4>{activeLot.source_reference}</h4><p>Reprise au {activeLot.cutoff} · {activeLot.year_name} · {activeLot.status}</p>
+          <div style={{maxWidth:"100%",overflowX:"auto",maxHeight:"420px",overflowY:"auto"}}><table style={{width:"100%"}}><thead><tr>{["Ligne","Matricule","Tarif","Dû net","Déclaré","Bourse"].map(h=><th key={h} scope="col">{h}</th>)}</tr></thead><tbody>{activeLot.entries.map((e,i)=><tr key={i}><td>{e.line}</td><td>{e.student_code}</td><td>{e.schedule}</td><td>{money(e.net_due)}</td><td>{money(e.declared)}</td><td>{money(e.scholarship)}</td></tr>)}</tbody></table></div>
+          {(activeLot.can_approve||activeLot.can_cancel)&&<>
+            <label className="field">Référence du justificatif comptable ou motif d’annulation<textarea rows={3} maxLength={255} disabled={busy} value={reason} onChange={e=>setReason(e.target.value)}/></label>
+            <label><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> Je confirme avoir contrôlé ce lot et ses justificatifs.</label>
+            <div className="actions">
+              {activeLot.can_approve&&<Button type="button" disabled={busy||!confirmed||reason.trim().length<5} onClick={()=>decide("approve")}>Approuver la reprise historique</Button>}
+              {activeLot.can_cancel&&<Button type="button" disabled={busy||!confirmed||reason.trim().length<5} onClick={()=>decide("cancel")}>Annuler le lot préparé</Button>}
+            </div>
+          </>}
+          {!activeLot.can_approve&&activeLot.status==="prepared"&&<p className="hint">Approbation réservée à un comptable distinct du préparateur.</p>}
+        </section>}
+      </Card>
       <Card title="1. Analyser le registre financier" icon="excel">
         <p className="hint">Importez d’abord les élèves et leurs inscriptions. Ce parcours compare des montants cumulés déclarés par tarif ; il ne crée aucun paiement ni reçu. Aucun fournisseur IA externe sollicité.</p>
         <label className="field">Fichier Excel ou CSV
@@ -140,7 +191,8 @@ export default function FinancialMigration({schoolId,tabs,workingYearId}) {
           </table>
           {!visibleRows.length&&<p>Aucune ligne dans cette sélection.</p>}
         </div>
-        <p className="hint">Aucun bouton de validation comptable à ce stade. La reprise définitive nécessite une preuve et un circuit de validation distinct.</p>
+        <p className="hint">La préparation ne modifie aucun solde. Les cellules inconnues doivent être régularisées avant de préparer un lot. Un comptable distinct devra contrôler les justificatifs et approuver.</p>
+        {canPrepare&&<Button type="button" disabled={busy||!valid||!rows.length||rows.some(r=>!["proposed","zero"].includes(r.status))} onClick={prepareBatch}>Préparer le lot pour validation comptable</Button>}
       </Card>}
     </div>
   </>;
