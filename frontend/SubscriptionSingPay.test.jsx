@@ -27,3 +27,14 @@ test("inactive platform account cannot initiate payment",async()=>{
   await screen.findByText(/doit être validé et activé/);
   expect(screen.queryByRole("button",{name:"Payer BWETEK Informatyk"})).toBeNull();
 });
+
+test("refreshes a changed contract balance when the window regains focus",async()=>{
+  let current=quote;
+  vi.stubGlobal("fetch",vi.fn(async()=>({ok:true,json:async()=>current})));
+  render(<SubscriptionSingPay schoolId="s" subscriptionId={1}/>);
+  await screen.findByText(/Solde : 10000 FCFA/);
+  current={...quote,balance_xaf:12000};
+  fireEvent.focus(window);
+  await screen.findByText(/Solde : 12000 FCFA/);
+  expect(screen.getByLabelText("Montant FCFA").value).toBe("12000");
+});
