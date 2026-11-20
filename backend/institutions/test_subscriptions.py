@@ -316,6 +316,16 @@ class PlatformSubscriptionTests(TestCase):
         data = self.client.get(f"/api/v1/schools/{self.school.pk}/owner/subscriptions").json()
         self.assertEqual(data["subscriptions"][0]["amendments"], [])
         self.assertNotIn("payments", data["subscriptions"][0])
+        room = AcademicClass.objects.get(school=self.school, year=self.year, level__cycle__code="college")
+        student = Student.objects.create(school=self.school, student_code="PENDING-1", first_name="Test", last_name="Ajout")
+        Enrollment.objects.create(school=self.school, student=student, year=self.year, classroom=room, enrolled_on=date(2026,11,17))
+        url = f"/api/v1/schools/{self.school.pk}/owner/subscriptions"
+        for _ in range(2):
+            record = self.client.get(url).json()["subscriptions"][0]
+            self.assertEqual(record["pending_adjustment"]["status"], "pending")
+            self.assertEqual(record["pending_adjustment"]["students"], 1)
+            self.assertEqual(record["total_xaf"], data["subscriptions"][0]["total_xaf"])
+            self.assertEqual(record["amendments"], [])
 
     def test_commercial_expiration_restriction_and_manual_restoration(self):
         from .subscription_models import PlatformCommercialAccessDecision
