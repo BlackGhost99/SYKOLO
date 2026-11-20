@@ -56,14 +56,15 @@ function useSearchFilters(extra = {}) {
     typing: query.trim() !== debounced};
 }
 function SearchControls({filters, classes, label, disabled=false}) {
+  const controlId=label.replace(/\s+/g,"-");
   return <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8}}>
     <div style={{flex:"1 1 220px",minWidth:0}}>
-      <label className="yd-label" htmlFor={"search-"+label}>Rechercher {label}</label>
-      <div className="yd-input"><Icon name="search" size={18}/><input id={"search-"+label} type="search" placeholder="Nom, prénom ou matricule" maxLength={120} value={filters.query} disabled={disabled} onChange={e=>filters.search(e.target.value)}/></div>
+      <label className="yd-label" htmlFor={"search-"+controlId}>Rechercher {label}</label>
+      <div className="yd-input"><Icon name="search" size={18}/><input id={"search-"+controlId} type="search" placeholder="Nom, prénom ou matricule" maxLength={120} value={filters.query} disabled={disabled} onChange={e=>filters.search(e.target.value)}/></div>
     </div>
     <div style={{flex:"1 1 150px",minWidth:0}}>
-      <label className="yd-label" htmlFor={"class-"+label}>Classe</label>
-      <div className="yd-input"><select id={"class-"+label} aria-label={"Classe — "+label} value={filters.classroom} disabled={disabled} onChange={e=>filters.chooseClass(e.target.value)}>
+      <label className="yd-label" htmlFor={"class-"+controlId}>Classe</label>
+      <div className="yd-input"><select id={"class-"+controlId} aria-label={"Classe — "+label} value={filters.classroom} disabled={disabled} onChange={e=>filters.chooseClass(e.target.value)}>
         <option value="">Toutes les classes</option>
         {classes.map(cl=><option key={cl.id} value={cl.id}>{cl.name}</option>)}
       </select></div>
@@ -243,6 +244,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   const [message, setMessage] = useState("");
   const [pendingOperation, setPendingOperation] = useState(null);
   const [receiptUrl, setReceiptUrl] = useState("");
+  function resetSelection(){setEnrollment("");setLoadedEnrollment("");setAmount(null);setChargeError("");setMessage("");setReceiptUrl("");}
   const enrolled = roster.current && !filters.typing ? (roster.data?.students || []).filter(s => s.active && s.enrollment) : [];
   const retained = roster.current && roster.data?.selected?.enrollment?.id === enrollment ? roster.data.selected : null;
   const student = enrolled.find(s => s.enrollment.id === enrollment) || retained;
@@ -272,7 +274,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   const currency = selected[0]?.currency || fin.data?.currency;
   const remaining = openCharges.filter(c => c.currency === currency).reduce((a, c) => a + Number(c.balance), 0) - (validAmount ? enteredCents / 100 : 0);
   async function submit() {
-    if (!student || !enrollment || !selected.length || !validAmount) {
+    if (!roster.current || filters.typing || !student || !enrollment || !selected.length || !validAmount) {
       setMessage("Montant invalide : choisissez les frais et un montant positif qui ne dépasse pas le solde."); return;
     }
     if (new Set(selected.map(c => c.currency)).size !== 1) {
@@ -324,11 +326,11 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
       </div>
       <div className="yd-grid payments-grid">
         <Card title="Nouvel encaissement" subtitle="Frais scolaires d’un élève déjà inscrit" icon="card" className="payment-form">
-            <SearchControls filters={filters} classes={roster.data?.classes||[]} label="un élève" disabled={busy}/>
+            <SearchControls filters={{...filters,search:value=>{resetSelection();filters.search(value)},chooseClass:value=>{resetSelection();filters.chooseClass(value)},setPage:value=>{resetSelection();filters.setPage(value)}}} classes={roster.data?.classes||[]} label="un élève" disabled={busy}/>
             <label className="yd-label" htmlFor="pay-student">Élève <i>*</i></label>
             <div className="yd-input"><Icon name="user" size={20}/><select id="pay-student" disabled={busy||!roster.current||filters.typing||!!roster.error} value={student ? enrollment : ""} onChange={e => { setEnrollment(e.target.value); setLoadedEnrollment(""); setAmount(null); setChargeError(""); setMessage(""); setReceiptUrl(""); }}><option value="">Choisir un élève…</option>{options.map(s => <option key={s.enrollment.id} value={s.enrollment.id}>{s.last_name} {s.first_name} — {s.enrollment.classroom.name}{(s.student_code||s.matricule_yem) ? " · "+(s.student_code||s.matricule_yem) : ""}</option>)}</select></div>
             {!roster.current||filters.typing ? <p role="status" className="yd-card-sub">Recherche en cours…</p> : roster.error ? <p role="alert">Liste des élèves indisponible. {roster.error}</p> : <>
-              <SearchPages total={roster.data?.total??enrolled.length} page={roster.data?.page||1} size={roster.data?.page_size||25} onPage={filters.setPage} disabled={busy}/>
+              <SearchPages total={roster.data?.total??enrolled.length} page={roster.data?.page||1} size={roster.data?.page_size||25} onPage={value=>{resetSelection();filters.setPage(value)}} disabled={busy}/>
               {!enrolled.length&&<p className="yd-card-sub">Aucun élève trouvé pour ces critères.</p>}
             </>}
             {!canReceive ? <Empty>Votre rôle ne permet pas d’enregistrer des encaissements.</Empty> : <>
@@ -385,7 +387,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
             <div className="yd-balance"><span><Icon name="coins" size={22}/>Solde après paiement</span><strong>{fmtMoney(Math.max(remaining, 0), currency)}</strong></div>
             {message && <p role="status" className="yd-form-msg">{message}</p>}
             {receiptUrl && <p>Reçu groupé · <PdfLinks url={receiptUrl} label="Reçu groupé" downloadLabel="Télécharger le reçu groupé PDF"/></p>}
-            <Button primary icon="check" className="wide" disabled={busy || !selected.length || !validAmount} onClick={submit}>Valider le paiement</Button>
+            <Button primary icon="check" className="wide" disabled={busy || !roster.current || filters.typing || !selected.length || !validAmount} onClick={submit}>Valider le paiement</Button>
           </>}
         </Card>
         <div className="yd-stack">
