@@ -44,6 +44,8 @@ Pour un registre importé avec des lignes sans code, choisir et enregistrer la r
 
 ## Passage des inscriptions à la reprise financière
 
-Après confirmation de l'import des élèves et inscriptions, YEM propose à l'utilisateur habilité de reprendre le classeur quand une année et des colonnes financières ont été reconnues. La transition reprend le fichier en mémoire, l'onglet, la ligne des en-têtes et l'année. La reprise financière relit le fichier sur demande et conserve ses propres permissions, correspondances, aperçu et double validation.
+Après confirmation de l'import des élèves et inscriptions, YEM propose à l'utilisateur habilité de reprendre le classeur quand une année est sélectionnée et que le fichier contient des colonnes financières possibles ou plusieurs feuilles. La transition reprend le fichier en mémoire, l'onglet, la ligne des en-têtes et l'année. La reprise financière relit le fichier sur demande et conserve ses propres permissions, correspondances, aperçu et double validation.
 
 Le moteur local distingue les en-têtes évoquant un versement, un solde, une bourse ou un tarif. Les en-têtes ambigus, dont les noms de mois seuls, restent à qualifier. Les suggestions se limitent aux en-têtes et ne déclenchent aucun rapprochement automatique. La connexion d'un fournisseur externe et l'orchestration IA restent au jalon P1.
+
+Le contrat du moteur d’analyse limite les résultats à une catégorie autorisée par colonne candidate. Le serveur reprend l’analyse déterministe locale si un conseiller simulé échoue ou retourne des catégories ou des indices inattendus. Le conseiller local est le seul raccordé au produit.
