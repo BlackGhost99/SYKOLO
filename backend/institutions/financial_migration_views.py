@@ -1,7 +1,6 @@
-"""Read-only financial migration preview; the workbook is never executed or stored.
+"""Historical opening balances; preview is read-only, approval is independent.
 
-An explicit mapping links a column of cumulative historic amounts to a tariff.
-No payment, balance adjustment, admission fee or receipt is created here.
+No normal payment or receipt is created. Original workbook bytes are not stored.
 """
 import json
 import re
@@ -9,7 +8,8 @@ import hashlib
 from collections import Counter
 from decimal import Decimal
 from uuid import UUID
-from django.db import transaction
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 
 from django.http import JsonResponse
 from django.utils import timezone
@@ -32,6 +32,9 @@ from .import_views import inputs
 from .import_service import suggested_mapping
 from .intelligence_import import analyze_import_headers
 from .student_models import Enrollment
+from .models import School
+from .singpay_models import SingPayIntent
+from .views import log_event
 
 MAX_CELLS = 2000
 XAF = re.compile(r"(?:0|[1-9][0-9]{0,9}|[1-9][0-9]{0,2}(?: [0-9]{3}){1,3})(?:[.,]00)?\Z")
@@ -226,6 +229,7 @@ def preview_data(school, school_id, request):
     canonical = json.dumps({
         "year": str(year.pk), "cutoff": cutoff.isoformat(), "mapping": json.loads(raw),
         "file": hashlib.sha256(payload).hexdigest(),
+        "sheet": table["sheet"], "header_row": table["header_row"],
     }, sort_keys=True, separators=(",", ":"))
     fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -274,21 +278,21 @@ def prepare(request, school_id):
         )
     except (ValueError, TypeError, KeyError) as exc:
         return JsonResponse({"error": str(exc)}, status=422)
-    if any(row["status"] == "identity_review" for row in reports):
-        return JsonResponse({"error": "Régularisez les identités avant préparation."}, status=422)
-    if any(
-        item["status"] in {"invalid", "overpayment", "existing_review"}
-        for row in reports for item in row["cells"]
-    ):
-        return JsonResponse({"error": "Aucun montant invalide, dépassé ou déjà comptabilisé ne peut être préparé."}, status=422)
-
-    existing = HistoricalFinancialMigration.objects.filter(
-        school=school, fingerprint=fingerprint
-    ).first()
-    if existing:
-        return JsonResponse({"batch": str(existing.pk), "status": existing.status,
-                             "idempotent": True, "row_count": existing.row_count})
     with transaction.atomic():
+        School.objects.select_for_update().get(pk=school.pk)
+        existing = HistoricalFinancialMigration.objects.filter(school=school, fingerprint=fingerprint).first()
+        if existing:
+            return JsonResponse({"batch": str(existing.pk), "status": existing.status,
+                                 "idempotent": True, "row_count": existing.row_count})
+        if not entries or any(row["status"] == "identity_review" for row in reports):
+            return JsonResponse({"error": "Régularisez les identités avant préparation."}, status=422)
+        if any(
+            item["status"] in {"invalid", "overpayment", "existing_review", "unknown"}
+            for row in reports for item in row["cells"]
+        ):
+            return JsonResponse({"error": "Montants inconnus, invalides, dépassés ou déjà comptabilisés : régularisez avant préparation."}, status=422)
+        if not AcademicYear.objects.select_for_update().filter(pk=year.pk, school=school, active=True).exclude(status=AcademicYear.STATUS_CLOSED).exists():
+            return JsonResponse({"error": "Année scolaire fermée ou inactive."}, status=409)
         batch = HistoricalFinancialMigration.objects.create(
             school=school, year=year, cutoff=cutoff, fingerprint=fingerprint,
             source_reference=source_name[:255], row_count=len(table["rows"]),
@@ -302,6 +306,7 @@ def prepare(request, school_id):
                 net_due=entry["net_due"], scholarship=entry["scholarship"],
                 evidence_reference=entry["evidence_reference"],
             )
+        log_event(school, request, "historical_migration_prepared", batch.pk, {"row_count": batch.row_count})
     return JsonResponse({"batch": str(batch.pk), "status": batch.status,
                          "idempotent": False, "row_count": batch.row_count})
 
@@ -318,6 +323,7 @@ def approve(request, school_id, batch_id):
         return JsonResponse({"error": "Justificatif comptable requis."}, status=422)
     try:
         with transaction.atomic():
+            School.objects.select_for_update().get(pk=school.pk)
             batch = HistoricalFinancialMigration.objects.select_for_update().filter(
                 school=school, pk=batch_id
             ).first()
@@ -329,30 +335,49 @@ def approve(request, school_id, batch_id):
                 return JsonResponse({"error": "Lot annulé ou déjà clôturé."}, status=409)
             if batch.prepared_by_id == request.user.pk:
                 return JsonResponse({"error": "Le préparateur ne peut pas approuver son propre lot."}, status=403)
-            if batch.year.status == AcademicYear.STATUS_CLOSED:
-                return JsonResponse({"error": "Année scolaire clôturée."}, status=409)
+            year = AcademicYear.objects.select_for_update().filter(pk=batch.year_id, school=school, active=True).exclude(status=AcademicYear.STATUS_CLOSED).first()
+            if year is None or not year.start_date <= batch.cutoff <= min(year.end_date, timezone.localdate()):
+                return JsonResponse({"error": "Année scolaire clôturée, inactive ou date invalide."}, status=409)
 
-            entries = list(batch.entries.select_for_update().select_related(
-                "enrollment", "schedule"
-            ))
+            entries = list(batch.entries.select_for_update().select_related("enrollment", "schedule").order_by("enrollment_id", "schedule_id"))
+            if not entries:
+                raise ValueError("Lot vide.")
             for entry in entries:
-                if entry.schedule.classroom_id and entry.schedule.classroom_id != entry.enrollment.classroom_id:
+                if entry.school_id != school.pk or entry.state not in ("proposed", "zero") or entry.declared_amount is None:
+                    raise ValueError("Entrée inconnue ou invalide : nouvelle préparation nécessaire.")
+                enrollment = Enrollment.objects.select_for_update().filter(pk=entry.enrollment_id, school=school, year=year, active=True, student__school=school, student__active=True, classroom__school=school, classroom__year=year).first()
+                schedule = FeeSchedule.objects.select_for_update().filter(pk=entry.schedule_id, school=school, year=year, active=True, currency="XAF").first()
+                if enrollment is None or schedule is None or explicit_demo(schedule.label):
+                    raise ValueError("Inscription ou tarif non admissible.")
+                if schedule.classroom_id and schedule.classroom_id != enrollment.classroom_id:
                     raise ValueError("Tarif incompatible avec la classe.")
-                if entry.schedule.due_date and entry.schedule.due_date > batch.cutoff:
+                if schedule.due_date and schedule.due_date > batch.cutoff:
                     raise ValueError("Échéance postérieure à la date de reprise.")
                 charge = FeeCharge.objects.select_for_update().filter(
-                    school=school, enrollment=entry.enrollment, schedule=entry.schedule
+                    school=school, enrollment=enrollment, schedule=schedule
                 ).first()
+                discount = tuition_discount(enrollment, schedule)
+                if charge is not None:
+                    if charge.currency != "XAF" or explicit_demo(charge.label) or (charge.due_date and charge.due_date > batch.cutoff):
+                        raise ValueError("Frais existant incompatible.")
+                    if cleared_total(charge) != 0 or SingPayIntent.objects.filter(charge=charge, school=school, state__in=("initiating", "pending", "unknown", "review", "refund_review")).exists():
+                        raise ValueError("Paiement, ajustement ou transaction en cours : rapprochement requis.")
+                    gross, covered = charge.amount, charge.scholarship_discount
+                else:
+                    gross, covered = schedule.amount, discount
+                if covered != entry.scholarship or gross - covered != entry.net_due or covered != discount:
+                    raise ValueError("Tarif ou bourse modifié depuis la préparation. Préparez un nouveau lot.")
+                if entry.declared_amount < 0 or entry.declared_amount > gross - covered:
+                    raise ValueError("Montant historique incompatible.")
+                if charge is None and gross == covered:
+                    # Fully covered students must not receive a tuition debt.
+                    continue
                 if charge is None:
-                    charge = FeeCharge.objects.create(
-                        school=school, enrollment=entry.enrollment, schedule=entry.schedule,
-                        label=entry.schedule.label, amount=entry.schedule.amount,
-                        scholarship_discount=entry.scholarship,
-                        currency=entry.schedule.currency, due_date=entry.schedule.due_date,
-                        created_by=batch.prepared_by,
-                    )
-                elif cleared_total(charge) != 0:
-                    raise ValueError("Des paiements ou ajustements existent déjà pour ce frais.")
+                    charge = FeeCharge(school=school, enrollment=enrollment, schedule=schedule,
+                        label=schedule.label, amount=gross, scholarship_discount=covered,
+                        currency="XAF", due_date=schedule.due_date, created_by=batch.prepared_by)
+                    charge.full_clean()
+                    charge.save()
                 entry.charge = charge
                 entry.save(update_fields=["charge"])
                 if entry.state == "proposed" and entry.declared_amount:
@@ -368,8 +393,11 @@ def approve(request, school_id, batch_id):
             batch.approved_by = request.user
             batch.approved_at = timezone.now()
             batch.save(update_fields=["status", "approved_by", "approved_at"])
-    except ValueError as exc:
+            log_event(school, request, "historical_migration_approved", batch.pk, {"row_count": batch.row_count})
+    except (ValueError, ValidationError) as exc:
         return JsonResponse({"error": str(exc)}, status=422)
+    except IntegrityError:
+        return JsonResponse({"error": "Conflit concurrent : rechargez le lot avant toute nouvelle validation."}, status=409)
     return JsonResponse({"batch": str(batch.pk), "status": "approved", "idempotent": False})
 
 
@@ -397,4 +425,5 @@ def cancel(request, school_id, batch_id):
         batch.cancelled_at = timezone.now()
         batch.cancellation_reason = reason[:1000]
         batch.save(update_fields=["status", "cancelled_at", "cancellation_reason"])
+        log_event(school, request, "historical_migration_cancelled", batch.pk)
     return JsonResponse({"batch": str(batch.pk), "status": "cancelled", "idempotent": False})
