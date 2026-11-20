@@ -10,6 +10,8 @@ from django.test import TestCase
 from django.utils import timezone
 
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
+from .admission_finance import GovernmentScholarship
+from .admission_models import AdmissionApplication
 from .finance_models import (
     FeeCharge,
     FeeSchedule,
@@ -238,6 +240,49 @@ class FinancialMigrationPreviewTests(TestCase):
         self.assertFalse(FeeCharge.objects.exists())
         self.assertFalse(HistoricalFeeAdjustment.objects.exists())
         self.assertEqual(HistoricalFinancialMigration.objects.get(pk=batch_id).status, "prepared")
+
+    def test_scholarship_revision_blocks_approval_and_report_separates_credits(self):
+        application = AdmissionApplication.objects.create(
+            school=self.school, year=self.year, classroom=self.enrollment.classroom,
+            first_name="Élève", last_name="Fictif", guardian_name="Parent fictif",
+            source="recette",
+        )
+        award = GovernmentScholarship.objects.create(
+            school=self.school, application=application, coverage="tuition", percentage=20,
+            official_reference="BOURSE-FICTIVE", verified_by=self.comptabilite,
+        )
+        AdmissionApplication.objects.filter(pk=application.pk).update(
+            status="enrolled", enrollment=self.enrollment,
+        )
+        prepared = self.prepare_history()
+        self.assertEqual(prepared.status_code, 200, prepared.content)
+        batch = HistoricalFinancialMigration.objects.get(pk=prepared.json()["batch"])
+        self.assertEqual(batch.entries.get().scholarship, Decimal("10000"))
+
+        award.percentage = 40
+        award.save(update_fields=["percentage"])
+        self.client.force_login(self.comptabilite)
+        url = f"/api/v1/schools/{self.school.pk}/imports/finance/{batch.pk}/approve"
+        reason = {"reason": "Justificatif fictif vérifié"}
+        rejected = self.client.post(url, reason)
+        self.assertEqual(rejected.status_code, 422, rejected.content)
+        self.assertIn("bourse", rejected.json()["error"].lower())
+        self.assertFalse(FeeCharge.objects.exists())
+        self.assertFalse(HistoricalFeeAdjustment.objects.exists())
+
+        award.percentage = 20
+        award.save(update_fields=["percentage"])
+        approved = self.client.post(url, reason)
+        self.assertEqual(approved.status_code, 200, approved.content)
+        credit = HistoricalFeeAdjustment.objects.get(batch=batch)
+        self.assertEqual(credit.evidence_reference, reason["reason"])
+        self.assertEqual(credit.approved_by, self.comptabilite)
+        summary = self.client.get(f"/api/v1/schools/{self.school.pk}/finance/summary?year={self.year.pk}")
+        self.assertEqual(summary.status_code, 200, summary.content)
+        totals = summary.json()["currencies"]["XAF"]
+        self.assertEqual(totals["historical_credit"], "25000.00")
+        self.assertEqual(totals["balance"], "15000.00")
+        self.assertEqual(totals["paid"], "0.00")
 
     def test_credit_changes_balance_not_received(self):
         response = self.prepare_history()
