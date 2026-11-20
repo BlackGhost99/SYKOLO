@@ -52,8 +52,10 @@ def summary(request, school_id):
         row["charge_id"]: row["total"] or ZERO
         for row in payments.values("charge_id").annotate(total=Sum("amount"))
     }
+    from .historical_finance import historical_credits
+    opening = historical_credits(school.pk, charges.values("pk"))
     totals = defaultdict(lambda: {
-        "billed": ZERO, "paid": ZERO, "balance": ZERO,
+        "billed": ZERO, "paid": ZERO, "historical_credit": ZERO, "balance": ZERO,
         "overdue": ZERO, "charges": 0, "overdue_charges": 0,
         "by_method": {},
     })
@@ -61,7 +63,9 @@ def summary(request, school_id):
     for charge in charges.only("id", "currency", "amount", "scholarship_discount", "due_date").iterator():
         section = totals[charge.currency]
         paid = paid_by_charge.get(charge.pk, ZERO)
-        balance = charge.amount - charge.scholarship_discount - paid
+        credit = opening.get(charge.pk, ZERO)
+        balance = charge.amount - charge.scholarship_discount - paid - credit
+        section["historical_credit"] += credit
         section["billed"] += charge.amount - charge.scholarship_discount
         section["paid"] += paid
         section["balance"] += balance
@@ -89,6 +93,8 @@ def summary(request, school_id):
             currency: {
                 "billed": as_money(data["billed"]),
                 "paid": as_money(data["paid"]),
+                "historical_credit": as_money(data["historical_credit"]),
+                "settled": as_money(data["paid"] + data["historical_credit"]),
                 "balance": as_money(data["balance"]),
                 "overdue": as_money(data["overdue"]),
                 "charges": data["charges"],
