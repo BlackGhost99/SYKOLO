@@ -311,10 +311,25 @@ def owner_subscriptions(request, school_id):
     # Only issued contracts belonging to the requested school; no private audit notes.
     records = PlatformSubscription.objects.filter(year__school=school).select_related("year").prefetch_related("payments", "amendments").order_by("-year__start_date")
     data = []
+    records = list(records)
+    today = timezone.localdate()
+    eligible = [row for row in records if school.is_active and row.year.active and row.year.status != "closed"]
+    counts, errors = current_counts_by_year([(school, row.year) for row in eligible])
     for row in records:
         item = representation(row)
+        pending = None
+        if row.year_id in counts:
+            try:
+                if row.year_id in errors:
+                    raise ValueError(errors[row.year_id])
+                quote = amendment_quote(row, counts[row.year_id], today)
+                if quote["additions"]:
+                    pending = {"status": "pending", "students": sum(line["students"] for line in quote["additions"]),
+                               "amount_xaf": quote["amount_xaf"], "effective_on": quote["effective_on"]}
+            except ValueError as exc:
+                pending = {"status": "review", "reason": str(exc)}
         data.append({k: item[k] for k in ("id", "lines", "total_xaf", "paid_xaf", "balance_xaf", "terms", "schedule", "issued_at", "original_total_xaf", "amendments")} |
-                    {"year": row.year.name, "year_id": str(row.year_id),
+                    {"year": row.year.name, "year_id": str(row.year_id), "pending_adjustment": pending,
                      "documents": document_links(row, school_scope=True)})
     return JsonResponse({"subscriptions": data, "trial": trial_summary(school, timezone.localdate())})
 
