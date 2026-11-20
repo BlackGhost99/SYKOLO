@@ -1145,7 +1145,7 @@ export function ImportStudents({ schoolId, onNavigate, tabs, canOpenFinance }) {
     {finished && <Card title="Importation terminée" icon="check">
       <p role="status">{finished.already_imported?"Ce lot était déjà enregistré.":finished.imported+" dossier(s) créé(s) avec succès."}</p>
       <p className="yd-card-sub">{finished.notice}</p>
-      {canOpenFinance && year && meta?.intelligence?.financial_columns.length > 0 && <Button
+      {canOpenFinance && year && meta && (meta.sheets.length > 1 || meta.intelligence?.financial_columns.length > 0) && <Button
         onClick={()=>onNavigate("payments","migration",{migrationSource:{schoolId,file,sheet,headerRow,year}})}>
         Continuer vers la reprise financière
       </Button>}

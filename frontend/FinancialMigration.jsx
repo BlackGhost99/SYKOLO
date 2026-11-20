@@ -70,7 +70,7 @@ export default function FinancialMigration({schoolId,tabs,workingYearId,source})
   async function preview() {
     setBusy(true);setError("");setResult(null);
     try {
-      const amounts = Object.entries(mapping).filter(([,v])=>v).map(([column,schedule])=>({column:Number(column),schedule}));
+      const amounts = mappedAmounts();
       const data = await send("preview",file,sheet,header,{year,cutoff,mapping:JSON.stringify({student_code:Number(code),amounts})});
       setResult(data);
     } catch(e){setError(e.message);}
@@ -81,7 +81,7 @@ export default function FinancialMigration({schoolId,tabs,workingYearId,source})
     if(busy||!canPrepare||!valid||!rows.length||rows.some(r=>!["proposed","zero"].includes(r.status)))return;
     setBusy(true);setError("");setMessage("");
     try{
-      const amounts=Object.entries(mapping).filter(([,v])=>v).map(([column,schedule])=>({column:Number(column),schedule}));
+      const amounts=mappedAmounts();
       const data=await send("prepare",file,sheet,header,{year,cutoff,mapping:JSON.stringify({student_code:Number(code),amounts})});
       chooseBatch(data.batch);setMessage("Lot préparé. Aucun paiement ni solde modifié avant approbation indépendante.");lots.reload();lot.reload();setResult(null);
     }catch(e){setError(e.message);}finally{setBusy(false);}
@@ -95,13 +95,16 @@ export default function FinancialMigration({schoolId,tabs,workingYearId,source})
       setReason("");setConfirmed(false);lots.reload();lot.reload();
     }catch(e){setError(e.message);}finally{setBusy(false);}
   }
+  function mappedAmounts(){return Object.entries(mapping).filter(([,ids])=>ids.length).map(([column,schedules])=>({column:Number(column),schedules}));}
+  function assignTariffs(column,ids){setMapping(old=>({...old,[column]:ids}));setResult(null);}
   function changeCode(v) {
     setCode(v);setMapping(old=>{const next={...old};delete next[v];return next;});setResult(null);
   }
   const tariffs = (meta?.tariffs||[]).filter(t=>t.year===year);
-  const selected = Object.values(mapping).filter(Boolean);
+  const selected = Object.values(mapping).flat();
+  const selectedColumns = Object.values(mapping).filter(ids=>ids.length).length;
   const selectedYear = meta?.years.find(y=>y.id===year);
-  const valid = !!file&&!!meta&&!!year&&!!cutoff&&code!==""&&selected.length>0&&selected.length<=12&&selected.length*meta.row_count<=2000&&new Set(selected).size===selected.length;
+  const valid = !!file&&!!meta&&!!year&&!!cutoff&&code!==""&&selectedColumns>0&&selectedColumns<=12&&selectedColumns*meta.row_count<=2000&&selected.length<=240&&Object.values(mapping).every(ids=>ids.length<=100)&&new Set(selected).size===selected.length;
   const rows = (result?.rows||[]).flatMap(row=>row.status==="identity_review"?[{line:row.line,status:row.status}]:row.cells.map(cell=>({...cell,line:row.line})));
   const visibleRows = onlyReview?rows.filter(row=>!["proposed","zero"].includes(row.status)):rows;
   const canPrepare=!!lots.data?.can_prepare;
@@ -171,15 +174,29 @@ export default function FinancialMigration({schoolId,tabs,workingYearId,source})
               <option value="">Choisir…</option>{meta.headers.map((h,i)=><option key={i} value={i}>{h||"Colonne "+(i+1)}</option>)}
             </select>
           </label>
-          <p className="hint">Choisissez un tarif par colonne de montant. Ne mappez pas les soldes, totaux généraux ou libellés « payé » comme des montants versés. Les tarifs de classes différentes doivent être traités dans des fichiers/feuilles distincts.</p>
-          {meta.headers.map((h,i)=>String(i)!==code&&<label key={i} className="field">
-            {h||"Colonne "+(i+1)} {meta.financial_hints?.[i]?" · "+columnHints[meta.financial_hints[i]]:""}
-            <select disabled={busy||!year} value={mapping[i]||""} onChange={e=>{setMapping(old=>({...old,[i]:e.target.value}));setResult(null);}}>
-              <option value="">Ne pas reprendre</option>
-              {tariffs.map(t=><option key={t.id} value={t.id} disabled={selected.includes(t.id)&&mapping[i]!==t.id}>{t.label} · {t.classroom||"Toutes classes"} · {t.due_date||"Sans échéance"} · {money(t.amount)}</option>)}
-            </select>
-          </label>)}
-          {selected.length>12||selected.length*meta.row_count>2000?<p role="alert">Limite : 12 tarifs et 2 000 cellules par aperçu. Fractionnez le fichier.</p>:null}
+          <p className="hint">Associez à chaque colonne un tarif ou plusieurs variantes du même code de frais selon les classes. YEM utilisera la classe réelle de l’élève, puis le tarif général uniquement si vous l’avez sélectionné. Ne mappez pas les soldes, les totaux généraux ni les libellés « payé ».</p>
+          {meta.headers.map((h,i)=>{
+            if(String(i)===code)return null;
+            const ids=mapping[i]||[];
+            const chosen=tariffs.find(t=>t.id===ids[0]);
+            const alternatives=chosen?tariffs.filter(t=>t.code===chosen.code&&!selected.includes(t.id)&&!ids.some(id=>tariffs.find(a=>a.id===id)?.classroom_id===t.classroom_id)):[];
+            return <div key={i} style={{marginBottom:14}}>
+              <label className="field">{h||"Colonne "+(i+1)} {meta.financial_hints?.[i]?" · "+columnHints[meta.financial_hints[i]]:""}
+                <select disabled={busy||!year} value={ids[0]||""} onChange={e=>assignTariffs(i,e.target.value?[e.target.value]:[])}>
+                  <option value="">Ne pas reprendre</option>
+                  {tariffs.map(t=><option key={t.id} value={t.id} disabled={selected.includes(t.id)&&!ids.includes(t.id)}>{t.label} · {t.classroom||"Toutes classes"} · {t.due_date||"Sans échéance"} · {money(t.amount)}</option>)}
+                </select>
+              </label>
+              {ids.slice(1).map(id=>{const t=tariffs.find(item=>item.id===id);return <div key={id}><span>{t?.classroom||"Toutes classes"} · {money(t?.amount)}</span> <Button type="button" disabled={busy} onClick={()=>assignTariffs(i,ids.filter(x=>x!==id))}>Retirer</Button></div>;})}
+              {alternatives.length>0&&<label className="field">Ajouter une variante de classe
+                <select value="" disabled={busy||ids.length>=100} onChange={e=>{if(e.target.value)assignTariffs(i,[...ids,e.target.value]);}}>
+                  <option value="">Sélectionner…</option>
+                  {alternatives.map(t=><option key={t.id} value={t.id}>{t.classroom||"Toutes classes"} · {t.due_date||"Sans échéance"} · {money(t.amount)}</option>)}
+                </select>
+              </label>}
+            </div>;
+          })}
+          {selectedColumns>12||selectedColumns*meta.row_count>2000||selected.length>240?<p role="alert">Limite : 12 colonnes, 240 tarifs et 2 000 cellules par aperçu. Fractionnez le fichier.</p>:null}
           <Button type="submit" disabled={busy||!valid}>{busy?"Analyse…":"Prévisualiser la reprise"}</Button>
         </form>
       </Card>}
