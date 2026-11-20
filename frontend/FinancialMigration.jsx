@@ -7,13 +7,17 @@ const statusLabels = {
   overpayment:"Dépassement du montant dû", existing_review:"Paiement YEM à rapprocher",
   invalid:"Incompatible / invalide", identity_review:"Matricule inconnu, ambigu ou répété",
 };
+const columnHints = {
+  balance:"Solde possible", scholarship:"Bourse ou remise possible", billing:"Frais ou échéance possible",
+  payment_candidate:"Versement possible", ambiguous:"Montant à identifier",
+};
 const money = value => value == null ? "—" : new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(Number(value))+" FCFA";
 
-export default function FinancialMigration({schoolId,tabs,workingYearId}) {
-  const [file,setFile] = useState(null);
+export default function FinancialMigration({schoolId,tabs,workingYearId,source}) {
+  const [file,setFile] = useState(source?.file || null);
   const [meta,setMeta] = useState(null);
-  const [sheet,setSheet] = useState("");
-  const [header,setHeader] = useState(1);
+  const [sheet,setSheet] = useState(source?.sheet || "");
+  const [header,setHeader] = useState(source?.headerRow || 1);
   const [year,setYear] = useState("");
   const [cutoff,setCutoff] = useState("");
   const [code,setCode] = useState("");
@@ -52,14 +56,14 @@ export default function FinancialMigration({schoolId,tabs,workingYearId}) {
     setCutoff(y ? (y.end < data.today ? y.end : data.today) : "");
     setMapping({});setResult(null);setError("");
   }
-  async function inspect(f, s="", h=1) {
+  async function inspect(f, s="", h=1, preferredYear=workingYearId) {
     if (!f) return;
     setBusy(true);setError("");setMeta(null);setResult(null);setMapping({});setCode("");
     try {
       const data = await send("inspect", f, s, h);
       setMeta(data);setSheet(data.sheet);setHeader(data.header_row);
       setCode(data.suggested_student_code == null ? "" : String(data.suggested_student_code));
-      selectYear(data.years.find(x=>x.id===workingYearId)?.id||data.years.find(x=>x.status==="current")?.id||data.years[0]?.id||"",data);
+      selectYear(data.years.find(x=>x.id===preferredYear)?.id||data.years.find(x=>x.status==="current")?.id||data.years[0]?.id||"",data);
     } catch(e){setError(e.message);}
     finally {setBusy(false);}
   }
@@ -138,6 +142,9 @@ export default function FinancialMigration({schoolId,tabs,workingYearId}) {
           <input type="file" accept=".xlsx,.csv" disabled={busy} onChange={e=>{const f=e.target.files?.[0]||null;setFile(f);setSheet("");setHeader(1);setMeta(null);setResult(null);setError("");if(f)inspect(f);}}/>
         </label>
         {file&&<p className="hint">{file.name}</p>}
+        {source?.file===file&&!meta&&<Button type="button" disabled={busy} onClick={()=>inspect(file,sheet,header,source.year)}>
+          Analyser le fichier des inscriptions
+        </Button>}
         {file&&<label className="field">Ligne des en-têtes
           <select value={header} disabled={busy} onChange={e=>{const h=Number(e.target.value);setHeader(h);inspect(file,sheet,h);}}>
             {Array.from({length:10},(_,i)=><option key={i+1} value={i+1}>{i+1}</option>)}
@@ -174,7 +181,7 @@ export default function FinancialMigration({schoolId,tabs,workingYearId}) {
             const chosen=tariffs.find(t=>t.id===ids[0]);
             const alternatives=chosen?tariffs.filter(t=>t.code===chosen.code&&!selected.includes(t.id)&&!ids.some(id=>tariffs.find(a=>a.id===id)?.classroom_id===t.classroom_id)):[];
             return <div key={i} style={{marginBottom:14}}>
-              <label className="field">{h||"Colonne "+(i+1)} {meta.financial_columns.includes(i)?" · montant possible":""}
+              <label className="field">{h||"Colonne "+(i+1)} {meta.financial_hints?.[i]?" · "+columnHints[meta.financial_hints[i]]:""}
                 <select disabled={busy||!year} value={ids[0]||""} onChange={e=>assignTariffs(i,e.target.value?[e.target.value]:[])}>
                   <option value="">Ne pas reprendre</option>
                   {tariffs.map(t=><option key={t.id} value={t.id} disabled={selected.includes(t.id)&&!ids.includes(t.id)}>{t.label} · {t.classroom||"Toutes classes"} · {t.due_date||"Sans échéance"} · {money(t.amount)}</option>)}

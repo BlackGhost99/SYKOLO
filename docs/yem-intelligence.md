@@ -40,3 +40,12 @@ Aucune donnée personnelle d'enfant envoyée à un service externe par défaut. 
 YEM Intelligence inspecte les matricules du registre d'une école (jusqu'à 10 000 codes pour la suggestion) et de la colonne Matricule reconnue dans un fichier d'import. Il détecte les compteurs numériques, zéros initiaux, préfixes ou suffixes fixes et présente jusqu'à huit séries candidates, sans modifier ni réserver de codes. Les identifiants permanents YEM ne sont pas interprétés comme séries locales. Les cas mixtes, les chiffres fixes ambigus et les petits échantillons exigent le choix du gestionnaire. Le moteur local n'appelle aucun fournisseur IA.
 
 Pour un registre importé avec des lignes sans code, choisir et enregistrer la règle dans les paramètres Matricules avant le commit. Le générateur existant réserve les codes renseignés avant de numéroter les lignes vides. Pour une école déjà en activité, les paramètres proposent les séries de ses élèves et utilisent le compteur déjà réservé lorsqu'il est supérieur. La prévisualisation classique et l'enregistrement contrôlent l'ensemble du registre sous les verrous existants. Les propositions calculées sur le fichier seul ne sont pas des garanties de disponibilité ; elles ne modifient jamais la règle automatiquement. Les anciennes séries restent inchangées, aucune déduction automatique d'une année en cours ni réinitialisation annuelle.
+
+
+## Passage des inscriptions à la reprise financière
+
+Après confirmation de l'import des élèves et inscriptions, YEM propose à l'utilisateur habilité de reprendre le classeur quand une année est sélectionnée et que le fichier contient des colonnes financières possibles ou plusieurs feuilles. La transition reprend le fichier en mémoire, l'onglet, la ligne des en-têtes et l'année. La reprise financière relit le fichier sur demande et conserve ses propres permissions, correspondances, aperçu et double validation.
+
+Le moteur local distingue les en-têtes évoquant un versement, un solde, une bourse ou un tarif. Les en-têtes ambigus, dont les noms de mois seuls, restent à qualifier. Les suggestions se limitent aux en-têtes et ne déclenchent aucun rapprochement automatique. La connexion d'un fournisseur externe et l'orchestration IA restent au jalon P1.
+
+Le contrat du moteur d’analyse limite les résultats à une catégorie autorisée par colonne candidate. Le serveur reprend l’analyse déterministe locale si un conseiller simulé échoue ou retourne des catégories ou des indices inattendus. Le conseiller local est le seul raccordé au produit.
