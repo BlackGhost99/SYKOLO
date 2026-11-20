@@ -226,7 +226,7 @@ def inspect(request, school_id):
         "years": [{"id": str(y.pk), "name": y.name, "start": y.start_date.isoformat(),
                    "end": y.end_date.isoformat(), "status": y.status} for y in years],
         "tariffs": [{"id": str(t.pk), "year": str(t.year_id), "label": t.label, "code": t.code,
-                     "classroom": t.classroom.name if t.classroom_id else None, "amount": str(t.amount),
+                     "classroom": t.classroom.name if t.classroom_id else None, "classroom_id": str(t.classroom_id) if t.classroom_id else None, "amount": str(t.amount),
                      "due_date": t.due_date.isoformat() if t.due_date else None}
                     for t in tariffs if not explicit_demo(t.label)],
         "today": timezone.localdate().isoformat(),
