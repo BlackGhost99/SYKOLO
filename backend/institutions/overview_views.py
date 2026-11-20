@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -107,6 +107,100 @@ def finance_status(b):
     return "partiel" if b["paid"] > 0 else "impaye"
 
 
+SEARCH_PAGE_SIZE = 25
+
+
+def search_page(request):
+    value = request.GET.get("page", "1")
+    if not value.isascii() or not value.isdigit() or len(value) > 7:
+        raise ValueError("Page invalide.")
+    return max(1, int(value))
+
+
+def student_search_terms(request):
+    return request.GET.get("q", "")[:120].split()[:10]
+
+
+def payment_student_search(request, school, year):
+    """Read-only, scoped lookup for the cash desk; no full financial roster."""
+    if not has_permission(request.user, school, "school.finance.read"):
+        return refuse()
+    try:
+        page = search_page(request)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+    base = Enrollment.objects.filter(
+        school=school, year=year, year__school=school, active=True,
+        student__school=school, student__active=True,
+        classroom__school=school, classroom__year=year,
+    ).select_related("student", "classroom")
+    if not year:
+        base = base.none()
+    rows = base
+    classroom = request.GET.get("classroom")
+    if classroom:
+        if not uid(classroom):
+            return JsonResponse({"error": "Classe invalide."}, status=422)
+        rows = rows.filter(classroom_id=uid(classroom))
+    for term in student_search_terms(request):
+        rows = rows.filter(Q(student__last_name__icontains=term) |
+                           Q(student__first_name__icontains=term) |
+                           Q(student__student_code__icontains=term) |
+                           Q(student__matricule_yem__icontains=term))
+    total = rows.count()
+    page = min(page, max(1, (total + SEARCH_PAGE_SIZE - 1) // SEARCH_PAGE_SIZE))
+    start = (page - 1) * SEARCH_PAGE_SIZE
+    records = list(rows.order_by("student__last_name", "student__first_name", "pk")[start:start + SEARCH_PAGE_SIZE])
+    selected_id = uid(request.GET.get("selected") or "")
+    selected = base.filter(pk=selected_id).first() if selected_id else None
+    guardians = primary_guardians(school, [e.student_id for e in records] +
+                                  ([selected.student_id] if selected else [])) if can_read_sensitive(request.user, school) else {}
+
+    def serialize(e):
+        s = e.student
+        g = guardians.get(s.pk)
+        return {
+            "id": str(s.pk), "student_code": s.student_code, "matricule_yem": s.matricule_yem,
+            "last_name": s.last_name, "first_name": s.first_name, "active": s.active,
+            "enrollment": {"id": str(e.pk), "classroom": {"id": str(e.classroom_id), "name": e.classroom.name}},
+            "guardian": {"full_name": g.full_name, "relationship": g.relationship, "phone": g.phone} if g else None,
+        }
+
+    classes = AcademicClass.objects.filter(school=school, year=year).order_by("name") if year else []
+    return JsonResponse({
+        "students": [serialize(e) for e in records],
+        "selected": serialize(selected) if selected else None,
+        "classes": [{"id": str(cl.pk), "name": cl.name} for cl in classes],
+        "page": page, "page_size": SEARCH_PAGE_SIZE, "total": total,
+    }, headers={"Cache-Control": "no-store"})
+
+
+def filtered_arrears(request, arrears):
+    """Filter the complete set, before slicing; totals remain school-wide."""
+    terms = [term.casefold() for term in student_search_terms(request)]
+    classroom = request.GET.get("classroom", "")
+    period = request.GET.get("period", "")
+    status = request.GET.get("status", "")
+    if classroom and not uid(classroom):
+        raise ValueError("Classe invalide.")
+    if period:
+        try:
+            if len(period) != 7 or date.fromisoformat(period + "-01").isoformat()[:7] != period:
+                raise ValueError()
+        except ValueError:
+            raise ValueError("Période invalide.") from None
+    if status not in ("", "with_payment", "without_payment"):
+        raise ValueError("Statut invalide.")
+    return [
+        row for row in arrears
+        if (not classroom or row["classroom_id"] == classroom)
+        and (not period or any(item["date"][:7] == period for item in row["overdue_items"]))
+        and (not status or bool(row["last_payment"]) == (status == "with_payment"))
+        and all(term in " ".join(str(row.get(key) or "") for key in
+                ("student", "student_code", "matricule_yem", "guardian", "phone")).casefold() for term in terms)
+    ]
+
+
 @require_GET
 @authorized
 def students_overview(request, school_id):
@@ -121,6 +215,8 @@ def students_overview(request, school_id):
         return JsonResponse({"error": "Année scolaire introuvable."}, status=422)
     if request.GET.get("currency") and not CURRENCY_PATTERN.fullmatch(request.GET["currency"]):
         return JsonResponse({"error": "Devise ISO invalide."}, status=422)
+    if request.GET.get("payment_search") == "1":
+        return payment_student_search(request, school, year)
     student_queryset = Student.objects.filter(school=school)
     # When explicitly viewing a historical cohort, hide pupils who joined
     # only in another year. The default all-pupils directory remains unchanged.
@@ -251,6 +347,7 @@ def finance_overview(request, school_id):
         g = guardians.get(e.student_id)
         arrears.append({
             "enrollment": str(eid), "student": f"{e.student.last_name} {e.student.first_name}", "classroom": e.classroom.name,
+            "classroom_id": str(e.classroom_id), "student_code": e.student.student_code, "matricule_yem": e.student.matricule_yem,
             "guardian": g.full_name if g else "", "phone": g.phone if g else "",
             "due_date": b["first_overdue"].isoformat() if b["first_overdue"] else None,
             "amount_due": money(b["overdue"]),
@@ -259,9 +356,24 @@ def finance_overview(request, school_id):
             "remaining": money(b["billed"] - b["paid"]),
             "last_payment": last_payment[eid].isoformat() if eid in last_payment else None,
         })
-    arrears.sort(key=lambda a: Decimal(a["amount_due"]), reverse=True)
+    arrears.sort(key=lambda a: (-Decimal(a["amount_due"]), a["enrollment"]))
     by_class = Counter(a["classroom"] for a in arrears)
     outstanding = sum((b["billed"] - b["paid"] for b in balances.values()), ZERO)
+    arrears_meta = {}
+    visible_arrears = arrears[:100]
+    if request.GET.get("arrears_search") == "1":
+        try:
+            filtered = filtered_arrears(request, arrears)
+            page = min(search_page(request), max(1, (len(filtered) + SEARCH_PAGE_SIZE - 1) // SEARCH_PAGE_SIZE))
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=422)
+        start = (page - 1) * SEARCH_PAGE_SIZE
+        visible_arrears = filtered[start:start + SEARCH_PAGE_SIZE]
+        classes = AcademicClass.objects.filter(school=school, year=year).order_by("name") if year else []
+        arrears_meta = {
+            "arrears_total": len(filtered), "arrears_page": page, "arrears_page_size": SEARCH_PAGE_SIZE,
+            "arrears_classes": [{"id": str(cl.pk), "name": cl.name} for cl in classes],
+        }
     return JsonResponse({
         "currencies": sorted(set(FeeCharge.objects.filter(school=school, enrollment__year=year).values_list("currency", flat=True))),
         "currency": currency or "XAF",
@@ -296,7 +408,8 @@ def finance_overview(request, school_id):
         "outstanding": money(outstanding),
         "overdue_total": money(sum((Decimal(a["amount_due"]) for a in arrears), ZERO)),
         "families_late": len(arrears),
-        "arrears": arrears[:100],
+        "arrears": visible_arrears,
+        **arrears_meta,
         "arrears_by_class": [{"classroom": c, "families": n} for c, n in by_class.most_common(8)],
         "active_students": Student.objects.filter(
             school=school, active=True,
