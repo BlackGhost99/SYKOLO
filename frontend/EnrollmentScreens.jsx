@@ -1050,6 +1050,15 @@ export function ImportStudents({ schoolId, onNavigate, tabs }) {
         {file && <p className="yd-card-sub">{file.name}</p>}
         {meta && <>
           <p className="yd-card-sub">{meta.row_count} ligne(s) détectée(s), {meta.headers.length} colonne(s).</p>
+          {meta.intelligence && <div aria-label="YEM Intelligence" style={{padding:12,border:"1px solid currentColor",borderRadius:8,marginBottom:12}}>
+            <strong>YEM Intelligence — Analyse locale</strong>
+            <p className="yd-card-sub">Aucun fournisseur IA externe sollicité.</p>
+            {meta.intelligence.financial_columns.length > 0 && <div role="status">
+              <p><b>Colonnes financières possibles :</b> {meta.intelligence.financial_columns.map(i=>meta.headers[i]).join(", ")}.</p>
+              <p>Les paiements et les frais ne sont pas importés par cet assistant administratif. Conservez le fichier pour la reprise comptable ; aucune somme n’est considérée comme encaissée.</p>
+            </div>}
+            {meta.intelligence.unmapped_columns.length > 0 && <p className="yd-card-sub">Colonnes sans correspondance automatique : {meta.intelligence.unmapped_columns.map(i=>meta.headers[i]).join(", ")}. Vérifiez-les avant de confirmer.</p>}
+          </div>}
           {meta.sheets.length>1 && <label>Feuille Excel
             <select value={sheet} onChange={e=>{setSheet(e.target.value);analyze(file,e.target.value,headerRow);}} disabled={!!busy}>
               {meta.sheets.map(name=><option key={name} value={name}>{name}</option>)}
