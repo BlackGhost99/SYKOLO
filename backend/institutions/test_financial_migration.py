@@ -47,6 +47,9 @@ class FinancialMigrationPreviewTests(TestCase):
             sr = SchoolRole.objects.create(school=self.school, code=role, label=template[1], permissions=template[2])
             SchoolMember.objects.create(school=self.school, user=user, role=sr)
             setattr(self, role, user)
+        self.secretary = get_user_model().objects.create_user(username="migration-readonly")
+        readonly = SchoolRole.objects.create(school=self.school, code="migration_readonly", label="Lecture élèves", permissions=["school.students.profile.read"])
+        SchoolMember.objects.create(school=self.school, user=self.secretary, role=readonly)
         self.client.force_login(self.comptabilite)
 
     def preview(self, rows="0001;25 000", **kwargs):
@@ -91,8 +94,10 @@ class FinancialMigrationPreviewTests(TestCase):
         self.assertEqual(FeePayment.objects.first().amount, Decimal("10000"))
 
     def test_permission_and_cross_school_mapping(self):
-        self.client.force_login(self.econome)
+        self.client.force_login(self.secretary)
         self.assertEqual(self.preview().status_code, 403)
+        self.client.force_login(self.econome)
+        self.assertEqual(self.preview().status_code, 200)
         self.client.force_login(self.comptabilite)
         other_year = AcademicYear.objects.create(school=self.foreign, code="b", name="B",
             start_date=self.today-timedelta(days=60), end_date=self.today+timedelta(days=60))
@@ -181,7 +186,7 @@ class FinancialMigrationPreviewTests(TestCase):
         self.assertEqual(batch.status, HistoricalFinancialMigration.STATUS_CANCELLED)
         self.assertFalse(FeeCharge.objects.exists())
 
-    def test_inspection_is_accounting_only_and_filters_tariffs(self):
+    def test_inspection_is_finance_only_and_filters_tariffs(self):
         def inspect():
             f = SimpleUploadedFile("historique.csv", "Matricule;Octobre\n0001;25000".encode("utf-8"))
             return self.client.post(f"/api/v1/schools/{self.school.pk}/imports/finance/inspect", {"file": f})
@@ -202,6 +207,8 @@ class FinancialMigrationPreviewTests(TestCase):
         self.assertNotIn("0001", response.content.decode())
         self.assertFalse(FeeCharge.objects.exists())
         self.client.force_login(self.econome)
+        self.assertEqual(inspect().status_code, 200)
+        self.client.force_login(self.secretary)
         self.assertEqual(inspect().status_code, 403)
 
     def prepare_history(self, value="25000"):
@@ -260,3 +267,22 @@ class FinancialMigrationPreviewTests(TestCase):
         self.assertEqual(Decimal(snapshot["historical_credit"]), 25000)
         self.assertEqual(Decimal(snapshot["outstanding"]), 25000)
         self.assertFalse(FeePayment.objects.exists())
+
+    def test_financial_batch_review_only_authorized_and_own_prepared(self):
+        prepared = self.prepare_history()
+        self.assertEqual(prepared.status_code, 200, prepared.content)
+        batch = prepared.json()["batch"]
+        root = f"/api/v1/schools/{self.school.pk}/imports/finance/"
+        self.assertTrue(self.client.get(root+"batches").json()["can_prepare"])
+        detail = self.client.get(root+batch)
+        self.assertEqual(detail.status_code, 200)
+        self.assertTrue(detail.json()["can_cancel"])
+        self.assertFalse(detail.json()["can_approve"])
+        self.assertEqual(detail.json()["entries"][0]["student_code"], "0001")
+        self.client.force_login(self.comptabilite)
+        self.assertTrue(self.client.get(root+batch).json()["can_approve"])
+        self.assertFalse(self.client.get(root+"batches").json()["can_prepare"])
+        self.client.force_login(self.secretary)
+        self.assertEqual(self.client.get(root+batch).status_code, 403)
+        self.assertEqual(self.client.get(root+"batches").status_code, 403)
+        self.assertFalse(FeeCharge.objects.exists())
