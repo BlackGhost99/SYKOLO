@@ -256,7 +256,11 @@ def inspect(request, school_id):
                      "due_date": t.due_date.isoformat() if t.due_date else None}
                     for t in tariffs if not explicit_demo(t.label)],
         "today": timezone.localdate().isoformat(),
-        "notice": "Analyse locale sans enregistrement. Les montants ne sont pas confirmés.",
+        "notice": (
+            "Suggestions Gemini. Les montants restent à vérifier."
+            if gemini_status == "used"
+            else "Analyse locale. Les montants restent à vérifier."
+        ),
     })
 
 

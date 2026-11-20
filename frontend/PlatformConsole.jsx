@@ -551,7 +551,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
             <div className="ya-heading-icon"><Icon name="activity" size={23}/></div>
             <div>
               <h2>YEM Intelligence</h2>
-              <p>{dashboard.intelligence.header_adapter_configured?"Adaptateur d’analyse configuré":"Analyse locale · aucun fournisseur connecté"}</p>
+              <p>{dashboard.intelligence.gemini?.pilot_enabled?"Analyse locale et Gemini à la demande":dashboard.intelligence.header_adapter_configured?"Adaptateur d’analyse configuré":"Analyse locale · aucun fournisseur connecté"}</p>
               <ul>
                 {dashboard.intelligence.financial_headers&&<li>Analyse des colonnes financières</li>}
                 {dashboard.intelligence.numbering_suggestions&&<li>Suggestions de séries de matricules</li>}
