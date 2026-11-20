@@ -1059,6 +1059,12 @@ export function ImportStudents({ schoolId, onNavigate, tabs }) {
             </div>}
             {meta.intelligence.unmapped_columns.length > 0 && <p className="yd-card-sub">Colonnes sans correspondance automatique : {meta.intelligence.unmapped_columns.map(i=>meta.headers[i]).join(", ")}. Vérifiez-les avant de confirmer.</p>}
           </div>}
+          {meta.numbering_suggestions && <section aria-label="Reconnaissance des matricules" style={{marginBottom:12}}>
+            <strong>Matricules existants — analyse locale</strong>
+            <p className="yd-card-sub">{meta.numbering_suggestions.distinct_local_codes} code(s) local(aux) distinct(s), {meta.numbering_suggestions.blank_rows} ligne(s) sans matricule.</p>
+            {meta.numbering_suggestions.candidates.map(c=><p key={c.template} className="yd-card-sub">{c.template} · {c.matched} reconnu(s) · prochain estimé : {c.next_code || "série épuisée"}</p>)}
+            <p className="yd-card-sub">Les matricules importés sont conservés. Pour les lignes sans code, configurez et confirmez la série dans Paramètres → Matricules avant de valider l’import. Ces suggestions concernent le fichier, pas l’ensemble des registres de l’école.</p>
+          </section>}
           {meta.sheets.length>1 && <label>Feuille Excel
             <select value={sheet} onChange={e=>{setSheet(e.target.value);analyze(file,e.target.value,headerRow);}} disabled={!!busy}>
               {meta.sheets.map(name=><option key={name} value={name}>{name}</option>)}
