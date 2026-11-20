@@ -5,7 +5,7 @@ from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 
 from .models import School
-from .intelligence_numbering import suggest_series
+from .intelligence_engine import engine
 from .services import has_permission
 from .student_models import StudentNumbering
 from .student_numbering import MAX_NUMBER, largest_number, render_code
@@ -56,7 +56,7 @@ def numbering(request, school_id):
             "enabled": rule.enabled, "template": rule.template, "digits": rule.digits,
             "start_number": rule.next_number,
         })
-        result["intelligence"] = suggest_series(
+        result["intelligence"] = engine.suggest_numbering(
             school.students.order_by("pk").values_list("student_code", flat=True).iterator())
         # Never suggest going backwards within the currently saved series.
         for candidate in result["intelligence"]["candidates"]:

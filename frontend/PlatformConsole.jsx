@@ -501,6 +501,19 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           </section>
           <AuditFeed events={dashboard.recent_events||[]} onAll={()=>goto("audit")}/>
         </div>
+        {dashboard.intelligence&&<section className="ya-box">
+          <div className="ya-box-head">
+            <div className="ya-heading-icon"><Icon name="activity" size={23}/></div>
+            <div>
+              <h2>YEM Intelligence</h2>
+              <p>{dashboard.intelligence.header_adapter_configured?"Adaptateur d’analyse configuré":"Analyse locale · aucun fournisseur connecté"}</p>
+              <ul>
+                {dashboard.intelligence.financial_headers&&<li>Analyse des colonnes financières</li>}
+                {dashboard.intelligence.numbering_suggestions&&<li>Suggestions de séries de matricules</li>}
+              </ul>
+            </div>
+          </div>
+        </section>}
       </>}
       {view==="schools"&&<div className={"ya-work-grid ya-directory-layout ya-directory-view"+(directoryDetailOpen?" ya-school-detail-open":"")}><Directory dashboard={dashboard} filters={filters} setFilters={setFilters} onSchool={openDirectorySchool} selected={schoolId} onNew={()=>goto("newSchool")}/><div className="ya-school-detail-panel"><button type="button" className="ya-btn ya-btn-outline ya-back-directory" onClick={()=>setDirectoryDetailOpen(false)}><Icon name="left" size={17}/> Retour aux établissements</button><Detail detail={selectedDetail} loading={detailLoading} tab={detailTab} setTab={setDetailTab} {...detailActions}/></div></div>}
       {view==="organizations"&&<div className="ya-two-panels">

@@ -49,3 +49,10 @@ Après confirmation de l'import des élèves et inscriptions, YEM propose à l'u
 Le moteur local distingue les en-têtes évoquant un versement, un solde, une bourse ou un tarif. Les en-têtes ambigus, dont les noms de mois seuls, restent à qualifier. Les suggestions se limitent aux en-têtes et ne déclenchent aucun rapprochement automatique. La connexion d'un fournisseur externe et l'orchestration IA restent au jalon P1.
 
 Le contrat du moteur d’analyse limite les résultats à une catégorie autorisée par colonne candidate. Le serveur reprend l’analyse déterministe locale si un conseiller simulé échoue ou retourne des catégories ou des indices inattendus. Le conseiller local est le seul raccordé au produit.
+
+
+## Orchestrateur YEM Intelligence
+
+Les écrans de migration et de paramétrage des matricules utilisent le même orchestrateur. La tâche financière peut être testée avec un adaptateur simulé. Celui-ci reçoit les indices candidats et un vocabulaire financier autorisé extrait des en-têtes. Les en-têtes complets, les valeurs du classeur et les matricules restent dans les tâches locales. Les catégories et les indices renvoyés sont validés avant affichage. Une réponse invalide ou une indisponibilité déclenche l'analyse déterministe et un journal technique sans données du classeur.
+
+Le produit instancie l'orchestrateur avec ses traitements locaux. La vue d'ensemble BWETEK, réservée aux super-administrateurs authentifiés par MFA, affiche les tâches disponibles et l'état de raccordement. La gestion des fournisseurs, clés, quotas et budgets reste à intégrer.

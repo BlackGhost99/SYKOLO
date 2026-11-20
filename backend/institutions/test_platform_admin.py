@@ -32,6 +32,9 @@ class PlatformAdminConsoleTests(TestCase):
     def test_dashboard_contains_real_counts_and_paginated_directory(self):
         self.assertEqual(Organization.objects.count(), 1)
         r = self.client.get("/api/v1/platform/dashboard?page=1&per_page=5")
+        self.assertEqual(r.json()["intelligence"], {
+            "financial_headers": True, "numbering_suggestions": True, "header_adapter_configured": False,
+        })
         self.assertEqual(r.status_code, 200)
         data = r.json()
         self.assertEqual(data["schools_total"], 1)
