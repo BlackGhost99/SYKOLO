@@ -96,3 +96,26 @@ class FinancialMigrationPreviewTests(TestCase):
         self.assertEqual(self.preview(mapping=mapping).status_code, 422)
         self.assertEqual(self.preview(year=str(other_year.pk)).status_code, 422)
         self.assertFalse(FeeCharge.objects.exists())
+
+    def test_inspection_is_accounting_only_and_filters_tariffs(self):
+        def inspect():
+            f = SimpleUploadedFile("historique.csv", "Matricule;Octobre\n0001;25000".encode("utf-8"))
+            return self.client.post(f"/api/v1/schools/{self.school.pk}/imports/finance/inspect", {"file": f})
+        FeeSchedule.objects.create(school=self.school, year=self.year, code="demo",
+            label="DÉMO - Scolarité", amount=50000, currency="XAF")
+        other_year = AcademicYear.objects.create(school=self.foreign, code="b", name="B",
+            start_date=self.today-timedelta(days=60), end_date=self.today+timedelta(days=60))
+        FeeSchedule.objects.create(school=self.foreign, year=other_year, code="foreign",
+            label="Étranger", amount=50000, currency="XAF")
+        response = inspect()
+        self.assertEqual(response.status_code, 200, response.content)
+        data = response.json()
+        self.assertEqual(data["suggested_student_code"], 0)
+        self.assertEqual(data["financial_columns"], [1])
+        self.assertEqual([t["id"] for t in data["tariffs"]], [str(self.tariff.pk)])
+        self.assertEqual([y["id"] for y in data["years"]], [str(self.year.pk)])
+        self.assertNotIn("samples", data)
+        self.assertNotIn("0001", response.content.decode())
+        self.assertFalse(FeeCharge.objects.exists())
+        self.client.force_login(self.econome)
+        self.assertEqual(inspect().status_code, 403)
