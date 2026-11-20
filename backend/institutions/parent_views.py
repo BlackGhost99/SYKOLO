@@ -558,6 +558,10 @@ def child_finance(request, student_id):
             school_id=student.school_id, charge__in=charges, void__isnull=True,
         ).values("charge_id").annotate(total=Sum("amount")).values_list("charge_id", "total")
     )
+    from .historical_finance import historical_credits
+    opening = historical_credits(student.school_id, charges.values("pk"))
+    for key, amount in opening.items():
+        paid_by_charge[key] = paid_by_charge.get(key, Decimal("0.00")) + amount
     from .finance_payment_order import monthly_blockers
     rows = list(charges.select_related("enrollment__year", "schedule").order_by("due_date", "pk"))
 
@@ -570,10 +574,11 @@ def child_finance(request, student_id):
         net = row.amount - row.scholarship_discount
         balance = net - paid
         amounts = totals.setdefault(row.currency, dict.fromkeys(
-            ("billed", "paid", "balance", "due_today", "overdue"), Decimal("0.00"),
+            ("billed", "paid", "historical_credit", "balance", "due_today", "overdue"), Decimal("0.00"),
         ))
         amounts["billed"] += net
         amounts["paid"] += paid
+        amounts["historical_credit"] += opening.get(row.pk, Decimal("0.00"))
         amounts["balance"] += balance
         status = "Réglé"
         if balance > 0:
@@ -588,6 +593,7 @@ def child_finance(request, student_id):
         items.append({
             "id": str(row.pk), "label": row.label, "amount": str(net),
             "currency": row.currency, "paid": str(paid), "balance": str(balance),
+            "historical_credit": str(opening.get(row.pk, Decimal("0.00"))),
             "due_date": row.due_date.isoformat() if row.due_date else None,
             "year": row.enrollment.year.name, "status": status,
             "payment_blocked_by": blockers.get(row.pk),

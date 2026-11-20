@@ -936,7 +936,7 @@ export function PaymentTracking({ schoolId, canReceive, onNavigate, tabs, advanc
 
 /* ---------- Import Excel / CSV adaptatif (aucune écriture avant confirmation) ---------- */
 const IMPORT_COLUMNS = ["Nom", "Prénoms", "DDN", "Classe", "Nom parent", "Téléphone parent"];
-export function ImportStudents({ schoolId, onNavigate, tabs }) {
+export function ImportStudents({ schoolId, onNavigate, tabs, canOpenFinance }) {
   const profiles = useLoad("schools/" + schoolId + "/imports/students/profiles");
   const [file, setFile] = useState(null);
   const [meta, setMeta] = useState(null);
@@ -1145,6 +1145,10 @@ export function ImportStudents({ schoolId, onNavigate, tabs }) {
     {finished && <Card title="Importation terminée" icon="check">
       <p role="status">{finished.already_imported?"Ce lot était déjà enregistré.":finished.imported+" dossier(s) créé(s) avec succès."}</p>
       <p className="yd-card-sub">{finished.notice}</p>
+      {canOpenFinance && year && meta && (meta.sheets.length > 1 || meta.intelligence?.financial_columns.length > 0) && <Button
+        onClick={()=>onNavigate("payments","migration",{migrationSource:{schoolId,file,sheet,headerRow,year}})}>
+        Continuer vers la reprise financière
+      </Button>}
       <Button primary icon="users" onClick={()=>onNavigate("students","live")}>Voir la liste des élèves</Button>
     </Card>}
   </>;

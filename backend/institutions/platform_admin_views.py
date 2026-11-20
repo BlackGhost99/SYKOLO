@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Q
 from django.http import JsonResponse
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
 from accounts.views import authorized
@@ -11,6 +12,8 @@ from .models import (
     Organization, PlatformAudit, School, SchoolAdminPolicy,
     SchoolAudit, SchoolMember, SchoolRole, Student,
 )
+from .intelligence_engine import engine
+from .intelligence_readiness import gemini_readiness, simulate_gemini
 from .platform_views import platform_only
 from .services import OWNER_ROLE_CODE, provision_appointment_roles, public_role_label, role_available
 from .school_profiles import validate_school_profile
@@ -95,6 +98,17 @@ def recent_events(limit=12, school_id=None):
     return results[:limit]
 
 
+@never_cache
+@require_GET
+@authorized
+def platform_simulate_gemini(request):
+    if not platform_only(request):
+        return denied()
+    passed = simulate_gemini()
+    return JsonResponse({"passed": passed, "mode": "simulation"}, status=200 if passed else 503)
+
+
+@never_cache
 @require_GET
 @authorized
 def platform_dashboard(request):
@@ -137,6 +151,7 @@ def platform_dashboard(request):
     ).order_by("name")
     school_total = School.objects.count()
     return JsonResponse({
+        "intelligence": {**engine.capabilities(), "gemini": gemini_readiness()},
         "organizations": Organization.objects.count(),
         "schools_total": school_total,
         "schools_active": School.objects.filter(is_active=True).count(),

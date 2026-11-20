@@ -255,15 +255,20 @@ def student_dossier(request, school_id, student_id):
             for p in payments:
                 if p.pk not in voided:
                     paid[p.charge_id] += p.amount
+            from .historical_finance import historical_credits
+            opening = historical_credits(school.pk, [c.pk for c in charges])
+            paid.update(opening)
             billed_total = sum((c.amount-c.scholarship_discount for c in charges), ZERO)
             paid_total = sum(paid.values(), ZERO)
             item["finance"] = {
                 "currency": charges[0].currency if charges else None,
                 "billed": money(billed_total), "paid": money(paid_total), "balance": money(billed_total - paid_total),
+                "historical_credit": money(sum(opening.values(), ZERO)),
                 "status": finance_status({"billed": billed_total, "paid": paid_total}),
                 "charges": [{"id": str(c.pk), "label": c.label, "amount": money(c.amount), "currency": c.currency,
                              "due_date": c.due_date.isoformat() if c.due_date else None,
                              "scholarship_discount":money(c.scholarship_discount),
+                              "historical_credit": money(opening.get(c.pk, ZERO)),
                               "paid": money(paid[c.pk]), "balance": money(c.amount-c.scholarship_discount - paid[c.pk])} for c in charges],
                 "payments": [{"id": str(p.pk), "label": p.charge.label, "amount": money(p.amount), "currency": p.currency,
                               "method": p.method, "reference": p.reference, "paid_on": p.paid_on.isoformat(),

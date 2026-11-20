@@ -229,6 +229,39 @@ function Modal({modal,detail,reason,setReason,roleId,setRoleId,onCancel,onConfir
     </div>
   </div>;
 }
+const geminiStatuses = {
+  key_missing:"Clé Gemini absente du serveur.",
+  model_missing:"Clé détectée. Modèle Gemini à renseigner.",
+  invalid_configuration:"Configuration Gemini invalide.",
+  ready_unverified:"Clé et modèle détectés. Accès Gemini non vérifié.",
+};
+
+function GeminiReadiness({status}) {
+  const [busy,setBusy] = useState(false);
+  const [result,setResult] = useState("");
+  async function runSimulation() {
+    setBusy(true);
+    setResult("");
+    try {
+      const check = await api("platform/intelligence/gemini/simulation");
+      setResult(check.mode==="simulation" && check.passed
+        ?"Simulation réussie. Le moteur local reste actif."
+        :"La simulation a échoué.");
+    } catch {
+      setResult("La simulation a échoué.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <>
+    <p>{geminiStatuses[status] || "État Gemini indisponible."}</p>
+    <button type="button" className="ya-btn ya-btn-outline" disabled={busy} onClick={runSimulation}>
+      {busy?"Simulation en cours…":"Simuler une réponse Gemini"}
+    </button>
+    {result&&<p role="status">{result}</p>}
+  </>;
+}
+
 export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) {
   const [view,setView]=useState("overview");
   const [filters,setFilters]=useState({q:"",organization:"",status:"all",sort:"name",page:1,per_page:5});
@@ -501,6 +534,20 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
           </section>
           <AuditFeed events={dashboard.recent_events||[]} onAll={()=>goto("audit")}/>
         </div>
+        {dashboard.intelligence&&<section className="ya-box">
+          <div className="ya-box-head">
+            <div className="ya-heading-icon"><Icon name="activity" size={23}/></div>
+            <div>
+              <h2>YEM Intelligence</h2>
+              <p>{dashboard.intelligence.header_adapter_configured?"Adaptateur d’analyse configuré":"Analyse locale · aucun fournisseur connecté"}</p>
+              <ul>
+                {dashboard.intelligence.financial_headers&&<li>Analyse des colonnes financières</li>}
+                {dashboard.intelligence.numbering_suggestions&&<li>Suggestions de séries de matricules</li>}
+              </ul>
+              {dashboard.intelligence.gemini&&<GeminiReadiness status={dashboard.intelligence.gemini.status}/>}
+            </div>
+          </div>
+        </section>}
       </>}
       {view==="schools"&&<div className={"ya-work-grid ya-directory-layout ya-directory-view"+(directoryDetailOpen?" ya-school-detail-open":"")}><Directory dashboard={dashboard} filters={filters} setFilters={setFilters} onSchool={openDirectorySchool} selected={schoolId} onNew={()=>goto("newSchool")}/><div className="ya-school-detail-panel"><button type="button" className="ya-btn ya-btn-outline ya-back-directory" onClick={()=>setDirectoryDetailOpen(false)}><Icon name="left" size={17}/> Retour aux établissements</button><Detail detail={selectedDetail} loading={detailLoading} tab={detailTab} setTab={setDetailTab} {...detailActions}/></div></div>}
       {view==="organizations"&&<div className="ya-two-panels">

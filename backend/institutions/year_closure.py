@@ -17,7 +17,7 @@ from .attendance_models import AttendanceSession, AttendanceMark
 from .council_models import SchoolCouncil, CouncilDecision
 from .curriculum_models import CourseOffering
 from .finance_models import (
-    FeeCharge, FeePayment, CashClosing, CashTransfer,
+    FeeCharge, FeePayment, CashClosing, CashTransfer, HistoricalFeeAdjustment, HistoricalFinancialMigration,
 )
 from .parent_payment_models import ParentPaymentAttempt
 from .report_models import SchoolReport
@@ -43,8 +43,11 @@ def annual_closure_snapshot(school, year):
     for currency in currencies:
         billed = charges.filter(currency=currency).aggregate(s=Sum("amount"))["s"] or Decimal("0")
         paid = payments.filter(currency=currency).aggregate(s=Sum("amount"))["s"] or Decimal("0")
+        opening = HistoricalFeeAdjustment.objects.filter(school=school, batch__school=school, batch__status="approved", charge__in=charges, currency=currency).aggregate(s=Sum("amount"))["s"] or Decimal("0")
+        discount = charges.filter(currency=currency).aggregate(s=Sum("scholarship_discount"))["s"] or Decimal("0")
         ledger[currency] = {
-            "billed": str(billed), "received": str(paid), "outstanding": str(billed - paid),
+            "billed": str(billed), "received": str(paid), "historical_credit": str(opening),
+            "scholarship_discount": str(discount), "outstanding": str(billed - discount - paid - opening),
         }
     by_class = []
     for room in rooms.select_related("level", "level__cycle").order_by("level__order", "name", "pk"):
@@ -97,6 +100,12 @@ def annual_closure_checks(school, year):
         blockers.append({"code": "year_not_finished", "message": "La date de fin de l'année n'est pas atteinte."})
 
     unresolved = [
+        ("pending_historical_migration", "Des reprises financières attendent validation ou annulation.",
+         HistoricalFinancialMigration.objects.filter(school=school, year=year, status="prepared").count()),
+        ("pending_historical_reversal", "Des contrepassations historiques attendent approbation.",
+         HistoricalFinancialMigration.objects.filter(
+             school=school, year=year, status="approved", reversal_requested_at__isnull=False,
+         ).count()),
         ("draft_assessments", "Des évaluations ne sont pas publiées.",
          Assessment.objects.filter(school=school, course__year=year, active=True, published=False).count()),
         ("draft_reports", "Des bulletins sont encore en brouillon.",

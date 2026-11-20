@@ -40,3 +40,31 @@ Aucune donnée personnelle d'enfant envoyée à un service externe par défaut. 
 YEM Intelligence inspecte les matricules du registre d'une école (jusqu'à 10 000 codes pour la suggestion) et de la colonne Matricule reconnue dans un fichier d'import. Il détecte les compteurs numériques, zéros initiaux, préfixes ou suffixes fixes et présente jusqu'à huit séries candidates, sans modifier ni réserver de codes. Les identifiants permanents YEM ne sont pas interprétés comme séries locales. Les cas mixtes, les chiffres fixes ambigus et les petits échantillons exigent le choix du gestionnaire. Le moteur local n'appelle aucun fournisseur IA.
 
 Pour un registre importé avec des lignes sans code, choisir et enregistrer la règle dans les paramètres Matricules avant le commit. Le générateur existant réserve les codes renseignés avant de numéroter les lignes vides. Pour une école déjà en activité, les paramètres proposent les séries de ses élèves et utilisent le compteur déjà réservé lorsqu'il est supérieur. La prévisualisation classique et l'enregistrement contrôlent l'ensemble du registre sous les verrous existants. Les propositions calculées sur le fichier seul ne sont pas des garanties de disponibilité ; elles ne modifient jamais la règle automatiquement. Les anciennes séries restent inchangées, aucune déduction automatique d'une année en cours ni réinitialisation annuelle.
+
+
+## Passage des inscriptions à la reprise financière
+
+Après confirmation de l'import des élèves et inscriptions, YEM propose à l'utilisateur habilité de reprendre le classeur quand une année est sélectionnée et que le fichier contient des colonnes financières possibles ou plusieurs feuilles. La transition reprend le fichier en mémoire, l'onglet, la ligne des en-têtes et l'année. La reprise financière relit le fichier sur demande et conserve ses propres permissions, correspondances, aperçu et double validation.
+
+Le moteur local distingue les en-têtes évoquant un versement, un solde, une bourse ou un tarif. Les en-têtes ambigus, dont les noms de mois seuls, restent à qualifier. Les suggestions se limitent aux en-têtes et ne déclenchent aucun rapprochement automatique. La connexion d'un fournisseur externe et l'orchestration IA restent au jalon P1.
+
+Le contrat du moteur d’analyse limite les résultats à une catégorie autorisée par colonne candidate. Le serveur reprend l’analyse déterministe locale si un conseiller simulé échoue ou retourne des catégories ou des indices inattendus. Le conseiller local est le seul raccordé au produit.
+
+
+## Orchestrateur YEM Intelligence
+
+Les écrans de migration et de paramétrage des matricules utilisent le même orchestrateur. La tâche financière peut être testée avec un adaptateur simulé. Celui-ci reçoit les indices candidats et un vocabulaire financier autorisé extrait des en-têtes. Les en-têtes complets, les valeurs du classeur et les matricules restent dans les tâches locales. Les catégories et les indices renvoyés sont validés avant affichage. Une réponse invalide ou une indisponibilité déclenche l'analyse déterministe et un journal technique sans données du classeur.
+
+Le produit instancie l'orchestrateur avec ses traitements locaux. La vue d'ensemble BWETEK, réservée aux super-administrateurs authentifiés par MFA, affiche les tâches disponibles et l'état de raccordement. La gestion des fournisseurs, clés, quotas et budgets reste à intégrer.
+
+### Adaptateurs fournisseurs
+
+Les adaptateurs OpenAI, Gemini et Mistral sont disponibles pour les tests simulés. Le moteur utilisé par YEM continue de fonctionner localement. Chaque adaptateur accepte au plus 24 colonnes d’indices et de mots autorisés. Il demande une réponse JSON de taille bornée et refuse les indices ou catégories inattendus. Une erreur déclenche le repli local. Aucun accès réseau de fournisseur ne fait partie des tests.
+
+Références des formats utilisés : [OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create), [Gemini GenerateContent](https://ai.google.dev/api/generate-content) et [Mistral Chat Completions](https://docs.mistral.ai/api/endpoint/chat).
+
+### Préparation du test Gemini dans BWETEK
+
+La carte YEM Intelligence détecte la présence de YEM_GEMINI_API_KEY (ou GEMINI_API_KEY) et de YEM_GEMINI_MODEL dans le processus Django. Elle affiche un statut de préparation. Les valeurs restent côté serveur. Le bouton de simulation utilise des indices fictifs et une réponse injectée. La simulation vérifie le format et le repli local des colonnes ambiguës. La validité de la clé auprès de Google nécessite un essai réel, absent de ce parcours.
+
+Le test réel hors production se lance avec `python backend/manage.py yem_test_gemini` depuis un environnement explicitement prévu à cet effet. Il émet une seule requête Gemini, avec deux colonnes fictives, et peut consommer du quota ou être facturé selon le projet Google. Le test échoue si le classement attendu est incorrect. Le moteur de l’application reste local pendant et après le test.
