@@ -81,7 +81,7 @@ export default function FinancialMigration({schoolId,tabs,workingYearId}) {
       <Card title="1. Analyser le registre financier" icon="excel">
         <p className="hint">Importez d’abord les élèves et leurs inscriptions. Ce parcours compare des montants cumulés déclarés par tarif ; il ne crée aucun paiement ni reçu. Aucun fournisseur IA externe sollicité.</p>
         <label className="field">Fichier Excel ou CSV
-          <input type="file" accept=".xlsx,.csv" disabled={busy} onChange={e=>{const f=e.target.files?.[0]||null;setFile(f);setMeta(null);setResult(null);setError("");if(f)inspect(f);}}/>
+          <input type="file" accept=".xlsx,.csv" disabled={busy} onChange={e=>{const f=e.target.files?.[0]||null;setFile(f);setSheet("");setHeader(1);setMeta(null);setResult(null);setError("");if(f)inspect(f);}}/>
         </label>
         {file&&<p className="hint">{file.name}</p>}
         {file&&<label className="field">Ligne des en-têtes
