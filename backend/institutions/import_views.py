@@ -26,6 +26,7 @@ from accounts.views import authorized
 from .academic_models import AcademicClass, AcademicYear
 from .enrollment_form import load_config, check_base, clean_answers
 from .import_models import StudentImportBatch, StudentImportProfile
+from .intelligence_import import analyze_import_headers
 from .import_service import FIELDS, normalized, parse_upload, parse_date, parse_gender, suggested_mapping, validate_mapping
 from .models import School, SchoolAdminPolicy
 from .overview_views import gate
@@ -238,6 +239,7 @@ def inspect(request, school_id):
                          "header_row": table["header_row"], "row_count": len(table["rows"]),
                          "samples": [x["cells"] for x in table["rows"][:3]],
                          "suggested_mapping": suggested_mapping(table["headers"], config.get("custom_fields", [])),
+                         "intelligence": analyze_import_headers(table["headers"], config.get("custom_fields", [])),
                          "choices": options(config), "years": years, "classes": classes,
                          "config_revision": revision})
 
