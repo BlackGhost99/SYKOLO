@@ -56,7 +56,7 @@ const pct = (now, before) => { const a = Number(now) || 0, b = Number(before) ||
 const fmtDate = iso => iso ? new Date(iso + (iso.length === 10 ? "T00:00:00" : "")).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
 const METHODS = [["airtel_money", "Airtel Money reçu (manuel)", "mobile"], ["moov_money", "Moov Money reçu (manuel)", "mobile"], ["especes", "Espèces", "cash"], ["virement", "Virement reçu (manuel)", "transfer"]];
-const methodLabel = m => METHODS.find(x => x[0] === m)?.[1] || (m === "mobile_money" ? "Mobile money" : m === "autre" ? "Autre" : m);
+const methodLabel = m => m === "cash" ? "Espèces (historique à rapprocher)" : m === "simulation" ? "Simulation" : METHODS.find(x => x[0] === m)?.[1] || (m === "mobile_money" ? "Mobile money" : m === "autre" ? "Autre" : m);
 const methodIcon = m => METHODS.find(x => x[0] === m)?.[2] || (m === "mobile_money" ? "mobile" : "coins");
 const isMobileMoney = m => m === "airtel_money" || m === "moov_money" || m === "mobile_money";
 const FIN = { a_jour: ["green", "À jour"], partiel: ["yellow", "Partiel"], impaye: ["red", "Impayé"], sans_frais: ["gray", "Sans frais"] };
