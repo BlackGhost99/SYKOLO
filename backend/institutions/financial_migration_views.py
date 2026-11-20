@@ -149,14 +149,28 @@ def migration_read_gate(request, school_id):
 
 
 def batch_data(row, user):
+    approved = row.status == row.STATUS_APPROVED
+    owns_batch = row.prepared_by_id == user.pk
+    can_receive = has_permission(user, row.school, "school.finance.receive")
+    can_approve = has_permission(user, row.school, "school.finance.approve")
+    year_open = row.year.active and row.year.status != AcademicYear.STATUS_CLOSED
     return {"id": str(row.pk), "year": str(row.year_id), "year_name": row.year.name,
             "cutoff": row.cutoff.isoformat(), "status": row.status,
             "source_reference": row.source_reference, "row_count": row.row_count,
             "prepared_at": row.prepared_at.isoformat(),
             "approved_at": row.approved_at.isoformat() if row.approved_at else None,
             "prepared_by_me": row.prepared_by_id == user.pk,
-            "can_approve": row.status == "prepared" and row.prepared_by_id != user.pk and has_permission(user, row.school, "school.finance.approve"),
-            "can_cancel": row.status == "prepared" and row.prepared_by_id == user.pk and has_permission(user, row.school, "school.finance.receive")}
+            "can_approve": row.status == "prepared" and not owns_batch and can_approve,
+            "can_cancel": row.status == "prepared" and owns_batch and can_receive,
+            "can_request_reversal": approved and year_open and owns_batch and can_receive and not row.reversal_requested_by_id,
+            "can_withdraw_reversal": approved and year_open and can_receive and row.reversal_requested_by_id == user.pk,
+            "can_confirm_reversal": approved and year_open and can_approve and bool(
+                row.reversal_requested_by_id and row.reversal_requested_by_id != user.pk
+            ),
+            "reversal_pending": approved and bool(row.reversal_requested_by_id),
+            "reversal_reason": row.reversal_reason,
+            "reversal_evidence": row.reversal_evidence,
+            "reversed_at": row.reversed_at.isoformat() if row.reversed_at else None}
 
 
 def visible_batches(request, school):
@@ -386,14 +400,14 @@ def prepare(request, school_id):
         fingerprint = fingerprints[0]
         existing = HistoricalFinancialMigration.objects.filter(
             school=school, fingerprint__in=fingerprints,
-        ).exclude(status=HistoricalFinancialMigration.STATUS_CANCELLED).order_by("prepared_at").first()
+        ).exclude(status__in=("cancelled", "reversed")).order_by("prepared_at").first()
         if existing:
             return JsonResponse({"batch": str(existing.pk), "status": existing.status,
                                  "idempotent": True, "row_count": existing.row_count})
         while (previous := HistoricalFinancialMigration.objects.filter(
             school=school, fingerprint=fingerprint,
         ).first()):
-            if previous.status != HistoricalFinancialMigration.STATUS_CANCELLED:
+            if previous.status not in (previous.STATUS_CANCELLED, previous.STATUS_REVERSED):
                 return JsonResponse({"batch": str(previous.pk), "status": previous.status,
                                      "idempotent": True, "row_count": previous.row_count})
             fingerprint = migration_fingerprint([fingerprint, str(previous.pk)])
@@ -539,7 +553,7 @@ def cancel(request, school_id, batch_id):
             return JsonResponse({"error": "Lot introuvable."}, status=404)
         if batch.prepared_by_id != request.user.pk:
             return refuse()
-        if batch.status == HistoricalFinancialMigration.STATUS_APPROVED:
+        if batch.status in (batch.STATUS_APPROVED, batch.STATUS_REVERSED):
             return JsonResponse({"error": "Un lot approuvé ne peut pas être annulé par cette opération."}, status=409)
         if batch.status == HistoricalFinancialMigration.STATUS_CANCELLED:
             return JsonResponse({"batch": str(batch.pk), "status": "cancelled", "idempotent": True})
@@ -549,3 +563,69 @@ def cancel(request, school_id, batch_id):
         batch.save(update_fields=["status", "cancelled_at", "cancellation_reason"])
         log_event(school, request, "historical_migration_cancelled", batch.pk)
     return JsonResponse({"batch": str(batch.pk), "status": "cancelled", "idempotent": False})
+
+
+@never_cache
+@require_POST
+@authorized
+def reversal(request, school_id, batch_id, action):
+    if action not in ("request", "withdraw", "confirm"):
+        return JsonResponse({"error": "Opération inconnue."}, status=404)
+    permission = "school.finance.receive" if action != "confirm" else "school.finance.approve"
+    school, error = gate(request, school_id, permission)
+    if error is not None:
+        return error
+    reason = request.POST.get("reason", "").strip()
+    if not 5 <= len(reason) <= 255:
+        return JsonResponse({"error": "Motif ou référence requis (5 à 255 caractères)."}, status=422)
+    with transaction.atomic():
+        School.objects.select_for_update().get(pk=school.pk)
+        batch = HistoricalFinancialMigration.objects.select_for_update().filter(
+            school=school, pk=batch_id,
+        ).first()
+        if batch is None:
+            return JsonResponse({"error": "Lot introuvable."}, status=404)
+        if action != "confirm" and batch.prepared_by_id != request.user.pk:
+            return refuse()
+        if action == "confirm" and batch.reversal_requested_by_id == request.user.pk:
+            return refuse()
+        if batch.status == batch.STATUS_REVERSED:
+            return JsonResponse({"batch": str(batch.pk), "status": batch.status, "idempotent": True})
+        if batch.status != batch.STATUS_APPROVED:
+            return JsonResponse({"error": "Seul un lot approuvé peut être contrepassé."}, status=409)
+        year = AcademicYear.objects.select_for_update().filter(
+            school=school, pk=batch.year_id, active=True,
+        ).exclude(status=AcademicYear.STATUS_CLOSED).first()
+        if year is None:
+            return JsonResponse({"error": "Année scolaire clôturée ou inactive."}, status=409)
+        if action == "request":
+            if batch.reversal_requested_by_id:
+                return JsonResponse({"batch": str(batch.pk), "status": "reversal_pending", "idempotent": True})
+            batch.reversal_requested_by = request.user
+            batch.reversal_requested_at = timezone.now()
+            batch.reversal_reason = reason
+            batch.save(update_fields=["reversal_requested_by", "reversal_requested_at", "reversal_reason"])
+            log_event(school, request, "historical_reversal_requested", batch.pk)
+            status = "reversal_pending"
+        elif action == "withdraw":
+            if not batch.reversal_requested_by_id:
+                return JsonResponse({"batch": str(batch.pk), "status": batch.status, "idempotent": True})
+            log_event(school, request, "historical_reversal_withdrawn", batch.pk, {
+                "request_reason": batch.reversal_reason, "withdrawal_reason": reason,
+            })
+            batch.reversal_requested_by = None
+            batch.reversal_requested_at = None
+            batch.reversal_reason = ""
+            batch.save(update_fields=["reversal_requested_by", "reversal_requested_at", "reversal_reason"])
+            status = batch.status
+        else:
+            if not batch.reversal_requested_by_id:
+                return JsonResponse({"error": "Demande de contrepassation requise."}, status=409)
+            batch.status = batch.STATUS_REVERSED
+            batch.reversed_by = request.user
+            batch.reversed_at = timezone.now()
+            batch.reversal_evidence = reason
+            batch.save(update_fields=["status", "reversed_by", "reversed_at", "reversal_evidence"])
+            log_event(school, request, "historical_reversal_confirmed", batch.pk)
+            status = batch.status
+    return JsonResponse({"batch": str(batch.pk), "status": status, "idempotent": False})

@@ -37,6 +37,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/imports/finance/<uuid:batch_id>", financial_migration_views.batch_detail),
     path("schools/<uuid:school_id>/imports/finance/<uuid:batch_id>/approve", financial_migration_views.approve),
     path("schools/<uuid:school_id>/imports/finance/<uuid:batch_id>/cancel", financial_migration_views.cancel),
+    path("schools/<uuid:school_id>/imports/finance/<uuid:batch_id>/reversal/<str:action>", financial_migration_views.reversal),
     path("schools/<uuid:school_id>/imports/students/profiles", import_views.profiles),
     path("schools/<uuid:school_id>/imports/students/export", import_views.export_students),
     path("schools/<uuid:school_id>/imports/students/inspect", import_views.inspect),

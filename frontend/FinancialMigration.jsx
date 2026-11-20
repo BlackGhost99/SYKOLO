@@ -11,6 +11,7 @@ const columnHints = {
   balance:"Solde possible", scholarship:"Bourse ou remise possible", billing:"Frais ou échéance possible",
   payment_candidate:"Versement possible", ambiguous:"Montant à identifier",
 };
+const batchStatus = batch => batch.reversal_pending ? "Contrepassation à approuver" : ({prepared:"À approuver",approved:"Approuvé",cancelled:"Annulé",reversed:"Contrepassé"})[batch.status];
 const money = value => value == null ? "—" : new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2}).format(Number(value))+" FCFA";
 
 export default function FinancialMigration({schoolId,tabs,workingYearId,source}) {
@@ -91,7 +92,13 @@ export default function FinancialMigration({schoolId,tabs,workingYearId,source})
     setBusy(true);setError("");setMessage("");
     try{
       await send(activeLot.id+"/"+action,null,"",1,{reason:reason.trim()});
-      setMessage(action==="approve"?"Lot approuvé : crédits historiques distincts des encaissements.":"Lot annulé sans écriture financière.");
+      setMessage({
+        approve:"Lot approuvé. Les crédits historiques sont intégrés aux soldes.",
+        cancel:"Lot préparé annulé.",
+        "reversal/request":"Contrepassation demandée. Les soldes sont inchangés en attendant l’approbation.",
+        "reversal/withdraw":"Demande de contrepassation retirée.",
+        "reversal/confirm":"Contrepassation approuvée. Les soldes ont été recalculés.",
+      }[action]);
       setReason("");setConfirmed(false);lots.reload();lot.reload();
     }catch(e){setError(e.message);}finally{setBusy(false);}
   }
@@ -117,20 +124,25 @@ export default function FinancialMigration({schoolId,tabs,workingYearId,source})
         {lots.error&&<p role="alert">{lots.error}</p>}
         <Button type="button" disabled={busy||lots.loading} onClick={()=>lots.reload()}>Actualiser les lots</Button>
         {(lots.data?.batches||[]).map(b=><div key={b.id} style={{padding:"10px 0"}}>
-          <p><strong>{b.source_reference}</strong> · {b.year_name} · {b.row_count} lignes · {({prepared:"À approuver",approved:"Approuvé",cancelled:"Annulé"})[b.status]||b.status}</p>
+          <p><strong>{b.source_reference}</strong> · {b.year_name} · {b.row_count} lignes · {batchStatus(b)}</p>
           <Button type="button" disabled={busy} onClick={()=>chooseBatch(b.id)}>Examiner le lot</Button>
         </div>)}
         {lots.data&&!lots.data.batches.length&&<p className="hint">Aucun lot disponible.</p>}
         {lot.error&&<p role="alert">{lot.error}</p>}
         {activeLot&&<section aria-label="Détail du lot">
-          <h4>{activeLot.source_reference}</h4><p>Reprise au {activeLot.cutoff} · {activeLot.year_name} · {activeLot.status}</p>
+          <h4>{activeLot.source_reference}</h4><p>Reprise au {activeLot.cutoff} · {activeLot.year_name} · {batchStatus(activeLot)}</p>
           <div style={{maxWidth:"100%",overflowX:"auto",maxHeight:"420px",overflowY:"auto"}}><table style={{width:"100%"}}><thead><tr>{["Ligne","Matricule","Tarif","Dû net","Déclaré","Bourse"].map(h=><th key={h} scope="col">{h}</th>)}</tr></thead><tbody>{activeLot.entries.map((e,i)=><tr key={i}><td>{e.line}</td><td>{e.student_code}</td><td>{e.schedule}</td><td>{money(e.net_due)}</td><td>{money(e.declared)}</td><td>{money(e.scholarship)}</td></tr>)}</tbody></table></div>
-          {(activeLot.can_approve||activeLot.can_cancel)&&<>
-            <label className="field">Référence du justificatif comptable ou motif d’annulation<textarea rows={3} maxLength={255} disabled={busy} value={reason} onChange={e=>setReason(e.target.value)}/></label>
+          {activeLot.reversal_reason&&<p>Motif de contrepassation demandé · {activeLot.reversal_reason}</p>}
+          {activeLot.reversal_evidence&&<p>Référence d’approbation · {activeLot.reversal_evidence}</p>}
+          {(activeLot.can_approve||activeLot.can_cancel||activeLot.can_request_reversal||activeLot.can_confirm_reversal||activeLot.can_withdraw_reversal)&&<>
+            <label className="field">Motif ou référence du justificatif<textarea rows={3} maxLength={255} disabled={busy} value={reason} onChange={e=>setReason(e.target.value)}/></label>
             <label><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> Je confirme avoir contrôlé ce lot et ses justificatifs.</label>
             <div className="actions">
               {activeLot.can_approve&&<Button type="button" disabled={busy||!confirmed||reason.trim().length<5} onClick={()=>decide("approve")}>Approuver la reprise historique</Button>}
               {activeLot.can_cancel&&<Button type="button" disabled={busy||!confirmed||reason.trim().length<5} onClick={()=>decide("cancel")}>Annuler le lot préparé</Button>}
+              {activeLot.can_request_reversal&&<Button type="button" disabled={busy||!confirmed||reason.trim().length<5} onClick={()=>decide("reversal/request")}>Demander la contrepassation</Button>}
+              {activeLot.can_confirm_reversal&&<Button type="button" disabled={busy||!confirmed||reason.trim().length<5} onClick={()=>decide("reversal/confirm")}>Approuver le retrait des crédits historiques</Button>}
+              {activeLot.can_withdraw_reversal&&<Button type="button" disabled={busy||!confirmed||reason.trim().length<5} onClick={()=>decide("reversal/withdraw")}>Retirer la demande</Button>}
             </div>
           </>}
           {!activeLot.can_approve&&activeLot.status==="prepared"&&<p className="hint">Approbation réservée à un comptable distinct du préparateur.</p>}

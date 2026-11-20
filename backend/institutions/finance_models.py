@@ -133,6 +133,7 @@ class HistoricalFinancialMigration(models.Model):
     STATUS_PREPARED = "prepared"
     STATUS_APPROVED = "approved"
     STATUS_CANCELLED = "cancelled"
+    STATUS_REVERSED = "reversed"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="historical_migrations")
@@ -154,6 +155,19 @@ class HistoricalFinancialMigration(models.Model):
     cancelled_at = models.DateTimeField(null=True, blank=True)
     cancellation_reason = models.CharField(max_length=1000, blank=True)
 
+    reversal_requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="historical_reversals_requested",
+    )
+    reversal_requested_at = models.DateTimeField(null=True, blank=True)
+    reversal_reason = models.CharField(max_length=255, blank=True)
+    reversed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="historical_reversals_approved",
+    )
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversal_evidence = models.CharField(max_length=255, blank=True)
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -161,7 +175,7 @@ class HistoricalFinancialMigration(models.Model):
                 name="unique_school_historical_migration_fingerprint",
             ),
             models.CheckConstraint(
-                condition=Q(status__in=["prepared", "approved", "cancelled"]),
+                condition=Q(status__in=["prepared", "approved", "cancelled", "reversed"]),
                 name="historical_migration_status",
             ),
         ]
