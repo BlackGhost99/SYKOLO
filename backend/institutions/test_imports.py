@@ -85,6 +85,20 @@ class StudentImportTests(TestCase):
         self.assertTrue(repeated.json()["already_imported"])
         self.assertEqual(Student.objects.count(), 1)
 
+    def test_intelligence_detects_financial_columns_without_financial_writes(self):
+        self.client.force_login(self.secretary)
+        data = "Nom;Prénoms;Date inscription;Septembre;Montant payé;Bourse;Observation\nNZE;Aaron;2026-11-01;50000;25000;0;à vérifier"
+        result = self.request("inspect", file=SimpleUploadedFile("migration.csv", data.encode("utf-8")))
+        self.assertEqual(result.status_code, 200, result.content)
+        info = result.json()
+        self.assertEqual(info["suggested_mapping"]["2"], "admission_date")
+        self.assertEqual(info["intelligence"]["financial_columns"], [3, 4, 5])
+        self.assertEqual(info["intelligence"]["unmapped_columns"], [6])
+        self.assertFalse(info["intelligence"]["external_provider_used"])
+        self.assertFalse(info["intelligence"]["financial_import_available"])
+        self.assertFalse(Student.objects.exists())
+        self.assertFalse(FeeCharge.objects.exists())
+
     def test_import_reserves_existing_numbers_before_numbering_blank_rows(self):
         self.client.force_login(self.secretary)
         rule = StudentNumbering.objects.create(school=self.school, enabled=True, template="{n}/A")
