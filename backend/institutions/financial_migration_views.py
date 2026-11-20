@@ -5,9 +5,11 @@ No payment, balance adjustment, admission fee or receipt is created here.
 """
 import json
 import re
+import hashlib
 from collections import Counter
 from decimal import Decimal
 from uuid import UUID
+from django.db import transaction
 
 from django.http import JsonResponse
 from django.utils import timezone
@@ -18,7 +20,13 @@ from accounts.views import authorized
 from .academic_models import AcademicYear
 from .admission_scholarship_amounts import tuition_discount
 from .finance_evidence import explicit_demo
-from .finance_models import FeeCharge, FeeSchedule
+from .finance_models import (
+    FeeCharge,
+    FeeSchedule,
+    HistoricalFinancialMigration,
+    HistoricalFinancialMigrationEntry,
+    HistoricalFeeAdjustment,
+)
 from .finance_views import cleared_total, gate, iso_day
 from .import_views import inputs
 from .import_service import suggested_mapping
@@ -194,3 +202,199 @@ def preview(request, school_id):
         "cutoff": cutoff.isoformat(), "rows": reports, "counts": dict(counts),
         "notice": "Aucun frais, paiement, reçu ni solde modifié. Montants déclarés à justifier.",
     })
+
+
+def preview_data(school, school_id, request):
+    table = inputs(request)
+    raw = request.POST.get("mapping", "")
+    if len(raw) > 10000:
+        raise ValueError("Correspondances trop volumineuses.")
+    year = AcademicYear.objects.filter(
+        pk=UUID(request.POST.get("year", "")), school=school, active=True,
+    ).exclude(status=AcademicYear.STATUS_CLOSED).first()
+    if year is None:
+        raise ValueError("Année ouverte introuvable.")
+    cutoff = iso_day(request.POST.get("cutoff", ""))
+    if not year.start_date <= cutoff <= min(year.end_date, timezone.localdate()):
+        raise ValueError("Date de reprise hors année ou future.")
+    code_index, pairs = mapped_schedules(school, year, table, json.loads(raw))
+
+    upload = request.FILES.get("file")
+    upload.seek(0)
+    payload = upload.read()
+    upload.seek(0)
+    canonical = json.dumps({
+        "year": str(year.pk), "cutoff": cutoff.isoformat(), "mapping": json.loads(raw),
+        "file": hashlib.sha256(payload).hexdigest(),
+    }, sort_keys=True, separators=(",", ":"))
+    fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    codes = Counter(row["cells"][code_index].casefold() for row in table["rows"])
+    entries = []
+    reports = []
+    for row in table["rows"]:
+        code = row["cells"][code_index]
+        enrollments = list(Enrollment.objects.filter(
+            school=school, year=year, active=True, student__school=school,
+            student__active=True, student__student_code__iexact=code,
+            classroom__school=school, classroom__year=year,
+        ).select_related("student")[:2]) if code and codes[code.casefold()] == 1 else []
+        if len(enrollments) != 1:
+            reports.append({"line": row["line"], "status": "identity_review", "cells": []})
+            continue
+        enrollment = enrollments[0]
+        cells = []
+        for col, schedule in pairs:
+            try:
+                item = cell_preview(school, enrollment, schedule, row["cells"][col], cutoff)
+            except ValueError as exc:
+                item = {"status": "invalid", "error": str(exc)}
+            cells.append({"column": col, "schedule": str(schedule.pk), **item})
+            if item["status"] in {"proposed", "zero", "unknown"}:
+                entries.append({
+                    "line": row["line"], "enrollment": enrollment, "schedule": schedule,
+                    "state": item["status"], "declared": None if item["declared"] is None else Decimal(item["declared"]),
+                    "net_due": Decimal(item["net_due"]), "scholarship": Decimal(item["scholarship"]),
+                    "evidence_reference": "",
+                })
+        reports.append({"line": row["line"], "status": "resolved", "cells": cells})
+    return year, cutoff, fingerprint, upload.name, table, reports, entries
+
+
+@never_cache
+@require_POST
+@authorized
+def prepare(request, school_id):
+    school, error = gate(request, school_id, "school.finance.receive")
+    if error is not None:
+        return error
+    try:
+        year, cutoff, fingerprint, source_name, table, reports, entries = preview_data(
+            school, school_id, request
+        )
+    except (ValueError, TypeError, KeyError) as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+    if any(row["status"] == "identity_review" for row in reports):
+        return JsonResponse({"error": "Régularisez les identités avant préparation."}, status=422)
+    if any(
+        item["status"] in {"invalid", "overpayment", "existing_review"}
+        for row in reports for item in row["cells"]
+    ):
+        return JsonResponse({"error": "Aucun montant invalide, dépassé ou déjà comptabilisé ne peut être préparé."}, status=422)
+
+    existing = HistoricalFinancialMigration.objects.filter(
+        school=school, fingerprint=fingerprint
+    ).first()
+    if existing:
+        return JsonResponse({"batch": str(existing.pk), "status": existing.status,
+                             "idempotent": True, "row_count": existing.row_count})
+    with transaction.atomic():
+        batch = HistoricalFinancialMigration.objects.create(
+            school=school, year=year, cutoff=cutoff, fingerprint=fingerprint,
+            source_reference=source_name[:255], row_count=len(table["rows"]),
+            prepared_by=request.user,
+        )
+        for entry in entries:
+            HistoricalFinancialMigrationEntry.objects.create(
+                batch=batch, school=school, enrollment=entry["enrollment"],
+                schedule=entry["schedule"], source_row=entry["line"],
+                state=entry["state"], declared_amount=entry["declared"],
+                net_due=entry["net_due"], scholarship=entry["scholarship"],
+                evidence_reference=entry["evidence_reference"],
+            )
+    return JsonResponse({"batch": str(batch.pk), "status": batch.status,
+                         "idempotent": False, "row_count": batch.row_count})
+
+
+@never_cache
+@require_POST
+@authorized
+def approve(request, school_id, batch_id):
+    school, error = gate(request, school_id, "school.finance.approve")
+    if error is not None:
+        return error
+    reason = request.POST.get("reason", "").strip()
+    if len(reason) < 5:
+        return JsonResponse({"error": "Justificatif comptable requis."}, status=422)
+    try:
+        with transaction.atomic():
+            batch = HistoricalFinancialMigration.objects.select_for_update().filter(
+                school=school, pk=batch_id
+            ).first()
+            if batch is None:
+                return JsonResponse({"error": "Lot introuvable."}, status=404)
+            if batch.status == HistoricalFinancialMigration.STATUS_APPROVED:
+                return JsonResponse({"batch": str(batch.pk), "status": "approved", "idempotent": True})
+            if batch.status != HistoricalFinancialMigration.STATUS_PREPARED:
+                return JsonResponse({"error": "Lot annulé ou déjà clôturé."}, status=409)
+            if batch.prepared_by_id == request.user.pk:
+                return JsonResponse({"error": "Le préparateur ne peut pas approuver son propre lot."}, status=403)
+            if batch.year.status == AcademicYear.STATUS_CLOSED:
+                return JsonResponse({"error": "Année scolaire clôturée."}, status=409)
+
+            entries = list(batch.entries.select_for_update().select_related(
+                "enrollment", "schedule", "charge"
+            ))
+            for entry in entries:
+                if entry.schedule.classroom_id and entry.schedule.classroom_id != entry.enrollment.classroom_id:
+                    raise ValueError("Tarif incompatible avec la classe.")
+                if entry.schedule.due_date and entry.schedule.due_date > batch.cutoff:
+                    raise ValueError("Échéance postérieure à la date de reprise.")
+                charge = FeeCharge.objects.select_for_update().filter(
+                    school=school, enrollment=entry.enrollment, schedule=entry.schedule
+                ).first()
+                if charge is None:
+                    charge = FeeCharge.objects.create(
+                        school=school, enrollment=entry.enrollment, schedule=entry.schedule,
+                        label=entry.schedule.label, amount=entry.schedule.amount,
+                        scholarship_discount=entry.scholarship,
+                        currency=entry.schedule.currency, due_date=entry.schedule.due_date,
+                        created_by=batch.prepared_by,
+                    )
+                elif cleared_total(charge) != 0:
+                    raise ValueError("Des paiements ou ajustements existent déjà pour ce frais.")
+                entry.charge = charge
+                entry.save(update_fields=["charge"])
+                if entry.state == "proposed" and entry.declared_amount:
+                    if entry.declared_amount > charge.amount - charge.scholarship_discount:
+                        raise ValueError("Montant historique supérieur au dû.")
+                    HistoricalFeeAdjustment.objects.create(
+                        school=school, batch=batch, charge=charge,
+                        amount=entry.declared_amount, currency=charge.currency,
+                        cutoff=batch.cutoff, evidence_reference=reason[:255],
+                        approved_by=request.user,
+                    )
+            batch.status = HistoricalFinancialMigration.STATUS_APPROVED
+            batch.approved_by = request.user
+            batch.approved_at = timezone.now()
+            batch.save(update_fields=["status", "approved_by", "approved_at"])
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+    return JsonResponse({"batch": str(batch.pk), "status": "approved", "idempotent": False})
+
+
+@never_cache
+@require_POST
+@authorized
+def cancel(request, school_id, batch_id):
+    school, error = gate(request, school_id, "school.finance.receive")
+    if error is not None:
+        return error
+    reason = request.POST.get("reason", "").strip()
+    if len(reason) < 5:
+        return JsonResponse({"error": "Motif d'annulation requis."}, status=422)
+    with transaction.atomic():
+        batch = HistoricalFinancialMigration.objects.select_for_update().filter(
+            school=school, pk=batch_id
+        ).first()
+        if batch is None:
+            return JsonResponse({"error": "Lot introuvable."}, status=404)
+        if batch.status == HistoricalFinancialMigration.STATUS_APPROVED:
+            return JsonResponse({"error": "Un lot approuvé ne peut pas être annulé par cette opération."}, status=409)
+        if batch.status == HistoricalFinancialMigration.STATUS_CANCELLED:
+            return JsonResponse({"batch": str(batch.pk), "status": "cancelled", "idempotent": True})
+        batch.status = HistoricalFinancialMigration.STATUS_CANCELLED
+        batch.cancelled_at = timezone.now()
+        batch.cancellation_reason = reason[:1000]
+        batch.save(update_fields=["status", "cancelled_at", "cancellation_reason"])
+    return JsonResponse({"batch": str(batch.pk), "status": "cancelled", "idempotent": False})

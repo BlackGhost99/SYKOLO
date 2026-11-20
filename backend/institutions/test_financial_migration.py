@@ -10,7 +10,13 @@ from django.test import TestCase
 from django.utils import timezone
 
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
-from .finance_models import FeeCharge, FeeSchedule, FeePayment
+from .finance_models import (
+    FeeCharge,
+    FeeSchedule,
+    FeePayment,
+    HistoricalFinancialMigration,
+    HistoricalFeeAdjustment,
+)
 from .models import Organization, School, SchoolMember, SchoolRole
 from .services import ROLE_TEMPLATES
 from .student_models import Enrollment, Student
@@ -95,6 +101,84 @@ class FinancialMigrationPreviewTests(TestCase):
         mapping = json.dumps({"student_code": 0, "amounts": [{"column": 1, "schedule": str(foreign_tariff.pk)}]})
         self.assertEqual(self.preview(mapping=mapping).status_code, 422)
         self.assertEqual(self.preview(year=str(other_year.pk)).status_code, 422)
+        self.assertFalse(FeeCharge.objects.exists())
+
+    def test_prepare_approve_and_repeat_are_atomic_and_not_receipts(self):
+        self.client.force_login(self.econome)
+        data = {
+            "file": SimpleUploadedFile("historique.csv", "Matricule;Octobre\n0001;25000".encode("utf-8")),
+            "year": str(self.year.pk),
+            "cutoff": self.today.isoformat(),
+            "mapping": json.dumps({"student_code": 0, "amounts": [{"column": 1, "schedule": str(self.tariff.pk)}]}),
+        }
+        prepared = self.client.post(
+            f"/api/v1/schools/{self.school.pk}/imports/finance/prepare", data
+        )
+        self.assertEqual(prepared.status_code, 200, prepared.content)
+        batch_id = prepared.json()["batch"]
+        self.assertEqual(HistoricalFinancialMigration.objects.count(), 1)
+        self.assertFalse(FeeCharge.objects.exists())
+        self.assertFalse(FeePayment.objects.exists())
+        self.assertFalse(HistoricalFeeAdjustment.objects.exists())
+
+        data["file"] = SimpleUploadedFile(
+            "historique.csv", "Matricule;Octobre\n0001;25000".encode("utf-8")
+        )
+        repeated = self.client.post(
+            f"/api/v1/schools/{self.school.pk}/imports/finance/prepare", data
+        )
+        self.assertEqual(repeated.status_code, 200, repeated.content)
+        self.assertTrue(repeated.json()["idempotent"])
+        self.assertEqual(HistoricalFinancialMigration.objects.count(), 1)
+
+        approved_as_preparer = self.client.post(
+            f"/api/v1/schools/{self.school.pk}/imports/finance/{batch_id}/approve",
+            {"reason": "Justificatif historique vérifié"},
+        )
+        self.assertEqual(approved_as_preparer.status_code, 403)
+
+        self.client.force_login(self.comptabilite)
+        approved = self.client.post(
+            f"/api/v1/schools/{self.school.pk}/imports/finance/{batch_id}/approve",
+            {"reason": "Justificatif historique vérifié"},
+        )
+        self.assertEqual(approved.status_code, 200, approved.content)
+        self.assertFalse(approved.json()["idempotent"])
+        charge = FeeCharge.objects.get(school=self.school, enrollment=self.enrollment)
+        adjustment = HistoricalFeeAdjustment.objects.get(batch_id=batch_id, charge=charge)
+        self.assertEqual(adjustment.amount, Decimal("25000"))
+        self.assertFalse(FeePayment.objects.exists())
+        from .finance_views import cleared_total
+        self.assertEqual(cleared_total(charge), Decimal("25000"))
+
+        repeated = self.client.post(
+            f"/api/v1/schools/{self.school.pk}/imports/finance/{batch_id}/approve",
+            {"reason": "Justificatif historique vérifié"},
+        )
+        self.assertEqual(repeated.status_code, 200, repeated.content)
+        self.assertTrue(repeated.json()["idempotent"])
+        self.assertEqual(HistoricalFeeAdjustment.objects.count(), 1)
+        self.assertFalse(FeePayment.objects.exists())
+
+    def test_cancel_prepared_batch_and_closed_year_guard(self):
+        self.client.force_login(self.econome)
+        data = {
+            "file": SimpleUploadedFile("historique.csv", "Matricule;Octobre\n0001;25000".encode("utf-8")),
+            "year": str(self.year.pk),
+            "cutoff": self.today.isoformat(),
+            "mapping": json.dumps({"student_code": 0, "amounts": [{"column": 1, "schedule": str(self.tariff.pk)}]}),
+        }
+        prepared = self.client.post(
+            f"/api/v1/schools/{self.school.pk}/imports/finance/prepare", data
+        )
+        batch_id = prepared.json()["batch"]
+        cancelled = self.client.post(
+            f"/api/v1/schools/{self.school.pk}/imports/finance/{batch_id}/cancel",
+            {"reason": "Justificatif incomplet"},
+        )
+        self.assertEqual(cancelled.status_code, 200, cancelled.content)
+        batch = HistoricalFinancialMigration.objects.get(pk=batch_id)
+        self.assertEqual(batch.status, HistoricalFinancialMigration.STATUS_CANCELLED)
         self.assertFalse(FeeCharge.objects.exists())
 
     def test_inspection_is_accounting_only_and_filters_tariffs(self):

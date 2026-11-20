@@ -109,7 +109,12 @@ def cleared_total(charge):
     value = FeePayment.objects.filter(charge=charge, void__isnull=True).aggregate(
         total=Sum("amount")
     )["total"]
-    return value or Decimal("0.00")
+    value = value or Decimal("0.00")
+    from .finance_models import HistoricalFeeAdjustment
+    opening = HistoricalFeeAdjustment.objects.filter(
+        charge=charge, batch__status="approved"
+    ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    return value + opening
 
 
 def charge_data(row):

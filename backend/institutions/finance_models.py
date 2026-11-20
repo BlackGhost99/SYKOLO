@@ -124,6 +124,100 @@ class FeePaymentBatch(models.Model):
             raise ValidationError("Inscription étrangère à l'établissement.")
 
 
+class HistoricalFinancialMigration(models.Model):
+    """Audited historical opening balance batch.
+
+    Positive declared amounts are opening credits, never FeePayment receipts.
+    """
+
+    STATUS_PREPARED = "prepared"
+    STATUS_APPROVED = "approved"
+    STATUS_CANCELLED = "cancelled"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="historical_migrations")
+    year = models.ForeignKey(AcademicYear, on_delete=models.PROTECT, related_name="historical_migrations")
+    cutoff = models.DateField()
+    fingerprint = models.CharField(max_length=64)
+    status = models.CharField(max_length=16, default=STATUS_PREPARED)
+    source_reference = models.CharField(max_length=255)
+    row_count = models.PositiveIntegerField(default=0)
+    prepared_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="historical_migrations_prepared"
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="historical_migrations_approved",
+    )
+    prepared_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancellation_reason = models.CharField(max_length=1000, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "fingerprint"],
+                name="unique_school_historical_migration_fingerprint",
+            ),
+            models.CheckConstraint(
+                condition=Q(status__in=["prepared", "approved", "cancelled"]),
+                name="historical_migration_status",
+            ),
+        ]
+
+
+class HistoricalFinancialMigrationEntry(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(
+        HistoricalFinancialMigration, on_delete=models.PROTECT, related_name="entries"
+    )
+    school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="historical_migration_entries")
+    enrollment = models.ForeignKey(Enrollment, on_delete=models.PROTECT, related_name="historical_migration_entries")
+    schedule = models.ForeignKey(FeeSchedule, on_delete=models.PROTECT, related_name="historical_migration_entries")
+    charge = models.ForeignKey(
+        "FeeCharge", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="historical_migration_entries",
+    )
+    source_row = models.PositiveIntegerField()
+    state = models.CharField(max_length=32)
+    declared_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    net_due = models.DecimalField(max_digits=12, decimal_places=2)
+    scholarship = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    evidence_reference = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class HistoricalFeeAdjustment(models.Model):
+    """Approved opening credit. It changes balances but not today's cash or receipts."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="historical_fee_adjustments")
+    batch = models.ForeignKey(
+        HistoricalFinancialMigration, on_delete=models.PROTECT, related_name="fee_adjustments"
+    )
+    charge = models.ForeignKey(
+        "FeeCharge", on_delete=models.PROTECT, related_name="historical_adjustments"
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=3)
+    cutoff = models.DateField()
+    evidence_reference = models.CharField(max_length=255)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="historical_fee_adjustments"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["batch", "charge"],
+                name="unique_historical_migration_charge",
+            ),
+            models.CheckConstraint(condition=Q(amount__gt=0), name="historical_adjustment_positive"),
+        ]
+
+
 class FeePayment(models.Model):
     """Immutable receipt entry for money manually confirmed by authorized staff."""
 
