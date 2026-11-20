@@ -33,12 +33,51 @@ function useData(path, deps = []) {
   useEffect(() => {
     let live = true;
     setState(s => ({ ...s, loading: true }));
-    api(path).then(data => live && setState({ data, error: "", loading: false })).catch(e => live && setState({ data: null, error: e.message, loading: false }));
+    api(path).then(data => live && setState({ data, error: "", loading: false, path })).catch(e => live && setState({ data: null, error: e.message, loading: false, path }));
     return () => { live = false; };
   }, [path, tick, ...deps]);
-  return { ...state, reload: () => setTick(t => t + 1) };
+  return { ...state, current: state.path === path && !state.loading, reload: () => setTick(t => t + 1) };
 }
 
+function useSearchFilters(extra = {}) {
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [classroom, setClassroom] = useState("");
+  const [page, setPage] = useState(1);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+  function search(value) { setQuery(value); setPage(1); }
+  function chooseClass(value) { setClassroom(value); setPage(1); }
+  function reset() { setQuery(""); setDebounced(""); setClassroom(""); setPage(1); }
+  return {query, classroom, page, setPage, search, chooseClass, reset,
+    params: new URLSearchParams({q:debounced, classroom, page:String(page), ...extra}).toString(),
+    typing: query.trim() !== debounced};
+}
+function SearchControls({filters, classes, label, disabled=false}) {
+  return <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8}}>
+    <div style={{flex:"1 1 220px",minWidth:0}}>
+      <label className="yd-label" htmlFor={"search-"+label}>Rechercher {label}</label>
+      <div className="yd-input"><Icon name="search" size={18}/><input id={"search-"+label} type="search" placeholder="Nom, prénom ou matricule" maxLength={120} value={filters.query} disabled={disabled} onChange={e=>filters.search(e.target.value)}/></div>
+    </div>
+    <div style={{flex:"1 1 150px",minWidth:0}}>
+      <label className="yd-label" htmlFor={"class-"+label}>Classe</label>
+      <div className="yd-input"><select id={"class-"+label} aria-label={"Classe — "+label} value={filters.classroom} disabled={disabled} onChange={e=>filters.chooseClass(e.target.value)}>
+        <option value="">Toutes les classes</option>
+        {classes.map(cl=><option key={cl.id} value={cl.id}>{cl.name}</option>)}
+      </select></div>
+    </div>
+  </div>;
+}
+function SearchPages({total, page, size=25, onPage, disabled=false}) {
+  const pages = Math.max(1,Math.ceil(total/size));
+  return <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,margin:"8px 0"}}>
+    <span role="status" className="yd-card-sub">{total} résultat{total===1?"":"s"} · Page {page}/{pages}</span>
+    {pages>1&&<><button type="button" className="yd-btn" disabled={disabled||page<=1} onClick={()=>onPage(page-1)}>Précédent</button>
+    <button type="button" className="yd-btn" disabled={disabled||page>=pages} onClick={()=>onPage(page+1)}>Suivant</button></>}
+  </div>;
+}
 const nf = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const num = v => nf.format(Math.round(Number(v) || 0)).replace(/ | /g, " ");
 const cur = c => (!c || c === "XAF" || c === "XOF") ? "FCFA" : c;
@@ -185,8 +224,14 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
-  const roster = useData(`schools/${schoolId}/overview/students?year=${encodeURIComponent(viewYear)}`);
   const [enrollment, setEnrollment] = useState(params?.enrollment || "");
+  const filters = useSearchFilters({payment_search:"1",selected:enrollment});
+  const roster = useData(`schools/${schoolId}/overview/students?year=${encodeURIComponent(viewYear)}&${filters.params}`);
+  const scope = useRef(schoolId+"/"+viewYear);
+  useEffect(()=>{
+    const next=schoolId+"/"+viewYear;
+    if(scope.current!==next){scope.current=next;setEnrollment("");filters.reset();setLoadedEnrollment("");setAmount(null);setMessage("");setReceiptUrl("");}
+  },[schoolId,viewYear]);
   const [charges, setCharges] = useState([]);
   const [picked, setPicked] = useState({});
   const [method, setMethod] = useState("especes");
@@ -198,10 +243,12 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   const [message, setMessage] = useState("");
   const [pendingOperation, setPendingOperation] = useState(null);
   const [receiptUrl, setReceiptUrl] = useState("");
-  const enrolled = (roster.data?.students || []).filter(s => s.active && s.enrollment);
-  const student = enrolled.find(s => s.enrollment.id === enrollment);
+  const enrolled = roster.current && !filters.typing ? (roster.data?.students || []).filter(s => s.active && s.enrollment) : [];
+  const retained = roster.current && roster.data?.selected?.enrollment?.id === enrollment ? roster.data.selected : null;
+  const student = enrolled.find(s => s.enrollment.id === enrollment) || retained;
+  const options = retained && !enrolled.some(s=>s.enrollment.id===enrollment) ? [retained,...enrolled] : enrolled;
   useEffect(() => {
-    if (!enrollment || !canReceive) return;
+    if (!student || !enrollment || !canReceive) return;
     let live = true;
     setLoadedEnrollment("");
     setChargeError("");
@@ -213,8 +260,8 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
       setLoadedEnrollment(enrollment);
     }).catch(e => { if (live) setChargeError(e.message); });
     return () => { live = false; };
-  }, [schoolId, enrollment, canReceive, chargeVersion]);
-  const issuedCharges = loadedEnrollment === enrollment ? charges : [];
+  }, [schoolId, viewYear, enrollment, student?.enrollment.id, canReceive, chargeVersion]);
+  const issuedCharges = student && loadedEnrollment === enrollment ? charges : [];
   const openCharges = openFeesByDate(issuedCharges);
   const selected = openCharges.filter(c => picked[c.id]);
   const dueCents = selected.reduce((total, charge) => total + Math.round(Number(charge.balance) * 100), 0);
@@ -225,7 +272,7 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   const currency = selected[0]?.currency || fin.data?.currency;
   const remaining = openCharges.filter(c => c.currency === currency).reduce((a, c) => a + Number(c.balance), 0) - (validAmount ? enteredCents / 100 : 0);
   async function submit() {
-    if (!enrollment || !selected.length || !validAmount) {
+    if (!student || !enrollment || !selected.length || !validAmount) {
       setMessage("Montant invalide : choisissez les frais et un montant positif qui ne dépasse pas le solde."); return;
     }
     if (new Set(selected.map(c => c.currency)).size !== 1) {
@@ -277,9 +324,13 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
       </div>
       <div className="yd-grid payments-grid">
         <Card title="Nouvel encaissement" subtitle="Frais scolaires d’un élève déjà inscrit" icon="card" className="payment-form">
+            <SearchControls filters={filters} classes={roster.data?.classes||[]} label="un élève" disabled={busy}/>
             <label className="yd-label" htmlFor="pay-student">Élève <i>*</i></label>
-            <div className="yd-input"><Icon name="user" size={20}/><select id="pay-student" disabled={busy} value={enrollment} onChange={e => { setEnrollment(e.target.value); setLoadedEnrollment(""); setAmount(null); setChargeError(""); setMessage(""); setReceiptUrl(""); }}><option value="">Choisir un élève…</option>{enrolled.map(s => <option key={s.enrollment.id} value={s.enrollment.id}>{s.last_name} {s.first_name} — {s.enrollment.classroom.name}</option>)}</select></div>
-            {roster.error && <p role="alert">Liste des élèves indisponible. {roster.error}</p>}
+            <div className="yd-input"><Icon name="user" size={20}/><select id="pay-student" disabled={busy||!roster.current||filters.typing||!!roster.error} value={student ? enrollment : ""} onChange={e => { setEnrollment(e.target.value); setLoadedEnrollment(""); setAmount(null); setChargeError(""); setMessage(""); setReceiptUrl(""); }}><option value="">Choisir un élève…</option>{options.map(s => <option key={s.enrollment.id} value={s.enrollment.id}>{s.last_name} {s.first_name} — {s.enrollment.classroom.name}{(s.student_code||s.matricule_yem) ? " · "+(s.student_code||s.matricule_yem) : ""}</option>)}</select></div>
+            {!roster.current||filters.typing ? <p role="status" className="yd-card-sub">Recherche en cours…</p> : roster.error ? <p role="alert">Liste des élèves indisponible. {roster.error}</p> : <>
+              <SearchPages total={roster.data?.total??enrolled.length} page={roster.data?.page||1} size={roster.data?.page_size||25} onPage={filters.setPage} disabled={busy}/>
+              {!enrolled.length&&<p className="yd-card-sub">Aucun élève trouvé pour ces critères.</p>}
+            </>}
             {!canReceive ? <Empty>Votre rôle ne permet pas d’enregistrer des encaissements.</Empty> : <>
             <label className="yd-label">Parent <i>*</i></label>
             <div className="yd-input"><Icon name="users" size={20}/><span>{student?.guardian ? `${student.guardian.full_name}${student.guardian.relationship ? ` (${student.guardian.relationship})` : ""}` : "—"}</span>{student?.guardian?.phone && <em><Icon name="phone" size={16}/>{student.guardian.phone}</em>}</div>
@@ -384,13 +435,17 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
   const [viewYear, setViewYear] = useState(workingYearId);
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
-  const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
+  const [period,setPeriod]=useState("");
+  const [status,setStatus]=useState("");
+  const filters=useSearchFilters({arrears_search:"1",period,status});
+  const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}&${filters.params}`);
   const [selected, setSelected] = useState("");
+  useEffect(()=>{setSelected("");setFeedback("");filters.reset();setPeriod("");setStatus("");},[schoolId,viewYear,viewCurrency]);
   const reminderPanel = useRef(null);
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const d = fin.data;
-  const a = d?.arrears.find(row => row.enrollment === selected);
+  const a = fin.current && !filters.typing ? d?.arrears.find(row => row.enrollment === selected) : undefined;
   const whatsappHref = canRemind && a && !fin.loading ? whatsappReminderLink(a, d.currency) : "";
   function selectEnrollment(enrollment) {
     if (sending) return;
@@ -425,8 +480,18 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
   return <>
     <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);onWorkingYearChange?.(value)}}/>
     <PageHeader banner={false} title="Impayés & relances" subtitle="Suivi des échéances, retards et messages aux familles" actions={d && <>
-      <Button icon="download" disabled={!d.arrears.length} onClick={exportCsv}>Exporter</Button></>}/>
+      <Button icon="download" disabled={!fin.current||filters.typing||!d.arrears.length} onClick={exportCsv}>Exporter la page</Button></>}/>
     {tabs}
+    <Card title="Rechercher dans les impayés" icon="search">
+      <SearchControls filters={filters} classes={d?.arrears_classes||[]} label="un impayé" disabled={sending}/>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        <label>Échéance <div className="yd-input"><input type="month" aria-label="Mois d’échéance" value={period} disabled={sending} onChange={e=>{setPeriod(e.target.value);filters.setPage(1)}}/></div></label>
+        <label>Historique de paiement <div className="yd-input"><select aria-label="Historique de paiement" value={status} disabled={sending} onChange={e=>{setStatus(e.target.value);filters.setPage(1)}}>
+          <option value="">Tous</option><option value="without_payment">Sans paiement enregistré</option><option value="with_payment">Avec paiement enregistré</option>
+        </select></div></label>
+        <Button disabled={sending} onClick={()=>{filters.reset();setPeriod("");setStatus("");setSelected("");}}>Réinitialiser</Button>
+      </div>
+    </Card>
     <Loading state={fin}>{d && <div>
       <FinanceEvidenceNotice data={d}/>
       <div className="yd-grid arrears-layout">
@@ -437,20 +502,22 @@ export function LiveArrears({ schoolId, canRemind, tabs, workingYearId = "", onW
           <Metric icon="hourglass" label="Montant échu" value={fmtMoney(d.overdue_total, d.currency)} trend="none" trendLabel="à recouvrer"/>
           <Metric icon="card" label="Enregistré ce mois" value={fmtMoney(d.month.total, d.currency)} trend={Number(d.month.total) >= Number(d.month.previous) ? "up" : "down"} trendValue={pct(d.month.total, d.month.previous) || ""} trendLabel="vs. mois précédent"/>
         </div>
-        <Card title="Liste des familles en impayé" count={`(${d.families_late})`} icon="users">
-          {d.arrears.length === 0 ? <Empty>Aucune famille en retard de paiement.</Empty> :
+        <Card title="Liste des familles en impayé" count={`(${d.arrears_total??d.families_late})`} icon="users">
+          {fin.current&&!filters.typing&&<SearchPages total={d.arrears_total??d.arrears.length} page={d.arrears_page||1} size={d.arrears_page_size||25} onPage={filters.setPage} disabled={sending}/>}
+          {!fin.current||filters.typing ? <Empty>Recherche en cours…</Empty> : d.arrears.length === 0 ? <Empty>Aucun impayé correspondant aux critères.</Empty> :
             <TableScroll label="Impayés par élève"><table className="xs clickable"><thead><tr>{["", "Élève", "Classe", "Responsable", "Plus ancienne échéance impayée", "Total en retard", <>Dernier<br/>paiement</>, "Statut"].map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
               <tbody>{d.arrears.map((row, index) => (
                 <ContextTarget as="tr" key={row.enrollment} className={a === row ? "selected" : ""}
                     actions={[{id:"details",label:canRemind?"Consulter les échéances et options de relance":"Consulter les échéances",disabled:sending,run:()=>selectEnrollment(row.enrollment)}]}
                     onClick={() => selectEnrollment(row.enrollment)}>
-                  <td>{index + 1}</td>
+                  <td>{(d.arrears_page ? (d.arrears_page-1)*(d.arrears_page_size||25) : 0)+index+1}</td>
                   <td className="nowrap">
                     <button type="button" className="yd-link" aria-pressed={a === row} disabled={sending}
                             onClick={event => {
                               event.stopPropagation();
                               selectEnrollment(row.enrollment);
                             }}>{row.student}</button>
+                    {(row.student_code||row.matricule_yem)&&<div className="yd-card-sub">{row.student_code||row.matricule_yem}</div>}
                   </td>
                   <td>{row.classroom}</td>
                   <td>{row.guardian || "—"}</td>
