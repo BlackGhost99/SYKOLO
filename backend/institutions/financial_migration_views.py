@@ -201,11 +201,13 @@ def inspect(request, school_id):
     tariffs = FeeSchedule.objects.filter(school=school, year__in=years, active=True,
         currency="XAF").select_related("classroom").order_by("due_date", "label", "pk")
     mapping = suggested_mapping(table["headers"])
+    analysis = analyze_import_headers(table["headers"])
     return JsonResponse({
         "headers": table["headers"], "sheet": table["sheet"], "sheets": table["sheets"],
         "header_row": table["header_row"], "row_count": len(table["rows"]),
         "suggested_student_code": next((int(col) for col, field in mapping.items() if field == "student_code"), None),
-        "financial_columns": analyze_import_headers(table["headers"])["financial_columns"],
+        "financial_columns": analysis["financial_columns"],
+        "financial_hints": analysis["financial_hints"],
         "years": [{"id": str(y.pk), "name": y.name, "start": y.start_date.isoformat(),
                    "end": y.end_date.isoformat(), "status": y.status} for y in years],
         "tariffs": [{"id": str(t.pk), "year": str(t.year_id), "label": t.label, "code": t.code,

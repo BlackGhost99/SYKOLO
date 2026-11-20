@@ -201,6 +201,7 @@ class FinancialMigrationPreviewTests(TestCase):
         data = response.json()
         self.assertEqual(data["suggested_student_code"], 0)
         self.assertEqual(data["financial_columns"], [1])
+        self.assertEqual(data["financial_hints"], {"1": "ambiguous"})
         self.assertEqual([t["id"] for t in data["tariffs"]], [str(self.tariff.pk)])
         self.assertEqual([y["id"] for y in data["years"]], [str(self.year.pk)])
         self.assertNotIn("samples", data)

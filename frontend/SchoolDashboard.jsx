@@ -590,7 +590,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "students:byclass":<ClassEnrollments key={chosen} {...props}/>,
       "students:new":<StudentForm key={k} {...props}/>,
       "students:fiche":<StudentFile key={k} {...props}/>,
-      "students:import":<ImportStudents key={chosen} {...props}/>,
+      "students:import":<ImportStudents key={chosen} {...props} canOpenFinance={hasTab("payments","migration")}/>,
       "classes:live":<ClassWorkspace key={chosen} schoolId={chosen} onNavigate={navigate} canReadStudents={can("school.students.profile.read")} canReadRoster={can("school.students.profile.read")||can("school.attendance.read")||can("school.curriculum.manage")} advancedSettings={advancedSettings} workingYearId={workingYearId} onWorkingYearChange={setWorkingYearId}/>,
       "preschool:live":<div className="yd-real-body"><PreschoolFollowup key={chosen+":"+workingYearId} schoolId={chosen} yearId={workingYearId}/></div>,
       "diary:live":<><PageHeader title="Cahier de textes" subtitle="Séances, brouillons et devoirs communiqués aux familles"/><div className="yd-real-body"><TeachingDiary key={chosen+":"+workingYearId} schoolId={chosen} yearId={workingYearId}/></div></>,
@@ -598,7 +598,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         onWorkingYearChange={setWorkingYearId} onYearsUpdated={()=>setYearCatalogVersion(v=>v+1)}/>,
       "payments:live":<LivePayments key={k} {...props}/>,
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
-      "payments:migration":<FinancialMigration key={chosen} {...props}/>,
+      "payments:migration":<FinancialMigration key={chosen} {...props} source={params?.migrationSource?.schoolId===chosen ? params.migrationSource : null}/>,
       "arrears:live":<LiveArrears key={chosen} {...props} canRemind={can("school.finance.receive") || can("school.finance.approve")}/>,
       "notifications:inbox":<SchoolNotificationCenter key={chosen} schoolId={chosen} onUnread={setInboxCount}/>,
       "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
