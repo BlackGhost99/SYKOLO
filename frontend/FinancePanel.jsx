@@ -368,7 +368,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
       {payments.length===0?<p className="hint">Aucun encaissement pour ce frais.</p>:payments.map(p=><ContextTarget as="div" key={p.id} showTrigger actions={[
         {id:"receipt",label:"Ouvrir le reçu PDF",run:()=>window.open("/api/v1/"+finance+"payments/"+p.id+"/receipt","_blank","noopener,noreferrer")},
         ...(canReverse&&!p.voided?[{id:"void",label:"Préparer une demande d’annulation",write:true,danger:true,disabled:busy,run:()=>{setCancelPayment(p.id);setCancelReason("");}}]:[])]}>
-        <strong>{p.amount} {p.currency}</strong> · {p.paid_on} · {p.method} · {p.voided?"Annulé":p.evidence_class==="simulation"?"SIMULATION — aucune recette":p.evidence_class==="legacy_unverified"?"À rapprocher — paiement historique non vérifié":"Enregistré (déclaratif)"} ·
+        <strong>{p.amount} {p.currency}</strong> · {p.paid_on} · {p.method === "cash" ? "Espèces (historique à rapprocher)" : p.method === "especes" ? "Espèces" : p.method === "simulation" ? "Simulation" : p.method} · {p.voided?"Annulé":p.evidence_class==="simulation"?"SIMULATION — aucune recette":p.evidence_class==="legacy_unverified"?"À rapprocher — paiement historique non vérifié":"Enregistré (déclaratif)"} ·
         {" "}<a href={"/api/v1/"+finance+"payments/"+p.id+"/receipt"}>Reçu PDF</a>
         {canReverse&&!p.voided&&<button type="button" disabled={busy} style={{marginLeft:"0.5rem"}} onClick={()=>{setCancelPayment(p.id);setCancelReason("");}}>Demander une annulation</button>}
       </ContextTarget>)}
