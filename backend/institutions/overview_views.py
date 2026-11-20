@@ -68,6 +68,10 @@ def enrollment_balances(school, enrollment_ids, requested_currency=None):
         FeePayment.objects.filter(school=school, charge_id__in=[c["id"] for c in charges], void__isnull=True)
         .values_list("charge_id").annotate(total=Sum("amount")).values_list("charge_id", "total")
     )
+    from .historical_finance import historical_credits
+    opening = historical_credits(school.pk, [c["id"] for c in charges])
+    for key, amount in opening.items():
+        paid_by_charge[key] = paid_by_charge.get(key, ZERO) + amount
     balances = defaultdict(lambda: {"billed": ZERO, "paid": ZERO, "overdue": ZERO, "next_due": None, "first_overdue": None, "overdue_items": [], "due_today": ZERO})
     today = timezone.localdate()
     for c in charges:
