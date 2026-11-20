@@ -3,10 +3,11 @@ import json
 import uuid
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from .academic_models import AcademicYear, AcademicCycle, AcademicLevel, AcademicClass
@@ -17,7 +18,7 @@ from .finance_models import (
     HistoricalFinancialMigration,
     HistoricalFeeAdjustment,
 )
-from .models import Organization, School, SchoolMember, SchoolRole
+from .models import GeminiDailyUsage, Organization, School, SchoolMember, SchoolRole
 from .services import ROLE_TEMPLATES
 from .student_models import Enrollment, Student
 
@@ -430,4 +431,43 @@ class FinancialMigrationPreviewTests(TestCase):
         replacement_root = root.rsplit("/", 1)[0] + "/" + replacement.json()["batch"]
         self.assertEqual(self.client.post(replacement_root+"/approve", reason).status_code, 200)
         self.assertEqual(cleared_total(charge), Decimal("25000"))
+        self.assertFalse(FeePayment.objects.exists())
+
+    @override_settings(YEM_GEMINI_API_KEY="fixture", YEM_GEMINI_MODEL="gemini-fixture", YEM_GEMINI_FREE_PILOT=True)
+    @patch("institutions.intelligence_live.header_adapter")
+    def test_gemini_requires_explicit_opt_in_and_respects_shared_quota(self, adapter_factory):
+        from .intelligence_live import DAILY_LIMIT
+
+        adapter = adapter_factory.return_value
+        adapter.return_value = {"1": "payment_candidate"}
+        url = f"/api/v1/schools/{self.school.pk}/imports/finance/inspect"
+
+        def inspect(**options):
+            return self.client.post(url, {
+                "file": SimpleUploadedFile(
+                    "test.csv", b"Matricule;Versement 077777777\n0001;25000",
+                ),
+                **options,
+            })
+
+        local = inspect()
+        self.assertEqual(local.status_code, 200, local.content)
+        self.assertTrue(local.json()["gemini_available"])
+        self.assertEqual(local.json()["gemini_status"], "local")
+        adapter_factory.assert_not_called()
+        chosen = inspect(assistant="gemini")
+        self.assertEqual(chosen.status_code, 200, chosen.content)
+        self.assertEqual(chosen.json()["gemini_status"], "used")
+        adapter.assert_called_once_with({"1": ("versement",)})
+        self.assertEqual(GeminiDailyUsage.objects.get().requests, 1)
+        GeminiDailyUsage.objects.update(requests=DAILY_LIMIT)
+        with self.assertLogs("institutions.intelligence_engine", level="WARNING"):
+            limited = inspect(assistant="gemini")
+        self.assertEqual(limited.json()["gemini_status"], "daily_limit")
+        adapter.assert_called_once()
+        with override_settings(YEM_GEMINI_FREE_PILOT=False):
+            disabled = inspect(assistant="gemini")
+        self.assertFalse(disabled.json()["gemini_available"])
+        self.assertEqual(disabled.json()["gemini_status"], "unavailable")
+        self.assertFalse(FeeCharge.objects.exists())
         self.assertFalse(FeePayment.objects.exists())

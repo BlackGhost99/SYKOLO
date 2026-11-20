@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from accounts.views import authorized
 from .models import (
@@ -13,7 +13,8 @@ from .models import (
     SchoolAudit, SchoolMember, SchoolRole, Student,
 )
 from .intelligence_engine import engine
-from .intelligence_readiness import gemini_readiness, simulate_gemini
+from .intelligence_live import analyze_financial_headers_with_gemini
+from .intelligence_readiness import gemini_available, gemini_readiness, simulate_gemini
 from .platform_views import platform_only
 from .services import OWNER_ROLE_CODE, provision_appointment_roles, public_role_label, role_available
 from .school_profiles import validate_school_profile
@@ -109,6 +110,23 @@ def platform_simulate_gemini(request):
 
 
 @never_cache
+@require_POST
+@authorized
+def platform_test_gemini(request):
+    if not platform_only(request):
+        return denied()
+    if not gemini_available():
+        return JsonResponse({"error": "Pilote Gemini indisponible."}, status=409)
+    result, status = analyze_financial_headers_with_gemini(["Solde", "Versement"])
+    if status == "daily_limit":
+        return JsonResponse({"error": "Quota quotidien Gemini atteint."}, status=429)
+    if status != "used":
+        return JsonResponse({"error": "Gemini a été indisponible. Le moteur local reste utilisable."}, status=503)
+    passed = result["financial_hints"] == {"0": "balance", "1": "payment_candidate"}
+    return JsonResponse({"passed": passed, "mode": "live"})
+
+
+@never_cache
 @require_GET
 @authorized
 def platform_dashboard(request):
@@ -151,7 +169,7 @@ def platform_dashboard(request):
     ).order_by("name")
     school_total = School.objects.count()
     return JsonResponse({
-        "intelligence": {**engine.capabilities(), "gemini": gemini_readiness()},
+        "intelligence": {**engine.capabilities(), "gemini": {**gemini_readiness(), "pilot_enabled": gemini_available()}},
         "organizations": Organization.objects.count(),
         "schools_total": school_total,
         "schools_active": School.objects.filter(is_active=True).count(),

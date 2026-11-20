@@ -68,6 +68,20 @@ export default function FinancialMigration({schoolId,tabs,workingYearId,source})
     } catch(e){setError(e.message);}
     finally {setBusy(false);}
   }
+  async function requestGemini() {
+    if (!file || !meta?.gemini_available || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const analysis = await send("inspect", file, sheet, header, {assistant:"gemini"});
+      setMeta(current => ({...current, financial_hints:analysis.financial_hints,
+        gemini_available:analysis.gemini_available, gemini_status:analysis.gemini_status}));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function preview() {
     setBusy(true);setError("");setResult(null);
     try {
@@ -168,6 +182,17 @@ export default function FinancialMigration({schoolId,tabs,workingYearId,source})
             <select value={sheet} disabled={busy} onChange={e=>{setSheet(e.target.value);inspect(file,e.target.value,header);}}>{meta.sheets.map(s=><option key={s}>{s}</option>)}</select>
           </label>}
           <p className="hint">Colonnes financières possibles : {meta.financial_columns.map(i=>meta.headers[i]).join(", ")||"aucune reconnue"}. Vérifiez leur signification avant toute association.</p>
+          {meta.gemini_available&&<Button type="button" disabled={busy} onClick={requestGemini}>
+            Analyser les en-têtes avec Gemini
+          </Button>}
+          {meta.gemini_status&&meta.gemini_status!=="local"&&<p role="status">{({
+            used:"Suggestions Gemini disponibles. Vérifiez les associations avant préparation.",
+            fallback:"Gemini indisponible. Suggestions locales affichées.",
+            unavailable:"Gemini indisponible. Suggestions locales affichées.",
+            daily_limit:"Quota quotidien Gemini atteint. Suggestions locales affichées.",
+            column_limit:"Trop de colonnes pour Gemini. Suggestions locales affichées.",
+            no_clues:"Aucun terme admissible pour Gemini. Suggestions locales affichées.",
+          })[meta.gemini_status]}</p>}
         </>}
       </Card>
       {error&&<p role="alert" className="pc-alert">{error}</p>}

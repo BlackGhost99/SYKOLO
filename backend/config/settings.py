@@ -44,9 +44,10 @@ AUTH_USER_MODEL = "accounts.User"
 MFA_ENCRYPTION_KEY = os.environ.get("MFA_ENCRYPTION_KEY", SECRET_KEY if not DEPLOYED else "")
 if DEPLOYED and len(MFA_ENCRYPTION_KEY) < 32:
     raise ImproperlyConfigured("MFA_ENCRYPTION_KEY (32 caractères minimum) est requise.")
-# Readiness only. The runtime intelligence engine remains local.
+# Explicit Gemini pilot on a project with billing disabled.
 YEM_GEMINI_API_KEY = os.environ.get("YEM_GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY", "")
 YEM_GEMINI_MODEL = os.environ.get("YEM_GEMINI_MODEL", "")
+YEM_GEMINI_FREE_PILOT = os.environ.get("YEM_GEMINI_FREE_PILOT", "").strip().lower() == "true"
 PASSWORD_RESET_TIMEOUT = 1800
 # Temporary YEM pilot: no email activation until a verified sending domain is ready.
 # Re-enable via YEM_PARENT_EMAIL_VERIFICATION_REQUIRED=true before opening to families.

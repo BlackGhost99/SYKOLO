@@ -275,14 +275,14 @@ class PlatformAdminConsoleTests(TestCase):
         self.assertNotIn("password", json.dumps(data).lower())
 
 
-    @override_settings(YEM_GEMINI_API_KEY="synthetic-secret", YEM_GEMINI_MODEL="gemini-fixture")
+    @override_settings(YEM_GEMINI_API_KEY="synthetic-secret", YEM_GEMINI_MODEL="gemini-fixture", YEM_GEMINI_FREE_PILOT=False)
     def test_gemini_readiness_and_simulation_keep_key_server_side(self):
         from unittest.mock import patch
 
         path = "/api/v1/platform/intelligence/gemini/simulation"
         with patch("institutions.intelligence_providers.build_opener") as network:
             dashboard = self.client.get("/api/v1/platform/dashboard")
-            self.assertEqual(dashboard.json()["intelligence"]["gemini"], {"status": "ready_unverified"})
+            self.assertEqual(dashboard.json()["intelligence"]["gemini"], {"status": "ready_unverified", "pilot_enabled": False})
             self.assertNotContains(dashboard, "synthetic-secret")
             self.assertNotContains(dashboard, "gemini-fixture")
             response = self.client.get(path)
@@ -296,3 +296,19 @@ class PlatformAdminConsoleTests(TestCase):
         session.pop("mfa_verified", None)
         session.save()
         self.assertEqual(self.client.get(path).status_code, 403)
+
+
+    @override_settings(YEM_GEMINI_API_KEY="synthetic-secret", YEM_GEMINI_MODEL="gemini-fixture", YEM_GEMINI_FREE_PILOT=True)
+    def test_live_gemini_check_requires_platform_mfa_and_sends_synthetic_clues(self):
+        from unittest.mock import patch
+
+        url = "/api/v1/platform/intelligence/gemini/test"
+        with patch("institutions.intelligence_live.header_adapter") as factory:
+            factory.return_value.return_value = {"0": "balance", "1": "payment_candidate"}
+            self.assertEqual(self.client.get(url).status_code, 405)
+            response = self.post(url, {})
+            self.assertEqual(response.json(), {"passed": True, "mode": "live"})
+            factory.return_value.assert_called_once_with({"0": ("solde",), "1": ("versement",)})
+            self.client.force_login(self.director)
+            self.assertEqual(self.post(url, {}).status_code, 403)
+            factory.return_value.assert_called_once()
