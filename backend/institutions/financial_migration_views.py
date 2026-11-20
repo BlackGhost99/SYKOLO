@@ -70,27 +70,44 @@ def mapped_schedules(school, year, table, mapping):
     code_index = index(mapping["student_code"], table["headers"])
     amounts = mapping["amounts"]
     if not isinstance(amounts, list) or not amounts or len(amounts) > 12:
-        raise ValueError("Associez entre 1 et 12 colonnes à des tarifs.")
+        raise ValueError("Associez entre 1 et 12 colonnes de montants.")
     if len(table["rows"]) * len(amounts) > MAX_CELLS:
         raise ValueError("Limitez un aperçu à 2 000 cellules financières.")
     indices, ids, pairs = {code_index}, set(), []
     for entry in amounts:
-        if not isinstance(entry, dict) or set(entry) != {"column", "schedule"}:
+        if not isinstance(entry, dict) or set(entry) not in ({"column", "schedule"}, {"column", "schedules"}):
             raise ValueError("Correspondance de tarif invalide.")
         col = index(entry["column"], table["headers"])
-        schedule_id = UUID(str(entry["schedule"]))
-        if col in indices or schedule_id in ids:
+        refs = entry.get("schedules", [entry.get("schedule")])
+        if not isinstance(refs, list) or not 1 <= len(refs) <= 100:
+            raise ValueError("Associez de 1 à 100 tarifs d'une même période par colonne.")
+        schedule_ids = [UUID(str(ref)) for ref in refs]
+        if col in indices or len(set(schedule_ids)) != len(schedule_ids) or ids.intersection(schedule_ids):
             raise ValueError("Une colonne ou un tarif ne peut être associé deux fois.")
         indices.add(col)
-        ids.add(schedule_id)
-        schedule = FeeSchedule.objects.filter(
-            school=school, year=year, pk=schedule_id, active=True, currency="XAF",
-        ).first()
-        if schedule is None or explicit_demo(schedule.label):
+        ids.update(schedule_ids)
+        if len(ids) > 240:
+            raise ValueError("Limitez l'association à 240 tarifs par fichier.")
+        schedules = list(FeeSchedule.objects.filter(school=school, year=year, pk__in=schedule_ids,
+                                                   active=True, currency="XAF"))
+        if len(schedules) != len(schedule_ids) or any(explicit_demo(t.label) for t in schedules):
             raise ValueError("Tarif XAF actif non démonstratif introuvable pour cette école et cette année.")
-        # Admission charges have a dedicated ledger in YEM and are not inferred here.
-        pairs.append((col, schedule))
+        if len({t.code for t in schedules}) != 1:
+            raise ValueError("Les tarifs d'une colonne doivent partager le même code de frais/période.")
+        options = {t.classroom_id: t for t in schedules}
+        if len(options) != len(schedules):
+            raise ValueError("Un seul tarif par classe (ou tarif général) dans chaque colonne.")
+        pairs.append((col, options))
     return code_index, pairs
+
+
+def selected_schedule(enrollment, options):
+    # Explicit class-specific selection takes priority over an explicitly
+    # selected general fallback. Never guess from a label or amount.
+    result = options.get(enrollment.classroom_id, options.get(None))
+    if result is None:
+        raise ValueError("Aucun tarif associé pour la classe de cet élève.")
+    return result
 
 
 def cell_preview(school, enrollment, schedule, value, cutoff):
@@ -228,7 +245,7 @@ def preview(request, school_id):
     try:
         table = inputs(request)
         raw = request.POST.get("mapping", "")
-        if len(raw) > 10000:
+        if len(raw) > 20000:
             raise ValueError("Correspondances trop volumineuses.")
         year = AcademicYear.objects.filter(
             pk=UUID(request.POST.get("year", "")), school=school, active=True,
@@ -255,12 +272,14 @@ def preview(request, school_id):
             continue
         enrollment = enrollments[0]
         cells = []
-        for col, schedule in pairs:
+        for col, options in pairs:
+            schedule = None
             try:
+                schedule = selected_schedule(enrollment, options)
                 item = cell_preview(school, enrollment, schedule, row["cells"][col], cutoff)
             except ValueError as exc:
                 item = {"status": "invalid", "error": str(exc)}
-            cells.append({"column": col, "schedule": str(schedule.pk), **item})
+            cells.append({"column": col, "schedule": str(schedule.pk) if schedule else None, **item})
         reports.append({"line": row["line"], "status": "resolved", "cells": cells})
     counts = Counter(cell["status"] for row in reports for cell in row["cells"])
     counts["identity_review"] = sum(row["status"] == "identity_review" for row in reports)
@@ -274,7 +293,7 @@ def preview(request, school_id):
 def preview_data(school, school_id, request):
     table = inputs(request)
     raw = request.POST.get("mapping", "")
-    if len(raw) > 10000:
+    if len(raw) > 20000:
         raise ValueError("Correspondances trop volumineuses.")
     year = AcademicYear.objects.filter(
         pk=UUID(request.POST.get("year", "")), school=school, active=True,
@@ -291,7 +310,11 @@ def preview_data(school, school_id, request):
     payload = upload.read()
     upload.seek(0)
     canonical = json.dumps({
-        "year": str(year.pk), "cutoff": cutoff.isoformat(), "mapping": json.loads(raw),
+        "year": str(year.pk), "cutoff": cutoff.isoformat(),
+        "mapping": {"student_code": code_index, "amounts": [
+            {"column": col, "schedules": sorted(str(t.pk) for t in options.values())}
+            for col, options in sorted(pairs, key=lambda pair: pair[0])
+        ]},
         "file": hashlib.sha256(payload).hexdigest(),
         "sheet": table["sheet"], "header_row": table["header_row"],
     }, sort_keys=True, separators=(",", ":"))
@@ -312,12 +335,14 @@ def preview_data(school, school_id, request):
             continue
         enrollment = enrollments[0]
         cells = []
-        for col, schedule in pairs:
+        for col, options in pairs:
+            schedule = None
             try:
+                schedule = selected_schedule(enrollment, options)
                 item = cell_preview(school, enrollment, schedule, row["cells"][col], cutoff)
             except ValueError as exc:
                 item = {"status": "invalid", "error": str(exc)}
-            cells.append({"column": col, "schedule": str(schedule.pk), **item})
+            cells.append({"column": col, "schedule": str(schedule.pk) if schedule else None, **item})
             if item["status"] in {"proposed", "zero", "unknown"}:
                 entries.append({
                     "line": row["line"], "enrollment": enrollment, "schedule": schedule,
