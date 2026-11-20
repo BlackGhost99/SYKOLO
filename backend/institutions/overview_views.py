@@ -7,7 +7,8 @@ from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Q, Sum
+from django.db.models import CharField, Q, Sum, Value
+from django.db.models.functions import Cast, Replace
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -143,10 +144,15 @@ def payment_student_search(request, school, year):
             return JsonResponse({"error": "Classe invalide."}, status=422)
         rows = rows.filter(classroom_id=uid(classroom))
     for term in student_search_terms(request):
-        rows = rows.filter(Q(student__last_name__icontains=term) |
-                           Q(student__first_name__icontains=term) |
-                           Q(student__student_code__icontains=term) |
-                           Q(student__matricule_yem__icontains=term))
+        match = (Q(student__last_name__icontains=term) |
+                 Q(student__first_name__icontains=term) |
+                 Q(student__student_code__icontains=term))
+        if term.upper().startswith("YEM-"):
+            fragment = term[4:].replace("-", "")
+            if fragment and all(ch in "0123456789abcdefABCDEF" for ch in fragment):
+                rows = rows.annotate(identity_hex=Replace(Cast("student__identity_id", CharField()), Value("-"), Value("")))
+                match |= Q(identity_hex__istartswith=fragment)
+        rows = rows.filter(match)
     total = rows.count()
     page = min(page, max(1, (total + SEARCH_PAGE_SIZE - 1) // SEARCH_PAGE_SIZE))
     start = (page - 1) * SEARCH_PAGE_SIZE
@@ -183,6 +189,8 @@ def filtered_arrears(request, arrears):
     status = request.GET.get("status", "")
     if classroom and not uid(classroom):
         raise ValueError("Classe invalide.")
+    if classroom:
+        classroom = str(uid(classroom))
     if period:
         try:
             if len(period) != 7 or date.fromisoformat(period + "-01").isoformat()[:7] != period:
