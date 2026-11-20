@@ -30,6 +30,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/branding/<str:kind>", school_branding_views.school_brand_image),
     path("schools/<uuid:school_id>/owner/overview", owner_overview_views.owner_overview),
     path("schools/<uuid:school_id>/student-numbering", student_numbering_views.numbering),
+    path("schools/<uuid:school_id>/imports/finance/inspect", financial_migration_views.inspect),
     path("schools/<uuid:school_id>/imports/finance/preview", financial_migration_views.preview),
     path("schools/<uuid:school_id>/imports/students/profiles", import_views.profiles),
     path("schools/<uuid:school_id>/imports/students/export", import_views.export_students),

@@ -21,6 +21,8 @@ from .finance_evidence import explicit_demo
 from .finance_models import FeeCharge, FeeSchedule
 from .finance_views import cleared_total, gate, iso_day
 from .import_views import inputs
+from .import_service import suggested_mapping
+from .intelligence_import import analyze_import_headers
 from .student_models import Enrollment
 
 MAX_CELLS = 2000
@@ -106,6 +108,38 @@ def cell_preview(school, enrollment, schedule, value, cutoff):
             "scholarship": fmt(discount), "net_due": fmt(due), "already_booked": fmt(booked),
             "declared_balance": fmt(due - imported) if imported is not None and imported <= due else None,
             "charge_exists": bool(charge)}
+
+
+@never_cache
+@require_POST
+@authorized
+def inspect(request, school_id):
+    school, error = gate(request, school_id, "school.finance.approve")
+    if error is not None:
+        return error
+    try:
+        table = inputs(request)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+    years = AcademicYear.objects.filter(school=school, active=True).exclude(
+        status=AcademicYear.STATUS_CLOSED).order_by("-start_date")
+    tariffs = FeeSchedule.objects.filter(school=school, year__in=years, active=True,
+        currency="XAF").select_related("classroom").order_by("due_date", "label", "pk")
+    mapping = suggested_mapping(table["headers"])
+    return JsonResponse({
+        "headers": table["headers"], "sheet": table["sheet"], "sheets": table["sheets"],
+        "header_row": table["header_row"], "row_count": len(table["rows"]),
+        "suggested_student_code": next((int(col) for col, field in mapping.items() if field == "student_code"), None),
+        "financial_columns": analyze_import_headers(table["headers"])["financial_columns"],
+        "years": [{"id": str(y.pk), "name": y.name, "start": y.start_date.isoformat(),
+                   "end": y.end_date.isoformat(), "status": y.status} for y in years],
+        "tariffs": [{"id": str(t.pk), "year": str(t.year_id), "label": t.label, "code": t.code,
+                     "classroom": t.classroom.name if t.classroom_id else None, "amount": str(t.amount),
+                     "due_date": t.due_date.isoformat() if t.due_date else None}
+                    for t in tariffs if not explicit_demo(t.label)],
+        "today": timezone.localdate().isoformat(),
+        "notice": "Analyse locale sans enregistrement. Les montants ne sont pas confirmés.",
+    })
 
 
 @never_cache

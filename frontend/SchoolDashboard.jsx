@@ -34,6 +34,7 @@ import {SchoolSettings, TeachingSettings} from "./SchoolSettings.jsx";
 import SchoolBrandingSettings from "./SchoolBrandingSettings.jsx";
 import {FamilyDirectory, StaffDirectory} from "./SchoolDirectories.jsx";
 import StudentNumberingSettings from "./StudentNumberingSettings.jsx";
+import FinancialMigration from "./FinancialMigration.jsx";
 import {FamilyWorkspace, SchoolParentAccess} from "./ParentPortal.jsx";
 import SchoolNotificationCenter from "./SchoolNotificationCenter.jsx";
 import {LiveStudents,LivePayments,LiveArrears,LiveDashboard} from "./LiveScreens.jsx";
@@ -77,7 +78,8 @@ const sections = {
   admissions:{title:"Admissions et préinscriptions",subtitle:"Consultez les demandes et suivez leur inscription",modules:["admissions"]},
   payments:{title:"Encaissements et caisse journalière",subtitle:"Suivi des paiements, reçus et méthodes d’encaissement",modules:["finance"],lives:[
     {key:"live",label:"Caisse du jour",need:["school.finance.read"]},
-    {key:"tracking",label:"Suivi des paiements",need:["school.finance.read","school.students.finance.read"]}]},
+    {key:"tracking",label:"Suivi des paiements",need:["school.finance.read","school.students.finance.read"]},
+    {key:"migration",label:"Reprise financière",need:["school.finance.approve"]}]},
   arrears:{title:"Impayés & relances",subtitle:"Suivi des échéances, retards et soldes des familles",modules:[],lives:[{key:"live",label:"Impayés",need:["school.finance.read"]}]},
   bulletins:{title:"Évaluations et notes",subtitle:"Retrouvez les notes, bulletins et décisions à partir de la classe",modules:["assessments","reports","council"]},
   absences:{title:"Absences et retards",subtitle:"Consultez les appels et les retards par classe",modules:["attendance"]},
@@ -596,6 +598,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         onWorkingYearChange={setWorkingYearId} onYearsUpdated={()=>setYearCatalogVersion(v=>v+1)}/>,
       "payments:live":<LivePayments key={k} {...props}/>,
       "payments:tracking":<PaymentTracking key={chosen} {...props}/>,
+      "payments:migration":<FinancialMigration key={chosen} {...props}/>,
       "arrears:live":<LiveArrears key={chosen} {...props} canRemind={can("school.finance.receive") || can("school.finance.approve")}/>,
       "notifications:inbox":<SchoolNotificationCenter key={chosen} schoolId={chosen} onUnread={setInboxCount}/>,
       "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>

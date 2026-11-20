@@ -24,10 +24,14 @@ L'opérateur associe explicitement les colonnes aux tarifs XAF actifs de cette �
 Les montants calculés utilisent le snapshot du frais existant, sinon le barème actif et la remise de bourse reconnue par le moteur métier. Rien n'est créé. Les soldes déclarés ne sont pas les soldes comptables certifiés. Les frais d'admission spécifiques sont exclus de cette première brique : leur ledger séparé nécessite un autre rapprochement. Le résultat n'est ni un jeton d'engagement ni un justificatif.
 
 ## Suite
-- [ ] Interface financière PC/mobile, sélection de tarif par classe et période, aperçu et anomalies.
+- [x] Première interface financière PC/mobile (à valider par CI et recette visuelle), sélection explicite de tarif, aperçu et anomalies.
 - [ ] Modèle de reprise historisée distinct de la caisse, avec sources justificatives, date de reprise et montants validés ; étudier les impacts sur tous les relevés, paiements, exports et clôtures.
 - [ ] Permissions distinctes de préparation et d'approbation, double validation, idempotence, revalidation atomique, prévention des réimportations.
 - [ ] Génération contrôlée des frais manquants et intégration des bourses/admissions.
 - [ ] Reprise des écritures uniquement après recette comptable complète.
 
 Aucune donnée envoyée à un fournisseur IA, aucun paiement SingPay, aucune écriture de production.
+
+## Interface de reprise
+
+Encaissements → Reprise financière, visible pour les titulaires de school.finance.approve. POST multipart /imports/finance/inspect sous les mêmes droits : en-têtes, suggestion du matricule, colonnes financières possibles, années ouvertes, tarifs XAF non démonstratifs de l'école ; aucune valeur d'élève renvoyée. On choisit l'année, la date de reprise, le matricule et les tarifs, puis on examine les résultats et les anomalies. Les fichiers mixtes multi-classes doivent encore être fractionnés par classe lorsque les tarifs sont spécifiques. Aucun bouton d'écriture. Les fiches élèves sont importées séparément. CI puis recette réelle PC/mobile nécessaires.
