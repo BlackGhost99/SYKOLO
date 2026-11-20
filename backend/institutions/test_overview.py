@@ -194,3 +194,75 @@ class OverviewTests(TestCase):
         charge.due_date = self.today
         charge.save(update_fields=["due_date"])
         self.assertEqual(send().status_code, 409)
+
+    def test_payment_search_paginates_full_cohort_and_preserves_codes(self):
+        from .student_models import StudentIdentity
+        identities = StudentIdentity.objects.bulk_create([StudentIdentity() for _ in range(1005)])
+        students = Student.objects.bulk_create([
+            Student(school=self.school, identity=identity, student_code=f"{i + 1:05d}",
+                    first_name="Élève", last_name=f"ZZZ {i:04d}")
+            for i, identity in enumerate(identities)
+        ])
+        enrollments = Enrollment.objects.bulk_create([
+            Enrollment(school=self.school, student=pupil, year=self.year, classroom=self.c6b,
+                       enrolled_on=self.today)
+            for pupil in students
+        ])
+        self.client.force_login(self.director)
+        search = self.base + "students"
+        page = self.client.get(search, {"payment_search": "1", "year": self.year.pk})
+        self.assertEqual(page.status_code, 200, page.content)
+        self.assertEqual(len(page.json()["students"]), 25)
+        self.assertEqual(page.json()["total"], 1008)
+        result = self.client.get(search, {"payment_search": "1", "year": self.year.pk,
+                                          "q": "01005", "classroom": self.c6b.pk}).json()
+        self.assertEqual([row["student_code"] for row in result["students"]], ["01005"])
+        self.assertEqual(result["students"][0]["enrollment"]["id"], str(enrollments[-1].pk))
+        result = self.client.get(search, {"payment_search": "1", "q": students[-1].matricule_yem}).json()
+        self.assertEqual(result["total"], 1)
+        result = self.client.get(search, {"payment_search": "1", "q": "NZE Test",
+                                          "selected": enrollments[-1].pk}).json()
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["selected"]["student_code"], "01005")
+        self.assertEqual(self.client.get(search, {"payment_search": "1", "q": "Autre"}).json()["total"], 0)
+        self.client.force_login(self.teacher)
+        self.assertEqual(self.client.get(search, {"payment_search": "1"}).status_code, 403)
+
+    def test_arrears_search_filters_before_page_limit_and_keeps_global_totals(self):
+        from .student_models import StudentIdentity
+        identities = StudentIdentity.objects.bulk_create([StudentIdentity() for _ in range(105)])
+        students = Student.objects.bulk_create([
+            Student(school=self.school, identity=identity, student_code=f"AR-{i:04d}",
+                    first_name="Essai", last_name=f"Retard {i:04d}")
+            for i, identity in enumerate(identities)
+        ])
+        enrollments = Enrollment.objects.bulk_create([
+            Enrollment(school=self.school, student=pupil, year=self.year, classroom=self.c6b,
+                       enrolled_on=self.today)
+            for pupil in students
+        ])
+        FeeCharge.objects.bulk_create([
+            FeeCharge(school=self.school, enrollment=e, schedule=self.schedule,
+                      label="Scolarité", amount=Decimal("1000"), currency="XAF",
+                      due_date=self.schedule.due_date)
+            for e in enrollments
+        ])
+        self.client.force_login(self.director)
+        params = {"arrears_search": "1", "year": self.year.pk, "currency": "XAF"}
+        url = self.base + "finance"
+        first = self.client.get(url, params).json()
+        self.assertEqual(first["arrears_total"], 107)
+        self.assertEqual(len(first["arrears"]), 25)
+        second = self.client.get(url, {**params, "page": 2}).json()
+        self.assertFalse(set(row["enrollment"] for row in first["arrears"]) &
+                         set(row["enrollment"] for row in second["arrears"]))
+        target = self.client.get(url, {**params, "q": "AR-0104", "classroom": self.c6b.pk,
+                                      "period": self.schedule.due_date.isoformat()[:7],
+                                      "status": "without_payment"}).json()
+        self.assertEqual(target["arrears_total"], 1)
+        self.assertEqual(target["arrears"][0]["student_code"], "AR-0104")
+        self.assertEqual(target["families_late"], 107)
+        self.assertEqual(target["overdue_total"], first["overdue_total"])
+        self.assertEqual(self.client.get(url, {**params, "period": "2026-99"}).status_code, 422)
+        self.client.force_login(self.teacher)
+        self.assertEqual(self.client.get(url, params).status_code, 403)
