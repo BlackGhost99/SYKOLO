@@ -229,6 +229,39 @@ function Modal({modal,detail,reason,setReason,roleId,setRoleId,onCancel,onConfir
     </div>
   </div>;
 }
+const geminiStatuses = {
+  key_missing:"Clé Gemini absente du serveur.",
+  model_missing:"Clé détectée. Modèle Gemini à renseigner.",
+  invalid_configuration:"Configuration Gemini invalide.",
+  ready_unverified:"Clé et modèle détectés. Accès Gemini non vérifié.",
+};
+
+function GeminiReadiness({status}) {
+  const [busy,setBusy] = useState(false);
+  const [result,setResult] = useState("");
+  async function runSimulation() {
+    setBusy(true);
+    setResult("");
+    try {
+      const check = await api("platform/intelligence/gemini/simulation");
+      setResult(check.mode==="simulation" && check.passed
+        ?"Simulation réussie. Le moteur local reste actif."
+        :"La simulation a échoué.");
+    } catch {
+      setResult("La simulation a échoué.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <>
+    <p>{geminiStatuses[status] || "État Gemini indisponible."}</p>
+    <button type="button" className="ya-btn ya-btn-outline" disabled={busy} onClick={runSimulation}>
+      {busy?"Simulation en cours…":"Simuler une réponse Gemini"}
+    </button>
+    {result&&<p role="status">{result}</p>}
+  </>;
+}
+
 export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) {
   const [view,setView]=useState("overview");
   const [filters,setFilters]=useState({q:"",organization:"",status:"all",sort:"name",page:1,per_page:5});
@@ -511,6 +544,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
                 {dashboard.intelligence.financial_headers&&<li>Analyse des colonnes financières</li>}
                 {dashboard.intelligence.numbering_suggestions&&<li>Suggestions de séries de matricules</li>}
               </ul>
+              {dashboard.intelligence.gemini&&<GeminiReadiness status={dashboard.intelligence.gemini.status}/>}
             </div>
           </div>
         </section>}

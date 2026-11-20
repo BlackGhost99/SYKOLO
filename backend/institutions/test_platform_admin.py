@@ -1,6 +1,6 @@
 import json
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from .models import Organization, OrganizationMember, PlatformAudit, School, SchoolAdminPolicy, SchoolMember, SchoolRole, Student
 from .services import effective_permissions, owns_school
 
@@ -32,7 +32,9 @@ class PlatformAdminConsoleTests(TestCase):
     def test_dashboard_contains_real_counts_and_paginated_directory(self):
         self.assertEqual(Organization.objects.count(), 1)
         r = self.client.get("/api/v1/platform/dashboard?page=1&per_page=5")
-        self.assertEqual(r.json()["intelligence"], {
+        intelligence = r.json()["intelligence"]
+        self.assertIn("gemini", intelligence)
+        self.assertEqual({k: v for k, v in intelligence.items() if k != "gemini"}, {
             "financial_headers": True, "numbering_suggestions": True, "header_adapter_configured": False,
         })
         self.assertEqual(r.status_code, 200)
@@ -271,3 +273,26 @@ class PlatformAdminConsoleTests(TestCase):
         self.assertTrue(data["events"])
         self.assertEqual(data["events"][0]["actor"], "chief")
         self.assertNotIn("password", json.dumps(data).lower())
+
+
+    @override_settings(YEM_GEMINI_API_KEY="synthetic-secret", YEM_GEMINI_MODEL="gemini-fixture")
+    def test_gemini_readiness_and_simulation_keep_key_server_side(self):
+        from unittest.mock import patch
+
+        path = "/api/v1/platform/intelligence/gemini/simulation"
+        with patch("institutions.intelligence_providers.build_opener") as network:
+            dashboard = self.client.get("/api/v1/platform/dashboard")
+            self.assertEqual(dashboard.json()["intelligence"]["gemini"], {"status": "ready_unverified"})
+            self.assertNotContains(dashboard, "synthetic-secret")
+            self.assertNotContains(dashboard, "gemini-fixture")
+            response = self.client.get(path)
+            self.assertEqual(response.json(), {"passed": True, "mode": "simulation"})
+            self.assertIn("no-store", response.headers["Cache-Control"])
+            network.assert_not_called()
+        self.client.force_login(self.director)
+        self.assertEqual(self.client.get(path).status_code, 403)
+        self.client.force_login(self.admin)
+        session = self.client.session
+        session.pop("mfa_verified", None)
+        session.save()
+        self.assertEqual(self.client.get(path).status_code, 403)
