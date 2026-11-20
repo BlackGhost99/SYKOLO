@@ -130,19 +130,24 @@ def owner_overview(request, school_id):
     ).values("staff_id").distinct().count())
 
     finance_totals = defaultdict(lambda: {
-        "billed": ZERO, "paid": ZERO, "outstanding": ZERO, "overdue": ZERO,
+        "billed": ZERO, "paid": ZERO, "historical_credit": ZERO, "outstanding": ZERO, "overdue": ZERO,
         "paid_this_month": ZERO, "paid_today": ZERO, "payments_today": 0,
     })
     if selected:
         charges = FeeCharge.objects.filter(
             school=school, enrollment__school=school, enrollment__year=selected,
-        ).annotate(
+        )
+        from .historical_finance import historical_credits
+        opening = historical_credits(school.pk, charges.values("pk"))
+        rows = charges.annotate(
             received=Sum("payments__amount", filter=Q(payments__void__isnull=True))
-        ).values_list("currency", "amount", "scholarship_discount", "due_date", "received")
-        for currency, amount, scholarship_discount, due_date, received in charges.iterator():
+        ).values_list("pk", "currency", "amount", "scholarship_discount", "due_date", "received")
+        for pk, currency, amount, scholarship_discount, due_date, received in rows.iterator():
             section = finance_totals[currency]
             net_due = amount - (scholarship_discount or ZERO)
-            outstanding = max(ZERO, net_due - (received or ZERO))
+            credit = opening.get(pk, ZERO)
+            outstanding = max(ZERO, net_due - (received or ZERO) - credit)
+            section["historical_credit"] += credit
             section["billed"] += net_due
             section["paid"] += (received or ZERO)
             section["outstanding"] += outstanding
@@ -181,6 +186,8 @@ def owner_overview(request, school_id):
     financial_rows = [{
         "currency": currency, "billed": _money(totals["billed"]),
         "paid": _money(totals["paid"]),
+        "historical_credit": _money(totals["historical_credit"]),
+        "settled": _money(totals["paid"]+totals["historical_credit"]),
         "outstanding": _money(totals["outstanding"]),
         "overdue": _money(totals["overdue"]),
         "paid_this_month": _money(totals["paid_this_month"]),
