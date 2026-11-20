@@ -1,7 +1,9 @@
 import json
+from datetime import date
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from .models import Organization, OrganizationMember, PlatformAudit, School, SchoolAdminPolicy, SchoolMember, SchoolRole, Student
+from .models import GeminiDailyUsage, Organization, OrganizationMember, PlatformAudit, School, SchoolAdminPolicy, SchoolMember, SchoolRole, Student
 from .services import effective_permissions, owns_school
 
 
@@ -282,7 +284,9 @@ class PlatformAdminConsoleTests(TestCase):
         path = "/api/v1/platform/intelligence/gemini/simulation"
         with patch("institutions.intelligence_providers.build_opener") as network:
             dashboard = self.client.get("/api/v1/platform/dashboard")
-            self.assertEqual(dashboard.json()["intelligence"]["gemini"], {"status": "ready_unverified", "pilot_enabled": False})
+            gemini = dashboard.json()["intelligence"]["gemini"]
+            self.assertEqual(gemini["status"], "ready_unverified")
+            self.assertFalse(gemini["pilot_enabled"])
             self.assertNotContains(dashboard, "synthetic-secret")
             self.assertNotContains(dashboard, "gemini-fixture")
             response = self.client.get(path)
@@ -312,3 +316,18 @@ class PlatformAdminConsoleTests(TestCase):
             self.client.force_login(self.director)
             self.assertEqual(self.post(url, {}).status_code, 403)
             factory.return_value.assert_called_once()
+
+    @patch("institutions.intelligence_live.usage_day", return_value=date(2026, 11, 20))
+    def test_gemini_usage_sums_current_month_and_excludes_future_days(self, _day):
+        GeminiDailyUsage.objects.bulk_create([
+            GeminiDailyUsage(day=date(2026, 10, 31), requests=8),
+            GeminiDailyUsage(day=date(2026, 11, 1), requests=3),
+            GeminiDailyUsage(day=date(2026, 11, 20), requests=2),
+            GeminiDailyUsage(day=date(2026, 11, 21), requests=9),
+        ])
+        response = self.client.get("/api/v1/platform/dashboard")
+        self.assertEqual(response.json()["intelligence"]["gemini"]["usage"], {
+            "today": 2, "daily_limit": 10, "remaining": 8, "month": 5, "timezone": "UTC",
+        })
+        self.client.force_login(self.director)
+        self.assertEqual(self.client.get("/api/v1/platform/dashboard").status_code, 403)

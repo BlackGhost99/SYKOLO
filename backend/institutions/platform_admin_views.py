@@ -13,7 +13,7 @@ from .models import (
     SchoolAudit, SchoolMember, SchoolRole, Student,
 )
 from .intelligence_engine import engine
-from .intelligence_live import analyze_financial_headers_with_gemini
+from .intelligence_live import analyze_financial_headers_with_gemini, gemini_usage
 from .intelligence_readiness import gemini_available, gemini_readiness, simulate_gemini
 from .platform_views import platform_only
 from .services import OWNER_ROLE_CODE, provision_appointment_roles, public_role_label, role_available
@@ -169,7 +169,7 @@ def platform_dashboard(request):
     ).order_by("name")
     school_total = School.objects.count()
     return JsonResponse({
-        "intelligence": {**engine.capabilities(), "gemini": {**gemini_readiness(), "pilot_enabled": gemini_available()}},
+        "intelligence": {**engine.capabilities(), "gemini": {**gemini_readiness(), "pilot_enabled": gemini_available(), "usage": gemini_usage()}},
         "organizations": Organization.objects.count(),
         "schools_total": school_total,
         "schools_active": School.objects.filter(is_active=True).count(),
