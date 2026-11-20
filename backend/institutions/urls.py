@@ -1,6 +1,7 @@
 from . import commercial_singpay_views
 from django.urls import path
 from conduct import views as conduct_views
+from . import financial_migration_views
 from . import import_views, subscription_views, teaching_diary_views, diary_resource_views, course_progress_views, remediation_views
 from . import singpay_views, subscription_reminders, subscription_access, subscription_dashboard
 from . import delegation_views, student_transfers, student_numbering_views
@@ -29,6 +30,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/branding/<str:kind>", school_branding_views.school_brand_image),
     path("schools/<uuid:school_id>/owner/overview", owner_overview_views.owner_overview),
     path("schools/<uuid:school_id>/student-numbering", student_numbering_views.numbering),
+    path("schools/<uuid:school_id>/imports/finance/preview", financial_migration_views.preview),
     path("schools/<uuid:school_id>/imports/students/profiles", import_views.profiles),
     path("schools/<uuid:school_id>/imports/students/export", import_views.export_students),
     path("schools/<uuid:school_id>/imports/students/inspect", import_views.inspect),
