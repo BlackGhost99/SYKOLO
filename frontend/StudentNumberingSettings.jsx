@@ -14,6 +14,7 @@ export default function StudentNumberingSettings({schoolId, tabs}) {
   const path = `schools/${schoolId}/student-numbering`;
   const [form, setForm] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [suggestions, setSuggestions] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
@@ -22,6 +23,7 @@ export default function StudentNumberingSettings({schoolId, tabs}) {
       if (!active) return;
       setForm(initialForm(result));
       setPreview(result);
+      setSuggestions(result.intelligence || null);
     }).catch(error => {if (active) setMessage(error.message);});
     return () => {active = false;};
   }, [path]);
@@ -55,6 +57,17 @@ export default function StudentNumberingSettings({schoolId, tabs}) {
     <div className="yd-real-body">
       <Card title="Attribution du matricule local" icon="idcard">
         <p className="hint">Les matricules déjà attribués ou importés sont conservés. L’identifiant permanent YEM sert au suivi entre établissements.</p>
+        {suggestions && <section aria-label="YEM Intelligence — Séries existantes">
+          <h4>YEM Intelligence — Séries existantes</h4>
+          <p className="hint">{suggestions.distinct_local_codes} matricule(s) local(aux) analysé(s). {suggestions.truncated ? "Échantillon limité ; vérification complète avant enregistrement." : ""} Aucun ancien matricule ne sera modifié.</p>
+          {suggestions.ambiguous && <p className="hint">Série incertaine ou multiple : choisissez le format approprié. Ne confondez pas année et compteur.</p>}
+          {suggestions.candidates.map(c => <div key={c.template} style={{marginBottom:12}}>
+            <p><strong>{c.template}</strong> · {c.matched} reconnu(s) · prochain estimé : <strong>{c.next_code || "série épuisée"}</strong></p>
+            <button type="button" disabled={busy || !form || c.next_number === null} onClick={() => change({enabled:true, template:c.template,digits:c.digits,start_number:c.next_number})}>Choisir cette proposition</button>
+          </div>)}
+          {suggestions.candidates.length===0 && <p className="hint">Aucune série locale reconnue. Conservez le mode actuel ou configurez un format personnalisé.</p>}
+          <p className="hint">Vérifiez puis enregistrez la règle pour l’appliquer aux prochains élèves.</p>
+        </section>}
         {message && <p role="status" className="yd-form-msg">{message}</p>}
         {form && <form onSubmit={event => {
           event.preventDefault();
