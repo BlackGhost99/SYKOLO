@@ -79,7 +79,7 @@ const sections = {
   payments:{title:"Encaissements et caisse journalière",subtitle:"Suivi des paiements, reçus et méthodes d’encaissement",modules:["finance"],lives:[
     {key:"live",label:"Caisse du jour",need:["school.finance.read"]},
     {key:"tracking",label:"Suivi des paiements",need:["school.finance.read","school.students.finance.read"]},
-    {key:"migration",label:"Reprise financière",need:["school.finance.approve"]}]},
+    {key:"migration",label:"Reprise financière",need:[],any:["school.finance.approve","school.finance.receive"]}]},
   arrears:{title:"Impayés & relances",subtitle:"Suivi des échéances, retards et soldes des familles",modules:[],lives:[{key:"live",label:"Impayés",need:["school.finance.read"]}]},
   bulletins:{title:"Évaluations et notes",subtitle:"Retrouvez les notes, bulletins et décisions à partir de la classe",modules:["assessments","reports","council"]},
   absences:{title:"Absences et retards",subtitle:"Consultez les appels et les retards par classe",modules:["attendance"]},
@@ -429,7 +429,7 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
         ...(ownCourseAssessment?[["bulletins",{...sections.bulletins,modules:["assessments"],lives:[]}]]:[]),
       ])
     : Object.fromEntries(Object.entries(sections).filter(([id])=>id!=="owner"||isOwner).map(([id,s])=>[id,{
-        ...s,modules:s.modules.filter(allowed),lives:(s.lives||[]).filter(l=>l.need.every(can) || (id==="staff" && l.key==="directory" && can("school.staff.dossier.read"))),
+        ...s,modules:s.modules.filter(allowed),lives:(s.lives||[]).filter(l=>(l.need.every(can) && (!l.any || l.any.some(can))) || (id==="staff" && l.key==="directory" && can("school.staff.dossier.read"))),
       }]).filter(([,s])=>s.modules.length||s.lives.length));
   if (availableSettings.length) visibleSections.settings = {
     subtitle:"Réglages de l’établissement", modules:[], lives:[],
