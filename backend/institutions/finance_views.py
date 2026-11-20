@@ -110,15 +110,15 @@ def cleared_total(charge):
         total=Sum("amount")
     )["total"]
     value = value or Decimal("0.00")
-    from .finance_models import HistoricalFeeAdjustment
-    opening = HistoricalFeeAdjustment.objects.filter(
-        charge=charge, batch__status="approved"
-    ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    from .historical_finance import history_for_charge
+    opening = history_for_charge(charge)
     return value + opening
 
 
 def charge_data(row):
     paid = cleared_total(row)
+    from .historical_finance import history_for_charge
+    opening = history_for_charge(row)
     return {
         "id": str(row.pk), "enrollment": str(row.enrollment_id),
         "schedule": str(row.schedule_id),
@@ -129,6 +129,8 @@ def charge_data(row):
         "currency": row.currency,
         "due_date": row.due_date.isoformat() if row.due_date else None,
         "paid": str(paid.quantize(Decimal("0.01"))),
+        "historical_credit": str(opening.quantize(Decimal("0.01"))),
+        "recorded_payments": str((paid - opening).quantize(Decimal("0.01"))),
         "balance": str((row.amount - row.scholarship_discount - paid).quantize(Decimal("0.01"))),
     }
 
