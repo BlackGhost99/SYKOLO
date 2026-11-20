@@ -5,6 +5,7 @@ from django.views.decorators.http import require_http_methods
 from accounts.views import authorized
 
 from .models import School
+from .intelligence_numbering import suggest_series
 from .services import has_permission
 from .student_models import StudentNumbering
 from .student_numbering import MAX_NUMBER, largest_number, render_code
@@ -51,10 +52,21 @@ def numbering(request, school_id):
         return refuse()
     if request.method == "GET":
         rule = StudentNumbering.objects.filter(school=school).first() or StudentNumbering(school=school)
-        return JsonResponse(preview(school, rule, {
+        result = preview(school, rule, {
             "enabled": rule.enabled, "template": rule.template, "digits": rule.digits,
             "start_number": rule.next_number,
-        }))
+        })
+        result["intelligence"] = suggest_series(
+            school.students.order_by("pk").values_list("student_code", flat=True).iterator())
+        # Never suggest going backwards within the currently saved series.
+        for candidate in result["intelligence"]["candidates"]:
+            if candidate["template"].casefold() == rule.template.casefold() and rule.pk:
+                number = max(candidate["next_number"] or (MAX_NUMBER + 1), rule.next_number)
+                candidate["next_number"] = number if number <= MAX_NUMBER else None
+                candidate["next_code"] = render_code(candidate["template"], candidate["digits"], number) if number <= MAX_NUMBER else None
+                if candidate["next_code"] and len(candidate["next_code"]) > 50:
+                    candidate["next_number"] = candidate["next_code"] = None
+        return JsonResponse(result)
     body, error = parse_body(request)
     if error is not None:
         return error

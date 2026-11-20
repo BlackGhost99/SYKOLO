@@ -99,6 +99,17 @@ class StudentImportTests(TestCase):
         self.assertFalse(Student.objects.exists())
         self.assertFalse(FeeCharge.objects.exists())
 
+    def test_inspect_suggests_existing_series_without_allocating(self):
+        self.client.force_login(self.secretary)
+        data = "Nom;Prénoms;Matricule\nFictif;A;0001\nFictif;B;0500\nFictif;C;"
+        response = self.request("inspect", file=SimpleUploadedFile("serie.csv", data.encode("utf-8")))
+        self.assertEqual(response.status_code, 200, response.content)
+        suggestion = response.json()["numbering_suggestions"]
+        self.assertEqual(suggestion["candidates"][0]["next_code"], "0501")
+        self.assertEqual(suggestion["blank_rows"], 1)
+        self.assertFalse(Student.objects.exists())
+        self.assertFalse(StudentNumbering.objects.exists())
+
     def test_import_reserves_existing_numbers_before_numbering_blank_rows(self):
         self.client.force_login(self.secretary)
         rule = StudentNumbering.objects.create(school=self.school, enabled=True, template="{n}/A")
