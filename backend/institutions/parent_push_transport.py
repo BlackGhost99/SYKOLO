@@ -49,7 +49,8 @@ def retry_seconds(value):
 
 
 class FcmTransport:
-    def __init__(self, raw_credentials, project):
+    def __init__(self, raw_credentials, project, *, timeout=15):
+        self.timeout = timeout
         credentials = json.loads(raw_credentials)
         if not re.fullmatch(r"[a-z][a-z0-9-]{4,62}", project) or credentials.get("type") != "service_account":
             raise ValueError("FCM configuration invalid")
@@ -64,7 +65,7 @@ class FcmTransport:
 
     def _post(self, url, data, headers, *, sending=False):
         try:
-            with self.opener.open(Request(url, data=data, headers=headers, method="POST"), timeout=15) as response:
+            with self.opener.open(Request(url, data=data, headers=headers, method="POST"), timeout=self.timeout) as response:
                 raw = response.read(65537)
                 if len(raw) > 65536:
                     raise PushError()
