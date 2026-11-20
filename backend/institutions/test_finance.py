@@ -109,11 +109,19 @@ class FinanceLedgerTests(TestCase):
         }).status_code, 422)
         confirmed = self.pay(charge, "1500", method="especes")
         self.assertEqual(confirmed.status_code, 201, confirmed.content.decode())
+        from unittest.mock import patch
+        from datetime import date
+        with patch("institutions.finance_cash_views.timezone.localdate", return_value=date(2026, 11, 20)):
+            pending = self.client.get(self.base + "cash/closings").json()["unclosed_days"]
+            self.assertEqual(pending, [{"day": "2026-11-02", "currency": "XAF",
+                "agent": self.director.username, "expected": "1500.00"}])
         closing = self.post("cash/closings", {
             "day": "2026-11-02", "currency": "XAF", "counted": "1500.00", "note": "",
         })
         self.assertEqual(closing.status_code, 201, closing.content.decode())
         self.assertEqual(closing.json()["expected"], "1500.00")
+        with patch("institutions.finance_cash_views.timezone.localdate", return_value=date(2026, 11, 20)):
+            self.assertEqual(self.client.get(self.base + "cash/closings").json()["unclosed_days"], [])
         self.assertEqual(self.pay(charge, "1000", method="especes").status_code, 409)
         self.assertEqual(self.post("batches", {
             "enrollment": str(self.enrollment.pk),

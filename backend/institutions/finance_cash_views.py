@@ -3,6 +3,7 @@
 Only actual cash declared by the employee is counted. This is not a bank or
 mobile wallet reconciliation and does not invent a settlement confirmation.
 """
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -17,7 +18,7 @@ from .finance_models import CashClosing, CashTransfer
 from .finance_views import (
     CURRENCY_PATTERN, MAX_MONEY, MONEY_PATTERN, gate, iso_day, model_error,
 )
-from .finance_cash_policy import recorded_cash_total
+from .finance_cash_policy import recorded_cash_total, unclosed_cash_days
 from .models import School
 from .views import log_event, parse_body
 
@@ -62,7 +63,11 @@ def cash_closings(request, school_id):
         rows = CashClosing.objects.select_related(
             "school", "submitted_by", "approved_by"
         ).filter(school=school).order_by("-day", "-submitted_at")[:100]
-        return JsonResponse({"closings": [closing_data(row) for row in rows]})
+        today = timezone.localdate()
+        start = today - timedelta(days=29)
+        return JsonResponse({"closings": [closing_data(row) for row in rows],
+            "unclosed_days": unclosed_cash_days(school=school, start=start, end=today),
+            "unclosed_start": start.isoformat(), "unclosed_end": today.isoformat()})
     data, error = parse_body(request)
     if error is not None:
         return error
