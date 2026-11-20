@@ -333,7 +333,7 @@ def approve(request, school_id, batch_id):
                 return JsonResponse({"error": "Année scolaire clôturée."}, status=409)
 
             entries = list(batch.entries.select_for_update().select_related(
-                "enrollment", "schedule", "charge"
+                "enrollment", "schedule"
             ))
             for entry in entries:
                 if entry.schedule.classroom_id and entry.schedule.classroom_id != entry.enrollment.classroom_id:
