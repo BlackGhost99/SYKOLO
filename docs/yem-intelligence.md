@@ -34,3 +34,9 @@ Voir #226. Distinguer zéro et valeur inconnue, ne pas déduire un paiement d'un
 ## Gouvernance
 
 Aucune donnée personnelle d'enfant envoyée à un service externe par défaut. Les fournisseurs et budgets devront être activés explicitement par la plateforme. Contrôles déterministes, isolation des établissements, audit et résistance aux instructions malveillantes dans les documents. Chaque jalon exige des tests et une PR validée avant déploiement.
+
+## Matricules locaux — #229
+
+YEM Intelligence inspecte les matricules du registre d'une école (jusqu'à 10 000 codes pour la suggestion) et de la colonne Matricule reconnue dans un fichier d'import. Il détecte les compteurs numériques, zéros initiaux, préfixes ou suffixes fixes et présente jusqu'à huit séries candidates, sans modifier ni réserver de codes. Les identifiants permanents YEM ne sont pas interprétés comme séries locales. Les cas mixtes, les chiffres fixes ambigus et les petits échantillons exigent le choix du gestionnaire. Le moteur local n'appelle aucun fournisseur IA.
+
+Pour un registre importé avec des lignes sans code, choisir et enregistrer la règle dans les paramètres Matricules avant le commit. Le générateur existant réserve les codes renseignés avant de numéroter les lignes vides. Pour une école déjà en activité, les paramètres proposent les séries de ses élèves et utilisent le compteur déjà réservé lorsqu'il est supérieur. La prévisualisation classique et l'enregistrement contrôlent l'ensemble du registre sous les verrous existants. Les propositions calculées sur le fichier seul ne sont pas des garanties de disponibilité ; elles ne modifient jamais la règle automatiquement. Les anciennes séries restent inchangées, aucune déduction automatique d'une année en cours ni réinitialisation annuelle.
