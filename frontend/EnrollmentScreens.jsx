@@ -40,7 +40,7 @@ const money = (v, c) => `${num(v)} ${cur(c)}`;
 const fmtDate = iso => iso ? new Date(iso + (iso.length === 10 ? "T00:00:00" : "")).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const today = () => new Date().toISOString().slice(0, 10);
 export const METHODS = [["airtel_money", "Airtel Money", "mobile"], ["moov_money", "Moov Money", "mobile"], ["especes", "Espèces", "cash"], ["virement", "Virement", "transfer"], ["cheque", "Chèque", "file"]];
-export const methodLabel = m => METHODS.find(x => x[0] === m)?.[1] || (m === "mobile_money" ? "Mobile money" : m === "autre" ? "Autre" : m);
+export const methodLabel = m => m === "cash" ? "Espèces (historique à rapprocher)" : m === "simulation" ? "Simulation" : METHODS.find(x => x[0] === m)?.[1] || (m === "mobile_money" ? "Mobile money" : m === "autre" ? "Autre" : m);
 const FIN = { a_jour: ["green", "Payé"], partiel: ["yellow", "Partiel"], impaye: ["red", "Impayé"], sans_frais: ["gray", "Sans frais"] };
 const slug = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^(\d)/, "q_$1").slice(0, 40) || "champ";
 const uniqueKey = (label, taken) => { let k = slug(label), n = 2; while (taken.includes(k)) k = `${slug(label).slice(0, 36)}_${n++}`; return k; };
