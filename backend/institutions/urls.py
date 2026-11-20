@@ -56,6 +56,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/delegations", delegation_views.delegations),
     path("schools/<uuid:school_id>/delegations/<uuid:delegation_id>", delegation_views.delegations),
     path("platform/dashboard", platform_admin_views.platform_dashboard),
+    path("platform/intelligence/gemini/simulation", platform_admin_views.platform_simulate_gemini),
     path("platform/subscription-reminders", subscription_reminders.commercial_reminders),
     path("platform/commercial-dashboard", subscription_dashboard.financial_dashboard),
     path("platform/schools/<uuid:school_id>/commercial-access", subscription_access.commercial_access),

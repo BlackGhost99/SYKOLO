@@ -2,9 +2,10 @@ import json
 from unittest.mock import MagicMock, Mock, patch
 from urllib.error import URLError
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 from .intelligence_engine import IntelligenceEngine, engine
+from .intelligence_readiness import gemini_readiness
 from .intelligence_providers import (
     CHAT_ENDPOINTS, GEMINI_ENDPOINT, MAX_OUTPUT_TOKENS, MAX_RESPONSE_BYTES,
     ProviderError, REQUEST_TIMEOUT, header_adapter, post_json,
@@ -92,3 +93,15 @@ class IntelligenceProviderTests(SimpleTestCase):
 
     def test_application_still_has_no_configured_adapter(self):
         self.assertFalse(engine.capabilities()["header_adapter_configured"])
+
+    def test_gemini_readiness_distinguishes_missing_invalid_and_unverified(self):
+        for key, model, expected in (
+            ("", "", "key_missing"),
+            ("fixture", "", "model_missing"),
+            ("fixture", "../invalid", "invalid_configuration"),
+            ("fixture", "gemini-fixture", "ready_unverified"),
+        ):
+            with self.subTest(expected=expected), override_settings(
+                YEM_GEMINI_API_KEY=key, YEM_GEMINI_MODEL=model,
+            ):
+                self.assertEqual(gemini_readiness(), {"status": expected})
