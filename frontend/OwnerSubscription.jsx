@@ -39,6 +39,8 @@ export default function OwnerSubscription({schoolId,yearId}){
     {!yearId&&state.records.length>1&&<label className="field">Année du contrat<select value={sub?.year_id||""} onChange={e=>setSelectedYear(e.target.value)}>{state.records.map(r=><option key={r.id} value={r.year_id}>{r.year}</option>)}</select></label>}
     {state.loading?<p role="status">Chargement…</p>:state.error?<p role="alert">{state.error}</p>:!sub?<p>Aucun contrat émis pour cette année scolaire : aucune somme exigible pour cette année.</p>:<>
       <div className="yd-subscription-totals" aria-label="Synthèse contractuelle"><div><small>Total contractuel · {sub.year}</small><strong>{money(sub.total_xaf)}</strong></div><div><small>Réglé</small><strong>{money(sub.paid_xaf)}</strong></div><div><small>Solde</small><strong>{money(sub.balance_xaf)}</strong></div></div>
+      {sub.pending_adjustment?.status==="pending"&&<div className="hint" role="status"><strong>Régularisation en attente : {sub.pending_adjustment.students} élève(s) supplémentaire(s).</strong> Estimation au prorata au {sub.pending_adjustment.effective_on} : {money(sub.pending_adjustment.amount_xaf)}. Ce montant ne sera exigible qu’après émission de l’avenant par BWETEK.</div>}
+      {sub.pending_adjustment?.status==="review"&&<p className="hint" role="status">Situation contractuelle à contrôler : {sub.pending_adjustment.reason}</p>}
       {view==="summary"&&<SubscriptionSingPay key={sub.id} schoolId={schoolId} subscriptionId={sub.id}/>}
       {view==="contract"&&<><SubscriptionDocuments documents={sub.documents}/>
       {!!sub.amendments?.length&&<><p>Contrat initial : {money(sub.original_total_xaf)}</p>{sub.amendments.map(a=><p key={a.id}>Avenant n° {a.revision} — {a.effective_on} — {money(a.amount_xaf)}</p>)}</>}
