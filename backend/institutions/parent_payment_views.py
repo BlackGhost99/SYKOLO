@@ -475,7 +475,9 @@ def unpaid_tuition_notifications(user):
         ).values("charge_id").annotate(total=Sum("amount"))
     }
     from .historical_finance import historical_credits
-    opening = historical_credits(charges[0].school_id, [charge.pk for charge in charges])
+    opening = {}
+    for school_id in {charge.school_id for charge in charges}:
+        opening.update(historical_credits(school_id, [charge.pk for charge in charges if charge.school_id == school_id]))
     for key, amount in opening.items():
         paid_by_charge[key] = paid_by_charge.get(key, Decimal("0.00")) + amount
     reminders = []
