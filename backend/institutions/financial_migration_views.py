@@ -14,7 +14,7 @@ from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
 
 from accounts.views import authorized
 from .academic_models import AcademicYear
@@ -34,7 +34,8 @@ from .intelligence_import import analyze_import_headers
 from .student_models import Enrollment
 from .models import School
 from .singpay_models import SingPayIntent
-from .views import log_event
+from .views import log_event, access, refuse
+from .services import has_permission
 
 MAX_CELLS = 2000
 XAF = re.compile(r"(?:0|[1-9][0-9]{0,9}|[1-9][0-9]{0,2}(?: [0-9]{3}){1,3})(?:[.,]00)?\Z")
@@ -121,11 +122,74 @@ def cell_preview(school, enrollment, schedule, value, cutoff):
             "charge_exists": bool(charge)}
 
 
+def migration_read_gate(request, school_id):
+    school, error = access(request, school_id)
+    if error is not None:
+        return None, error
+    if not any(has_permission(request.user, school, permission) for permission in ("school.finance.receive", "school.finance.approve")):
+        return None, refuse()
+    return school, None
+
+
+def batch_data(row, user):
+    return {"id": str(row.pk), "year": str(row.year_id), "year_name": row.year.name,
+            "cutoff": row.cutoff.isoformat(), "status": row.status,
+            "source_reference": row.source_reference, "row_count": row.row_count,
+            "prepared_at": row.prepared_at.isoformat(),
+            "approved_at": row.approved_at.isoformat() if row.approved_at else None,
+            "prepared_by_me": row.prepared_by_id == user.pk,
+            "can_approve": row.status == "prepared" and row.prepared_by_id != user.pk and has_permission(user, row.school, "school.finance.approve"),
+            "can_cancel": row.status == "prepared" and row.prepared_by_id == user.pk and has_permission(user, row.school, "school.finance.receive")}
+
+
+def visible_batches(request, school):
+    query = HistoricalFinancialMigration.objects.filter(school=school).select_related("year", "school")
+    if not has_permission(request.user, school, "school.finance.approve"):
+        query = query.filter(prepared_by=request.user)
+    return query
+
+
+@never_cache
+@require_GET
+@authorized
+def batches(request, school_id):
+    school, error = migration_read_gate(request, school_id)
+    if error is not None:
+        return error
+    query = visible_batches(request, school)
+    year = request.GET.get("year")
+    if year:
+        try:
+            query = query.filter(year_id=UUID(year))
+        except ValueError:
+            return JsonResponse({"error": "Année invalide."}, status=422)
+    return JsonResponse({"batches": [batch_data(row, request.user) for row in query.order_by("-prepared_at", "pk")[:100]],
+                         "can_prepare": has_permission(request.user, school, "school.finance.receive")})
+
+
+@never_cache
+@require_GET
+@authorized
+def batch_detail(request, school_id, batch_id):
+    school, error = migration_read_gate(request, school_id)
+    if error is not None:
+        return error
+    row = visible_batches(request, school).filter(pk=batch_id).first()
+    if row is None:
+        return JsonResponse({"error": "Lot introuvable."}, status=404)
+    entries = [{"line": entry.source_row, "student_code": entry.enrollment.student.student_code,
+                "schedule": entry.schedule.label, "declared": fmt(entry.declared_amount),
+                "net_due": fmt(entry.net_due), "scholarship": fmt(entry.scholarship), "state": entry.state}
+               for entry in row.entries.filter(school=school, enrollment__school=school, schedule__school=school)
+               .select_related("enrollment__student", "schedule").order_by("source_row", "schedule_id")[:MAX_CELLS]]
+    return JsonResponse({**batch_data(row, request.user), "entries": entries})
+
+
 @never_cache
 @require_POST
 @authorized
 def inspect(request, school_id):
-    school, error = gate(request, school_id, "school.finance.approve")
+    school, error = migration_read_gate(request, school_id)
     if error is not None:
         return error
     try:
@@ -157,8 +221,8 @@ def inspect(request, school_id):
 @require_POST
 @authorized
 def preview(request, school_id):
-    # Only the accounting approval role may inspect financial migration data.
-    school, error = gate(request, school_id, "school.finance.approve")
+    # Preparation and independent approval both require the financial workspace.
+    school, error = migration_read_gate(request, school_id)
     if error is not None:
         return error
     try:
@@ -417,6 +481,8 @@ def cancel(request, school_id, batch_id):
         ).first()
         if batch is None:
             return JsonResponse({"error": "Lot introuvable."}, status=404)
+        if batch.prepared_by_id != request.user.pk:
+            return refuse()
         if batch.status == HistoricalFinancialMigration.STATUS_APPROVED:
             return JsonResponse({"error": "Un lot approuvé ne peut pas être annulé par cette opération."}, status=409)
         if batch.status == HistoricalFinancialMigration.STATUS_CANCELLED:
