@@ -373,3 +373,61 @@ class FinancialMigrationPreviewTests(TestCase):
         self.assertEqual(prepare(amounts).json()["batch"], replacement.json()["batch"])
         self.assertEqual(HistoricalFinancialMigration.objects.count(), 2)
         self.assertFalse(FeeCharge.objects.exists())
+
+    def test_reversal_is_independent_audited_and_keeps_original_entries(self):
+        from .finance_views import cleared_total
+
+        self.client.force_login(self.econome)
+        response = self.prepare_history()
+        self.assertEqual(response.status_code, 200, response.content)
+        batch = response.json()["batch"]
+        root = f"/api/v1/schools/{self.school.pk}/imports/finance/{batch}"
+        reason = {"reason": "Registre rectifié et contrôlé"}
+        self.client.force_login(self.comptabilite)
+        self.assertEqual(self.client.post(root+"/approve", reason).status_code, 200)
+        charge = FeeCharge.objects.get()
+        self.assertEqual(cleared_total(charge), Decimal("25000"))
+        self.assertEqual(self.client.post(root+"/reversal/confirm", reason).status_code, 409)
+
+        self.client.force_login(self.econome)
+        requested = self.client.post(root+"/reversal/request", reason)
+        self.assertEqual(requested.status_code, 200, requested.content)
+        self.assertTrue(self.client.post(root+"/reversal/request", reason).json()["idempotent"])
+        self.assertEqual(cleared_total(charge), Decimal("25000"))
+        role = SchoolRole.objects.get(school=self.school, code="econome")
+        role.permissions = [*role.permissions, "school.finance.approve"]
+        role.save(update_fields=["permissions"])
+        self.assertEqual(self.client.post(root+"/reversal/confirm", reason).status_code, 403)
+        self.assertEqual(self.client.post(root+"/reversal/withdraw", reason).status_code, 200)
+        self.assertIsNone(HistoricalFinancialMigration.objects.get(pk=batch).reversal_requested_at)
+        self.assertEqual(self.client.post(root+"/reversal/request", reason).status_code, 200)
+
+        self.client.force_login(self.comptabilite)
+        self.year.status = AcademicYear.STATUS_CLOSED
+        self.year.save(update_fields=["status"])
+        self.assertEqual(self.client.post(root+"/reversal/confirm", reason).status_code, 409)
+        self.year.status = AcademicYear.STATUS_CURRENT
+        self.year.save(update_fields=["status"])
+        confirmed = self.client.post(root+"/reversal/confirm", reason)
+        self.assertEqual(confirmed.status_code, 200, confirmed.content)
+        self.assertTrue(self.client.post(root+"/reversal/confirm", reason).json()["idempotent"])
+        self.assertEqual(cleared_total(charge), Decimal("0"))
+        record = HistoricalFinancialMigration.objects.get(pk=batch)
+        self.assertEqual(record.status, record.STATUS_REVERSED)
+        self.assertEqual(record.reversal_requested_by, self.econome)
+        self.assertEqual(record.reversed_by, self.comptabilite)
+        self.assertEqual(record.reversal_reason, reason["reason"])
+        self.assertEqual(record.reversal_evidence, reason["reason"])
+        self.assertEqual(HistoricalFeeAdjustment.objects.get(batch=record).amount, Decimal("25000"))
+        self.assertFalse(FeePayment.objects.exists())
+
+        self.client.force_login(self.econome)
+        self.assertEqual(self.client.post(root+"/cancel", reason).status_code, 409)
+        replacement = self.prepare_history()
+        self.assertEqual(replacement.status_code, 200, replacement.content)
+        self.assertNotEqual(replacement.json()["batch"], batch)
+        self.client.force_login(self.comptabilite)
+        replacement_root = root.rsplit("/", 1)[0] + "/" + replacement.json()["batch"]
+        self.assertEqual(self.client.post(replacement_root+"/approve", reason).status_code, 200)
+        self.assertEqual(cleared_total(charge), Decimal("25000"))
+        self.assertFalse(FeePayment.objects.exists())

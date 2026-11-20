@@ -102,6 +102,10 @@ def annual_closure_checks(school, year):
     unresolved = [
         ("pending_historical_migration", "Des reprises financières attendent validation ou annulation.",
          HistoricalFinancialMigration.objects.filter(school=school, year=year, status="prepared").count()),
+        ("pending_historical_reversal", "Des contrepassations historiques attendent approbation.",
+         HistoricalFinancialMigration.objects.filter(
+             school=school, year=year, status="approved", reversal_requested_at__isnull=False,
+         ).count()),
         ("draft_assessments", "Des évaluations ne sont pas publiées.",
          Assessment.objects.filter(school=school, course__year=year, active=True, published=False).count()),
         ("draft_reports", "Des bulletins sont encore en brouillon.",

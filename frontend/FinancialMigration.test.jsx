@@ -37,3 +37,34 @@ test("la reprise réutilise le classeur en mémoire, avec la feuille et l'année
   expect(options.body.get("sheet")).toBe("Inscriptions");
   expect(options.body.get("header_row")).toBe("3");
 });
+
+test("la contrepassation attend un justificatif et une confirmation explicite", async () => {
+  const batch = {
+    id:"lot",source_reference:"registre.xlsx",year_name:"Année courante",
+    cutoff:"2026-10-31",status:"approved",reversal_pending:true,
+    reversal_reason:"Doublon du registre",can_confirm_reversal:true,entries:[],
+  };
+  const fetchMock = vi.fn(async url => ({
+    ok:true,headers:{get:()=>"application/json"},
+    json:async()=>{
+      if(url.endsWith("/batches"))return {batches:[batch]};
+      if(url.endsWith("/lot"))return batch;
+      return {status:"reversed"};
+    },
+  }));
+  vi.stubGlobal("fetch",fetchMock);
+  render(<FinancialMigration schoolId="school"/>);
+
+  fireEvent.click(await screen.findByRole("button",{name:"Examiner le lot"}));
+  const approve = await screen.findByRole("button",{name:"Approuver le retrait des crédits historiques"});
+  expect(approve.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Motif ou référence du justificatif"),{target:{value:"Pièce rectificative R-12"}});
+  expect(approve.disabled).toBe(true);
+  fireEvent.click(screen.getByRole("checkbox",{name:/Je confirme avoir contrôlé/}));
+  fireEvent.click(approve);
+
+  await screen.findByText("Contrepassation approuvée. Les soldes ont été recalculés.");
+  const [,options] = fetchMock.mock.calls.find(([url])=>url.endsWith("/lot/reversal/confirm"));
+  expect(options.method).toBe("POST");
+  expect(options.body.get("reason")).toBe("Pièce rectificative R-12");
+});
