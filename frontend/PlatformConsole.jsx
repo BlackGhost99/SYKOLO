@@ -236,28 +236,40 @@ const geminiStatuses = {
   ready_unverified:"Clé et modèle détectés. Accès Gemini non vérifié.",
 };
 
-function GeminiReadiness({status}) {
+function GeminiReadiness({status,pilotEnabled}) {
   const [busy,setBusy] = useState(false);
   const [result,setResult] = useState("");
-  async function runSimulation() {
+  async function runCheck(live) {
     setBusy(true);
     setResult("");
     try {
-      const check = await api("platform/intelligence/gemini/simulation");
-      setResult(check.mode==="simulation" && check.passed
-        ?"Simulation réussie. Le moteur local reste actif."
-        :"La simulation a échoué.");
-    } catch {
-      setResult("La simulation a échoué.");
+      const check = live
+        ? await api("platform/intelligence/gemini/test", {})
+        : await api("platform/intelligence/gemini/simulation");
+      if (live) {
+        setResult(check.mode==="live" && check.passed
+          ?"Connexion Gemini vérifiée avec deux colonnes fictives."
+          :"Gemini a répondu. Le classement attendu reste à vérifier.");
+      } else {
+        setResult(check.mode==="simulation" && check.passed
+          ?"Simulation réussie. Le moteur local reste actif."
+          :"La simulation a échoué.");
+      }
+    } catch (e) {
+      setResult(live?e.message:"La simulation a échoué.");
     } finally {
       setBusy(false);
     }
   }
   return <>
-    <p>{geminiStatuses[status] || "État Gemini indisponible."}</p>
-    <button type="button" className="ya-btn ya-btn-outline" disabled={busy} onClick={runSimulation}>
-      {busy?"Simulation en cours…":"Simuler une réponse Gemini"}
+    <p>{pilotEnabled? "Pilote Gemini actif pour la reprise financière." : geminiStatuses[status] || "État Gemini indisponible."}</p>
+    <button type="button" className="ya-btn ya-btn-outline" disabled={busy} onClick={()=>runCheck(false)}>
+      Simuler une réponse Gemini
     </button>
+    {pilotEnabled&&<button type="button" className="ya-btn ya-btn-outline" disabled={busy} onClick={()=>runCheck(true)}>
+      Tester la connexion Gemini
+    </button>}
+    {busy&&<p role="status">Vérification en cours…</p>}
     {result&&<p role="status">{result}</p>}
   </>;
 }
@@ -539,12 +551,12 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
             <div className="ya-heading-icon"><Icon name="activity" size={23}/></div>
             <div>
               <h2>YEM Intelligence</h2>
-              <p>{dashboard.intelligence.header_adapter_configured?"Adaptateur d’analyse configuré":"Analyse locale · aucun fournisseur connecté"}</p>
+              <p>{dashboard.intelligence.gemini?.pilot_enabled?"Analyse locale et Gemini à la demande":dashboard.intelligence.header_adapter_configured?"Adaptateur d’analyse configuré":"Analyse locale · aucun fournisseur connecté"}</p>
               <ul>
                 {dashboard.intelligence.financial_headers&&<li>Analyse des colonnes financières</li>}
                 {dashboard.intelligence.numbering_suggestions&&<li>Suggestions de séries de matricules</li>}
               </ul>
-              {dashboard.intelligence.gemini&&<GeminiReadiness status={dashboard.intelligence.gemini.status}/>}
+              {dashboard.intelligence.gemini&&<GeminiReadiness status={dashboard.intelligence.gemini.status} pilotEnabled={dashboard.intelligence.gemini.pilot_enabled}/>}
             </div>
           </div>
         </section>}

@@ -22,6 +22,10 @@ def gemini_readiness():
     return {"status": status}
 
 
+def gemini_available():
+    return settings.YEM_GEMINI_FREE_PILOT and gemini_readiness()["status"] == "ready_unverified"
+
+
 def simulate_gemini():
     def fixture(url, auth, payload):
         return {"candidates": [{"finishReason": "STOP", "content": {

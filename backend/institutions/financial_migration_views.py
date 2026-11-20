@@ -31,6 +31,8 @@ from .finance_views import cleared_total, gate, iso_day
 from .import_views import inputs
 from .import_service import suggested_mapping
 from .intelligence_import import analyze_import_headers
+from .intelligence_readiness import gemini_available
+from .intelligence_live import analyze_financial_headers_with_gemini
 from .student_models import Enrollment
 from .models import School
 from .singpay_models import SingPayIntent
@@ -232,13 +234,21 @@ def inspect(request, school_id):
     tariffs = FeeSchedule.objects.filter(school=school, year__in=years, active=True,
         currency="XAF").select_related("classroom").order_by("due_date", "label", "pk")
     mapping = suggested_mapping(table["headers"])
-    analysis = analyze_import_headers(table["headers"])
+    available = gemini_available()
+    requested = request.POST.get("assistant") == "gemini"
+    if available and requested:
+        analysis, gemini_status = analyze_financial_headers_with_gemini(table["headers"])
+    else:
+        analysis = analyze_import_headers(table["headers"])
+        gemini_status = "unavailable" if requested else "local"
     return JsonResponse({
         "headers": table["headers"], "sheet": table["sheet"], "sheets": table["sheets"],
         "header_row": table["header_row"], "row_count": len(table["rows"]),
         "suggested_student_code": next((int(col) for col, field in mapping.items() if field == "student_code"), None),
         "financial_columns": analysis["financial_columns"],
         "financial_hints": analysis["financial_hints"],
+        "gemini_available": available,
+        "gemini_status": gemini_status,
         "years": [{"id": str(y.pk), "name": y.name, "start": y.start_date.isoformat(),
                    "end": y.end_date.isoformat(), "status": y.status} for y in years],
         "tariffs": [{"id": str(t.pk), "year": str(t.year_id), "label": t.label, "code": t.code,
@@ -246,7 +256,11 @@ def inspect(request, school_id):
                      "due_date": t.due_date.isoformat() if t.due_date else None}
                     for t in tariffs if not explicit_demo(t.label)],
         "today": timezone.localdate().isoformat(),
-        "notice": "Analyse locale sans enregistrement. Les montants ne sont pas confirmés.",
+        "notice": (
+            "Suggestions Gemini. Les montants restent à vérifier."
+            if gemini_status == "used"
+            else "Analyse locale. Les montants restent à vérifier."
+        ),
     })
 
 
