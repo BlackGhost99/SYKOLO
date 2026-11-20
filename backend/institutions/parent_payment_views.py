@@ -474,6 +474,10 @@ def unpaid_tuition_notifications(user):
             void__isnull=True,
         ).values("charge_id").annotate(total=Sum("amount"))
     }
+    from .historical_finance import historical_credits
+    opening = historical_credits(charges[0].school_id, [charge.pk for charge in charges])
+    for key, amount in opening.items():
+        paid_by_charge[key] = paid_by_charge.get(key, Decimal("0.00")) + amount
     reminders = []
     for charge in charges:
         remaining = charge.amount - charge.scholarship_discount - paid_by_charge.get(
