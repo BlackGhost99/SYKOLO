@@ -271,7 +271,12 @@ def preview(request, school_id):
     })
 
 
-def preview_data(school, school_id, request):
+def migration_fingerprint(identity):
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def preview_data(school, request):
     table = inputs(request)
     raw = request.POST.get("mapping", "")
     if len(raw) > 10000:
@@ -287,15 +292,17 @@ def preview_data(school, school_id, request):
     code_index, pairs = mapped_schedules(school, year, table, json.loads(raw))
 
     upload = request.FILES.get("file")
-    upload.seek(0)
-    payload = upload.read()
-    upload.seek(0)
-    canonical = json.dumps({
+    identity = {
         "year": str(year.pk), "cutoff": cutoff.isoformat(), "mapping": json.loads(raw),
-        "file": hashlib.sha256(payload).hexdigest(),
-        "sheet": table["sheet"], "header_row": table["header_row"],
-    }, sort_keys=True, separators=(",", ":"))
-    fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        "file": table["sha256"], "sheet": table["sheet"], "header_row": table["header_row"],
+    }
+    legacy = migration_fingerprint(identity)
+    identity["mapping"] = {
+        "student_code": code_index,
+        "amounts": [{"column": column, "schedule": str(schedule.pk)}
+                    for column, schedule in sorted(pairs)],
+    }
+    fingerprints = (migration_fingerprint(identity), legacy)
 
     codes = Counter(row["cells"][code_index].casefold() for row in table["rows"])
     entries = []
@@ -326,7 +333,7 @@ def preview_data(school, school_id, request):
                     "evidence_reference": "",
                 })
         reports.append({"line": row["line"], "status": "resolved", "cells": cells})
-    return year, cutoff, fingerprint, upload.name, table, reports, entries
+    return year, cutoff, fingerprints, upload.name, table, reports, entries
 
 
 @never_cache
@@ -337,17 +344,27 @@ def prepare(request, school_id):
     if error is not None:
         return error
     try:
-        year, cutoff, fingerprint, source_name, table, reports, entries = preview_data(
-            school, school_id, request
+        year, cutoff, fingerprints, source_name, table, reports, entries = preview_data(
+            school, request
         )
     except (ValueError, TypeError, KeyError) as exc:
         return JsonResponse({"error": str(exc)}, status=422)
     with transaction.atomic():
         School.objects.select_for_update().get(pk=school.pk)
-        existing = HistoricalFinancialMigration.objects.filter(school=school, fingerprint=fingerprint).first()
+        fingerprint = fingerprints[0]
+        existing = HistoricalFinancialMigration.objects.filter(
+            school=school, fingerprint__in=fingerprints,
+        ).exclude(status=HistoricalFinancialMigration.STATUS_CANCELLED).order_by("prepared_at").first()
         if existing:
             return JsonResponse({"batch": str(existing.pk), "status": existing.status,
                                  "idempotent": True, "row_count": existing.row_count})
+        while (previous := HistoricalFinancialMigration.objects.filter(
+            school=school, fingerprint=fingerprint,
+        ).first()):
+            if previous.status != HistoricalFinancialMigration.STATUS_CANCELLED:
+                return JsonResponse({"batch": str(previous.pk), "status": previous.status,
+                                     "idempotent": True, "row_count": previous.row_count})
+            fingerprint = migration_fingerprint([fingerprint, str(previous.pk)])
         if not entries or any(row["status"] == "identity_review" for row in reports):
             return JsonResponse({"error": "Régularisez les identités avant préparation."}, status=422)
         if any(
@@ -403,7 +420,7 @@ def approve(request, school_id, batch_id):
             if year is None or not year.start_date <= batch.cutoff <= min(year.end_date, timezone.localdate()):
                 return JsonResponse({"error": "Année scolaire clôturée, inactive ou date invalide."}, status=409)
 
-            entries = list(batch.entries.select_for_update().select_related("enrollment", "schedule").order_by("enrollment_id", "schedule_id"))
+            entries = list(batch.entries.select_for_update().order_by("enrollment_id", "schedule_id"))
             if not entries:
                 raise ValueError("Lot vide.")
             for entry in entries:
@@ -417,6 +434,10 @@ def approve(request, school_id, batch_id):
                     raise ValueError("Tarif incompatible avec la classe.")
                 if schedule.due_date and schedule.due_date > batch.cutoff:
                     raise ValueError("Échéance postérieure à la date de reprise.")
+                if HistoricalFinancialMigrationEntry.objects.filter(
+                    school=school, enrollment=enrollment, schedule=schedule, batch__status="approved",
+                ).exists():
+                    raise ValueError("Une reprise a déjà été approuvée pour cette inscription et ce tarif.")
                 charge = FeeCharge.objects.select_for_update().filter(
                     school=school, enrollment=enrollment, schedule=schedule
                 ).first()
@@ -429,10 +450,13 @@ def approve(request, school_id, batch_id):
                     gross, covered = charge.amount, charge.scholarship_discount
                 else:
                     gross, covered = schedule.amount, discount
-                if covered != entry.scholarship or gross - covered != entry.net_due or covered != discount:
+                if (gross != schedule.amount or covered != entry.scholarship
+                        or gross - covered != entry.net_due or covered != discount):
                     raise ValueError("Tarif ou bourse modifié depuis la préparation. Préparez un nouveau lot.")
                 if entry.declared_amount < 0 or entry.declared_amount > gross - covered:
                     raise ValueError("Montant historique incompatible.")
+                entry.evidence_reference = reason[:255]
+                entry.save(update_fields=["evidence_reference"])
                 if charge is None and gross == covered:
                     # Fully covered students must not receive a tuition debt.
                     continue
