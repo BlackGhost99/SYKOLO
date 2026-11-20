@@ -15,6 +15,7 @@ async function financeRequest(path, data) {
   }
   const response = await fetch("/api/v1/" + path, {
     credentials:"same-origin",
+    cache:"no-store",
     method:data === undefined ? "GET" : "POST",
     headers:data === undefined ? {} : {"Content-Type":"application/json","X-CSRFToken":csrf()},
     body:data === undefined ? undefined : JSON.stringify(data),
@@ -32,6 +33,10 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
   const [permissions,setPermissions]=useState([]);
   const [rows,setRows]=useState([]);
   const [summary,setSummary]=useState(null);
+  const [unclosed,setUnclosed]=useState(null);
+  const [historyDay,setHistoryDay]=useState("");
+  const [refreshError,setRefreshError]=useState("");
+  const [updated,setUpdated]=useState("");
   const [day,setDay]=useState(defaultDay || todayLocal());
   const [currency,setCurrency]=useState("XAF");
   const [counted,setCounted]=useState("");
@@ -46,44 +51,62 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
   const canReceive=permissions.includes("school.finance.receive");
   const canApprove=permissions.includes("school.finance.approve");
 
-  async function reload() {
-    const [result,report]=await Promise.all([
-      financeRequest(`schools/${schoolId}/finance/cash/closings`),
-      financeRequest(`schools/${schoolId}/finance/summary`),
-    ]);
-    setRows(result.closings || []);
-    setSummary(report);
-  }
   useEffect(()=>{
-    let alive=true;
-    Promise.all([
-      financeRequest(`schools/${schoolId}/my-access`),
-      financeRequest(`schools/${schoolId}/finance/cash/closings`),
-      financeRequest(`schools/${schoolId}/finance/summary`),
-    ]).then(([access,result,report])=>{
-      if (!alive) return;
-      setPermissions(access.permissions||[]);
-      setRows(result.closings||[]);
-      setSummary(report);
-    }).catch(e=>{if(alive)setError(e.message);});
-    return ()=>{alive=false;};
+    setPermissions([]);setRows([]);setSummary(null);setUnclosed(null);setUpdated("");
+    setHistoryDay("");setRefreshError("");setApprovalNotes({});
+    setTransfer({closing:"",kind:"handover",amount:"",reference:"",destination:"",day:todayLocal()});
   },[schoolId]);
+  useEffect(()=>{
+    if(busy)return;
+    let alive=true,running=false;
+    async function refresh(){
+      if(running||document.hidden)return;
+      running=true;
+      try{
+        const [access,result,report]=await Promise.all([
+          financeRequest(`schools/${schoolId}/my-access`),
+          financeRequest(`schools/${schoolId}/finance/cash/closings`),
+          financeRequest(`schools/${schoolId}/finance/summary`),
+        ]);
+        if(!alive)return;
+        setPermissions(access.permissions||[]);
+        setRows(result.closings||[]);
+        setSummary(report);
+        setUnclosed(Array.isArray(result.unclosed_days)?{rows:result.unclosed_days,start:result.unclosed_start,end:result.unclosed_end}:null);
+        setUpdated(new Date().toLocaleString("fr-GA"));
+        setRefreshError("");
+      }catch(e){
+        if(alive){setPermissions([]);setRows([]);setSummary(null);setUnclosed(null);setUpdated("");setRefreshError(e.message);}
+      }finally{running=false;}
+    }
+    refresh();
+    const timer=window.setInterval(refresh,30000);
+    window.addEventListener("focus",refresh);
+    document.addEventListener("visibilitychange",refresh);
+    return ()=>{alive=false;window.clearInterval(timer);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
+  },[schoolId,busy]);
 
   async function act(task,success) {
     setBusy(true);setError("");setMessage("");
     try {
       await task();
-      await reload();
       setMessage(success);
     } catch(e) {setError(e.message);}
     finally {setBusy(false);}
   }
 
-  if(!canRead && !error)return null;
+  if(!canRead && !error && !refreshError)return null;
   return <section className="yd-cash-closing" aria-label="Clôture de caisse">
-    <h3>Contrôle quotidien des espèces</h3>
-    {canRead&&summary&&<div style={{marginBottom:16}}>
-      <h4>Situation financière par devise · tous exercices</h4>
+    <h3>Contrôle quotidien des recettes en espèces</h3>
+    {refreshError&&<p role="alert" className="pc-alert">Actualisation impossible : {refreshError}</p>}
+    {updated&&<p className="yd-card-sub">Dernière actualisation : {updated} · actualisation automatique toutes les 30 secondes.</p>}
+    {canRead&&unclosed&&<div style={{marginBottom:16}}>
+      <h4>Recettes sans déclaration de caisse</h4>
+      <p className="yd-card-sub">Période : {unclosed.start} au {unclosed.end}. Espèces déclarées uniquement, par agent et devise.</p>
+      {unclosed.rows.length===0?<p>Aucune recette sans déclaration sur cette période.</p>:<TableScroll label="Recettes sans clôture"><table className="dense"><thead><tr><th>Jour</th><th>Agent</th><th>Recettes attendues</th></tr></thead><tbody>{unclosed.rows.map(r=><tr key={JSON.stringify([r.day,r.agent,r.currency])}><td>{r.day}</td><td>{r.agent}</td><td>{formatMoney(r.expected,r.currency)}</td></tr>)}</tbody></table></TableScroll>}
+    </div>}
+    {canRead&&summary&&<details style={{marginBottom:16}}>
+      <summary>Situation financière par devise · tous exercices (historique)</summary>
       <p className="yd-card-sub">Montants déclarés manuellement par l'établissement, hors confirmations automatiques des banques et opérateurs mobiles.</p>
       {Object.keys(summary.currencies).length===0
         ?<p className="yd-card-sub">Aucun frais encore facturé.</p>
@@ -97,8 +120,8 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
             <td>{formatMoney(row.overdue,devise)}</td>
           </tr>)}</tbody>
         </table></TableScroll>}
-    </div>}
-    <p className="yd-card-sub">Seuls les encaissements en espèces effectivement enregistrés sont comptés. Les paiements Mobile Money et virements ne sont pas de l'argent en caisse.</p>
+    </details>}
+    <p className="yd-card-sub">Seuls les encaissements en espèces effectivement enregistrés sont comptés. Les paiements Mobile Money et virements ne sont pas de l'argent en caisse. Ce contrôle porte sur les recettes journalières, pas sur un solde de trésorerie incluant fonds de caisse et dépenses.</p>
     {canReceive&&<form onSubmit={e=>{e.preventDefault();act(async()=>{
       await financeRequest(`schools/${schoolId}/finance/cash/closings`,{
         day,currency,counted:counted.replace(",", "."),note,
@@ -125,10 +148,11 @@ export default function CashClosingPanel({schoolId, defaultDay}) {
     {message&&<p role="status" className="yd-form-msg">{message}</p>}
     {canRead&&<div style={{marginTop:14}}>
       <h4>Déclarations récentes</h4>
-      {rows.length===0?<p className="yd-card-sub">Aucune clôture de caisse enregistrée.</p>:
+      <label>Filtrer les 100 dernières déclarations par date<input type="date" value={historyDay} onChange={e=>setHistoryDay(e.target.value)}/></label>
+      {rows.filter(r=>!historyDay||r.day===historyDay).length===0?<p className="yd-card-sub">Aucune déclaration dans les résultats affichés. L’économe soumet le comptage avant contrôle du comptable.</p>:
        <TableScroll label="Historique des clôtures"><table className="dense">
          <thead><tr><th>Jour</th><th>Agent</th><th>Attendu</th><th>Compté</th><th>Écart</th><th>Contrôle</th></tr></thead>
-         <tbody>{rows.slice(0,12).map(row=><tr key={row.id}>
+         <tbody>{rows.filter(r=>!historyDay||r.day===historyDay).map(row=><tr key={row.id}>
            <td>{row.day}</td><td>{row.submitted_by}</td>
            <td>{formatMoney(row.expected,row.currency)}</td>
            <td>{formatMoney(row.counted,row.currency)}</td>
