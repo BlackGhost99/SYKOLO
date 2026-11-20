@@ -11,6 +11,7 @@ from .models import (
     Organization, PlatformAudit, School, SchoolAdminPolicy,
     SchoolAudit, SchoolMember, SchoolRole, Student,
 )
+from .intelligence_engine import engine
 from .platform_views import platform_only
 from .services import OWNER_ROLE_CODE, provision_appointment_roles, public_role_label, role_available
 from .school_profiles import validate_school_profile
@@ -137,6 +138,7 @@ def platform_dashboard(request):
     ).order_by("name")
     school_total = School.objects.count()
     return JsonResponse({
+        "intelligence": engine.capabilities(),
         "organizations": Organization.objects.count(),
         "schools_total": school_total,
         "schools_active": School.objects.filter(is_active=True).count(),

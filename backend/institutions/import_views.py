@@ -27,7 +27,7 @@ from .academic_models import AcademicClass, AcademicYear
 from .enrollment_form import load_config, check_base, clean_answers
 from .import_models import StudentImportBatch, StudentImportProfile
 from .intelligence_import import analyze_import_headers
-from .intelligence_numbering import suggest_series
+from .intelligence_engine import engine
 from .import_service import FIELDS, normalized, parse_upload, parse_date, parse_gender, suggested_mapping, validate_mapping
 from .models import School, SchoolAdminPolicy
 from .overview_views import gate
@@ -241,7 +241,7 @@ def inspect(request, school_id):
     numbering = None
     if code_column is not None:
         # Imported identifiers are only inspected; never reserve or allocate here.
-        numbering = suggest_series(row["cells"][code_column] for row in table["rows"])
+        numbering = engine.suggest_numbering(row["cells"][code_column] for row in table["rows"])
         numbering["blank_rows"] = sum(not row["cells"][code_column].strip() for row in table["rows"])
     return JsonResponse({"headers": table["headers"], "sheets": table["sheets"], "sheet": table["sheet"],
                          "header_row": table["header_row"], "row_count": len(table["rows"]),

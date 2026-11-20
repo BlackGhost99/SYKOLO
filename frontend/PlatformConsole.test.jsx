@@ -19,6 +19,7 @@ const detail={
   events:[],
 };
 const dashboard={
+  intelligence:{financial_headers:true,numbering_suggestions:true,header_adapter_configured:false},
   schools:[school],schools_total:1,schools_active:1,schools_inactive:0,
   organizations:1,users_active:1,filtered_total:1,page:1,pages:1,per_page:5,
   recent_events:[],organization_options:[{id:school.organization_id,name:"Groupe Test",schools_count:1}],
@@ -67,6 +68,8 @@ test("affiche uniquement les vraies informations de la console super-administrat
   expect((await screen.findAllByText("Lycée Test")).length).toBeGreaterThan(0);
   expect(screen.getByRole("heading",{name:"Console d'administration YEM"})).toBeTruthy();
   expect(screen.getByText("Structures propriétaires")).toBeTruthy();
+  expect(screen.getByRole("heading",{name:"YEM Intelligence"})).toBeTruthy();
+  expect(screen.getByText("Analyse locale · aucun fournisseur connecté")).toBeTruthy();
   expect(screen.getByText("Comptes des écoles actives")).toBeTruthy();
   expect(screen.queryByTestId("school-workspace")).toBeNull();
   expect(document.querySelector(".ya-brand img")).toBeTruthy();
