@@ -355,3 +355,20 @@ class ExtrasSalesLedgerTests(TestCase):
         self.assertEqual(self.post(returns_url, {
             **return_data, "operation_key": "unauthorized-return-20261121",
         }).status_code, 403)
+
+    @override_settings(YEM_EXTRA_STOCK_WRITES_ENABLED=True)
+    def test_inventory_reconciliation_detects_balances_and_denies_readonly(self):
+        stock_url = f"/api/v1/schools/{self.school.pk}/finance/extras/stock"
+        audit_url = stock_url + "/audit"
+        self.assertEqual(self.post(stock_url, {
+            "catalog_item_id": self.product_id, "quantity_delta": 4,
+            "reason": "Inventaire physique contrôlé par magasin",
+            "operation_key": "audit-inventory-20261121", "revision": 0,
+        }).status_code, 201)
+        result = self.client.get(audit_url)
+        self.assertEqual(result.status_code, 200, result.content)
+        self.assertEqual(result.json()["rows"][0]["difference"], 0)
+        self.assertFalse(result.json()["rows"][0]["mismatch"])
+        self.assertEqual(result.json()["anomalies_on_page"], 0)
+        self.client.force_login(self.reader)
+        self.assertEqual(self.client.get(audit_url).status_code, 403)
