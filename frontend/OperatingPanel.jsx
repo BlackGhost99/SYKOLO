@@ -138,6 +138,48 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       "Les catégories existantes ont été préservées."
     );
   }
+  async function createClassification(event,kind){
+    event.preventDefault();
+    const form=kind==="cost_center"?centerForm:natureForm;
+    const payload={...form,kind};
+    const row=await op(()=>request(root+"classification","POST",payload),
+      kind==="cost_center"?"Centre de coûts ajouté.":"Nature comptable ajoutée.");
+    if(row){
+      if(kind==="cost_center")setCenterForm({code:"",name:"",activity_pole:""});
+      else setNatureForm({code:"",name:""});
+    }
+  }
+  async function saveClassification(event){
+    event.preventDefault();
+    if(!editingOption)return;
+    const row=await op(()=>request(root+"classification/"+editingOption.id,"PATCH",{
+      revision:editingOption.revision,name:editingOption.name,
+      activity_pole:editingOption.kind==="cost_center"?editingOption.activity_pole:"",
+    }),"Référence modifiée : les anciennes dépenses conservent leur libellé.");
+    if(row)setEditingOption(null);
+  }
+  async function toggleClassification(item){
+    if(confirmOptionArchive!==item.id){setConfirmOptionArchive(item.id);return;}
+    const changed=await op(()=>request(root+"classification/"+item.id,"PATCH",{
+      revision:item.revision,active:!item.active,
+    }),item.active?"Référence archivée.":"Référence réactivée.");
+    if(changed)setConfirmOptionArchive("");
+  }
+  async function savePole(event){
+    event.preventDefault();
+    if(!editingPole)return;
+    const row=await op(()=>request(root+"classification/poles/"+editingPole.code,"PATCH",{
+      revision:editingPole.revision,label:editingPole.label,
+    }),"Libellé du pôle modifié. Son code est conservé.");
+    if(row)setEditingPole(null);
+  }
+  async function togglePole(pole){
+    if(confirmOptionArchive!==pole.code){setConfirmOptionArchive(pole.code);return;}
+    const changed=await op(()=>request(root+"classification/poles/"+pole.code,"PATCH",{
+      revision:pole.revision,active:!pole.active,
+    }),pole.active?"Pôle désactivé pour les nouvelles demandes.":"Pôle réactivé.");
+    if(changed)setConfirmOptionArchive("");
+  }
   async function addSupplier(event){
     event.preventDefault();
     const result=await op(()=>request(root+"suppliers","POST",supplierForm),"Fournisseur ajouté.");
@@ -298,6 +340,11 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     return [c.code,c.name,parent?.name||""].some(x=>x.toLocaleLowerCase("fr").includes(term));
   });
   const displayedCategories=showEntireCatalog?filteredCategories:filteredCategories.slice(0,60);
+  const activePoles=classifications.poles.length?
+    classifications.poles.filter(p=>p.active).map(p=>[p.code,p.label]):POLES;
+  const poleLabels={...POLE_LABELS,...Object.fromEntries(classifications.poles.map(p=>[p.code,p.label]))};
+  const activeCenters=(pole)=>classifications.centers.filter(c=>c.active&&(!c.activity_pole||c.activity_pole===pole));
+  const activeNatures=classifications.natures.filter(n=>n.active);
   const categoryRoots=categories.filter(c=>!c.parent);
   const activeRoots=categoryRoots.filter(c=>c.active);
   const selectableSubs=(parentId)=>categories.filter(c=>c.parent===parentId&&c.active);
@@ -326,7 +373,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       {Object.entries(summary?.by_activity_pole||{}).flatMap(([currency,groups])=>
         Object.entries(groups).map(([pole,values])=>
           <p key={currency+"-"+pole}>
-            <strong>{POLE_LABELS[pole]||pole} · {currency}</strong>
+            <strong>{poleLabels[pole]||pole} · {currency}</strong>
             <span style={{display:"block"}}>Engagé : {fmt(values.committed,currency)} · Déclaré payé : {fmt(values.paid,currency)} · Reste : {fmt(values.unpaid,currency)}</span>
           </p>))}
       {!Object.keys(summary?.by_activity_pole||{}).length&&<p>Aucune sortie approuvée sur cette période.</p>}
@@ -353,7 +400,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       {categories.length>0&&<Table headers={["Code","Catégorie / sous-catégorie","Pôle suggéré","État","Actions"]}
         rows={displayedCategories.map(item=>[
           item.code,(item.parent?"↳ ":"")+item.name,
-          POLE_LABELS[item.suggested_pole]||"Non défini",
+          poleLabels[item.suggested_pole]||"Non défini",
           <Status tone={item.active?"green":"gray"}>{item.active?"Active":"Archivée"}</Status>,
           canManage?<div className="actions">
             <Button className="small" disabled={busy} onClick={()=>{setEditingCategory({...item});setArchiveTarget("");}}>Modifier</Button>
@@ -380,7 +427,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
           </select></label>
           <label className="field">Pôle suggéré<select value={categoryForm.suggested_pole} onChange={e=>setCategoryForm({...categoryForm,suggested_pole:e.target.value})}>
             <option value="">Aucun — classification indépendante</option>
-            {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
           </select></label>
         </div>
         <Button primary type="submit" disabled={busy}>Ajouter cette catégorie</Button>
@@ -392,7 +439,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
             value={editingCategory.name} onChange={e=>setEditingCategory({...editingCategory,name:e.target.value})}/></label>
           <label className="field">Pôle conseillé<select value={editingCategory.suggested_pole} onChange={e=>setEditingCategory({...editingCategory,suggested_pole:e.target.value})}>
             <option value="">Aucun</option>
-            {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
           </select></label>
         </div>
         <div className="actions">
@@ -441,7 +488,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       subtitle="Achat, facture ou intervention justifiée : préparation, validation puis règlement.">
       <label className="field">Filtrer les dépenses par activité<select value={poleFilter} onChange={e=>{setPoleFilter(e.target.value);setPageOffset(0);}}>
         <option value="">Toutes les activités</option>
-        {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+        {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
         <option value="unclassified">À classer (historique)</option>
       </select></label>
       <div className="actions" aria-label="File des demandes par état">
@@ -458,7 +505,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       </p>
       {expenses.length>0&&<Table rowKey={(_,i)=>expenses[i].id} rowActions={(_,i)=>[{id:"detail",label:"Consulter la dépense",run:()=>openExpense(expenses[i].id)}]} headers={["Objet","Pôle financier","Bénéficiaire","Montant","Déclaré payé","Solde","État","Dossier"]}
         rows={expenses.map(e=>[
-          e.label,POLE_LABELS[e.activity_pole]||"À classer",e.beneficiary_name||e.supplier_name||"—",fmt(e.amount,e.currency),fmt(e.paid,e.currency),
+          e.label,poleLabels[e.activity_pole]||"À classer",e.beneficiary_name||e.supplier_name||"—",fmt(e.amount,e.currency),fmt(e.paid,e.currency),
           fmt(e.balance,e.currency),
           <Status tone={statusTone(e.status)}>{STATUS[e.status]||e.status}</Status>,
           <Button className="small" onClick={()=>openExpense(e.id)}>Détail</Button>,
@@ -493,7 +540,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
           </select></label>
           <label className="field">Pôle financier<select required value={expenseForm.activity_pole} onChange={e=>setExpenseForm({...expenseForm,activity_pole:e.target.value})}>
             <option value="">Choisir l'activité concernée</option>
-            {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
           </select></label>
           <label className="field">Centre de coûts<input maxLength={100} placeholder="Ex. Administration, collège, cantine" value={expenseForm.cost_center} onChange={e=>setExpenseForm({...expenseForm,cost_center:e.target.value})}/></label>
           <label className="field">Nature comptable<input maxLength={100} placeholder="Ex. Entretien, achats, immobilisation" value={expenseForm.accounting_nature} onChange={e=>setExpenseForm({...expenseForm,accounting_nature:e.target.value})}/></label>
@@ -531,7 +578,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       <p>Catégorie : <strong>{detail.expense.expense_category||"À classer (historique)"}</strong>
         {detail.expense.expense_subcategory?" / "+detail.expense.expense_subcategory:""}
       </p>
-      <p>Activité : <strong>{POLE_LABELS[detail.expense.activity_pole]||"À classer"}</strong>
+      <p>Activité : <strong>{poleLabels[detail.expense.activity_pole]||"À classer"}</strong>
         {detail.expense.cost_center?" · Centre de coûts : "+detail.expense.cost_center:""}
         {detail.expense.accounting_nature?" · Nature comptable : "+detail.expense.accounting_nature:""}
       </p>
@@ -549,7 +596,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
           </select></label>
           <label className="field">Pôle de cette dépense<select required value={draftClassification.activity_pole} onChange={e=>setDraftClassification({...draftClassification,activity_pole:e.target.value})}>
             <option value="">Choisir le pôle</option>
-            {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
           </select></label>
           <label className="field">Centre de coûts du projet<input maxLength={100} value={draftClassification.cost_center} onChange={e=>setDraftClassification({...draftClassification,cost_center:e.target.value})}/></label>
           <label className="field">Nature comptable du projet<input maxLength={100} value={draftClassification.accounting_nature} onChange={e=>setDraftClassification({...draftClassification,accounting_nature:e.target.value})}/></label>
