@@ -135,8 +135,9 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
           <Table headers={["Devise","Enregistré","Solde comptable","Échu comptable"]} rows={finance.map(row=>[row.currency,amount(row.paid,row.currency),amount(row.outstanding,row.currency),amount(row.overdue,row.currency)])}/>
         </Card>}</div></>}
         {tab==="synthese"&&<div className="yd-owner-quick-grid">{[["finances","coins","Situation financière","Consulter les écritures et les soldes"],["admissions","adduser","Admissions",number(admission.pending)+" en attente"],["personnel","idcard","Personnel",number(staff.active)+" collaborateurs actifs"],["activite","calendar","Activité",number(activity.total_30d)+" opérations sur 30 jours"],["abonnement","receipt","Abonnement YEM","Contrat, simulation et échéances"]].map(([id,icon,label,desc])=><Card key={id} title={label} icon={icon}><p>{desc}</p><Button onClick={()=>setTab(id)}>Consulter</Button></Card>)}</div>}
-        {tab==="finances"&&<Card title="Entrées financières de l’établissement" icon="coins"
-          subtitle="Origines distinctes, sans écriture nouvelle ni addition automatique">
+        {tab==="finances"&&<Card title="Situation financière de l’établissement" icon="coins"
+          subtitle="Entrées par origine distincte, sans écriture nouvelle ni addition automatique">
+          <h3>Entrées financières — ventilation</h3>
           <h3>Frais d’inscription — espèces enregistrées</h3>
           <Table headers={["Origine","Devise","Montant déclaré","Opérations","Ce mois","Aujourd’hui"]}
             rows={[[ "Inscriptions à la caisse",admissionCash?.currency||"XAF",
