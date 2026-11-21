@@ -1,6 +1,7 @@
 from . import commercial_singpay_views
 from . import entry_category_policy
 from . import entry_transactions
+from . import entry_extras_catalog
 from django.urls import path
 from conduct import views as conduct_views
 from . import financial_migration_views
@@ -193,6 +194,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/finance/enrollments/<uuid:enrollment_id>/notice", finance_extra_documents.staff_notice),
     path("schools/<uuid:school_id>/finance/payments/<uuid:payment_id>/cancellation-pdf", finance_extra_documents.staff_void_document),
     path("schools/<uuid:school_id>/finance/entry-categories", entry_category_policy.fee_classifications),
+    path("schools/<uuid:school_id>/finance/extras/catalog", entry_extras_catalog.extras_catalog),
     path("schools/<uuid:school_id>/finance/entry-transactions", entry_transactions.transactions),
     path("schools/<uuid:school_id>/finance/summary", finance_summary_views.summary),
     path("schools/<uuid:school_id>/finance/quality", finance_quality_views.quality),
