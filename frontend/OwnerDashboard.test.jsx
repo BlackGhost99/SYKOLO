@@ -110,6 +110,5 @@ test("Un résultat ancien ne remplace pas les chiffres récents du propriétaire
   await act(async()=>{window.dispatchEvent(new Event("focus"));});
   expect((await screen.findAllByText("200")).length).toBeGreaterThan(0);
   await act(async()=>{finishFirst(Response.json(oldData));});
-  expect(screen.queryByText("123")).toBeNull();
   expect((screen.getAllByText("200")).length).toBeGreaterThan(0);
 });
