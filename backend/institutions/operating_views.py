@@ -573,7 +573,7 @@ def expense_detail(request, school_id, expense_id):
     if type(data["revision"]) is not int or not set(data).difference({"revision"}):
         return fail("Version et modification requises.")
     with transaction.atomic():
-        row = OperatingExpense.objects.select_for_update().select_related("year", "supplier", "budget").filter(
+        row = OperatingExpense.objects.select_for_update(of=("self",)).select_related("year", "supplier", "budget").filter(
             school=school, pk=expense_id,
         ).first()
         if not row:
@@ -654,7 +654,7 @@ def approve_expense(request, school_id, expense_id):
         budget = OperatingBudget.objects.select_for_update().select_related("year").filter(
             school=school, pk=initial["budget_id"],
         ).first()
-        row = OperatingExpense.objects.select_for_update().select_related("budget", "supplier", "year").filter(
+        row = OperatingExpense.objects.select_for_update(of=("self",)).select_related("budget", "supplier", "year").filter(
             school=school, pk=expense_id, budget=budget,
         ).first()
         if not budget or not row:
@@ -717,7 +717,7 @@ def pay_expense(request, school_id, expense_id):
                     previous.reference == reference and previous.paid_on == paid_on):
                 return result(payment_data(previous))
             return fail("Clé anti-doublon déjà utilisée avec une autre opération.", 409)
-        row = OperatingExpense.objects.select_for_update().select_related("year", "budget", "supplier").filter(
+        row = OperatingExpense.objects.select_for_update(of=("self",)).select_related("year", "budget", "supplier").filter(
             school=school, pk=expense_id,
         ).first()
         if not row:
