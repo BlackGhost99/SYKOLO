@@ -5,6 +5,7 @@ import {DashboardShortcuts} from "./SchoolDashboardHeader.jsx";
 import FinancialDocuments, {PdfLinks} from "./FinancialDocuments.jsx";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
 import SingPayControl from "./SingPayControl.jsx";
+import IncomeTransactionExplorer from "./IncomeTransactionExplorer.jsx";
 import {TableScroll,  Icon, Button, Status, Metric, Card, Table, InfoRow, SearchBox, Check, Donut, LineChart, BarList, PageHeader } from "./yem-ui.jsx";
 
 /* Écrans réels branchés sur l'API, avec la présentation des maquettes (docs/maquettes). */
@@ -344,6 +345,9 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
                   code.fee_code,fmtMoney(code.billed,row.currency),
                   fmtMoney(code.paid,row.currency),
                 ])}/>
+              {codes.map(code=><IncomeTransactionExplorer key={code.fee_code}
+                schoolId={schoolId} yearId={incomeYear} category={row.category}
+                currency={row.currency} feeCode={code.fee_code}/>)}
             </details>;
           })}
           <p className="yd-card-sub">Les simulations et les frais non classés restent distincts des encaissements réels vérifiés. Aucun montant n’est certifié.</p>
