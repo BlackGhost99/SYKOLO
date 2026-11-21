@@ -12,6 +12,7 @@ from .admission_models import AdmissionApplication
 from .finance_models import FeeCharge, FeePayment, FeePaymentVoid, FeeSchedule
 from .parent_payment_models import AdmissionCashReceipt, AdmissionCashReceiptVoid
 from .entry_income import _category
+from .finance_evidence import explicit_demo
 from .models import Organization, OrganizationMember, School, SchoolAudit, SchoolMember, SchoolRole
 from .services import OWNER_ROLE_TEMPLATE, ROLE_TEMPLATES
 from .staff_models import StaffRecord, StaffAssignment
@@ -296,6 +297,8 @@ class OwnerOverviewTests(TestCase):
         self.assertEqual(_category("transport"), "extrascolaire")
         self.assertEqual(_category("DEMO-SCOL-202611"), "demo")
         self.assertEqual(_category("scolarite-2026-11", "[DÉMO] Scolarité"), "demo")
+        self.assertTrue(explicit_demo("[DÉMO] Scolarité 11/2026"))
+        self.assertFalse(explicit_demo("Scolarité ordinaire"))
         self.assertEqual(_category("SCOL-202611"), "scolarite")
         self.assertEqual(_category("INS-2026"), "inscription_registre")
 
