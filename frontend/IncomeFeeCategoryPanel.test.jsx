@@ -52,5 +52,5 @@ test("un membre ne peut pas masquer les catégories sans année et un échec res
   await user.selectOptions(screen.getByLabelText("Tarif à classer"),"schedule-a");
   await user.type(screen.getByLabelText("Justification de la classification"),"Écriture historique justifiée");
   await user.click(screen.getByRole("button",{name:"Enregistrer et historiser"}));
-  expect(await screen.findByRole("alert")).toHaveTextContent("Classement verrouillé");
+  expect((await screen.findByRole("alert")).textContent).toContain("Classement verrouillé");
 });
