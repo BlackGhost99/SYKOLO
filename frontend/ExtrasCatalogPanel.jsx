@@ -141,6 +141,8 @@ export default function ExtrasCatalogPanel({schoolId, yearId = ""}) {
             <select value={form.academic_year || ""} onChange={e => update("academic_year", e.target.value || null)}>
               <option value="">Toutes les années</option>
               {yearId && <option value={yearId}>Année en cours</option>}
+              {form.academic_year && form.academic_year !== yearId &&
+                <option value={form.academic_year}>Année du tarif enregistré</option>}
             </select>
           </label>
         </div>
