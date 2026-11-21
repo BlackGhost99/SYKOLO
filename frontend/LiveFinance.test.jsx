@@ -183,3 +183,44 @@ test("les impayés recherchent côté serveur et conservent les indicateurs glob
   expect(fetchMock.mock.calls.some(([path])=>path.includes("q=00900")&&path.includes("classroom=class-b"))).toBe(true);
   expect(screen.getByText("140")).toBeTruthy();
 });
+
+test("le comptable et l'économe consultent les catégories sans additionner les admissions",async()=>{
+  const report={
+    currency:"XAF", currencies:["XAF"],
+    year:{id:"year",name:"2026–2027"}, years:[{id:"year",name:"2026–2027"}],
+    today:{total:"0",count:0,by_method:{},payments:[]},yesterday:{total:"0",count:0},
+  };
+  const income={
+    entry_categories:{
+      rows:[
+        {category:"scolarite",label:"Scolarité",currency:"XAF",billed:"120000",paid:"50000",payments:2},
+        {category:"extrascolaire",label:"Extrascolaire",currency:"XAF",billed:"20000",paid:"5000",payments:1},
+      ],
+      details:[
+        {category:"scolarite",currency:"XAF",fee_code:"SCOL-202611",billed:"120000",paid:"50000"},
+        {category:"extrascolaire",currency:"XAF",fee_code:"transport",billed:"20000",paid:"5000"},
+      ],
+    },
+    admission_cash:{total:"15000.00",count:1},
+  };
+  const fetchMock=vi.fn(async path=>{
+    if(String(path).includes("finance/summary?year=year"))return Response.json(income);
+    if(String(path).includes("overview/students"))return Response.json({students:[]});
+    return Response.json(report);
+  });
+  vi.stubGlobal("fetch",fetchMock);
+  render(<LivePayments schoolId="school" workingYearId="year" canReceive={false}/>);
+  const title=await screen.findByText("Ventilation des entrées — année scolaire");
+  expect(title).toBeTruthy();
+  expect(screen.getByText(/Inscriptions encaissées à la caisse/)).toBeTruthy();
+  expect(screen.getByText(/15 000 FCFA/)).toBeTruthy();
+  expect(screen.getByText(/sans rapprochement/)).toBeTruthy();
+  const user=userEvent.setup();
+  const drill=screen.getByText(/Scolarité \(XAF\) : consulter 1 code\(s\) tarifaire\(s\)/);
+  expect(drill.closest("details").open).toBe(false);
+  await user.click(drill);
+  expect(drill.closest("details").open).toBe(true);
+  expect(within(drill.closest("details")).getByText("SCOL-202611")).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"Actualiser la ventilation des entrées"}));
+  await waitFor(()=>expect(fetchMock.mock.calls.filter(([path])=>String(path).includes("finance/summary?year=year")).length).toBe(2));
+});
