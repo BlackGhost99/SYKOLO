@@ -177,6 +177,23 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
               <p className="hint" role="note">Les règlements restent déclaratifs et non certifiés. « Autres frais à classer » ne sont ni assimilés à la scolarité ni à l’extrascolaire. Les écritures de démonstration sont signalées séparément.</p>
             </>
             : <p className="hint">Aucun encaissement ni frais associé à un tarif pour l’année sélectionnée.</p>}
+          {feeIncome.receivables?.rows?.length>0&&<>
+            <h3>Créances : échues, exigibles aujourd’hui et futures</h3>
+            <p className="hint">Les restes à payer sont ventilés par catégorie et par devise, sans compenser l'impayé d'un élève par le trop-perçu d'un autre.</p>
+            <Table headers={["Catégorie","Devise","Frais nets","Règlements déclarés","Restant dû","Échu","Exigible aujourd'hui","Échéances futures","Sans échéance","Trop-perçus à vérifier"]}
+              rows={feeIncome.receivables.rows.map(item=>[
+                item.label,item.currency,
+                amount(item.billed_net,item.currency),
+                amount(item.paid_declared,item.currency),
+                amount(item.outstanding,item.currency),
+                amount(item.overdue,item.currency),
+                amount(item.due_today,item.currency),
+                amount(item.future,item.currency),
+                amount(item.without_due_date,item.currency),
+                amount(item.overpayment_review,item.currency),
+              ])}/>
+            <p className="hint" role="note">{feeIncome.receivables.note}</p>
+          </>}
           <h3>Frais liés aux élèves — registre comptable global</h3>
           {financialTable}
           <p className="hint">Les frais périodiques et les autres frais déjà enregistrés restent dans le registre ci-dessus, sans reclassement automatique. Les frais d’inscription en espèces ne sont pas additionnés aux autres écritures tant qu’un contrôle anti-doublon inter-registres n’a pas été validé. Les paiements d’inscription en ligne ne sont pas intégrés dans cette première vue.</p>
