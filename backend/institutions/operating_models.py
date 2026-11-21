@@ -9,6 +9,18 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 
+# Separate the activity served by an expense from its accounting nature.
+# Historical expenses are deliberately left unclassified rather than guessed.
+ACTIVITY_POLES = (
+    ("unclassified", "À classer (historique)"),
+    ("school", "Scolarité"),
+    ("extraschool", "Extrascolaire"),
+    ("common", "Administration et charges communes"),
+    ("investment", "Investissements"),
+    ("cash_other", "Autres sorties de trésorerie"),
+)
+ACTIVE_ACTIVITY_POLES = {key for key, _ in ACTIVITY_POLES if key != "unclassified"}
+
 
 class OperatingSupplier(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -54,6 +66,10 @@ class OperatingExpense(models.Model):
     year = models.ForeignKey("institutions.AcademicYear", on_delete=models.PROTECT)
     budget = models.ForeignKey(OperatingBudget, on_delete=models.PROTECT, related_name="expenses")
     supplier = models.ForeignKey(OperatingSupplier, on_delete=models.PROTECT, related_name="expenses")
+    # Classification de l'activité : indépendante de la catégorie budgétaire.
+    activity_pole = models.CharField(max_length=20, choices=ACTIVITY_POLES, default="unclassified")
+    cost_center = models.CharField(max_length=100, blank=True, default="")
+    accounting_nature = models.CharField(max_length=100, blank=True, default="")
     label = models.CharField(max_length=200)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     expense_on = models.DateField()
