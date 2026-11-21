@@ -174,6 +174,7 @@ urlpatterns = [
     path("schools/<uuid:school_id>/operating/classification/<uuid:option_id>", operating_classification_views.classification_detail),
     path("schools/<uuid:school_id>/operating/classification/poles/<str:pole_code>", operating_classification_views.pole_detail),
     path("schools/<uuid:school_id>/operating/catalog-defaults", operating_seed_views.default_catalog),
+    path("schools/<uuid:school_id>/operating/school-requests/options", operating_request_views.school_request_options),
     path("schools/<uuid:school_id>/operating/school-requests", operating_request_views.school_requests),
     path("schools/<uuid:school_id>/operating/school-requests/<uuid:request_id>", operating_request_views.school_request_detail),
     path("schools/<uuid:school_id>/operating/school-requests/<uuid:request_id>/<str:action>", operating_request_views.school_request_action),
