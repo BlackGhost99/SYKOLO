@@ -164,9 +164,10 @@ MANDATORY = {
 }
 
 
-def request_data(row):
+def request_data(row, viewer_id=None):
     return {
         "id": str(row.pk), "year": str(row.year_id),
+        "is_mine": row.requester_id == viewer_id,
         "requester": str(row.requester_id), "requester_name": row.requester.get_full_name() or row.requester.username,
         "requester_function": row.requester_function, "service": row.service,
         "reason": row.reason, "description": row.description,
@@ -279,7 +280,7 @@ def school_requests(request, school_id):
         count = qs.count()
         rows = qs.select_related("requester").order_by("-created_at", "-id")[offset:offset+limit]
         return result({
-            "requests": [request_data(row) for row in rows],
+            "requests": [request_data(row, request.user.pk) for row in rows],
             "total": count, "offset": offset,
             "has_more": offset + len(rows) < count,
             "reviewer": can_review(request.user, school),
@@ -298,7 +299,7 @@ def school_requests(request, school_id):
         ).first()
         if existing:
             if existing.requester_id == request.user.pk:
-                return result({**request_data(existing), "idempotent": True})
+                return result({**request_data(existing, request.user.pk), "idempotent": True})
             return fail("Clé d'idempotence déjà utilisée.", 409)
         fields = request_fields(school, data)
         function = member_function(school, request.user)
@@ -318,7 +319,7 @@ def school_requests(request, school_id):
         return validation(exc)
     except IntegrityError:
         return fail("Demande déjà reçue, actualisez la liste.", 409)
-    return result(request_data(row), 201)
+    return result(request_data(row, request.user.pk), 201)
 
 
 @never_cache
@@ -335,7 +336,7 @@ def school_request_detail(request, school_id, request_id):
         if not row:
             return fail("Demande introuvable.", 404)
         return result({
-            "request": request_data(row),
+            "request": request_data(row, request.user.pk),
             "history": [event_data(e) for e in row.events.order_by("happened_at", "pk")],
         })
     data, err = body(request, CREATE_ALLOWED - {"idempotency_key"} | {"revision"}, {"revision"})
@@ -397,7 +398,7 @@ def school_request_detail(request, school_id, request_id):
         return fail(str(exc))
     except ValidationError as exc:
         return validation(exc)
-    return result(request_data(row))
+    return result(request_data(row, request.user.pk))
 
 
 @never_cache
@@ -479,4 +480,4 @@ def school_request_action(request, school_id, request_id, action):
             record(school, request, row, event, reason)
     except ValidationError as exc:
         return validation(exc)
-    return result(request_data(row))
+    return result(request_data(row, request.user.pk))
