@@ -19,7 +19,7 @@ from accounts.views import authorized
 from .academic_models import AcademicYear
 from .operating_models import (OperatingSupplier, OperatingBudget, OperatingExpense,
                                OperatingExpensePayment, OperatingExpenseCategory,
-                               ACTIVE_ACTIVITY_POLES, ACTIVITY_POLES)
+                               ACTIVE_ACTIVITY_POLES, ACTIVITY_POLES, BENEFICIARY_TYPES)
 from .services import has_permission
 from .views import access, refuse, parse_body, log_event
 
@@ -150,7 +150,11 @@ def expense_data(e):
     paid = cleared_total(e)
     return {"id": str(e.pk), "year": str(e.year_id),
             "budget": str(e.budget_id), "category": e.budget.category, "currency": e.budget.currency,
-            "supplier": str(e.supplier_id), "supplier_name": e.supplier.name,
+            "supplier": str(e.supplier_id) if e.supplier_id else None,
+            "supplier_name": e.supplier.name if e.supplier_id else "",
+            "beneficiary_type": e.beneficiary_type,
+            "beneficiary_name": e.beneficiary_name or (e.supplier.name if e.supplier_id else ""),
+            "beneficiary_reference": e.beneficiary_reference,
             "label": e.label, "amount": fmt(e.amount), "expense_on": e.expense_on.isoformat(),
             "activity_pole": e.activity_pole, "cost_center": e.cost_center,
             "accounting_nature": e.accounting_nature,
@@ -383,21 +387,71 @@ def expense_catalog_fields(school, category_id, subcategory_id=None):
     }
 
 
+def expense_beneficiary_fields(school, data, *, existing=None):
+    """Resolve a beneficiary within the school, without inventing a supplier."""
+    kind = data.get("beneficiary_type", existing.beneficiary_type if existing else "supplier")
+    if not isinstance(kind, str) or kind not in dict(BENEFICIARY_TYPES):
+        raise ValueError("Type de bénéficiaire invalide.")
+    previous_kind = existing.beneficiary_type if existing else None
+    raw_reference = data.get(
+        "beneficiary_reference",
+        existing.beneficiary_reference if previous_kind == kind else "",
+    )
+    reference = txt(raw_reference, 120, "Référence interne du bénéficiaire", optional=True)
+
+    if kind == "supplier":
+        supplied_name = data.get("beneficiary_name", "")
+        if supplied_name not in ("", None):
+            raise ValueError("Le nom d'un fournisseur est repris de sa fiche.")
+        supplier_id = data.get(
+            "supplier",
+            existing.supplier_id if existing and previous_kind == "supplier" else None,
+        )
+        if not supplier_id:
+            raise ValueError("Sélectionnez un fournisseur actif.")
+        supplier = OperatingSupplier.objects.filter(
+            school=school, pk=uuidval(str(supplier_id)),
+        ).first()
+        if supplier is None:
+            raise LookupError("Fournisseur introuvable dans cet établissement.")
+        # Existing draft may retain an archived supplier while other fields are
+        # edited; assigning a new archived supplier is never permitted.
+        retaining = existing is not None and supplier.pk == existing.supplier_id and (
+            "supplier" not in data and previous_kind == "supplier"
+        )
+        if not supplier.active and not retaining:
+            raise ValueError("Fournisseur archivé : sélection interdite.")
+        return {
+            "supplier": supplier, "beneficiary_type": kind,
+            "beneficiary_name": supplier.name, "beneficiary_reference": reference,
+        }
+
+    if data.get("supplier") not in (None, ""):
+        raise ValueError("Un bénéficiaire non commercial ne peut avoir un fournisseur associé.")
+    name = data.get(
+        "beneficiary_name",
+        existing.beneficiary_name if existing and previous_kind == kind else "",
+    )
+    name = txt(name, 180, "Nom du bénéficiaire")
+    return {
+        "supplier": None, "beneficiary_type": kind,
+        "beneficiary_name": name, "beneficiary_reference": reference,
+    }
+
+
 def expense_fields(school, data):
     budget = OperatingBudget.objects.select_related("year").filter(
         school=school, pk=uuidval(data["budget"]),
     ).first()
-    supplier = OperatingSupplier.objects.filter(school=school, pk=uuidval(data["supplier"])).first()
-    if not budget or not supplier:
-        raise LookupError("Enveloppe ou fournisseur d'un autre établissement.")
-    if not supplier.active:
-        raise ValueError("Fournisseur archivé : demande refusée.")
+    if not budget:
+        raise LookupError("Enveloppe budgétaire d'un autre établissement.")
     if not budget.approved_at:
         raise ValueError("Le budget doit être approuvé avant une dépense.")
     if not open_year(budget.year):
         raise ValueError("Année scolaire clôturée.")
     return {
-        "budget": budget, "year": budget.year, "supplier": supplier,
+        "budget": budget, "year": budget.year,
+        **expense_beneficiary_fields(school, data),
         **expense_catalog_fields(school, data["category_ref"], data.get("subcategory_ref")),
         "activity_pole": activity_pole_value(data["activity_pole"]),
         "cost_center": txt(data.get("cost_center", ""), 100, "Centre de coûts", optional=True),
@@ -433,8 +487,9 @@ def expenses(request, school_id):
         request,
         {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount",
          "activity_pole", "cost_center", "accounting_nature",
-         "category_ref", "subcategory_ref"},
-        {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount", "activity_pole",
+         "category_ref", "subcategory_ref", "beneficiary_type",
+         "beneficiary_name", "beneficiary_reference"},
+        {"budget", "label", "invoice_reference", "expense_on", "amount", "activity_pole",
          "category_ref"},
     )
     if err is not None:
@@ -472,7 +527,8 @@ def expense_detail(request, school_id, expense_id):
         request,
         {"revision", "label", "invoice_reference", "expense_on", "amount", "supplier",
          "activity_pole", "cost_center", "accounting_nature",
-         "category_ref", "subcategory_ref"},
+         "category_ref", "subcategory_ref", "beneficiary_type",
+         "beneficiary_name", "beneficiary_reference"},
         {"revision"},
     )
     if err is not None:
@@ -511,13 +567,11 @@ def expense_detail(request, school_id, expense_id):
                 )
                 for field, value in expense_catalog_fields(school, category_id, subcategory_id).items():
                     setattr(row, field, value)
-            if "supplier" in data:
-                new_supplier = OperatingSupplier.objects.filter(
-                    school=school, pk=uuidval(data["supplier"]), active=True,
-                ).first()
-                if not new_supplier:
-                    return fail("Fournisseur absent ou archivé.", 404)
-                row.supplier = new_supplier
+            if {"supplier", "beneficiary_type", "beneficiary_name", "beneficiary_reference"} & set(data):
+                for field, value in expense_beneficiary_fields(
+                    school, data, existing=row,
+                ).items():
+                    setattr(row, field, value)
             row.full_clean()
         except LookupError as exc:
             return fail(str(exc), 404)
