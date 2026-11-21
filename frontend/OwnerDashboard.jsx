@@ -1,5 +1,6 @@
 import React, {useEffect,useRef,useState} from "react";
 import OwnerSubscription from "./OwnerSubscription.jsx";
+import IncomeCategoryCharts from "./IncomeCategoryCharts.jsx";
 import {PageHeader,Card,Metric,Table,Status,Button} from "./yem-ui.jsx";
 
 const number = value => new Intl.NumberFormat("fr-FR").format(Number(value||0));
@@ -152,6 +153,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
             ? <p className="hint">Écritures non incluses : {number(admissionCash?.demo_excluded||0)} simulation(s), {number(admissionCash?.voided_excluded||0)} annulation(s), {number(admissionCash?.future_dated_excluded||0)} date(s) future(s).</p>
             : null}
           <h3>Ventilation des entrées liées aux élèves</h3>
+          <IncomeCategoryCharts report={feeIncome} schoolId={schoolId} yearId={headerYearAvailable?workingYearId:year}/>
           {feeIncome.rows?.length
             ? <>
               <Table headers={["Catégorie","Devise","Frais nets facturés","Paiements enregistrés","Opérations","Ce mois","Aujourd’hui"]}
