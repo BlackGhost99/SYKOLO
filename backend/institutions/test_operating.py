@@ -6,7 +6,8 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from .academic_models import AcademicYear
 from .models import Organization, School, SchoolRole, SchoolMember, SchoolAudit
-from .operating_models import OperatingSupplier, OperatingBudget, OperatingExpense, OperatingExpensePayment
+from .operating_models import (OperatingSupplier, OperatingBudget, OperatingExpense,
+                               OperatingExpensePayment, OperatingExpenseCategory)
 from .services import ROLE_TEMPLATES
 
 
@@ -34,6 +35,12 @@ class OperatingLedgerTests(TestCase):
         self.other_year = AcademicYear.objects.create(school=self.other, code="2026-2027", name="2026-2027",
                                                       start_date=date(2026, 9, 1), end_date=date(2027, 7, 31),
                                                       status="current")
+        self.category = OperatingExpenseCategory.objects.create(
+            school=self.school, code="materiel", name="Matériel", suggested_pole="school",
+        )
+        self.subcategory = OperatingExpenseCategory.objects.create(
+            school=self.school, parent=self.category, code="laboratoire", name="Laboratoire",
+        )
         self.client = Client(enforce_csrf_checks=True)
         self.base = "/api/v1/schools/" + str(self.school.pk) + "/operating/"
         self.login("comptabilite")
@@ -72,6 +79,8 @@ class OperatingLedgerTests(TestCase):
     def expense(self, budget_id, supplier_id, amount="60000.00", invoice="FAC-TEST-001", pole="school"):
         response = self.post("expenses", {
             "budget": budget_id, "supplier": supplier_id, "activity_pole": pole,
+            "category_ref": str(self.category.pk),
+            "subcategory_ref": str(self.subcategory.pk),
             "cost_center": "Pédagogie" if pole == "school" else "Activité annexe",
             "amount": amount, "label": "Réparation tables fictives",
             "invoice_reference": invoice, "expense_on": "2026-11-10",
@@ -137,6 +146,7 @@ class OperatingLedgerTests(TestCase):
         supplier, budget = self.approved_budget()
         payload = {
             "budget": budget["id"], "supplier": supplier["id"],
+            "category_ref": str(self.category.pk),
             "amount": "10000.00", "label": "Consommables",
             "invoice_reference": "FAC-POLE-001", "expense_on": "2026-11-10",
         }
@@ -203,6 +213,81 @@ class OperatingLedgerTests(TestCase):
         report = self.get("summary").json()
         self.assertEqual(report["by_activity_pole"]["XAF"]["unclassified"]["committed"], "25000.00")
         self.assertEqual(report["by_activity_pole"]["XAF"]["unclassified"]["paid"], "0.00")
+
+    def test_catalog_is_school_owned_and_requires_permissions(self):
+        created = self.post("categories", {"code": "transport", "name": "Transport",
+                                            "suggested_pole": "extraschool"})
+        self.assertEqual(created.status_code, 201, created.content)
+        root = created.json()
+        child = self.post("categories", {"code": "carburant", "name": "Carburant",
+                                         "parent": root["id"]})
+        self.assertEqual(child.status_code, 201, child.content)
+        self.assertEqual(child.json()["parent"], root["id"])
+        self.assertEqual(len(self.get("categories").json()["categories"]), 4)
+        duplicate = self.post("categories", {"code": "transport", "name": "Autre"})
+        self.assertIn(duplicate.status_code, [409, 422])
+        self.assertEqual(self.post("categories", {"code": "nested", "name": "Troisième niveau",
+                            "parent": child.json()["id"]}).status_code, 409)
+        foreign = OperatingExpenseCategory.objects.create(
+            school=self.other, code="foreign", name="Autre école",
+        )
+        self.assertEqual(self.post("categories", {"code": "probe", "name": "Hors école",
+                            "parent": str(foreign.pk)}).status_code, 404)
+        self.login("secretariat")
+        self.assertEqual(self.get("categories").status_code, 403)
+        self.assertEqual(self.post("categories", {}).status_code, 403)
+        self.login(self.outsider)
+        self.assertEqual(self.get("categories").status_code, 404)
+
+    def test_snapshot_survives_category_rename_and_archive(self):
+        supplier, budget = self.approved_budget()
+        expense = self.expense(budget["id"], supplier["id"])
+        self.assertEqual(expense["expense_category"], "Matériel")
+        self.assertEqual(expense["expense_subcategory"], "Laboratoire")
+        revised = self.patch_category(self.category, {"name": "Équipements éducatifs"})
+        self.assertEqual(revised.status_code, 200, revised.content)
+        subrevised = self.patch_category(self.subcategory, {"name": "Sciences"})
+        self.assertEqual(subrevised.status_code, 200, subrevised.content)
+        previous = self.get("expenses/"+expense["id"]).json()["expense"]
+        self.assertEqual(previous["expense_category"], "Matériel")
+        self.assertEqual(previous["expense_subcategory"], "Laboratoire")
+        self.assertEqual(self.patch_category(self.category, {"active": False}).status_code, 409)
+        self.assertEqual(self.patch_category(self.subcategory, {"active": False}).status_code, 200)
+        self.assertEqual(self.patch_category(self.category, {"active": False}).status_code, 200)
+        self.assertEqual(self.post("expenses", {
+            "budget": budget["id"], "supplier": supplier["id"],
+            "category_ref": str(self.category.pk), "activity_pole": "school",
+            "amount": "3000.00", "label": "Autre matériel",
+            "invoice_reference": "FAC-ARCHIVE", "expense_on": "2026-11-10",
+        }).status_code, 422)
+        self.assertEqual(self.get("expenses/"+expense["id"]).json()["expense"]["expense_category"], "Matériel")
+
+    def test_legacy_draft_without_catalog_can_be_reclassified(self):
+        supplier, budget = self.approved_budget()
+        expense = self.expense(budget["id"], supplier["id"])
+        OperatingExpense.objects.filter(pk=expense["id"]).update(
+            category_ref=None, subcategory_ref=None,
+            category_label_snapshot="", subcategory_label_snapshot="",
+        )
+        self.login("direction")
+        refused = self.post("expenses/"+expense["id"]+"/approve", {"revision": expense["revision"]})
+        self.assertEqual(refused.status_code, 409, refused.content)
+        self.login("comptabilite")
+        updated = self.patch("expenses/"+expense["id"], {
+            "revision": expense["revision"], "category_ref": str(self.category.pk),
+            "subcategory_ref": str(self.subcategory.pk),
+        })
+        self.assertEqual(updated.status_code, 200, updated.content)
+        self.assertEqual(updated.json()["expense_category"], "Matériel")
+        self.login("direction")
+        approved = self.post("expenses/"+expense["id"]+"/approve", {
+            "revision": updated.json()["revision"],
+        })
+        self.assertEqual(approved.status_code, 200, approved.content)
+
+    def patch_category(self, category, data):
+        category.refresh_from_db()
+        return self.patch("categories/"+str(category.pk), {"revision": category.revision, **data})
 
     def test_budget_and_expense_independent_approvals_with_partial_receipts(self):
         supplier, budget = self.approved_budget()
