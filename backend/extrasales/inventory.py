@@ -91,10 +91,16 @@ def inventory(request, school_id):
         item = next((x for x in records(setting) if x.get("id") == str(item_id)), None)
         if not item or item.get("kind") != "produit":
             return stock_error("Produit physique inexistant dans cet établissement.")
-        stock, _ = ExtraStock.objects.get_or_create(
+        stock = ExtraStock.objects.select_for_update().filter(
             school=school, catalog_item_id=item_id,
-        )
-        stock = ExtraStock.objects.select_for_update().get(pk=stock.pk)
+        ).first()
+        if stock is None:
+            if revision != 0:
+                return stock_error("Inventaire initial non créé : révision invalide.", 409)
+            if delta < 0:
+                return stock_error("Aucun stock disponible pour ce produit.")
+            stock = ExtraStock.objects.create(school=school, catalog_item_id=item_id)
+            stock = ExtraStock.objects.select_for_update().get(pk=stock.pk)
         if stock.revision != revision:
             return stock_error("Inventaire modifié par un autre agent.", 409)
         new_quantity = stock.quantity + delta
