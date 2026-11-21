@@ -605,7 +605,8 @@ def summary(request, school_id):
     budgets = OperatingBudget.objects.filter(school=school, year=year).order_by("category")
     output = []
     totals = {}
-    for budget in budgets[:200]:
+    # Aggregate every budget: a display cap must never truncate financial totals.
+    for budget in budgets.iterator(chunk_size=200):
         data = budget_data(budget)
         payments = OperatingExpensePayment.objects.filter(
             school=school, expense__budget=budget, voided_at__isnull=True,
