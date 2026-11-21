@@ -91,6 +91,32 @@ test("le comptable peut ajouter une catégorie sans modifier les entrées",async
   expect(fetch.mock.calls.every(([url])=>!String(url).includes("/finance/charges"))).toBe(true);
 });
 
+test("nouvelle dépense vers une administration sans fournisseur fictif",async()=>{
+  const fetch=fakeBackend();vi.stubGlobal("fetch",fetch);
+  document.cookie="csrftoken=operating-test";
+  const user=userEvent.setup();
+  render(<OperatingPanel schoolId="school-1" workingYearId="year-1" canManage/>);
+  await screen.findByText("Réparation tableau");
+  await user.selectOptions(screen.getByLabelText("Enveloppe approuvée"),"bud-1");
+  await user.selectOptions(screen.getByLabelText("Catégorie de la dépense"),"cat-1");
+  await user.selectOptions(screen.getByLabelText("Pôle financier"),"common");
+  await user.selectOptions(screen.getByLabelText("Type de bénéficiaire"),"government");
+  expect(screen.queryByLabelText("Fournisseur",{exact:true})).toBeNull();
+  await user.type(screen.getByLabelText("Nom du bénéficiaire"),"Administration publique TEST");
+  await user.type(screen.getByLabelText("Référence interne du bénéficiaire"),"DOSSIER-TEST");
+  await user.type(screen.getByLabelText("Objet de l'achat"),"Frais administratifs TEST");
+  await user.type(screen.getByLabelText(/Montant demandé/),"15000");
+  await user.type(screen.getByLabelText("Référence facture/devis"),"FAC-B3-TEST");
+  await user.click(screen.getByRole("button",{name:"Préparer la demande"}));
+  await waitFor(()=>expect(fetch.mock.calls.some(([url,options])=>{
+    if(!url.endsWith("/operating/expenses")||options?.method!=="POST")return false;
+    const data=JSON.parse(options.body);
+    return data.beneficiary_type==="government"&&
+      data.beneficiary_name==="Administration publique TEST"&&
+      data.supplier===null&&data.category_ref==="cat-1";
+  })).toBe(true));
+});
+
 test("le comptable peut proposer un fournisseur, sans pouvoir approuver les budgets",async()=>{
   const fetch=fakeBackend();vi.stubGlobal("fetch",fetch);
   document.cookie="csrftoken=operating-test";
