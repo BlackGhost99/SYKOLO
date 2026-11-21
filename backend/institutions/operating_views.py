@@ -17,7 +17,8 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from accounts.views import authorized
 from .academic_models import AcademicYear
-from .operating_models import OperatingSupplier, OperatingBudget, OperatingExpense, OperatingExpensePayment
+from .operating_models import (OperatingSupplier, OperatingBudget, OperatingExpense,
+                               OperatingExpensePayment, ACTIVE_ACTIVITY_POLES, ACTIVITY_POLES)
 from .services import has_permission
 from .views import access, refuse, parse_body, log_event
 
@@ -150,6 +151,8 @@ def expense_data(e):
             "budget": str(e.budget_id), "category": e.budget.category, "currency": e.budget.currency,
             "supplier": str(e.supplier_id), "supplier_name": e.supplier.name,
             "label": e.label, "amount": fmt(e.amount), "expense_on": e.expense_on.isoformat(),
+            "activity_pole": e.activity_pole, "cost_center": e.cost_center,
+            "accounting_nature": e.accounting_nature,
             "invoice_reference": e.invoice_reference, "revision": e.revision,
             "paid": fmt(paid), "balance": fmt(e.amount - paid),
             "status": ("draft" if not e.approved_at else "paid" if paid == e.amount
@@ -341,6 +344,12 @@ def approve_budget(request, school_id, budget_id):
     return result(budget_data(row))
 
 
+def activity_pole_value(value):
+    if not isinstance(value, str) or value not in ACTIVE_ACTIVITY_POLES:
+        raise ValueError("Pôle d'activité invalide : sélectionnez un pôle de sorties.")
+    return value
+
+
 def expense_fields(school, data):
     budget = OperatingBudget.objects.select_related("year").filter(
         school=school, pk=uuidval(data["budget"]),
@@ -356,6 +365,9 @@ def expense_fields(school, data):
         raise ValueError("Année scolaire clôturée.")
     return {
         "budget": budget, "year": budget.year, "supplier": supplier,
+        "activity_pole": activity_pole_value(data["activity_pole"]),
+        "cost_center": txt(data.get("cost_center", ""), 100, "Centre de coûts", optional=True),
+        "accounting_nature": txt(data.get("accounting_nature", ""), 100, "Nature comptable", optional=True),
         "label": txt(data["label"], 200, "Libellé"),
         "invoice_reference": txt(data["invoice_reference"], 120, "Référence justificative"),
         "expense_on": day(data["expense_on"]), "amount": money(data["amount"]),
@@ -377,9 +389,18 @@ def expenses(request, school_id):
         if year is None:
             return fail("Année scolaire introuvable.", 404) if request.GET.get("year") else result({"expenses": []})
         qs = OperatingExpense.objects.filter(school=school, year=year).select_related("supplier", "budget")
+        activity_pole = request.GET.get("activity_pole")
+        if activity_pole:
+            if activity_pole not in dict(ACTIVITY_POLES):
+                return fail("Pôle de sorties inconnu.")
+            qs = qs.filter(activity_pole=activity_pole)
         return result({"expenses": [expense_data(row) for row in qs.order_by("-expense_on", "-created_at")[:400]]})
-    data, err = body(request, {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount"},
-                     {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount"})
+    data, err = body(
+        request,
+        {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount",
+         "activity_pole", "cost_center", "accounting_nature"},
+        {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount", "activity_pole"},
+    )
     if err is not None:
         return err
     try:
@@ -411,7 +432,12 @@ def expense_detail(request, school_id, expense_id):
             return fail("Dépense introuvable.", 404)
         return result({"expense": expense_data(row),
                        "payments": [payment_data(p) for p in row.payments.order_by("recorded_at")]})
-    data, err = body(request, {"revision", "label", "invoice_reference", "expense_on", "amount", "supplier"}, {"revision"})
+    data, err = body(
+        request,
+        {"revision", "label", "invoice_reference", "expense_on", "amount", "supplier",
+         "activity_pole", "cost_center", "accounting_nature"},
+        {"revision"},
+    )
     if err is not None:
         return err
     if type(data["revision"]) is not int or not set(data).difference({"revision"}):
@@ -435,6 +461,12 @@ def expense_detail(request, school_id, expense_id):
                 row.expense_on = day(data["expense_on"])
             if "amount" in data:
                 row.amount = money(data["amount"])
+            if "activity_pole" in data:
+                row.activity_pole = activity_pole_value(data["activity_pole"])
+            if "cost_center" in data:
+                row.cost_center = txt(data["cost_center"], 100, "Centre de coûts", optional=True)
+            if "accounting_nature" in data:
+                row.accounting_nature = txt(data["accounting_nature"], 100, "Nature comptable", optional=True)
             if "supplier" in data:
                 new_supplier = OperatingSupplier.objects.filter(
                     school=school, pk=uuidval(data["supplier"]), active=True,
@@ -483,6 +515,8 @@ def approve_expense(request, school_id, expense_id):
             return fail("Dépense déjà approuvée, modifiée ou année clôturée.", 409)
         if request.user.pk == row.prepared_by_id:
             return fail("Le préparateur ne peut approuver sa propre dépense.", 403)
+        if row.activity_pole not in ACTIVE_ACTIVITY_POLES:
+            return fail("Classez cette dépense par activité avant approbation.", 409)
         if authorised_total(budget) + row.amount > budget.ceiling:
             return fail("Budget insuffisant : la dépense dépasse les fonds non engagés.", 409)
         row.approved_by = request.user
@@ -619,6 +653,38 @@ def summary(request, school_id):
         entry["committed"] += Decimal(data["committed"])
         entry["paid"] += payments
         entry["remaining"] += (budget.ceiling - Decimal(data["committed"])) if budget.approved_at else ZERO
+    # Financial activity is orthogonal to budget category and accounting nature.
+    # Aggregate obligations and declared outflows separately to avoid JOIN
+    # multiplication when a single expense has multiple partial payments.
+    pole_totals = {}
+    commitments = (OperatingExpense.objects.filter(
+        school=school, year=year, approved_at__isnull=False,
+    ).values("activity_pole", "budget__currency").annotate(total=Sum("amount")))
+    for item in commitments:
+        currency, pole = item["budget__currency"], item["activity_pole"]
+        row = pole_totals.setdefault(currency, {}).setdefault(
+            pole, {"committed": ZERO, "paid": ZERO},
+        )
+        row["committed"] += item["total"] or ZERO
+    outflows = (OperatingExpensePayment.objects.filter(
+        school=school, expense__year=year, expense__approved_at__isnull=False,
+        voided_at__isnull=True,
+    ).values("expense__activity_pole", "expense__budget__currency").annotate(total=Sum("amount")))
+    for item in outflows:
+        currency, pole = item["expense__budget__currency"], item["expense__activity_pole"]
+        row = pole_totals.setdefault(currency, {}).setdefault(
+            pole, {"committed": ZERO, "paid": ZERO},
+        )
+        row["paid"] += item["total"] or ZERO
+    by_activity_pole = {
+        currency: {
+            pole: {"committed": fmt(data["committed"]),
+                   "paid": fmt(data["paid"]),
+                   "unpaid": fmt(data["committed"] - data["paid"])}
+            for pole, data in groups.items()
+        } for currency, groups in pole_totals.items()
+    }
     return result({"year": str(year.pk), "budgets": output,
                    "totals": {currency: {key: fmt(amount) for key, amount in items.items()}
-                              for currency, items in totals.items()}})
+                              for currency, items in totals.items()},
+                   "by_activity_pole": by_activity_pole})
