@@ -18,7 +18,7 @@ const expense={id:"exp-1",year:"year-1",budget:"bud-1",category:"Énergie",curre
   supplier:"sup-1",supplier_name:"Électricien TEST",label:"Réparation tableau",amount:"60000.00",
   paid:"20000.00",balance:"40000.00",status:"partially_paid",invoice_reference:"FAC-TEST",
   expense_on:"2026-11-10",revision:2};
-function fakeBackend(item=expense){
+function fakeBackend(item=expense, listInfo={}){
   return vi.fn(async (url,opts={})=>{
     if(url==="/api/v1/auth/csrf")return Response.json({ok:true});
     if(opts.method==="POST")return Response.json({...supplier,id:"sup-2"},{status:201});
@@ -27,7 +27,7 @@ function fakeBackend(item=expense){
     if(url.includes("/operating/suppliers"))return Response.json({suppliers:[supplier]});
     if(url.includes("/operating/budgets"))return Response.json({budgets:[budget]});
     if(url.includes("/operating/expenses/"))return Response.json({expense:item,payments:[],decisions:[]});
-    if(url.includes("/operating/expenses"))return Response.json({expenses:[item]});
+    if(url.includes("/operating/expenses"))return Response.json({expenses:[item], ...listInfo});
     if(url.includes("/operating/summary"))return Response.json({
       year:"year-1",budgets:[budget],totals:{XAF:{
         ceiling:"100000.00",committed:"60000.00",paid:"20000.00",remaining:"40000.00",
@@ -151,6 +151,29 @@ test("contrôleur : refus motivé sans toucher aux encaissements",async()=>{
     JSON.parse(opts.body).reason==="Facture incomplète à rectifier"
   )).toBe(true));
   expect(fetch.mock.calls.every(([url])=>!String(url).includes("/finance/payments"))).toBe(true);
+});
+
+test("file des demandes : compteurs par état et pagination sans toucher aux entrées",async()=>{
+  const fetch=fakeBackend(expense,{
+    total:60,offset:0,has_more:true,
+    workflow_counts:{draft:20,submitted:15,rejected:5,approved:20},
+  });
+  vi.stubGlobal("fetch",fetch);
+  const user=userEvent.setup();
+  render(<OperatingPanel schoolId="school-1" workingYearId="year-1"/>);
+  await screen.findByText("Réparation tableau");
+  expect(screen.getByRole("button",{name:"Toutes (60)"})).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"En attente de validation (15)"}));
+  await waitFor(()=>expect(fetch.mock.calls.some(([url,opts])=>
+    url.includes("/operating/expenses?")&&url.includes("workflow_state=submitted")&&
+    url.includes("limit=30")&&opts?.method==="GET"
+  )).toBe(true));
+  await user.click(screen.getByRole("button",{name:"Page suivante"}));
+  await waitFor(()=>expect(fetch.mock.calls.some(([url,opts])=>
+    url.includes("/operating/expenses?")&&url.includes("workflow_state=submitted")&&
+    url.includes("offset=30")&&opts?.method==="GET"
+  )).toBe(true));
+  expect(fetch.mock.calls.every(([url])=>!String(url).includes("/finance/charges"))).toBe(true);
 });
 
 test("le comptable peut proposer un fournisseur, sans pouvoir approuver les budgets",async()=>{
