@@ -190,6 +190,36 @@ class OperatingLedgerTests(TestCase):
         self.assertEqual(steps[1]["reason"], "Facture à compléter avant achat")
         self.assertEqual(OperatingExpensePayment.objects.count(), 0)
 
+    def test_workflow_isolation_permissions_and_stale_revisions(self):
+        supplier, budget = self.approved_budget()
+        expense = self.expense(budget["id"], supplier["id"])
+        self.login(self.outsider)
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/submit", {
+            "revision": expense["revision"],
+        }).status_code, 404)
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/reject", {
+            "revision": expense["revision"], "reason": "Refus depuis une autre école",
+        }).status_code, 404)
+        self.login("secretariat")
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/submit", {
+            "revision": expense["revision"],
+        }).status_code, 403)
+        sent = self.submit_expense(expense)
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/submit", {
+            "revision": sent["revision"],
+        }).status_code, 409)
+        self.assertEqual(self.patch("expenses/"+expense["id"], {
+            "revision": sent["revision"], "amount": "1000.00",
+        }).status_code, 409)
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/reject", {
+            "revision": sent["revision"], "reason": "Refus par son propre compte",
+        }).status_code, 403)
+        self.login("direction")
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/reject", {
+            "revision": sent["revision"] - 1, "reason": "Version trop ancienne pour refus",
+        }).status_code, 409)
+        self.assertEqual(OperatingExpenseDecision.objects.filter(school=self.school).count(), 1)
+
     def test_summary_includes_more_than_200_approved_budgets(self):
         """Les totaux des sorties ne doivent pas être tronqués par la liste affichée."""
         from django.utils import timezone
