@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "accounts",
     "institutions",
+    "extrasales",
     "conduct",
     "pedagogy",
 ]
@@ -166,3 +167,7 @@ YEM_PARENT_PUSH_KEY = os.environ.get("YEM_PARENT_PUSH_KEY", "")
 
 # Comma-separated school:wallet:distribution:mode tuples approved after contract checks.
 YEM_SINGPAY_APPROVED_DESTINATIONS = os.environ.get("YEM_SINGPAY_APPROVED_DESTINATIONS", "")
+
+# Financial writes require a separate explicit launch after the ledger has been audited.
+YEM_EXTRA_SALES_WRITES_ENABLED = os.environ.get("YEM_EXTRA_SALES_WRITES_ENABLED", "false").strip().lower() == "true"
+YEM_EXTRA_STOCK_WRITES_ENABLED = os.environ.get("YEM_EXTRA_STOCK_WRITES_ENABLED", "false").strip().lower() == "true"
