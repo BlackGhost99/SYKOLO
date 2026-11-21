@@ -120,3 +120,27 @@ class ExtraStockMovement(models.Model):
             models.UniqueConstraint(fields=["school", "operation_key"], name="extra_stock_school_operation"),
             models.CheckConstraint(condition=~Q(delta=0), name="extra_stock_delta_nonzero"),
         ]
+
+
+class ExtraProductReturn(models.Model):
+    """A physical stock return, not a refund or a cash transaction."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey("institutions.School", on_delete=models.PROTECT,
+                               related_name="extra_product_returns")
+    sale_line = models.ForeignKey(ExtraSaleLine, on_delete=models.PROTECT,
+                                  related_name="product_returns")
+    stock = models.ForeignKey(ExtraStock, on_delete=models.PROTECT,
+                              related_name="product_returns")
+    quantity = models.PositiveIntegerField()
+    reason = models.CharField(max_length=240)
+    operation_key = models.CharField(max_length=120)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["school", "operation_key"],
+                                    name="extra_return_school_operation"),
+            models.CheckConstraint(condition=Q(quantity__gt=0),
+                                   name="extra_return_positive_quantity"),
+        ]
