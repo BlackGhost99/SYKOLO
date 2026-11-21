@@ -7,6 +7,7 @@ from . import singpay_views, subscription_reminders, subscription_access, subscr
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
 from . import operating_catalog_views
+from . import operating_workflow_views
 from . import annual_views
 from . import class_assignment_views
 from . import calendar_views, primary_views, preschool_followup_views
@@ -175,6 +176,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/operating/budgets/<uuid:budget_id>/approve", operating_views.approve_budget),
     path("schools/<uuid:school_id>/operating/expenses", operating_views.expenses),
     path("schools/<uuid:school_id>/operating/expenses/<uuid:expense_id>", operating_views.expense_detail),
+    path("schools/<uuid:school_id>/operating/expenses/<uuid:expense_id>/submit", operating_workflow_views.submit_expense),
+    path("schools/<uuid:school_id>/operating/expenses/<uuid:expense_id>/reject", operating_workflow_views.reject_expense),
     path("schools/<uuid:school_id>/operating/expenses/<uuid:expense_id>/approve", operating_views.approve_expense),
     path("schools/<uuid:school_id>/operating/expenses/<uuid:expense_id>/payments", operating_views.pay_expense),
     path("schools/<uuid:school_id>/operating/payments/<uuid:payment_id>/void", operating_views.void_expense_payment),
