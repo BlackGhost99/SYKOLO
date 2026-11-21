@@ -302,6 +302,40 @@ class OwnerOverviewTests(TestCase):
         self.assertEqual(_category("SCOL-202611"), "scolarite")
         self.assertEqual(_category("INS-2026"), "inscription_registre")
 
+
+    def test_staff_finance_summary_uses_same_income_categories_as_owner(self):
+        application = AdmissionApplication.objects.get(school=self.school)
+        AdmissionCashReceipt.objects.create(
+            school=self.school, application=application, amount_xaf=15000,
+            is_demo=False, received_on=timezone.localdate(), recorded_by=self.director,
+        )
+        self.client.force_login(self.director)
+        endpoint = f"/api/v1/schools/{self.school.pk}/finance/summary"
+        current = self.client.get(endpoint, {"year": str(self.year.pk)})
+        self.assertEqual(current.status_code, 200, current.content)
+        self.assertEqual(current["Cache-Control"], "no-store")
+        details = current.json()
+        self.assertFalse(details["revenue_certified"])
+        self.assertEqual(details["admission_cash"]["total"], "15000.00")
+        rows = {(row["category"], row["currency"]): row
+                for row in details["entry_categories"]["rows"]}
+        self.assertEqual(rows[("scolarite", "XAF")]["paid"], "50000.00")
+        self.assertEqual(rows[("extrascolaire", "USD")]["billed"], "30.00")
+        self.assertEqual(details["currencies"]["XAF"]["paid"], "50000.00")
+        self.assertFalse(details["entry_categories"]["revenue_certified"])
+        owner = self.client.get(self.url)
+        self.assertEqual(owner.status_code, 403)
+        # All-years summary still has original totals, but does not mislabel
+        # a single school year as a complete breakdown.
+        without_year = self.client.get(endpoint)
+        self.assertEqual(without_year.status_code, 200)
+        self.assertIsNone(without_year.json()["entry_categories"])
+        self.assertIsNone(without_year.json()["admission_cash"])
+        self.assertEqual(self.client.get(
+            endpoint, {"year": str(self.foreign_year.pk)}
+        ).status_code, 422)
+        self.assertEqual(self.client.post(endpoint, {}).status_code, 405)
+
     def test_real_founder_without_director_role_may_monitor(self):
         self.client.force_login(self.founder)
         response=self.client.get(self.url)

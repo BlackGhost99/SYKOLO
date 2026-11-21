@@ -225,6 +225,8 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
   useEffect(()=>setViewYear(workingYearId),[workingYearId]);
   const [viewCurrency, setViewCurrency] = useState("");
   const fin = useData(`schools/${schoolId}/overview/finance?currency=${viewCurrency}&year=${viewYear}`);
+  const incomeYear = viewYear || fin.data?.year?.id || "";
+  const entry = useData(`schools/${schoolId}/finance/summary${incomeYear ? "?year=" + encodeURIComponent(incomeYear) : ""}`);
   const [enrollment, setEnrollment] = useState(params?.enrollment || "");
   const filters = useSearchFilters({payment_search:"1",selected:enrollment});
   const roster = useData(`schools/${schoolId}/overview/students?year=${encodeURIComponent(viewYear)}&${filters.params}`);
@@ -315,9 +317,38 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
     <CurrencyChoice data={d} value={viewCurrency} onChange={setViewCurrency} year={viewYear} onYearChange={value=>{setViewYear(value);setEnrollment("");setAmount(null);setMessage("");setReceiptUrl("");onWorkingYearChange?.(value)}}/>
     <PageHeader title="Encaissements et caisse journalière" subtitle="Suivi des paiements, reçus et méthodes d’encaissement" badge="Économe" badgeIcon="coins" actions={advancedSettings}/>
     {tabs}
-    <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive} onUpdated={fin.reload}/>
+    <AdmissionCashDesk schoolId={schoolId} canReceive={canReceive} onUpdated={()=>{fin.reload();entry.reload();}}/>
     <Loading state={fin}>{d && <>
       <FinanceEvidenceNotice data={d}/>
+      {entry.current && entry.data?.entry_categories &&
+        <Card title="Ventilation des entrées — année scolaire" icon="coins"
+          subtitle="Consultation seule · scolarité, inscriptions et extrascolaire sans cumul de registres">
+          {entry.data.admission_cash &&
+            <p>Inscriptions encaissées à la caisse (espèces déclarées) :
+              <strong> {fmtMoney(entry.data.admission_cash.total, "XAF")}</strong>
+              {" · "}{entry.data.admission_cash.count} reçu(s).
+              <span className="yd-card-sub"> Ce montant n’est ni une preuve bancaire ni un supplément à additionner aux paiements scolaires sans rapprochement.</span>
+            </p>}
+          <Table headers={["Catégorie","Devise","Frais facturés","Paiements enregistrés","Opérations"]}
+            rows={(entry.data.entry_categories.rows||[]).map(row=>[
+              row.label,row.currency,fmtMoney(row.billed,row.currency),
+              fmtMoney(row.paid,row.currency),num(row.payments),
+            ])}/>
+          {(entry.data.entry_categories.rows||[]).map(row=>{
+            const codes=(entry.data.entry_categories.details||[]).filter(item=>
+              item.category===row.category&&item.currency===row.currency);
+            return <details key={row.category+"/"+row.currency}>
+              <summary>{row.label} ({row.currency}) : consulter {codes.length} code(s) tarifaire(s)</summary>
+              <Table headers={["Code","Frais facturés","Paiements enregistrés"]}
+                rows={codes.map(code=>[
+                  code.fee_code,fmtMoney(code.billed,row.currency),
+                  fmtMoney(code.paid,row.currency),
+                ])}/>
+            </details>;
+          })}
+          <p className="yd-card-sub">Les simulations et les frais non classés restent distincts des encaissements réels vérifiés. Aucun montant n’est certifié.</p>
+          <Button onClick={entry.reload}>Actualiser la ventilation des entrées</Button>
+        </Card>}
       <div className="yd-metrics four">
         <Metric icon="coins" label="Enregistré aujourd’hui" value={fmtMoney(d.today.total, d.currency)} trend={total >= Number(d.yesterday.total) ? "up" : "down"} trendValue={pct(d.today.total, d.yesterday.total) || ""} trendLabel={`vs. hier (${fmtMoney(d.yesterday.total, d.currency)})`}/>
         <Metric icon="file" label="Nombre de paiements" value={num(d.today.count)} trend={d.today.count >= d.yesterday.count ? "up" : "down"} trendValue={pct(d.today.count, d.yesterday.count) || ""} trendLabel={`vs. hier (${d.yesterday.count})`}/>

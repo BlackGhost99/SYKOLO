@@ -16,6 +16,7 @@ from .academic_models import AcademicYear
 from .finance_models import FeeCharge, FeePayment
 from .finance_views import gate, uid
 from .finance_evidence import evidence_totals
+from .entry_income import admission_cash_income, fee_entries_by_category
 from .student_access import can_read_finance
 from .student_models import Enrollment
 from .views import refuse
@@ -37,9 +38,13 @@ def summary(request, school_id):
 
     year_param = request.GET.get("year")
     year_id = None
+    selected_year = None
     if year_param is not None:
         year_id = uid(year_param)
-        if year_id is None or not AcademicYear.objects.filter(school=school, pk=year_id).exists():
+        if year_id is None:
+            return JsonResponse({"error": "Année scolaire introuvable dans cet établissement."}, status=422)
+        selected_year = AcademicYear.objects.filter(school=school, pk=year_id).first()
+        if selected_year is None:
             return JsonResponse({"error": "Année scolaire introuvable dans cet établissement."}, status=422)
 
     charges = FeeCharge.objects.filter(school=school)
@@ -89,6 +94,20 @@ def summary(request, school_id):
                  "comptables, et ne constituent ni des recettes certifiées ni une preuve bancaire. "
                  "Consultez evidence pour distinguer les simulations et les écritures cash non rapprochées."),
         "evidence": evidence,
+        # Only a year-scoped request gets a category report. Without year,
+        # the legacy summary aggregates all years and cannot be compared
+        # with a single-year income breakdown.
+        "entry_categories": fee_entries_by_category(school, selected_year, today)
+            if selected_year is not None else None,
+        "admission_cash": admission_cash_income(school, selected_year, today)
+            if selected_year is not None else None,
+        "entry_note": (
+            "Ventilation par année scolaire. Frais d'inscription en caisse et "
+            "tarifs d'inscription du registre sont deux sources NON cumulables "
+            "avant rapprochement. Aucun montant n'est certifié."
+            if selected_year is not None else
+            "Ajoutez ?year=UUID pour obtenir la ventilation d'entrées d'une année."
+        ),
         "currencies": {
             currency: {
                 "billed": as_money(data["billed"]),
@@ -103,7 +122,7 @@ def summary(request, school_id):
             }
             for currency, data in sorted(totals.items())
         },
-    })
+    }, headers={"Cache-Control": "no-store"})
 
 
 @require_GET
