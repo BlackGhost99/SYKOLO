@@ -10,14 +10,17 @@ from datetime import date
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db.models import Sum, Count
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from accounts.views import authorized
 from .academic_models import AcademicYear
-from .operating_models import OperatingSupplier, OperatingBudget, OperatingExpense, OperatingExpensePayment
+from .operating_models import (OperatingSupplier, OperatingBudget, OperatingExpense,
+                               OperatingExpensePayment, OperatingExpenseCategory,
+                               ACTIVE_ACTIVITY_POLES, ACTIVITY_POLES, BENEFICIARY_TYPES,
+                               EXPENSE_WORKFLOW_STATES)
 from .services import has_permission
 from .views import access, refuse, parse_body, log_event
 
@@ -148,11 +151,24 @@ def expense_data(e):
     paid = cleared_total(e)
     return {"id": str(e.pk), "year": str(e.year_id),
             "budget": str(e.budget_id), "category": e.budget.category, "currency": e.budget.currency,
-            "supplier": str(e.supplier_id), "supplier_name": e.supplier.name,
+            "supplier": str(e.supplier_id) if e.supplier_id else None,
+            "supplier_name": e.supplier.name if e.supplier_id else "",
+            "beneficiary_type": e.beneficiary_type,
+            "beneficiary_name": e.beneficiary_name or (e.supplier.name if e.supplier_id else ""),
+            "beneficiary_reference": e.beneficiary_reference,
             "label": e.label, "amount": fmt(e.amount), "expense_on": e.expense_on.isoformat(),
+            "activity_pole": e.activity_pole, "cost_center": e.cost_center,
+            "accounting_nature": e.accounting_nature,
+            "category_ref": str(e.category_ref_id) if e.category_ref_id else None,
+            "subcategory_ref": str(e.subcategory_ref_id) if e.subcategory_ref_id else None,
+            "expense_category": e.category_label_snapshot or "À classer (historique)",
+            "expense_subcategory": e.subcategory_label_snapshot,
             "invoice_reference": e.invoice_reference, "revision": e.revision,
+            "workflow_state": e.workflow_state,
+            "submitted_by": str(e.submitted_by_id) if e.submitted_by_id else None,
+            "submitted_at": e.submitted_at.isoformat() if e.submitted_at else None,
             "paid": fmt(paid), "balance": fmt(e.amount - paid),
-            "status": ("draft" if not e.approved_at else "paid" if paid == e.amount
+            "status": (e.workflow_state if not e.approved_at else "paid" if paid == e.amount
                        else "partially_paid" if paid > ZERO else "approved"),
             "prepared_by": str(e.prepared_by_id),
             "approved_by": str(e.approved_by_id) if e.approved_by_id else None}
@@ -341,21 +357,109 @@ def approve_budget(request, school_id, budget_id):
     return result(budget_data(row))
 
 
+def activity_pole_value(value):
+    if not isinstance(value, str) or value not in ACTIVE_ACTIVITY_POLES:
+        raise ValueError("Pôle d'activité invalide : sélectionnez un pôle de sorties.")
+    return value
+
+
+def expense_catalog_fields(school, category_id, subcategory_id=None):
+    if not category_id:
+        raise ValueError("Catégorie de dépenses obligatoire.")
+    category = OperatingExpenseCategory.objects.filter(
+        school=school, pk=uuidval(str(category_id)), parent__isnull=True,
+    ).first()
+    if category is None:
+        raise LookupError("Catégorie de dépenses introuvable.")
+    if not category.active:
+        raise ValueError("Catégorie archivée : choisissez une catégorie active.")
+    subcategory = None
+    if subcategory_id:
+        subcategory = OperatingExpenseCategory.objects.filter(
+            school=school, pk=uuidval(str(subcategory_id)),
+            parent=category,
+        ).first()
+        if subcategory is None:
+            raise LookupError("Sous-catégorie introuvable dans cette catégorie.")
+        if not subcategory.active:
+            raise ValueError("Sous-catégorie archivée : sélection refusée.")
+    return {
+        "category_ref": category,
+        "subcategory_ref": subcategory,
+        "category_label_snapshot": category.name,
+        "subcategory_label_snapshot": subcategory.name if subcategory else "",
+    }
+
+
+def expense_beneficiary_fields(school, data, *, existing=None):
+    """Resolve a beneficiary within the school, without inventing a supplier."""
+    kind = data.get("beneficiary_type", existing.beneficiary_type if existing else "supplier")
+    if not isinstance(kind, str) or kind not in dict(BENEFICIARY_TYPES):
+        raise ValueError("Type de bénéficiaire invalide.")
+    previous_kind = existing.beneficiary_type if existing else None
+    raw_reference = data.get(
+        "beneficiary_reference",
+        existing.beneficiary_reference if previous_kind == kind else "",
+    )
+    reference = txt(raw_reference, 120, "Référence interne du bénéficiaire", optional=True)
+
+    if kind == "supplier":
+        supplied_name = data.get("beneficiary_name", "")
+        if supplied_name not in ("", None):
+            raise ValueError("Le nom d'un fournisseur est repris de sa fiche.")
+        supplier_id = data.get(
+            "supplier",
+            existing.supplier_id if existing and previous_kind == "supplier" else None,
+        )
+        if not supplier_id:
+            raise ValueError("Sélectionnez un fournisseur actif.")
+        supplier = OperatingSupplier.objects.filter(
+            school=school, pk=uuidval(str(supplier_id)),
+        ).first()
+        if supplier is None:
+            raise LookupError("Fournisseur introuvable dans cet établissement.")
+        # Existing draft may retain an archived supplier while other fields are
+        # edited; assigning a new archived supplier is never permitted.
+        retaining = existing is not None and supplier.pk == existing.supplier_id and (
+            "supplier" not in data and previous_kind == "supplier"
+        )
+        if not supplier.active and not retaining:
+            raise ValueError("Fournisseur archivé : sélection interdite.")
+        return {
+            "supplier": supplier, "beneficiary_type": kind,
+            "beneficiary_name": supplier.name, "beneficiary_reference": reference,
+        }
+
+    if data.get("supplier") not in (None, ""):
+        raise ValueError("Un bénéficiaire non commercial ne peut avoir un fournisseur associé.")
+    name = data.get(
+        "beneficiary_name",
+        existing.beneficiary_name if existing and previous_kind == kind else "",
+    )
+    name = txt(name, 180, "Nom du bénéficiaire")
+    return {
+        "supplier": None, "beneficiary_type": kind,
+        "beneficiary_name": name, "beneficiary_reference": reference,
+    }
+
+
 def expense_fields(school, data):
     budget = OperatingBudget.objects.select_related("year").filter(
         school=school, pk=uuidval(data["budget"]),
     ).first()
-    supplier = OperatingSupplier.objects.filter(school=school, pk=uuidval(data["supplier"])).first()
-    if not budget or not supplier:
-        raise LookupError("Enveloppe ou fournisseur d'un autre établissement.")
-    if not supplier.active:
-        raise ValueError("Fournisseur archivé : demande refusée.")
+    if not budget:
+        raise LookupError("Enveloppe budgétaire d'un autre établissement.")
     if not budget.approved_at:
         raise ValueError("Le budget doit être approuvé avant une dépense.")
     if not open_year(budget.year):
         raise ValueError("Année scolaire clôturée.")
     return {
-        "budget": budget, "year": budget.year, "supplier": supplier,
+        "budget": budget, "year": budget.year,
+        **expense_beneficiary_fields(school, data),
+        **expense_catalog_fields(school, data["category_ref"], data.get("subcategory_ref")),
+        "activity_pole": activity_pole_value(data["activity_pole"]),
+        "cost_center": txt(data.get("cost_center", ""), 100, "Centre de coûts", optional=True),
+        "accounting_nature": txt(data.get("accounting_nature", ""), 100, "Nature comptable", optional=True),
         "label": txt(data["label"], 200, "Libellé"),
         "invoice_reference": txt(data["invoice_reference"], 120, "Référence justificative"),
         "expense_on": day(data["expense_on"]), "amount": money(data["amount"]),
@@ -375,11 +479,50 @@ def expenses(request, school_id):
         except ValueError as exc:
             return fail(str(exc))
         if year is None:
-            return fail("Année scolaire introuvable.", 404) if request.GET.get("year") else result({"expenses": []})
+            return fail("Année scolaire introuvable.", 404) if request.GET.get("year") else result({
+                "expenses": [], "total": 0, "offset": 0, "has_more": False, "workflow_counts": {},
+            })
         qs = OperatingExpense.objects.filter(school=school, year=year).select_related("supplier", "budget")
-        return result({"expenses": [expense_data(row) for row in qs.order_by("-expense_on", "-created_at")[:400]]})
-    data, err = body(request, {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount"},
-                     {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount"})
+        activity_pole = request.GET.get("activity_pole")
+        if activity_pole:
+            if activity_pole not in dict(ACTIVITY_POLES):
+                return fail("Pôle de sorties inconnu.")
+            qs = qs.filter(activity_pole=activity_pole)
+        # Independent state counts for the selected school, year and activity.
+        counts = {
+            item["workflow_state"]: item["total"]
+            for item in qs.values("workflow_state").annotate(total=Count("pk"))
+        }
+        state_filter = request.GET.get("workflow_state")
+        if state_filter:
+            if state_filter not in dict(EXPENSE_WORKFLOW_STATES):
+                return fail("État de demande inconnu.")
+            qs = qs.filter(workflow_state=state_filter)
+        try:
+            limit = int(request.GET.get("limit", "50"))
+            offset = int(request.GET.get("offset", "0"))
+        except (ValueError, TypeError):
+            return fail("Pagination invalide.")
+        if limit < 1 or limit > 100 or offset < 0 or offset > 1000000:
+            return fail("Pagination hors limites.")
+        total = qs.count()
+        rows = [
+            expense_data(row)
+            for row in qs.order_by("-expense_on", "-created_at", "-pk")[offset:offset + limit]
+        ]
+        return result({
+            "expenses": rows, "total": total, "offset": offset, "limit": limit,
+            "has_more": offset + len(rows) < total, "workflow_counts": counts,
+        })
+    data, err = body(
+        request,
+        {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount",
+         "activity_pole", "cost_center", "accounting_nature",
+         "category_ref", "subcategory_ref", "beneficiary_type",
+         "beneficiary_name", "beneficiary_reference"},
+        {"budget", "label", "invoice_reference", "expense_on", "amount", "activity_pole",
+         "category_ref"},
+    )
     if err is not None:
         return err
     try:
@@ -409,23 +552,37 @@ def expense_detail(request, school_id, expense_id):
         row = OperatingExpense.objects.select_related("supplier", "budget").filter(school=school, pk=expense_id).first()
         if not row:
             return fail("Dépense introuvable.", 404)
-        return result({"expense": expense_data(row),
-                       "payments": [payment_data(p) for p in row.payments.order_by("recorded_at")]})
-    data, err = body(request, {"revision", "label", "invoice_reference", "expense_on", "amount", "supplier"}, {"revision"})
+        from .operating_workflow_views import decision_data
+        return result({
+            "expense": expense_data(row),
+            "payments": [payment_data(p) for p in row.payments.order_by("recorded_at")],
+            "decisions": [
+                decision_data(item) for item in row.workflow_decisions.order_by("occurred_at", "pk")
+            ],
+        })
+    data, err = body(
+        request,
+        {"revision", "label", "invoice_reference", "expense_on", "amount", "supplier",
+         "activity_pole", "cost_center", "accounting_nature",
+         "category_ref", "subcategory_ref", "beneficiary_type",
+         "beneficiary_name", "beneficiary_reference"},
+        {"revision"},
+    )
     if err is not None:
         return err
     if type(data["revision"]) is not int or not set(data).difference({"revision"}):
         return fail("Version et modification requises.")
     with transaction.atomic():
-        row = OperatingExpense.objects.select_for_update().select_related("year", "supplier", "budget").filter(
+        row = OperatingExpense.objects.select_for_update(of=("self",)).select_related("year", "supplier", "budget").filter(
             school=school, pk=expense_id,
         ).first()
         if not row:
             return fail("Dépense introuvable.", 404)
-        if row.approved_at or not open_year(row.year):
-            return fail("Dépense déjà approuvée ou exercice clôturé.", 409)
+        if row.approved_at or row.workflow_state not in ("draft", "rejected") or not open_year(row.year):
+            return fail("Demande soumise/approuvée ou exercice clôturé : modification refusée.", 409)
         if row.revision != data["revision"]:
             return fail("Demande modifiée par un autre agent.", 409)
+        was_rejected = row.workflow_state == "rejected"
         try:
             if "label" in data:
                 row.label = txt(data["label"], 200, "Libellé")
@@ -435,21 +592,44 @@ def expense_detail(request, school_id, expense_id):
                 row.expense_on = day(data["expense_on"])
             if "amount" in data:
                 row.amount = money(data["amount"])
-            if "supplier" in data:
-                new_supplier = OperatingSupplier.objects.filter(
-                    school=school, pk=uuidval(data["supplier"]), active=True,
-                ).first()
-                if not new_supplier:
-                    return fail("Fournisseur absent ou archivé.", 404)
-                row.supplier = new_supplier
+            if "activity_pole" in data:
+                row.activity_pole = activity_pole_value(data["activity_pole"])
+            if "cost_center" in data:
+                row.cost_center = txt(data["cost_center"], 100, "Centre de coûts", optional=True)
+            if "accounting_nature" in data:
+                row.accounting_nature = txt(data["accounting_nature"], 100, "Nature comptable", optional=True)
+            if "category_ref" in data or "subcategory_ref" in data:
+                category_id = data.get("category_ref", row.category_ref_id)
+                subcategory_id = data.get(
+                    "subcategory_ref", None if "category_ref" in data else row.subcategory_ref_id
+                )
+                for field, value in expense_catalog_fields(school, category_id, subcategory_id).items():
+                    setattr(row, field, value)
+            if {"supplier", "beneficiary_type", "beneficiary_name", "beneficiary_reference"} & set(data):
+                for field, value in expense_beneficiary_fields(
+                    school, data, existing=row,
+                ).items():
+                    setattr(row, field, value)
+            if row.workflow_state == "rejected":
+                # Revising a refused request opens a new draft. Rejection evidence
+                # remains append-only in OperatingExpenseDecision.
+                row.workflow_state = "draft"
+                row.submitted_by = None
+                row.submitted_at = None
             row.full_clean()
+        except LookupError as exc:
+            return fail(str(exc), 404)
         except ValueError as exc:
             return fail(str(exc))
         except ValidationError as exc:
             return validation(exc)
         row.revision += 1
         row.save()
-        log_event(school, request, "operating_expense_updated", row.pk)
+        if was_rejected:
+            from .operating_workflow_views import record_decision
+            record_decision(school, request, row, "revised")
+        else:
+            log_event(school, request, "operating_expense_updated", row.pk)
     return result(expense_data(row))
 
 
@@ -474,23 +654,32 @@ def approve_expense(request, school_id, expense_id):
         budget = OperatingBudget.objects.select_for_update().select_related("year").filter(
             school=school, pk=initial["budget_id"],
         ).first()
-        row = OperatingExpense.objects.select_for_update().select_related("budget", "supplier", "year").filter(
+        row = OperatingExpense.objects.select_for_update(of=("self",)).select_related("budget", "supplier", "year").filter(
             school=school, pk=expense_id, budget=budget,
         ).first()
         if not budget or not row:
             return fail("Dépense introuvable.", 404)
-        if not open_year(row.year) or not budget.approved_at or row.approved_at or row.revision != data["revision"]:
-            return fail("Dépense déjà approuvée, modifiée ou année clôturée.", 409)
-        if request.user.pk == row.prepared_by_id:
-            return fail("Le préparateur ne peut approuver sa propre dépense.", 403)
+        if request.user.pk in (row.prepared_by_id, row.submitted_by_id):
+            return fail("La validation exige un contrôleur distinct du préparateur et du soumissionnaire.", 403)
+        if (not open_year(row.year) or not budget.approved_at or row.approved_at or
+                row.workflow_state != "submitted" or row.revision != data["revision"]):
+            return fail("Dépense non soumise, déjà traitée, modifiée ou exercice clôturé.", 409)
+        if row.activity_pole not in ACTIVE_ACTIVITY_POLES:
+            return fail("Classez cette dépense par activité avant approbation.", 409)
+        if not row.category_ref_id:
+            return fail("Associez une catégorie de dépenses avant approbation.", 409)
+        if not row.category_ref.active or (row.subcategory_ref_id and not row.subcategory_ref.active):
+            return fail("Catégorie archivée : reclassez ce projet avant approbation.", 409)
         if authorised_total(budget) + row.amount > budget.ceiling:
             return fail("Budget insuffisant : la dépense dépasse les fonds non engagés.", 409)
         row.approved_by = request.user
         row.approved_at = timezone.now()
+        row.workflow_state = "approved"
         row.revision += 1
         row.full_clean()
         row.save()
-        log_event(school, request, "operating_expense_approved", row.pk)
+        from .operating_workflow_views import record_decision
+        record_decision(school, request, row, "approved")
     return result(expense_data(row))
 
 
@@ -528,7 +717,7 @@ def pay_expense(request, school_id, expense_id):
                     previous.reference == reference and previous.paid_on == paid_on):
                 return result(payment_data(previous))
             return fail("Clé anti-doublon déjà utilisée avec une autre opération.", 409)
-        row = OperatingExpense.objects.select_for_update().select_related("year", "budget", "supplier").filter(
+        row = OperatingExpense.objects.select_for_update(of=("self",)).select_related("year", "budget", "supplier").filter(
             school=school, pk=expense_id,
         ).first()
         if not row:
@@ -605,7 +794,8 @@ def summary(request, school_id):
     budgets = OperatingBudget.objects.filter(school=school, year=year).order_by("category")
     output = []
     totals = {}
-    for budget in budgets[:200]:
+    # Aggregate every budget: a display cap must never truncate financial totals.
+    for budget in budgets.iterator(chunk_size=200):
         data = budget_data(budget)
         payments = OperatingExpensePayment.objects.filter(
             school=school, expense__budget=budget, voided_at__isnull=True,
@@ -618,6 +808,38 @@ def summary(request, school_id):
         entry["committed"] += Decimal(data["committed"])
         entry["paid"] += payments
         entry["remaining"] += (budget.ceiling - Decimal(data["committed"])) if budget.approved_at else ZERO
+    # Financial activity is orthogonal to budget category and accounting nature.
+    # Aggregate obligations and declared outflows separately to avoid JOIN
+    # multiplication when a single expense has multiple partial payments.
+    pole_totals = {}
+    commitments = (OperatingExpense.objects.filter(
+        school=school, year=year, approved_at__isnull=False,
+    ).values("activity_pole", "budget__currency").annotate(total=Sum("amount")))
+    for item in commitments:
+        currency, pole = item["budget__currency"], item["activity_pole"]
+        row = pole_totals.setdefault(currency, {}).setdefault(
+            pole, {"committed": ZERO, "paid": ZERO},
+        )
+        row["committed"] += item["total"] or ZERO
+    outflows = (OperatingExpensePayment.objects.filter(
+        school=school, expense__year=year, expense__approved_at__isnull=False,
+        voided_at__isnull=True,
+    ).values("expense__activity_pole", "expense__budget__currency").annotate(total=Sum("amount")))
+    for item in outflows:
+        currency, pole = item["expense__budget__currency"], item["expense__activity_pole"]
+        row = pole_totals.setdefault(currency, {}).setdefault(
+            pole, {"committed": ZERO, "paid": ZERO},
+        )
+        row["paid"] += item["total"] or ZERO
+    by_activity_pole = {
+        currency: {
+            pole: {"committed": fmt(data["committed"]),
+                   "paid": fmt(data["paid"]),
+                   "unpaid": fmt(data["committed"] - data["paid"])}
+            for pole, data in groups.items()
+        } for currency, groups in pole_totals.items()
+    }
     return result({"year": str(year.pk), "budgets": output,
                    "totals": {currency: {key: fmt(amount) for key, amount in items.items()}
-                              for currency, items in totals.items()}})
+                              for currency, items in totals.items()},
+                   "by_activity_pole": by_activity_pole})
