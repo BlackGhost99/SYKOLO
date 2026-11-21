@@ -62,7 +62,7 @@ def transactions(request, school_id):
     raw_start, raw_end = request.GET.get("from", ""), request.GET.get("to", "")
     dates = []
     for raw in (raw_start, raw_end):
-        if raw and not re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", raw):
+        if raw and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
             return _failure("Dates au format AAAA-MM-JJ obligatoires.")
         try:
             dates.append(date.fromisoformat(raw) if raw else None)
@@ -123,8 +123,8 @@ def transactions(request, school_id):
             "Date future", "Reçu interne",
         ])
         def safe_cell(text):
-            value = str(text or "").replace("\\r", " ").replace("\\n", " ")
-            return "'" + value if value.startswith(("=", "+", "-", "@", "\\t")) else value
+            value = str(text or "").replace("\r", " ").replace("\n", " ")
+            return "'" + value if value.startswith(("=", "+", "-", "@", "\t")) else value
         for row in result:
             writer.writerow([
                 row["date"], safe_cell(row["category"]), safe_cell(row["fee_code"]),
@@ -132,7 +132,7 @@ def transactions(request, school_id):
                 row["evidence"], row["id"],
                 "oui" if row["future_dated"] else "non", safe_cell(row["receipt_url"]),
             ])
-        response = HttpResponse("\\ufeff" + output.getvalue(),
+        response = HttpResponse("\ufeff" + output.getvalue(),
                                 content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = "attachment; filename=entrees-declarees.csv"
         response["Cache-Control"] = "no-store"
