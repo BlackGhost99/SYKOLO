@@ -200,6 +200,18 @@ test("le comptable et l'économe consultent les catégories sans additionner les
         {category:"scolarite",currency:"XAF",fee_code:"SCOL-202611",billed:"120000",paid:"50000"},
         {category:"extrascolaire",currency:"XAF",fee_code:"transport",billed:"20000",paid:"5000"},
       ],
+      receivables:{
+        revenue_certified:false,
+        note:"Échéances catégorisées, sans regroupement avec la caisse.",
+        rows:[
+          {category:"scolarite",label:"Scolarité",currency:"XAF",billed_net:"120000",
+            paid_declared:"50000",outstanding:"70000",overdue:"25000",
+            due_today:"5000",future:"40000",without_due_date:"0",overpayment_review:"0"},
+          {category:"extrascolaire",label:"Extrascolaire",currency:"XAF",billed_net:"20000",
+            paid_declared:"5000",outstanding:"15000",overdue:"0",
+            due_today:"0",future:"15000",without_due_date:"0",overpayment_review:"0"},
+        ],
+      },
     },
     admission_cash:{total:"15000.00",count:1},
   };
@@ -212,10 +224,17 @@ test("le comptable et l'économe consultent les catégories sans additionner les
   render(<LivePayments schoolId="school" workingYearId="year" canReceive={false}/>);
   const title=await screen.findByText("Ventilation des entrées — année scolaire");
   expect(title).toBeTruthy();
+  const user=userEvent.setup();
+  const arrears=screen.getByText(/Créances scolaires et extrascolaires : consulter les impayés par échéance/);
+  expect(arrears.closest("details").open).toBe(false);
+  await user.click(arrears);
+  expect(arrears.closest("details").open).toBe(true);
+  expect(within(arrears.closest("details")).getByText(/Échéances catégorisées/)).toBeTruthy();
+  expect(within(arrears.closest("details")).getAllByText(/25 000 FCFA/).length).toBeGreaterThan(0);
+  expect(within(arrears.closest("details")).getAllByText(/15 000 FCFA/).length).toBeGreaterThan(0);
   expect(screen.getByText(/Inscriptions encaissées à la caisse/)).toBeTruthy();
   expect(screen.getByText(/15 000 FCFA/)).toBeTruthy();
   expect(screen.getByText(/sans rapprochement/)).toBeTruthy();
-  const user=userEvent.setup();
   const drill=screen.getByText(/Scolarité \(XAF\) : consulter 1 code\(s\) tarifaire\(s\)/);
   expect(drill.closest("details").open).toBe(false);
   await user.click(drill);
