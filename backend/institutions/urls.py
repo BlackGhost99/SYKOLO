@@ -6,6 +6,7 @@ from . import import_views, subscription_views, teaching_diary_views, diary_reso
 from . import singpay_views, subscription_reminders, subscription_access, subscription_dashboard
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
+from . import operating_catalog_views
 from . import annual_views
 from . import class_assignment_views
 from . import calendar_views, primary_views, preschool_followup_views
@@ -165,6 +166,8 @@ urlpatterns = [
     path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/marks", attendance_views.record_marks),
     path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/close", attendance_views.close_session),
     path("schools/<uuid:school_id>/attendance/sessions/<uuid:session_id>/marks/<uuid:enrollment_id>/history", attendance_views.changes),
+    path("schools/<uuid:school_id>/operating/categories", operating_catalog_views.categories),
+    path("schools/<uuid:school_id>/operating/categories/<uuid:category_id>", operating_catalog_views.category_detail),
     path("schools/<uuid:school_id>/operating/suppliers", operating_views.suppliers),
     path("schools/<uuid:school_id>/operating/suppliers/<uuid:supplier_id>", operating_views.supplier_detail),
     path("schools/<uuid:school_id>/operating/budgets", operating_views.budgets),
