@@ -11,6 +11,7 @@ from .academic_models import AcademicClass, AcademicCycle, AcademicLevel, Academ
 from .admission_models import AdmissionApplication
 from .finance_models import FeeCharge, FeePayment, FeePaymentVoid, FeeSchedule
 from .parent_payment_models import AdmissionCashReceipt, AdmissionCashReceiptVoid
+from .entry_income import _category
 from .models import Organization, OrganizationMember, School, SchoolAudit, SchoolMember, SchoolRole
 from .services import OWNER_ROLE_TEMPLATE, ROLE_TEMPLATES
 from .staff_models import StaffRecord, StaffAssignment
@@ -289,6 +290,14 @@ class OwnerOverviewTests(TestCase):
         original = self.client.get(self.url).json()["finance"]["currencies"]
         self.assertEqual(next(x for x in original if x["currency"] == "XAF")["paid"], "56000.00")
         self.assertTrue(self.client.get(self.url)["Cache-Control"].startswith("no-store"))
+
+    def test_income_category_defaults_never_assume_crèche_is_extrascolaire(self):
+        self.assertEqual(_category("garderie"), "a_classer")
+        self.assertEqual(_category("transport"), "extrascolaire")
+        self.assertEqual(_category("DEMO-SCOL-202611"), "demo")
+        self.assertEqual(_category("scolarite-2026-11", "[DÉMO] Scolarité"), "demo")
+        self.assertEqual(_category("SCOL-202611"), "scolarite")
+        self.assertEqual(_category("INS-2026"), "inscription_registre")
 
     def test_real_founder_without_director_role_may_monitor(self):
         self.client.force_login(self.founder)
