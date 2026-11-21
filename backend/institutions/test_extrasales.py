@@ -179,3 +179,39 @@ class ExtrasSalesLedgerTests(TestCase):
         self.assertNotIn("buyer_label",read.json()["rows"][0])
         self.assertEqual(read.json()["rows"][0]["billed"],"15000.00")
         self.assertEqual(read.json()["rows"][0]["outstanding"],"15000.00")
+
+    @override_settings(YEM_EXTRA_SALES_WRITES_ENABLED=True)
+    def test_bank_transfer_requires_reference_and_receiver_permission(self):
+        sale_id = self.create().json()["sale"]["id"]
+        url = f"{self.url}/{sale_id}/payments"
+        transfer = {
+            "idempotency_key": "extras-transfer-reference-20261121",
+            "amount": "5000.00",
+            "method": "virement",
+        }
+        self.client.force_login(self.manager)
+        self.assertEqual(self.post(url, transfer).status_code, 403)
+        self.client.force_login(self.receiver)
+        self.assertEqual(self.post(url, transfer).status_code, 422)
+        self.assertEqual(ExtraPayment.objects.count(), 0)
+        with_reference = {**transfer, "reference": "BANK-2026-001"}
+        result = self.post(url, with_reference)
+        self.assertEqual(result.status_code, 201, result.content)
+        self.assertEqual(ExtraPayment.objects.count(), 1)
+        self.assertEqual(ExtraPayment.objects.get().method, "virement")
+        self.assertEqual(ExtraPayment.objects.get().reference, "BANK-2026-001")
+
+    @override_settings(YEM_EXTRA_SALES_WRITES_ENABLED=False)
+    def test_disabled_environment_prevents_manual_receipts_too(self):
+        with override_settings(YEM_EXTRA_SALES_WRITES_ENABLED=True):
+            sale_id = self.create().json()["sale"]["id"]
+        self.client.force_login(self.receiver)
+        url = f"{self.url}/{sale_id}/payments"
+        before = ExtraPayment.objects.count()
+        response = self.post(url, {
+            "idempotency_key": "extras-disabled-payment-20261121",
+            "amount": "5000.00",
+            "method": "especes",
+        })
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(ExtraPayment.objects.count(), before)
