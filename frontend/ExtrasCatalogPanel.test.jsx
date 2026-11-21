@@ -43,7 +43,7 @@ test("le catalogue est paramétrable et aucun encaissement n'est généré", asy
     code:"CANTINE-REPAS",group:"B03",kind:"produit",
     unit_price:"2500.00",academic_year:"year-a"
   });
-  expect(screen.getByText("Repas du midi")).toBeTruthy();
+  expect(screen.getAllByText("Repas du midi").length).toBeGreaterThan(0);
   expect(screen.getByText(/Catalogue mis à jour/)).toBeTruthy();
   expect(vi.mocked(fetch).mock.calls.some(([url])=>String(url).includes("/finance/payments"))).toBe(false);
 });

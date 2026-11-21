@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from "react";
+import ExtrasQuotePreview from "./ExtrasQuotePreview.jsx";
 
 const EMPTY = {
   code: "", group: "B03", kind: "produit", label: "",
@@ -164,6 +165,7 @@ export default function ExtrasCatalogPanel({schoolId, yearId = ""}) {
             onClick={() => commit("archive", {id: currentId})}>Archiver l'article</button>}
         </div>
       </form>
+      <ExtrasQuotePreview schoolId={schoolId} yearId={yearId} catalogRevision={catalog.revision} items={catalog.items}/>
       <details style={{marginTop: 12}} open>
         <summary>Articles du catalogue ({visible.length})</summary>
         <label style={{display: "block", marginTop: 8}}>
