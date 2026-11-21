@@ -32,6 +32,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const root="schools/"+schoolId+"/operating/";
   const [suppliers,setSuppliers]=useState([]);
   const [categories,setCategories]=useState([]);
+  const [showCatalog,setShowCatalog]=useState(false);
   const [categoryForm,setCategoryForm]=useState({code:"",name:"",parent:"",suggested_pole:""});
   const [editingCategory,setEditingCategory]=useState(null);
   const [archiveTarget,setArchiveTarget]=useState("");
@@ -229,7 +230,10 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       {!Object.keys(summary?.by_activity_pole||{}).length&&<p>Aucune sortie approuvée sur cette période.</p>}
       <p className="hint">Les anciennes dépenses non classées restent visibles sans réaffectation automatique.</p>
     </Card>
-    <Card title="Catalogue de dépenses" icon="idcard"
+    <div className="actions">
+      <Button onClick={()=>setShowCatalog(!showCatalog)}>{showCatalog?"Masquer le catalogue":"Configurer les catégories de dépenses"}</Button>
+    </div>
+    {showCatalog&&<Card title="Catalogue de dépenses" icon="idcard"
       subtitle="Catégories et sous-catégories personnalisables par établissement. Archivage sans suppression.">
       {categories.length>0&&<Table headers={["Code","Catégorie / sous-catégorie","Pôle suggéré","État","Actions"]}
         rows={categories.map(item=>[
@@ -279,7 +283,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
         </div>
       </form>}
       <p className="hint">Modifier une catégorie ne modifie pas les libellés des dépenses déjà enregistrées.</p>
-    </Card>
+    </Card>}
     <Card title="Fournisseurs et prestataires" icon="users"
       subtitle="Annuaire des fournisseurs de l’établissement, distinct du personnel.">
       {suppliers.length>0&&<Table rowKey={(_,i)=>suppliers[i].id} rowActions={(_,i)=>canManage?[{id:"edit",label:"Modifier le fournisseur",write:true,disabled:busy,run:()=>editSupplier(suppliers[i])}]:[]} headers={["Fournisseur","Contact","Téléphone","État","Action"]}
