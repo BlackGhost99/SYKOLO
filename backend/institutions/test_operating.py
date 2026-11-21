@@ -129,6 +129,67 @@ class OperatingLedgerTests(TestCase):
             "paid_on": "2026-11-12", "idempotency_key": key or str(uuid.uuid4()),
         })
 
+    def test_workflow_submission_is_mandatory_and_roles_independent(self):
+        supplier, budget = self.approved_budget()
+        expense = self.expense(budget["id"], supplier["id"])
+        self.login("econome")
+        self.assertEqual(self.pay(expense["id"]).status_code, 409)
+        self.login("direction")
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/approve", {
+            "revision": expense["revision"],
+        }).status_code, 409)
+        sent = self.submit_expense(expense)
+        self.assertEqual(sent["status"], "submitted")
+        self.assertEqual(self.get("summary").json()["totals"]["XAF"]["committed"], "0.00")
+        self.login("comptabilite")
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/approve", {
+            "revision": sent["revision"],
+        }).status_code, 403)
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/submit", {
+            "revision": sent["revision"],
+        }).status_code, 409)
+        self.login("direction")
+        ok = self.post("expenses/"+expense["id"]+"/approve", {"revision": sent["revision"]})
+        self.assertEqual(ok.status_code, 200, ok.content)
+        self.assertEqual(ok.json()["workflow_state"], "approved")
+        self.assertEqual(self.get("summary").json()["totals"]["XAF"]["committed"], "60000.00")
+        self.assertEqual([x["action"] for x in self.get("expenses/"+expense["id"]).json()["decisions"]],
+                         ["submitted", "approved"])
+
+    def test_workflow_rejection_requires_reason_and_new_revision(self):
+        supplier, budget = self.approved_budget()
+        expense = self.expense(budget["id"], supplier["id"])
+        sent = self.submit_expense(expense)
+        self.login("direction")
+        bad = self.post("expenses/"+expense["id"]+"/reject", {
+            "revision": sent["revision"], "reason": "Non",
+        })
+        self.assertEqual(bad.status_code, 422, bad.content)
+        refused = self.post("expenses/"+expense["id"]+"/reject", {
+            "revision": sent["revision"], "reason": "Facture à compléter avant achat",
+        })
+        self.assertEqual(refused.status_code, 200, refused.content)
+        self.assertEqual(refused.json()["status"], "rejected")
+        self.assertEqual(self.get("summary").json()["totals"]["XAF"]["committed"], "0.00")
+        self.login("comptabilite")
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/submit", {
+            "revision": refused.json()["revision"],
+        }).status_code, 409)
+        edited = self.patch("expenses/"+expense["id"], {
+            "revision": refused.json()["revision"], "invoice_reference": "FACTURE-REV-02",
+        })
+        self.assertEqual(edited.status_code, 200, edited.content)
+        self.assertEqual(edited.json()["workflow_state"], "draft")
+        sent2 = self.submit_expense(edited.json())
+        self.login("direction")
+        grant = self.post("expenses/"+expense["id"]+"/approve", {"revision": sent2["revision"]})
+        self.assertEqual(grant.status_code, 200, grant.content)
+        steps = self.get("expenses/"+expense["id"]).json()["decisions"]
+        self.assertEqual([x["action"] for x in steps],
+                         ["submitted", "rejected", "revised", "submitted", "approved"])
+        self.assertEqual(steps[1]["reason"], "Facture à compléter avant achat")
+        self.assertEqual(OperatingExpensePayment.objects.count(), 0)
+
     def test_summary_includes_more_than_200_approved_budgets(self):
         """Les totaux des sorties ne doivent pas être tronqués par la liste affichée."""
         from django.utils import timezone
