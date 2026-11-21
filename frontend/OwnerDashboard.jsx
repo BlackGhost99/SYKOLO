@@ -1,4 +1,4 @@
-import React, {useEffect,useState} from "react";
+import React, {useEffect,useRef,useState} from "react";
 import OwnerSubscription from "./OwnerSubscription.jsx";
 import {PageHeader,Card,Metric,Table,Status,Button} from "./yem-ui.jsx";
 
@@ -16,23 +16,51 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
   const [data,setData]=useState(null);
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(true);
+  const [syncedAt,setSyncedAt]=useState("");
+  const [refreshTick,setRefreshTick]=useState(0);
+  const lastScope=useRef("");
   useEffect(()=>{setYear("");setTab("synthese");},[schoolId]);
   useEffect(()=>{
     if(!schoolId)return;
     let active=true;
-    setLoading(true);setError("");setData(null);
+    let requestNumber=0;
     const selectedYear=headerYearAvailable?workingYearId:year;
+    const scope=`${schoolId}/${selectedYear}`;
+    if(lastScope.current!==scope){
+      lastScope.current=scope;
+      setLoading(true);setData(null);setSyncedAt("");setError("");
+    }
     const params=selectedYear?`?year=${encodeURIComponent(selectedYear)}`:"";
-    fetch(`/api/v1/schools/${schoolId}/owner/overview${params}`,{
-      credentials:"same-origin",
-    }).then(async response=>{
-      const body=await response.json();
-      if(!response.ok)throw Error(body.error||"Accès au pilotage indisponible.");
-      if(active)setData(body);
-    }).catch(err=>{if(active)setError(err.message);})
-      .finally(()=>{if(active)setLoading(false);});
-    return()=>{active=false;};
-  },[schoolId,year,workingYearId,headerYearAvailable]);
+    const reload=async()=>{
+      const requested=++requestNumber;
+      try{
+        const response=await fetch(`/api/v1/schools/${schoolId}/owner/overview${params}`,{
+          credentials:"same-origin",cache:"no-store",
+        });
+        const body=await response.json();
+        if(!response.ok)throw Error(body.error||"Accès au pilotage indisponible.");
+        if(active&&requested===requestNumber){
+          setData(body);setError("");
+          setSyncedAt(new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}));
+        }
+      }catch(err){
+        if(active&&requested===requestNumber)setError(err.message);
+      }finally{
+        if(active&&requested===requestNumber)setLoading(false);
+      }
+    };
+    reload();
+    const whenVisible=()=>{if(document.visibilityState==="visible")reload();};
+    const timer=window.setInterval(whenVisible,30000);
+    window.addEventListener("focus",whenVisible);
+    document.addEventListener("visibilitychange",whenVisible);
+    return()=>{
+      active=false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus",whenVisible);
+      document.removeEventListener("visibilitychange",whenVisible);
+    };
+  },[schoolId,year,workingYearId,headerYearAvailable,refreshTick]);
 
   const title="Pilotage du propriétaire";
   const metrics=data?.schooling||{};
@@ -62,7 +90,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
     <PageHeader title={title} subtitle={schoolName||data?.school?.name||"Établissement"} badge="Propriétaire" badgeIcon="crown"/>
     <div className="yd-real-body yd-owner-workspace">
       {loading&&<p role="status">Chargement des indicateurs de l’établissement…</p>}
-      {error&&<Card title="Pilotage indisponible" icon="alert">
+      {error&&<Card title={data?"Actualisation momentanément indisponible":"Pilotage indisponible"} icon="alert">
         <p role="alert">{error}</p>
         <p className="hint">Cette vue est réservée au propriétaire autorisé de l’établissement.</p>
       </Card>}
@@ -76,6 +104,8 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
             </select>
           </label>}
           <Status tone="green">Lecture seule — chiffres consolidés</Status>
+          {syncedAt&&<small className="hint" role="status">Actualisé à {syncedAt}</small>}
+          <Button onClick={()=>setRefreshTick(t=>t+1)} disabled={loading}>Actualiser les données</Button>
         </div>
         <div role="tablist" aria-label="Rubriques du pilotage" className="yd-real-tabs yd-owner-tabs">
           {SECTIONS.map(([key,label])=><button key={key} type="button" role="tab"
