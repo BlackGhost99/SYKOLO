@@ -170,6 +170,7 @@ def summarize_sale_payments(*, sale_id, school_id, currency, sale_total,
         "pending_not_revenue": f"{pending:.2f}",
         "outstanding": f"{outstanding:.2f}",
         "overpayment_review": f"{overpayment:.2f}",
-        "certified_revenue": False if declared else True,
+        "contains_manual_declarations": declared > 0,
+        "only_provider_confirmed_receipts": received > 0 and declared == 0,
         "source": "read_only_ledger_rules",
     }
