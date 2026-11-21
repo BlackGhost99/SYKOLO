@@ -161,3 +161,37 @@ test("Le propriétaire déplie les catégories d'entrées sans ouvrir de dossier
   expect(within(details).getByText("SCOL-202611")).toBeTruthy();
   expect(screen.getByText(/Les règlements restent déclaratifs et non certifiés/)).toBeTruthy();
 });
+
+
+test("Le propriétaire voit les impayés scolaires et extrascolaires séparément",async()=>{
+  const receivables={
+    revenue_certified:false,as_of:"2026-11-21",
+    note:"Créances nettes non certifiées, hors inscriptions en caisse.",
+    rows:[
+      {category:"scolarite",label:"Scolarité",currency:"XAF",billed_net:"100000",
+        paid_declared:"50000",outstanding:"50000",overdue:"25000",
+        due_today:"5000",future:"20000",without_due_date:"0",overpayment_review:"0"},
+      {category:"extrascolaire",label:"Extrascolaire",currency:"XAF",billed_net:"10000",
+        paid_declared:"0",outstanding:"10000",overdue:"0",
+        due_today:"0",future:"10000",without_due_date:"0",overpayment_review:"0"},
+    ],
+  };
+  const value={...dashboard,finance:{...dashboard.finance,
+    fee_income_categories:{...dashboard.finance.fee_income_categories,receivables}}};
+  vi.stubGlobal("fetch",vi.fn(async()=>Response.json(value)));
+  const user=userEvent.setup();
+  render(<OwnerDashboard schoolId="ecole-1"/>);
+  await screen.findByRole("tab",{name:"Finances"});
+  await user.click(screen.getByRole("tab",{name:"Finances"}));
+  expect(screen.getByText("Créances : échues, exigibles aujourd’hui et futures")).toBeTruthy();
+  const heading=screen.getByText("Trop-perçus à vérifier");
+  expect(heading).toBeTruthy();
+  const table=heading.closest("table");
+  expect(table).not.toBeNull();
+  expect(within(table).getAllByText("50 000 XAF").length).toBeGreaterThan(0);
+  expect(within(table).getAllByText("25 000 XAF").length).toBeGreaterThan(0);
+  expect(within(table).getAllByText("10 000 XAF").length).toBeGreaterThan(0);
+  expect(screen.getByText(/sans compenser l'impayé d'un élève/)).toBeTruthy();
+  expect(screen.getByText(/hors inscriptions en caisse/)).toBeTruthy();
+  expect(screen.queryByText("Secret Personne")).toBeNull();
+});
