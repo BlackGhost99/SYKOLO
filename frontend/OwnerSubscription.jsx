@@ -9,8 +9,10 @@ import CommercialAccess from "./CommercialAccess.jsx";
 const money=v=>new Intl.NumberFormat("fr-FR").format(v)+" FCFA";
 export default function OwnerSubscription({schoolId,yearId}){
   const [state,setState]=useState({loading:true,records:[],error:""});
+  const [refreshVersion,setRefreshVersion]=useState(0);
+  useEffect(()=>{setState({loading:true,records:[],error:""});},[schoolId]);
   useEffect(()=>{
-    let live=true,busy=false;setState({loading:true,records:[],error:""});
+    let live=true,busy=false;
     async function refresh(){
       if(busy||document.hidden)return;
       busy=true;
@@ -27,7 +29,7 @@ export default function OwnerSubscription({schoolId,yearId}){
     window.addEventListener("focus",refresh);
     document.addEventListener("visibilitychange",refresh);
     return()=>{live=false;window.clearInterval(timer);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
-  },[schoolId]);
+  },[schoolId,refreshVersion]);
   const [selectedYear,setSelectedYear]=useState("");
   const [view,setView]=useState("summary");
   const sub=yearId?state.records.find(r=>r.year_id===yearId):state.records.find(r=>r.year_id===selectedYear)||state.records[0];
@@ -41,7 +43,7 @@ export default function OwnerSubscription({schoolId,yearId}){
       <div className="yd-subscription-totals" aria-label="Synthèse contractuelle"><div><small>Total contractuel · {sub.year}</small><strong>{money(sub.total_xaf)}</strong></div><div><small>Réglé</small><strong>{money(sub.paid_xaf)}</strong></div><div><small>Solde</small><strong>{money(sub.balance_xaf)}</strong></div></div>
       {sub.pending_adjustment?.status==="pending"&&<div className="hint" role="status"><strong>Régularisation en attente : {sub.pending_adjustment.students} élève(s) supplémentaire(s).</strong> Estimation au prorata au {sub.pending_adjustment.effective_on} : {money(sub.pending_adjustment.amount_xaf)}. Ce montant ne sera exigible qu’après émission de l’avenant par BWETEK.</div>}
       {sub.pending_adjustment?.status==="review"&&<p className="hint" role="status">Situation contractuelle à contrôler : {sub.pending_adjustment.reason}</p>}
-      {view==="summary"&&<SubscriptionSingPay key={sub.id} schoolId={schoolId} subscriptionId={sub.id}/>}
+      {view==="summary"&&<SubscriptionSingPay key={sub.id} schoolId={schoolId} subscriptionId={sub.id} onRefresh={()=>setRefreshVersion(v=>v+1)}/>}
       {view==="contract"&&<><SubscriptionDocuments documents={sub.documents}/>
       {!!sub.amendments?.length&&<><p>Contrat initial : {money(sub.original_total_xaf)}</p>{sub.amendments.map(a=><p key={a.id}>Avenant n° {a.revision} — {a.effective_on} — {money(a.amount_xaf)}</p>)}</>}
       {sub.lines.map(l=><p key={l.cycle}>{l.label} — {l.students} × {money(l.rate_xaf)} = {money(l.amount_xaf)}</p>)}
