@@ -19,6 +19,7 @@ POLICY_SCOPE = "income.fee_classification.v1"
 PERMITTED_FEE_CATEGORIES = (
     ("scolarite", "Scolarité principale"),
     ("inscription_registre", "Inscription / réinscription"),
+    ("autre_scolaire", "Examens et obligations scolaires"),
     ("extrascolaire", "Prestations extrascolaires"),
     ("a_classer", "À classer"),
 )
