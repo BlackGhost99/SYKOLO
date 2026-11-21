@@ -134,3 +134,52 @@ test("la caisse affecte d’abord le montant à la mensualité la plus ancienne"
     {charge:"january", amount:"5000.00"},
   ]);
 });
+
+test("la caisse recherche le matricule avec les zéros initiaux et filtre par classe", async () => {
+  const report={currency:"XAF",today:{date:"2026-11-20",total:"0",count:0,by_method:{},payments:[]},yesterday:{total:"0",count:0}};
+  const pupil={id:"pupil",active:true,last_name:"NZE",first_name:"Lina",student_code:"00042",
+    enrollment:{id:"target",classroom:{id:"class-a",name:"6e A"}},guardian:{full_name:"Parent essai"}};
+  const fetchMock=vi.fn(async path=>{
+    if(path.includes("overview/students")){
+      const params=new URLSearchParams(path.split("?")[1]);
+      return Response.json({classes:[{id:"class-a",name:"6e A"}],
+        students:params.get("q")==="00042"?[pupil]:[],selected:params.get("selected")==="target"?pupil:null,
+        total:params.get("q")==="00042"?1:0,page:1,page_size:25});
+    }
+    if(path.includes("finance/charges"))return Response.json({charges:[]});
+    return Response.json(report);
+  });
+  vi.stubGlobal("fetch",fetchMock);
+  render(<LivePayments schoolId="school" workingYearId="year" canReceive/>);
+  const user=userEvent.setup();
+  await screen.findByRole("option",{name:"6e A"});
+  await user.selectOptions(screen.getByLabelText("Classe — un élève"),"class-a");
+  await user.type(screen.getByLabelText("Rechercher un élève"),"00042");
+  await screen.findByRole("option",{name:/NZE Lina.*00042/});
+  await user.selectOptions(screen.getByLabelText(/Élève/),"target");
+  await screen.findByText("Parent essai");
+  expect(fetchMock.mock.calls.some(([path])=>path.includes("q=00042")&&path.includes("classroom=class-a"))).toBe(true);
+  await user.clear(screen.getByLabelText("Rechercher un élève"));
+  expect(screen.getByRole("button",{name:"Valider le paiement"}).disabled).toBe(true);
+});
+
+test("les impayés recherchent côté serveur et conservent les indicateurs globaux", async () => {
+  const report={currency:"XAF",outstanding:"1350000",overdue_total:"300000",families_late:140,
+    month:{total:"0",previous:"0"},arrears_by_class:[],arrears_classes:[{id:"class-b",name:"6e B"}]};
+  const target={enrollment:"late-target",student:"MINKO Alice",student_code:"00900",classroom:"6e B",amount_due:"50000",due_date:"2026-10-05",overdue_items:[]};
+  const fetchMock=vi.fn(async path=>{
+    const params=new URLSearchParams(path.split("?")[1]);
+    return Response.json({...report,arrears:params.get("q")==="00900"?[target]:[],
+      arrears_total:params.get("q")==="00900"?1:140,arrears_page:1,arrears_page_size:25});
+  });
+  vi.stubGlobal("fetch",fetchMock);
+  render(<LiveArrears schoolId="school" canRemind/>);
+  const user=userEvent.setup();
+  await screen.findByRole("option",{name:"6e B"});
+  await user.selectOptions(screen.getByLabelText("Classe — un impayé"),"class-b");
+  await user.type(screen.getByLabelText("Rechercher un impayé"),"00900");
+  await screen.findByRole("button",{name:"MINKO Alice"});
+  expect(screen.getByText("00900")).toBeTruthy();
+  expect(fetchMock.mock.calls.some(([path])=>path.includes("q=00900")&&path.includes("classroom=class-b"))).toBe(true);
+  expect(screen.getByText("140")).toBeTruthy();
+});
