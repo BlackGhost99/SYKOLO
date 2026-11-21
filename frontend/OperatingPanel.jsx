@@ -456,6 +456,29 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
         </div>
         <Button type="submit" disabled={busy}>Enregistrer la classification</Button>
       </form>}
+      {canManage&&detail.expense.status==="draft"&&<form onSubmit={updateDraftBeneficiary}>
+        <p className="hint">Modifier uniquement les brouillons. L'identité du bénéficiaire est figée après approbation.</p>
+        <div className="two">
+          <label className="field">Type de bénéficiaire du projet<select required value={draftBeneficiary.beneficiary_type}
+            onChange={e=>setDraftBeneficiary({...draftBeneficiary,beneficiary_type:e.target.value,supplier:"",beneficiary_name:"",beneficiary_reference:""})}>
+            {BENEFICIARY_TYPES.map(([key,name])=><option key={key} value={key}>{name}</option>)}
+          </select></label>
+          {draftBeneficiary.beneficiary_type==="supplier"?
+            <label className="field">Fournisseur du projet<select required value={draftBeneficiary.supplier}
+              onChange={e=>setDraftBeneficiary({...draftBeneficiary,supplier:e.target.value})}>
+              <option value="">Sélectionner un fournisseur actif</option>
+              {suppliers.filter(s=>s.active||s.id===detail.expense.supplier).map(s=>
+                <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select></label>:
+            <label className="field">Nom du bénéficiaire du projet<input required maxLength={180}
+              value={draftBeneficiary.beneficiary_name}
+              onChange={e=>setDraftBeneficiary({...draftBeneficiary,beneficiary_name:e.target.value})}/></label>}
+          <label className="field">Référence interne du bénéficiaire du projet<input maxLength={120}
+            value={draftBeneficiary.beneficiary_reference}
+            onChange={e=>setDraftBeneficiary({...draftBeneficiary,beneficiary_reference:e.target.value})}/></label>
+        </div>
+        <Button type="submit" disabled={busy}>Mettre à jour le bénéficiaire</Button>
+      </form>}
       <p>Référence : {detail.expense.invoice_reference} · Date : {detail.expense.expense_on}</p>
       <p>Montant : <strong>{fmt(detail.expense.amount,detail.expense.currency)}</strong> · Déclaré réglé : {fmt(detail.expense.paid,detail.expense.currency)} · Reste : <strong>{fmt(detail.expense.balance,detail.expense.currency)}</strong></p>
       <p>Statut : <Status tone={statusTone(detail.expense.status)}>{STATUS[detail.expense.status]||detail.expense.status}</Status></p>
