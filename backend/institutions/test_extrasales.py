@@ -6,7 +6,7 @@ from uuid import uuid4
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
-from extrasales.models import ExtraPayment, ExtraSale, ExtraSaleLine
+from extrasales.models import ExtraPayment, ExtraSale, ExtraSaleLine, ExtraStock, ExtraStockMovement
 from .academic_models import AcademicYear
 from .entry_extras_catalog import SCOPE
 from .finance_models import FeeCharge, FeePayment
@@ -245,3 +245,56 @@ class ExtrasSalesLedgerTests(TestCase):
         self.assertIn(self.client.get(invoice_url).status_code, (403, 404))
         self.assertIn(self.client.get(receipt_url).status_code, (403, 404))
         self.assertEqual(FeePayment.objects.count(), 0)
+
+    @override_settings(YEM_EXTRA_SALES_WRITES_ENABLED=True, YEM_EXTRA_STOCK_WRITES_ENABLED=False)
+    def test_stock_disabled_blocks_physical_goods_without_sale(self):
+        data = {**self.request, "items": [{"id": self.product_id, "quantity": 1}]}
+        self.assertEqual(self.create(data).status_code, 422)
+        self.assertEqual(ExtraSale.objects.count(), 0)
+        self.assertEqual(ExtraStockMovement.objects.count(), 0)
+
+    @override_settings(YEM_EXTRA_SALES_WRITES_ENABLED=True, YEM_EXTRA_STOCK_WRITES_ENABLED=True)
+    def test_physical_sale_consumes_stock_once_and_prevents_oversell(self):
+        stock_url = f"/api/v1/schools/{self.school.pk}/finance/extras/stock"
+        adjustment = {
+            "catalog_item_id": self.product_id, "quantity_delta": 2,
+            "reason": "Comptage physique initial vérifié",
+            "operation_key": "initial-inventory-extra-20261121",
+            "revision": 0,
+        }
+        addition = self.post(stock_url, adjustment)
+        self.assertEqual(addition.status_code, 201, addition.content)
+        self.assertEqual(addition.json()["quantity"], 2)
+        self.assertEqual(self.post(stock_url, adjustment).status_code, 409)
+        self.assertEqual(ExtraStockMovement.objects.count(), 1)
+        product = {**self.request, "items": [{"id": self.product_id, "quantity": 2}]}
+        first = self.create(product)
+        self.assertEqual(first.status_code, 201, first.content)
+        self.assertEqual(ExtraStock.objects.get().quantity, 0)
+        self.assertEqual(ExtraStockMovement.objects.count(), 2)
+        replay = self.create(product)
+        self.assertEqual(replay.status_code, 200, replay.content)
+        self.assertEqual(ExtraStockMovement.objects.count(), 2)
+        rejected = self.create({
+            **product, "idempotency_key": "extra-second-unstocked-20261121"
+        })
+        self.assertEqual(rejected.status_code, 422, rejected.content)
+        self.assertEqual(ExtraSale.objects.count(), 1)
+        self.assertEqual(ExtraStock.objects.get().quantity, 0)
+        self.assertEqual(FeePayment.objects.count(), 0)
+
+    @override_settings(YEM_EXTRA_STOCK_WRITES_ENABLED=False)
+    def test_inventory_endpoint_readable_but_writes_off(self):
+        stock_url = f"/api/v1/schools/{self.school.pk}/finance/extras/stock"
+        self.assertEqual(self.client.get(stock_url).status_code, 200)
+        entry = {
+            "catalog_item_id": self.product_id, "quantity_delta": 1,
+            "reason": "Comptage physique et contrôle",
+            "operation_key": "disabled-inventory-20261121", "revision": 0,
+        }
+        self.assertEqual(self.post(stock_url, entry).status_code, 503)
+        self.assertEqual(ExtraStock.objects.count(), 0)
+        self.client.force_login(self.reader)
+        self.assertEqual(self.post(stock_url, entry).status_code, 403)
+        self.client.force_login(self.foreign_user)
+        self.assertIn(self.client.get(stock_url).status_code, (403, 404))
