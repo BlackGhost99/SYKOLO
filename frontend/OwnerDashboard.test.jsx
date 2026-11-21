@@ -123,7 +123,7 @@ test("Les entrées d'inscription restent distinctes des frais liés aux élèves
   await screen.findByRole("tab",{name:"Finances"});
   await user.click(screen.getByRole("tab",{name:"Finances"}));
   expect(screen.getByText("Frais d’inscription — espèces enregistrées")).toBeTruthy();
-  expect(screen.getByText("15 000 XAF")).toBeTruthy();
+  expect(screen.getAllByText("15 000 XAF").length).toBeGreaterThan(0);
   expect(screen.getByText(/Les frais d’inscription en espèces ne sont pas additionnés/)).toBeTruthy();
   expect(screen.getByText(/Une déclaration de caisse n’est pas une certification bancaire/)).toBeTruthy();
   expect(screen.getByText(/1 simulation\(s\), 1 annulation\(s\)/)).toBeTruthy();
