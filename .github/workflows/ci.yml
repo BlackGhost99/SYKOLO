@@ -44,6 +44,8 @@ jobs:
       - run: python backend/manage.py check
       - run: python backend/manage.py makemigrations --check --dry-run
       - run: python backend/manage.py migrate --noinput
+      - name: Validate expense workflow first
+        run: python backend/manage.py test institutions.test_operating
       - run: python backend/manage.py test pedagogy accounts institutions
       - name: Verify production settings fail closed
         env:
