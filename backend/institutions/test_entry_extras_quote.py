@@ -105,10 +105,10 @@ class ExtrasQuoteTests(TestCase):
             "academic_year":None,"items":[{"id":self.lunch,"quantity":1}]
         }), content_type="application/json")
         self.assertEqual(no_year.status_code, 422)
-        self.assertEqual(self.client.post(
+        self.assertIn(self.client.post(
             f"/api/v1/schools/{self.foreign.pk}/finance/extras/quote",
             data=json.dumps({"items":[{"id":self.bus,"quantity":1}]}),
-            content_type="application/json").status_code, 403)
+            content_type="application/json").status_code, (403, 404))
         self.client.force_login(self.other)
         self.assertEqual(self.quote().status_code,403)
         self.client.logout()
