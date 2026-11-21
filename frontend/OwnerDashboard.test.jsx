@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import {afterEach,expect,test,vi} from "vitest";
-import {cleanup,render,screen,within} from "@testing-library/react";
+import {act,cleanup,render,screen,waitFor,within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import OwnerDashboard from "./OwnerDashboard.jsx";
 
@@ -75,4 +75,40 @@ test("Le propriétaire distingue les écritures historiques des recettes vérifi
   expect(screen.getByText("25 000 XAF")).toBeTruthy();
   expect(screen.getByText("5 000 XAF")).toBeTruthy();
   expect(screen.getByText(/pas un état de recettes certifiées/i)).toBeTruthy();
+});
+
+test("Le propriétaire réactualise ses chiffres sans quitter la session",async()=>{
+  let calls=0;
+  const fetchMock=vi.fn(async()=>{
+    calls+=1;
+    return Response.json({...dashboard,schooling:{
+      ...dashboard.schooling,active_students:calls===1?123:124,
+    }});
+  });
+  vi.stubGlobal("fetch",fetchMock);
+  const user=userEvent.setup();
+  render(<OwnerDashboard schoolId="ecole-1"/>);
+  expect((await screen.findAllByText("123")).length).toBeGreaterThan(0);
+  await user.click(screen.getByRole("button",{name:"Actualiser les données"}));
+  await waitFor(()=>expect(screen.getAllByText("124").length).toBeGreaterThan(0));
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  await act(async()=>{window.dispatchEvent(new Event("focus"));});
+  await waitFor(()=>expect(fetchMock).toHaveBeenCalledTimes(3));
+  expect(screen.getByText(/Actualisé à/)).toBeTruthy();
+});
+
+test("Un résultat ancien ne remplace pas les chiffres récents du propriétaire",async()=>{
+  let finishFirst;
+  const first=new Promise(resolve=>{finishFirst=resolve;});
+  const oldData=dashboard;
+  const newData={...dashboard,schooling:{...dashboard.schooling,active_students:200}};
+  const fetchMock=vi.fn()
+    .mockImplementationOnce(()=>first)
+    .mockImplementationOnce(async()=>Response.json(newData));
+  vi.stubGlobal("fetch",fetchMock);
+  render(<OwnerDashboard schoolId="ecole-1"/>);
+  await act(async()=>{window.dispatchEvent(new Event("focus"));});
+  expect((await screen.findAllByText("200")).length).toBeGreaterThan(0);
+  await act(async()=>{finishFirst(Response.json(oldData));});
+  expect((screen.getAllByText("200")).length).toBeGreaterThan(0);
 });
