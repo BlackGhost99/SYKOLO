@@ -68,6 +68,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
   const admission=data?.admissions||{};
   const finance=data?.finance?.currencies||[];
   const admissionCash=data?.finance?.admission_cash;
+  const feeIncome=data?.finance?.fee_income_categories||{rows:[],details:[]};
   const activity=data?.activity||{};
   const financialTable=finance.length
     ? <Table headers={["Devise","Frais nets comptabilisés","Paiements enregistrés","Solde comptable","Échu comptable","Enregistré ce mois"]}
@@ -150,7 +151,33 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
           {(admissionCash?.demo_excluded||admissionCash?.voided_excluded||admissionCash?.future_dated_excluded)
             ? <p className="hint">Écritures non incluses : {number(admissionCash?.demo_excluded||0)} simulation(s), {number(admissionCash?.voided_excluded||0)} annulation(s), {number(admissionCash?.future_dated_excluded||0)} date(s) future(s).</p>
             : null}
-          <h3>Frais liés aux élèves — registre distinct</h3>
+          <h3>Ventilation des entrées liées aux élèves</h3>
+          {feeIncome.rows?.length
+            ? <>
+              <Table headers={["Catégorie","Devise","Frais nets facturés","Paiements enregistrés","Opérations","Ce mois","Aujourd’hui"]}
+                rows={feeIncome.rows.map(item=>[
+                  item.label,item.currency,amount(item.billed,item.currency),
+                  amount(item.paid,item.currency),number(item.payments),
+                  amount(item.paid_month,item.currency),amount(item.paid_today,item.currency),
+                ])}/>
+              <div className="yd-entry-category-details">
+                {feeIncome.rows.map(item=>{
+                  const lines=(feeIncome.details||[]).filter(detail=>
+                    detail.category===item.category&&detail.currency===item.currency);
+                  return <details key={item.category+"-"+item.currency}>
+                    <summary>{item.label} — {item.currency} : voir les {number(lines.length)} code(s) tarifaire(s)</summary>
+                    <Table headers={["Code tarifaire","Frais facturés","Paiements enregistrés","Opérations"]}
+                      rows={lines.map(line=>[
+                        line.fee_code,amount(line.billed,item.currency),
+                        amount(line.paid,item.currency),number(line.payments),
+                      ])}/>
+                  </details>;
+                })}
+              </div>
+              <p className="hint" role="note">Les règlements restent déclaratifs et non certifiés. « Autres frais à classer » ne sont ni assimilés à la scolarité ni à l’extrascolaire. Les écritures de démonstration sont signalées séparément.</p>
+            </>
+            : <p className="hint">Aucun encaissement ni frais associé à un tarif pour l’année sélectionnée.</p>}
+          <h3>Frais liés aux élèves — registre comptable global</h3>
           {financialTable}
           <p className="hint">Les frais périodiques et les autres frais déjà enregistrés restent dans le registre ci-dessus, sans reclassement automatique. Les frais d’inscription en espèces ne sont pas additionnés aux autres écritures tant qu’un contrôle anti-doublon inter-registres n’a pas été validé. Les paiements d’inscription en ligne ne sont pas intégrés dans cette première vue.</p>
           <p className="hint" role="note">Ce tableau est un relevé d'écritures, pas un état de recettes certifiées. Les montants à justifier ne sont pas considérés comme vérifiés.</p>
