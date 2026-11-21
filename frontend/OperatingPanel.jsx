@@ -48,6 +48,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const [archiveTarget,setArchiveTarget]=useState("");
   const [budgets,setBudgets]=useState([]);
   const [expenses,setExpenses]=useState([]);
+  const [expenseListInfo,setExpenseListInfo]=useState({total:0,offset:0,has_more:false,workflow_counts:{}});
   const [summary,setSummary]=useState(null);
   const [supplierForm,setSupplierForm]=useState({name:"",contact:"",phone:"",email:""});
   const [budgetForm,setBudgetForm]=useState({category:"",currency:"XAF",ceiling:""});
@@ -58,6 +59,9 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     beneficiary_type:"supplier",beneficiary_name:"",beneficiary_reference:"",
   });
   const [poleFilter,setPoleFilter]=useState("");
+  const [workflowFilter,setWorkflowFilter]=useState("");
+  const [pageOffset,setPageOffset]=useState(0);
+  const PAGE_SIZE=30;
   const [draftClassification,setDraftClassification]=useState({activity_pole:"",cost_center:"",accounting_nature:"",category_ref:"",subcategory_ref:""});
   const [draftBeneficiary,setDraftBeneficiary]=useState({
     beneficiary_type:"supplier",supplier:"",beneficiary_name:"",beneficiary_reference:"",
@@ -71,7 +75,13 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const [message,setMessage]=useState("");
   const refresh=useCallback(async()=>{
     const qs=workingYearId?"?year="+encodeURIComponent(workingYearId):"";
-    const expenseQs=qs+(poleFilter?(qs?"&":"?")+"activity_pole="+encodeURIComponent(poleFilter):"");
+    const expenseParams=new URLSearchParams();
+    if(workingYearId)expenseParams.set("year",workingYearId);
+    if(poleFilter)expenseParams.set("activity_pole",poleFilter);
+    if(workflowFilter)expenseParams.set("workflow_state",workflowFilter);
+    expenseParams.set("limit",String(PAGE_SIZE));
+    expenseParams.set("offset",String(pageOffset));
+    const expenseQs="?"+expenseParams.toString();
     const [sup,cat,bud,exp,sum]=await Promise.all([
       request(root+"suppliers"),request(root+"categories"),request(root+"budgets"+qs),
       request(root+"expenses"+expenseQs),request(root+"summary"+qs),
@@ -80,8 +90,14 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     setCategories(cat.categories||[]);
     setBudgets(bud.budgets||[]);
     setExpenses(exp.expenses||[]);
+    setExpenseListInfo({
+      total:exp.total??(exp.expenses||[]).length,
+      offset:exp.offset??0,
+      has_more:exp.has_more??false,
+      workflow_counts:exp.workflow_counts||{},
+    });
     setSummary(sum);
-  },[root,workingYearId,poleFilter]);
+  },[root,workingYearId,poleFilter,workflowFilter,pageOffset]);
   useEffect(()=>{
     let active=true;
     setDetail(null);setError("");setMessage("");
@@ -375,11 +391,23 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     </Card>
     <Card title="Demandes de dépenses" icon="idcard"
       subtitle="Achat, facture ou intervention justifiée : préparation, validation puis règlement.">
-      <label className="field">Filtrer les dépenses par activité<select value={poleFilter} onChange={e=>setPoleFilter(e.target.value)}>
+      <label className="field">Filtrer les dépenses par activité<select value={poleFilter} onChange={e=>{setPoleFilter(e.target.value);setPageOffset(0);}}>
         <option value="">Toutes les activités</option>
         {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
         <option value="unclassified">À classer (historique)</option>
       </select></label>
+      <div className="actions" aria-label="File des demandes par état">
+        <Button className="small" onClick={()=>{setWorkflowFilter("");setPageOffset(0);}}>
+          Toutes ({Object.values(expenseListInfo.workflow_counts).reduce((n,v)=>n+v,0)})
+        </Button>
+        {["draft","submitted","rejected","approved"].map(status=>
+          <Button key={status} className="small" onClick={()=>{setWorkflowFilter(status);setPageOffset(0);}}>
+            {STATUS[status]} ({expenseListInfo.workflow_counts[status]||0})
+          </Button>)}
+      </div>
+      <p className="hint">Filtre actif : {workflowFilter?STATUS[workflowFilter]:"Toutes les demandes"}.
+        {expenseListInfo.total} dossier(s) correspondant(s), affichage par lots de {PAGE_SIZE}.
+      </p>
       {expenses.length>0&&<Table rowKey={(_,i)=>expenses[i].id} rowActions={(_,i)=>[{id:"detail",label:"Consulter la dépense",run:()=>openExpense(expenses[i].id)}]} headers={["Objet","Pôle financier","Bénéficiaire","Montant","Déclaré payé","Solde","État","Dossier"]}
         rows={expenses.map(e=>[
           e.label,POLE_LABELS[e.activity_pole]||"À classer",e.beneficiary_name||e.supplier_name||"—",fmt(e.amount,e.currency),fmt(e.paid,e.currency),
@@ -387,7 +415,14 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
           <Status tone={statusTone(e.status)}>{STATUS[e.status]||e.status}</Status>,
           <Button className="small" onClick={()=>openExpense(e.id)}>Détail</Button>,
         ])}/>}
-      {!expenses.length&&<p>Aucune dépense pour l'année sélectionnée.</p>}
+      {!expenses.length&&<p>Aucune dépense pour les filtres sélectionnés.</p>}
+      <div className="actions">
+        <Button className="small" disabled={busy||pageOffset===0}
+          onClick={()=>setPageOffset(Math.max(0,pageOffset-PAGE_SIZE))}>Page précédente</Button>
+        <span>Page {Math.floor(pageOffset/PAGE_SIZE)+1} / {Math.max(1,Math.ceil(expenseListInfo.total/PAGE_SIZE))}</span>
+        <Button className="small" disabled={busy||!expenseListInfo.has_more}
+          onClick={()=>setPageOffset(pageOffset+PAGE_SIZE)}>Page suivante</Button>
+      </div>
       {canManage&&<form onSubmit={addExpense}>
         <p className="hint">Les salaires passent exclusivement par le module Paie ; une indemnité hors paie peut être affectée au personnel. Les remboursements de frais scolaires restent à rapprocher dans le circuit dédié.</p>
         <div className="two">
