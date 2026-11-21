@@ -89,3 +89,50 @@ class IncomeTransactionTests(TestCase):
         self.assertEqual(report["rows"][0]["id"],str(self.paid.pk))
         self.assertEqual(report["rows"][0]["amount"],"15000.00")
         self.assertEqual(FeePayment.objects.filter(school=self.school).count(),3)
+
+
+    def test_period_filters_are_inclusive_and_defensive(self):
+        year=str(self.year.pk)
+        exact=self.client.get(self.url,{
+            "year":year,"category":"scolarite","from":"2026-11-20","to":"2026-11-20",
+        })
+        self.assertEqual(exact.status_code,200,exact.content)
+        self.assertEqual(exact.json()["total"],1)
+        self.assertEqual(exact.json()["filters"]["from"],"2026-11-20")
+        self.assertEqual(self.client.get(self.url,{"year":year,"from":"2026-11-21"}).json()["total"],0)
+        self.assertEqual(self.client.get(self.url,{"year":year,"to":"2026-11-19"}).json()["total"],0)
+        self.assertEqual(self.client.get(self.url,{
+            "year":year,"from":"2026-11-21","to":"2026-11-20"}).status_code,422)
+        self.assertEqual(self.client.get(self.url,{"year":year,"from":"2026-11-99"}).status_code,422)
+        self.assertEqual(self.client.get(self.url,{"year":year,"to":"bad-date"}).status_code,422)
+        self.assertEqual(self.client.get(self.url,{"year":year,"format":"xlsx"}).status_code,422)
+
+    def test_csv_export_is_guarded_auditable_and_contains_no_student_data(self):
+        response=self.client.get(self.url,{
+            "year":str(self.year.pk),"category":"scolarite",
+            "currency":"XAF","format":"csv","from":"2026-11-20","to":"2026-11-20",
+        })
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertIn("text/csv",response["Content-Type"])
+        self.assertEqual(response["Cache-Control"],"no-store")
+        self.assertIn("attachment",response["Content-Disposition"])
+        self.assertTrue(response.content.decode("utf-8").startswith("\ufeff"))
+        content=response.content.decode("utf-8-sig")
+        self.assertIn("Montant déclaré",content)
+        self.assertIn("15000.00",content)
+        self.assertIn(str(self.paid.pk),content)
+        self.assertNotIn(str(self.demo.pk),content)
+        self.assertNotIn("Secret",content)
+        self.assertNotIn("Personne",content)
+        self.assertEqual(self.client.get(self.url,{
+            "year":str(self.year.pk),"format":"csv","page":"2"}).status_code,422)
+        self.assertEqual(self.client.post(self.url,{"format":"csv"}).status_code,405)
+
+    def test_csv_cells_are_protected_from_spreadsheet_formula_injection(self):
+        self.schedule.code="=2+2"
+        self.schedule.save(update_fields=["code"])
+        response=self.client.get(self.url,{
+            "year":str(self.year.pk),"format":"csv","category":"a_classer",
+        })
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertIn("'=2+2",response.content.decode("utf-8-sig"))
