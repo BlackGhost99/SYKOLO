@@ -36,7 +36,7 @@ function computeAmount(quantity,price){
 }
 
 export default function SchoolExpenseRequestsPanel({
-  schoolId,workingYearId="",canCreate=false,canReview=false,currentUserId="",
+  schoolId,workingYearId="",canCreate=false,canReview=false,
 }){
   const root="schools/"+schoolId+"/operating/school-requests";
   const [options,setOptions]=useState({categories:[],centers:[]});
@@ -278,17 +278,17 @@ export default function SchoolExpenseRequestsPanel({
           rows={selected.history.map(e=>[new Date(e.happened_at).toLocaleString("fr-FR"),
             STATES[e.action]||e.action,e.reason||"—"])}/>
       </details>}
-      {canCreate&&currentUserId&&String(selected.request.requester)===String(currentUserId)&&
+      {canCreate&&selected.request.is_mine&&
         ["draft","rejected"].includes(selected.request.status)&&
         <div className="actions">
           <Button disabled={busy} onClick={editDraft}>Corriger le brouillon</Button>
           {selected.request.status==="draft"&&<Button primary disabled={busy}
             onClick={()=>action(selected.request,"submit")}>Soumettre à la direction</Button>}
         </div>}
-      {canCreate&&currentUserId&&String(selected.request.requester)===String(currentUserId)&&
+      {canCreate&&selected.request.is_mine&&
         ["draft","rejected","submitted","in_review"].includes(selected.request.status)&&
         <Button disabled={busy} onClick={()=>action(selected.request,"cancel")}>Annuler ma demande</Button>}
-      {canReview&&selected.request.requester!==String(currentUserId)&&
+      {canReview&&!selected.request.is_mine&&
         ["submitted","in_review"].includes(selected.request.status)&&<div>
           <label className="field">Motif du refus ou observations<textarea maxLength={500}
             value={decisionReason} onChange={e=>setDecisionReason(e.target.value)}/></label>
