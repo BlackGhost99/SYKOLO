@@ -554,6 +554,7 @@ def expense_detail(request, school_id, expense_id):
             return fail("Demande soumise/approuvée ou exercice clôturé : modification refusée.", 409)
         if row.revision != data["revision"]:
             return fail("Demande modifiée par un autre agent.", 409)
+        was_rejected = row.workflow_state == "rejected"
         try:
             if "label" in data:
                 row.label = txt(data["label"], 200, "Libellé")
@@ -596,7 +597,11 @@ def expense_detail(request, school_id, expense_id):
             return validation(exc)
         row.revision += 1
         row.save()
-        log_event(school, request, "operating_expense_updated", row.pk)
+        if was_rejected:
+            from .operating_workflow_views import record_decision
+            record_decision(school, request, row, "revised")
+        else:
+            log_event(school, request, "operating_expense_updated", row.pk)
     return result(expense_data(row))
 
 
