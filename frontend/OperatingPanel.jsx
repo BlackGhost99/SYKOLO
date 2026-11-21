@@ -538,12 +538,20 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
             <option value="">Aucune</option>
             {selectableSubs(expenseForm.category_ref).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select></label>
-          <label className="field">Pôle financier<select required value={expenseForm.activity_pole} onChange={e=>setExpenseForm({...expenseForm,activity_pole:e.target.value})}>
+          <label className="field">Pôle financier<select required value={expenseForm.activity_pole} onChange={e=>setExpenseForm({...expenseForm,activity_pole:e.target.value,cost_center_ref:"",cost_center:""})}>
             <option value="">Choisir l'activité concernée</option>
             {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
           </select></label>
-          <label className="field">Centre de coûts<input maxLength={100} placeholder="Ex. Administration, collège, cantine" value={expenseForm.cost_center} onChange={e=>setExpenseForm({...expenseForm,cost_center:e.target.value})}/></label>
-          <label className="field">Nature comptable<input maxLength={100} placeholder="Ex. Entretien, achats, immobilisation" value={expenseForm.accounting_nature} onChange={e=>setExpenseForm({...expenseForm,accounting_nature:e.target.value})}/></label>
+          <label className="field">Centre de coûts<select value={expenseForm.cost_center_ref}
+            onChange={e=>setExpenseForm({...expenseForm,cost_center_ref:e.target.value,cost_center:""})}>
+            <option value="">Aucun — centre non défini</option>
+            {activeCenters(expenseForm.activity_pole).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Nature comptable<select value={expenseForm.accounting_nature_ref}
+            onChange={e=>setExpenseForm({...expenseForm,accounting_nature_ref:e.target.value,accounting_nature:""})}>
+            <option value="">Aucune — nature non définie</option>
+            {activeNatures.map(n=><option key={n.id} value={n.id}>{n.name}</option>)}
+          </select></label>
           <label className="field">Type de bénéficiaire<select required value={expenseForm.beneficiary_type}
             onChange={e=>setExpenseForm({...expenseForm,beneficiary_type:e.target.value,supplier:"",beneficiary_name:"",beneficiary_reference:""})}>
             {BENEFICIARY_TYPES.map(([key,name])=><option key={key} value={key}>{name}</option>)}
@@ -578,7 +586,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       <p>Catégorie : <strong>{detail.expense.expense_category||"À classer (historique)"}</strong>
         {detail.expense.expense_subcategory?" / "+detail.expense.expense_subcategory:""}
       </p>
-      <p>Activité : <strong>{poleLabels[detail.expense.activity_pole]||"À classer"}</strong>
+      <p>Activité : <strong>{detail.expense.activity_pole_label||poleLabels[detail.expense.activity_pole]||"À classer"}</strong>
         {detail.expense.cost_center?" · Centre de coûts : "+detail.expense.cost_center:""}
         {detail.expense.accounting_nature?" · Nature comptable : "+detail.expense.accounting_nature:""}
       </p>
@@ -594,12 +602,20 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
             <option value="">Aucune</option>
             {selectableSubs(draftClassification.category_ref).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select></label>
-          <label className="field">Pôle de cette dépense<select required value={draftClassification.activity_pole} onChange={e=>setDraftClassification({...draftClassification,activity_pole:e.target.value})}>
+          <label className="field">Pôle de cette dépense<select required value={draftClassification.activity_pole} onChange={e=>setDraftClassification({...draftClassification,activity_pole:e.target.value,cost_center_ref:"",cost_center:""})}>
             <option value="">Choisir le pôle</option>
             {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
           </select></label>
-          <label className="field">Centre de coûts du projet<input maxLength={100} value={draftClassification.cost_center} onChange={e=>setDraftClassification({...draftClassification,cost_center:e.target.value})}/></label>
-          <label className="field">Nature comptable du projet<input maxLength={100} value={draftClassification.accounting_nature} onChange={e=>setDraftClassification({...draftClassification,accounting_nature:e.target.value})}/></label>
+          <label className="field">Centre de coûts du projet<select value={draftClassification.cost_center_ref}
+            onChange={e=>setDraftClassification({...draftClassification,cost_center_ref:e.target.value,cost_center:""})}>
+            <option value="">Aucun</option>
+            {activeCenters(draftClassification.activity_pole).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Nature comptable du projet<select value={draftClassification.accounting_nature_ref}
+            onChange={e=>setDraftClassification({...draftClassification,accounting_nature_ref:e.target.value,accounting_nature:""})}>
+            <option value="">Aucune</option>
+            {activeNatures.map(n=><option key={n.id} value={n.id}>{n.name}</option>)}
+          </select></label>
         </div>
         <Button type="submit" disabled={busy}>{detail.expense.status==="rejected"?"Corriger la demande refusée":"Enregistrer la classification"}</Button>
       </form>}
