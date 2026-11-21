@@ -31,6 +31,11 @@ async function request(route,method="GET",data){
 export default function OperatingPanel({schoolId,workingYearId="",canManage=false,canApprove=false,canPay=false,canReverse=false}){
   const root="schools/"+schoolId+"/operating/";
   const [suppliers,setSuppliers]=useState([]);
+  const [categories,setCategories]=useState([]);
+  const [showCatalog,setShowCatalog]=useState(false);
+  const [categoryForm,setCategoryForm]=useState({code:"",name:"",parent:"",suggested_pole:""});
+  const [editingCategory,setEditingCategory]=useState(null);
+  const [archiveTarget,setArchiveTarget]=useState("");
   const [budgets,setBudgets]=useState([]);
   const [expenses,setExpenses]=useState([]);
   const [summary,setSummary]=useState(null);
@@ -39,9 +44,10 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const [expenseForm,setExpenseForm]=useState({
     budget:"",supplier:"",label:"",amount:"",invoice_reference:"",
     expense_on:today(),activity_pole:"",cost_center:"",accounting_nature:"",
+    category_ref:"",subcategory_ref:"",
   });
   const [poleFilter,setPoleFilter]=useState("");
-  const [draftClassification,setDraftClassification]=useState({activity_pole:"",cost_center:"",accounting_nature:""});
+  const [draftClassification,setDraftClassification]=useState({activity_pole:"",cost_center:"",accounting_nature:"",category_ref:"",subcategory_ref:""});
   const [detail,setDetail]=useState(null);
   const [payment,setPayment]=useState({amount:"",method:"especes",reference:"",paid_on:today()});
   const [paymentKey,setPaymentKey]=useState("");
@@ -51,11 +57,12 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const refresh=useCallback(async()=>{
     const qs=workingYearId?"?year="+encodeURIComponent(workingYearId):"";
     const expenseQs=qs+(poleFilter?(qs?"&":"?")+"activity_pole="+encodeURIComponent(poleFilter):"");
-    const [sup,bud,exp,sum]=await Promise.all([
-      request(root+"suppliers"),request(root+"budgets"+qs),
+    const [sup,cat,bud,exp,sum]=await Promise.all([
+      request(root+"suppliers"),request(root+"categories"),request(root+"budgets"+qs),
       request(root+"expenses"+expenseQs),request(root+"summary"+qs),
     ]);
     setSuppliers(sup.suppliers||[]);
+    setCategories(cat.categories||[]);
     setBudgets(bud.budgets||[]);
     setExpenses(exp.expenses||[]);
     setSummary(sum);
@@ -109,7 +116,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     event.preventDefault();
     const saved=await op(()=>request(root+"expenses","POST",expenseForm),
       "Demande enregistrée. Un autre responsable doit l'approuver.");
-    if(saved)setExpenseForm({...expenseForm,label:"",amount:"",invoice_reference:""});
+    if(saved)setExpenseForm({...expenseForm,label:"",amount:"",invoice_reference:"",subcategory_ref:""});
   }
   async function openExpense(id){
     setError("");
@@ -120,6 +127,8 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
         activity_pole:data.expense.activity_pole==="unclassified"?"":data.expense.activity_pole,
         cost_center:data.expense.cost_center||"",
         accounting_nature:data.expense.accounting_nature||"",
+        category_ref:data.expense.category_ref||"",
+        subcategory_ref:data.expense.subcategory_ref||"",
       });
     }catch(e){setError(e.message);}
   }
@@ -165,6 +174,31 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       "Versement annulé, historique préservé.");
     if(saved)await openExpense(detail.expense.id);
   }
+  async function addCategory(event){
+    event.preventDefault();
+    const saved=await op(()=>request(root+"categories","POST",{
+      ...categoryForm,parent:categoryForm.parent||null,
+    }),"Catégorie de dépenses ajoutée.");
+    if(saved)setCategoryForm({code:"",name:"",parent:"",suggested_pole:""});
+  }
+  async function updateCategory(event){
+    event.preventDefault();
+    if(!editingCategory)return;
+    const saved=await op(()=>request(root+"categories/"+editingCategory.id,"PATCH",{
+      revision:editingCategory.revision,name:editingCategory.name,
+      suggested_pole:editingCategory.suggested_pole,
+    }),"Catégorie actualisée ; les anciens libellés des dépenses sont conservés.");
+    if(saved)setEditingCategory(null);
+  }
+  async function toggleCategory(item){
+    const saved=await op(()=>request(root+"categories/"+item.id,"PATCH",{
+      revision:item.revision,active:!item.active,
+    }),item.active?"Catégorie archivée sans supprimer les opérations.":"Catégorie réactivée.");
+    if(saved)setArchiveTarget("");
+  }
+  const categoryRoots=categories.filter(c=>!c.parent);
+  const activeRoots=categoryRoots.filter(c=>c.active);
+  const selectableSubs=(parentId)=>categories.filter(c=>c.parent===parentId&&c.active);
   const approvedBudgets=budgets.filter(b=>b.approved && Number(b.available)>0);
   const currentBudget=budgets.find(b=>b.id===expenseForm.budget);
   const statusTone=s=>s==="paid"?"green":s==="approved"?"blue":s==="partially_paid"?"orange":"gray";
@@ -196,6 +230,60 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       {!Object.keys(summary?.by_activity_pole||{}).length&&<p>Aucune sortie approuvée sur cette période.</p>}
       <p className="hint">Les anciennes dépenses non classées restent visibles sans réaffectation automatique.</p>
     </Card>
+    <div className="actions">
+      <Button onClick={()=>setShowCatalog(!showCatalog)}>{showCatalog?"Masquer le catalogue":"Configurer les catégories de dépenses"}</Button>
+    </div>
+    {showCatalog&&<Card title="Catalogue de dépenses" icon="idcard"
+      subtitle="Catégories et sous-catégories personnalisables par établissement. Archivage sans suppression.">
+      {categories.length>0&&<Table headers={["Code","Catégorie / sous-catégorie","Pôle suggéré","État","Actions"]}
+        rows={categories.map(item=>[
+          item.code,(item.parent?"↳ ":"")+item.name,
+          POLE_LABELS[item.suggested_pole]||"Non défini",
+          <Status tone={item.active?"green":"gray"}>{item.active?"Active":"Archivée"}</Status>,
+          canManage?<div className="actions">
+            <Button className="small" disabled={busy} onClick={()=>{setEditingCategory({...item});setArchiveTarget("");}}>Modifier</Button>
+            {archiveTarget===item.id?
+              <>
+                <Button className="small" disabled={busy} onClick={()=>toggleCategory(item)}>Confirmer {item.active?"archivage":"réactivation"}</Button>
+                <Button className="small" onClick={()=>setArchiveTarget("")}>Annuler</Button>
+              </>:
+              <Button className="small" disabled={busy} onClick={()=>setArchiveTarget(item.id)}>{item.active?"Archiver":"Réactiver"}</Button>}
+          </div>:"—",
+        ])}/>}
+      {!categories.length&&<p>Ce catalogue est vide. Les catégories proposées dans les exemples ne sont pas créées automatiquement.</p>}
+      {canManage&&<form onSubmit={addCategory}>
+        <div className="two">
+          <label className="field">Code catégorie / sous-catégorie<input required maxLength={40} pattern="[a-z][a-z0-9_-]*"
+            placeholder="ex. fournitures" value={categoryForm.code} onChange={e=>setCategoryForm({...categoryForm,code:e.target.value.toLowerCase()})}/></label>
+          <label className="field">Nom catégorie / sous-catégorie<input required maxLength={100} value={categoryForm.name} onChange={e=>setCategoryForm({...categoryForm,name:e.target.value})}/></label>
+          <label className="field">Catégorie parente<select value={categoryForm.parent} onChange={e=>setCategoryForm({...categoryForm,parent:e.target.value})}>
+            <option value="">Aucune — catégorie principale</option>
+            {activeRoots.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Pôle suggéré<select value={categoryForm.suggested_pole} onChange={e=>setCategoryForm({...categoryForm,suggested_pole:e.target.value})}>
+            <option value="">Aucun — classification indépendante</option>
+            {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>
+        </div>
+        <Button primary type="submit" disabled={busy}>Ajouter cette catégorie</Button>
+      </form>}
+      {canManage&&editingCategory&&<form onSubmit={updateCategory}>
+        <p><strong>Modifier {editingCategory.code}</strong> — le code et le parent restent fixes.</p>
+        <div className="two">
+          <label className="field">Nouveau libellé<input required maxLength={100}
+            value={editingCategory.name} onChange={e=>setEditingCategory({...editingCategory,name:e.target.value})}/></label>
+          <label className="field">Pôle conseillé<select value={editingCategory.suggested_pole} onChange={e=>setEditingCategory({...editingCategory,suggested_pole:e.target.value})}>
+            <option value="">Aucun</option>
+            {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>
+        </div>
+        <div className="actions">
+          <Button primary type="submit" disabled={busy}>Enregistrer la catégorie</Button>
+          <Button type="button" onClick={()=>setEditingCategory(null)}>Annuler</Button>
+        </div>
+      </form>}
+      <p className="hint">Modifier une catégorie ne modifie pas les libellés des dépenses déjà enregistrées.</p>
+    </Card>}
     <Card title="Fournisseurs et prestataires" icon="users"
       subtitle="Annuaire des fournisseurs de l’établissement, distinct du personnel.">
       {suppliers.length>0&&<Table rowKey={(_,i)=>suppliers[i].id} rowActions={(_,i)=>canManage?[{id:"edit",label:"Modifier le fournisseur",write:true,disabled:busy,run:()=>editSupplier(suppliers[i])}]:[]} headers={["Fournisseur","Contact","Téléphone","État","Action"]}
@@ -252,6 +340,19 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
             <option value="">Sélectionner un budget</option>
             {approvedBudgets.map(b=><option key={b.id} value={b.id}>{b.category} · {fmt(b.available,b.currency)} disponibles</option>)}
           </select></label>
+          <label className="field">Catégorie de la dépense<select required value={expenseForm.category_ref}
+            onChange={e=>{const item=categories.find(c=>c.id===e.target.value);setExpenseForm({
+              ...expenseForm,category_ref:e.target.value,subcategory_ref:"",
+              activity_pole:expenseForm.activity_pole||item?.suggested_pole||"",
+            });}}>
+            <option value="">Choisir une catégorie active</option>
+            {activeRoots.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Sous-catégorie de la dépense<select value={expenseForm.subcategory_ref}
+            onChange={e=>setExpenseForm({...expenseForm,subcategory_ref:e.target.value})}>
+            <option value="">Aucune</option>
+            {selectableSubs(expenseForm.category_ref).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
           <label className="field">Pôle financier<select required value={expenseForm.activity_pole} onChange={e=>setExpenseForm({...expenseForm,activity_pole:e.target.value})}>
             <option value="">Choisir l'activité concernée</option>
             {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
@@ -267,18 +368,31 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
           <label className="field">Référence facture/devis<input required maxLength={120} value={expenseForm.invoice_reference} onChange={e=>setExpenseForm({...expenseForm,invoice_reference:e.target.value})}/></label>
           <label className="field">Date de dépense<input required type="date" value={expenseForm.expense_on} onChange={e=>setExpenseForm({...expenseForm,expense_on:e.target.value})}/></label>
         </div>
-        <Button primary type="submit" disabled={busy||!approvedBudgets.length||!suppliers.some(s=>s.active)}>Préparer la demande</Button>
+        <Button primary type="submit" disabled={busy||!approvedBudgets.length||!suppliers.some(s=>s.active)||!activeRoots.length}>Préparer la demande</Button>
       </form>}
     </Card>
     {detail&&<Card title={"Dépense — "+detail.expense.label} icon="shield">
       <div className="actions"><Button onClick={()=>setDetail(null)}>Fermer</Button></div>
       <p>Fournisseur : <strong>{detail.expense.supplier_name}</strong> · Budget : {detail.expense.category}</p>
+      <p>Catégorie : <strong>{detail.expense.expense_category||"À classer (historique)"}</strong>
+        {detail.expense.expense_subcategory?" / "+detail.expense.expense_subcategory:""}
+      </p>
       <p>Activité : <strong>{POLE_LABELS[detail.expense.activity_pole]||"À classer"}</strong>
         {detail.expense.cost_center?" · Centre de coûts : "+detail.expense.cost_center:""}
         {detail.expense.accounting_nature?" · Nature comptable : "+detail.expense.accounting_nature:""}
       </p>
       {canManage&&detail.expense.status==="draft"&&<form onSubmit={updateDraftClassification}>
         <div className="two">
+          <label className="field">Catégorie du projet<select required value={draftClassification.category_ref}
+            onChange={e=>setDraftClassification({...draftClassification,category_ref:e.target.value,subcategory_ref:""})}>
+            <option value="">Choisir une catégorie active</option>
+            {activeRoots.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Sous-catégorie du projet<select value={draftClassification.subcategory_ref}
+            onChange={e=>setDraftClassification({...draftClassification,subcategory_ref:e.target.value})}>
+            <option value="">Aucune</option>
+            {selectableSubs(draftClassification.category_ref).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
           <label className="field">Pôle de cette dépense<select required value={draftClassification.activity_pole} onChange={e=>setDraftClassification({...draftClassification,activity_pole:e.target.value})}>
             <option value="">Choisir le pôle</option>
             {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}

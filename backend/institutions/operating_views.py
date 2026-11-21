@@ -18,7 +18,8 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from accounts.views import authorized
 from .academic_models import AcademicYear
 from .operating_models import (OperatingSupplier, OperatingBudget, OperatingExpense,
-                               OperatingExpensePayment, ACTIVE_ACTIVITY_POLES, ACTIVITY_POLES)
+                               OperatingExpensePayment, OperatingExpenseCategory,
+                               ACTIVE_ACTIVITY_POLES, ACTIVITY_POLES)
 from .services import has_permission
 from .views import access, refuse, parse_body, log_event
 
@@ -153,6 +154,10 @@ def expense_data(e):
             "label": e.label, "amount": fmt(e.amount), "expense_on": e.expense_on.isoformat(),
             "activity_pole": e.activity_pole, "cost_center": e.cost_center,
             "accounting_nature": e.accounting_nature,
+            "category_ref": str(e.category_ref_id) if e.category_ref_id else None,
+            "subcategory_ref": str(e.subcategory_ref_id) if e.subcategory_ref_id else None,
+            "expense_category": e.category_label_snapshot or "À classer (historique)",
+            "expense_subcategory": e.subcategory_label_snapshot,
             "invoice_reference": e.invoice_reference, "revision": e.revision,
             "paid": fmt(paid), "balance": fmt(e.amount - paid),
             "status": ("draft" if not e.approved_at else "paid" if paid == e.amount
@@ -350,6 +355,34 @@ def activity_pole_value(value):
     return value
 
 
+def expense_catalog_fields(school, category_id, subcategory_id=None):
+    if not category_id:
+        raise ValueError("Catégorie de dépenses obligatoire.")
+    category = OperatingExpenseCategory.objects.filter(
+        school=school, pk=uuidval(str(category_id)), parent__isnull=True,
+    ).first()
+    if category is None:
+        raise LookupError("Catégorie de dépenses introuvable.")
+    if not category.active:
+        raise ValueError("Catégorie archivée : choisissez une catégorie active.")
+    subcategory = None
+    if subcategory_id:
+        subcategory = OperatingExpenseCategory.objects.filter(
+            school=school, pk=uuidval(str(subcategory_id)),
+            parent=category,
+        ).first()
+        if subcategory is None:
+            raise LookupError("Sous-catégorie introuvable dans cette catégorie.")
+        if not subcategory.active:
+            raise ValueError("Sous-catégorie archivée : sélection refusée.")
+    return {
+        "category_ref": category,
+        "subcategory_ref": subcategory,
+        "category_label_snapshot": category.name,
+        "subcategory_label_snapshot": subcategory.name if subcategory else "",
+    }
+
+
 def expense_fields(school, data):
     budget = OperatingBudget.objects.select_related("year").filter(
         school=school, pk=uuidval(data["budget"]),
@@ -365,6 +398,7 @@ def expense_fields(school, data):
         raise ValueError("Année scolaire clôturée.")
     return {
         "budget": budget, "year": budget.year, "supplier": supplier,
+        **expense_catalog_fields(school, data["category_ref"], data.get("subcategory_ref")),
         "activity_pole": activity_pole_value(data["activity_pole"]),
         "cost_center": txt(data.get("cost_center", ""), 100, "Centre de coûts", optional=True),
         "accounting_nature": txt(data.get("accounting_nature", ""), 100, "Nature comptable", optional=True),
@@ -398,8 +432,10 @@ def expenses(request, school_id):
     data, err = body(
         request,
         {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount",
-         "activity_pole", "cost_center", "accounting_nature"},
-        {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount", "activity_pole"},
+         "activity_pole", "cost_center", "accounting_nature",
+         "category_ref", "subcategory_ref"},
+        {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount", "activity_pole",
+         "category_ref"},
     )
     if err is not None:
         return err
@@ -435,7 +471,8 @@ def expense_detail(request, school_id, expense_id):
     data, err = body(
         request,
         {"revision", "label", "invoice_reference", "expense_on", "amount", "supplier",
-         "activity_pole", "cost_center", "accounting_nature"},
+         "activity_pole", "cost_center", "accounting_nature",
+         "category_ref", "subcategory_ref"},
         {"revision"},
     )
     if err is not None:
@@ -467,6 +504,13 @@ def expense_detail(request, school_id, expense_id):
                 row.cost_center = txt(data["cost_center"], 100, "Centre de coûts", optional=True)
             if "accounting_nature" in data:
                 row.accounting_nature = txt(data["accounting_nature"], 100, "Nature comptable", optional=True)
+            if "category_ref" in data or "subcategory_ref" in data:
+                category_id = data.get("category_ref", row.category_ref_id)
+                subcategory_id = data.get(
+                    "subcategory_ref", None if "category_ref" in data else row.subcategory_ref_id
+                )
+                for field, value in expense_catalog_fields(school, category_id, subcategory_id).items():
+                    setattr(row, field, value)
             if "supplier" in data:
                 new_supplier = OperatingSupplier.objects.filter(
                     school=school, pk=uuidval(data["supplier"]), active=True,
@@ -475,6 +519,8 @@ def expense_detail(request, school_id, expense_id):
                     return fail("Fournisseur absent ou archivé.", 404)
                 row.supplier = new_supplier
             row.full_clean()
+        except LookupError as exc:
+            return fail(str(exc), 404)
         except ValueError as exc:
             return fail(str(exc))
         except ValidationError as exc:
@@ -517,6 +563,10 @@ def approve_expense(request, school_id, expense_id):
             return fail("Le préparateur ne peut approuver sa propre dépense.", 403)
         if row.activity_pole not in ACTIVE_ACTIVITY_POLES:
             return fail("Classez cette dépense par activité avant approbation.", 409)
+        if not row.category_ref_id:
+            return fail("Associez une catégorie de dépenses avant approbation.", 409)
+        if not row.category_ref.active or (row.subcategory_ref_id and not row.subcategory_ref.active):
+            return fail("Catégorie archivée : reclassez ce projet avant approbation.", 409)
         if authorised_total(budget) + row.amount > budget.ceiling:
             return fail("Budget insuffisant : la dépense dépasse les fonds non engagés.", 409)
         row.approved_by = request.user
