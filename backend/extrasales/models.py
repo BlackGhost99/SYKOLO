@@ -83,3 +83,40 @@ class ExtraPayment(models.Model):
             models.UniqueConstraint(fields=["school", "idempotency_key"], name="extra_payment_school_idempotency"),
             models.CheckConstraint(condition=Q(amount__gt=0), name="extra_payment_positive_amount"),
         ]
+
+
+class ExtraStock(models.Model):
+    """School-scoped physical stock balance."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey("institutions.School", on_delete=models.PROTECT, related_name="extra_stock_items")
+    catalog_item_id = models.UUIDField()
+    quantity = models.PositiveIntegerField(default=0)
+    revision = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["school", "catalog_item_id"], name="extra_stock_school_product"),
+            models.CheckConstraint(condition=Q(quantity__gte=0), name="extra_stock_nonnegative"),
+        ]
+
+
+class ExtraStockMovement(models.Model):
+    """Append-only physical inventory movements."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    stock = models.ForeignKey(ExtraStock, on_delete=models.PROTECT, related_name="movements")
+    school = models.ForeignKey("institutions.School", on_delete=models.PROTECT, related_name="extra_stock_movements")
+    delta = models.IntegerField()
+    quantity_after = models.PositiveIntegerField()
+    movement_type = models.CharField(max_length=24)
+    reason = models.CharField(max_length=240)
+    operation_key = models.CharField(max_length=120)
+    sale = models.ForeignKey(ExtraSale, null=True, blank=True, on_delete=models.PROTECT, related_name="stock_movements")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["school", "operation_key"], name="extra_stock_school_operation"),
+            models.CheckConstraint(condition=~Q(delta=0), name="extra_stock_delta_nonzero"),
+        ]
