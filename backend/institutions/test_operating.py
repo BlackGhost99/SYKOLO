@@ -69,9 +69,10 @@ class OperatingLedgerTests(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
         return response.json()
 
-    def expense(self, budget_id, supplier_id, amount="60000.00", invoice="FAC-TEST-001"):
+    def expense(self, budget_id, supplier_id, amount="60000.00", invoice="FAC-TEST-001", pole="school"):
         response = self.post("expenses", {
-            "budget": budget_id, "supplier": supplier_id,
+            "budget": budget_id, "supplier": supplier_id, "activity_pole": pole,
+            "cost_center": "Pédagogie" if pole == "school" else "Activité annexe",
             "amount": amount, "label": "Réparation tables fictives",
             "invoice_reference": invoice, "expense_on": "2026-11-10",
         })
@@ -131,6 +132,77 @@ class OperatingLedgerTests(TestCase):
         self.assertEqual(payload["totals"]["XAF"]["committed"], "0.00")
         self.assertEqual(payload["totals"]["XAF"]["paid"], "0.00")
         self.assertEqual(payload["totals"]["XAF"]["remaining"], "205000.00")
+
+    def test_activity_pole_required_and_invalid_values_rejected(self):
+        supplier, budget = self.approved_budget()
+        payload = {
+            "budget": budget["id"], "supplier": supplier["id"],
+            "amount": "10000.00", "label": "Consommables",
+            "invoice_reference": "FAC-POLE-001", "expense_on": "2026-11-10",
+        }
+        self.assertEqual(self.post("expenses", payload).status_code, 422)
+        self.assertEqual(self.post("expenses", {**payload, "activity_pole": "recette"}).status_code, 422)
+        self.assertEqual(self.post("expenses", {**payload, "activity_pole": "unclassified"}).status_code, 422)
+        self.assertEqual(OperatingExpense.objects.count(), 0)
+
+    def test_poles_independent_of_budget_category_and_payment_aggregation(self):
+        supplier, budget = self.approved_budget()
+        school = self.expense(budget["id"], supplier["id"], "40000.00", "FAC-S-001", pole="school")
+        extra = self.expense(budget["id"], supplier["id"], "30000.00", "FAC-E-001", pole="extraschool")
+        self.assertEqual(school["activity_pole"], "school")
+        self.assertEqual(extra["activity_pole"], "extraschool")
+        self.approve_expense(school)
+        self.approve_expense(extra)
+        self.login("econome")
+        self.assertEqual(self.pay(school["id"], "10000.00").status_code, 201)
+        self.assertEqual(self.pay(school["id"], "5000.00").status_code, 201)
+        self.assertEqual(self.pay(extra["id"], "20000.00").status_code, 201)
+        self.login("comptabilite")
+        report = self.get("summary").json()
+        self.assertEqual(report["by_activity_pole"]["XAF"]["school"], {
+            "committed": "40000.00", "paid": "15000.00", "unpaid": "25000.00",
+        })
+        self.assertEqual(report["by_activity_pole"]["XAF"]["extraschool"], {
+            "committed": "30000.00", "paid": "20000.00", "unpaid": "10000.00",
+        })
+        self.assertEqual(report["totals"]["XAF"]["committed"], "70000.00")
+        self.assertEqual(report["totals"]["XAF"]["paid"], "35000.00")
+        filtered = self.get("expenses", {"activity_pole": "school"}).json()
+        self.assertEqual([row["id"] for row in filtered["expenses"]], [school["id"]])
+        self.assertEqual(self.get("expenses", {"activity_pole": "recettes"}).status_code, 422)
+
+    def test_legacy_unclassified_draft_can_be_classified_before_approval(self):
+        supplier, budget = self.approved_budget()
+        expense = self.expense(budget["id"], supplier["id"], pole="school")
+        # Simulates an existing pre-B2 draft migrated to "unclassified".
+        OperatingExpense.objects.filter(pk=expense["id"]).update(activity_pole="unclassified")
+        self.login("direction")
+        refused = self.post("expenses/" + expense["id"] + "/approve", {"revision": expense["revision"]})
+        self.assertEqual(refused.status_code, 409, refused.content)
+        self.login("comptabilite")
+        updated = self.patch("expenses/" + expense["id"], {
+            "revision": expense["revision"], "activity_pole": "common",
+            "cost_center": "Administration", "accounting_nature": "Entretien",
+        })
+        self.assertEqual(updated.status_code, 200, updated.content)
+        self.assertEqual(updated.json()["activity_pole"], "common")
+        self.assertEqual(updated.json()["cost_center"], "Administration")
+        self.assertEqual(updated.json()["accounting_nature"], "Entretien")
+        self.login("direction")
+        approved = self.post("expenses/" + expense["id"] + "/approve", {
+            "revision": updated.json()["revision"],
+        })
+        self.assertEqual(approved.status_code, 200, approved.content)
+
+    def test_historical_approved_expenses_remain_visible_without_forced_allocation(self):
+        supplier, budget = self.approved_budget()
+        expense = self.expense(budget["id"], supplier["id"], "25000.00")
+        self.approve_expense(expense)
+        # Existing approved transactions may have no defensible historical pole.
+        OperatingExpense.objects.filter(pk=expense["id"]).update(activity_pole="unclassified")
+        report = self.get("summary").json()
+        self.assertEqual(report["by_activity_pole"]["XAF"]["unclassified"]["committed"], "25000.00")
+        self.assertEqual(report["by_activity_pole"]["XAF"]["unclassified"]["paid"], "0.00")
 
     def test_budget_and_expense_independent_approvals_with_partial_receipts(self):
         supplier, budget = self.approved_budget()
