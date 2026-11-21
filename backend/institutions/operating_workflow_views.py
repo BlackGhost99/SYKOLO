@@ -64,7 +64,7 @@ def submit_expense(request, school_id, expense_id):
     if type(payload["revision"]) is not int:
         return fail("Révision obligatoire.")
     with transaction.atomic():
-        row = OperatingExpense.objects.select_for_update().select_related(
+        row = OperatingExpense.objects.select_for_update(of=("self",)).select_related(
             "year", "budget", "supplier", "category_ref", "subcategory_ref",
         ).filter(school=school, pk=expense_id).first()
         if not row:
@@ -106,7 +106,7 @@ def reject_expense(request, school_id, expense_id):
     except ValueError as exc:
         return fail(str(exc))
     with transaction.atomic():
-        row = OperatingExpense.objects.select_for_update().select_related(
+        row = OperatingExpense.objects.select_for_update(of=("self",)).select_related(
             "year", "budget", "supplier",
         ).filter(school=school, pk=expense_id).first()
         if not row:
