@@ -307,3 +307,4 @@ export default function SchoolExpenseRequestsPanel({
         </div>}
     </Card>}
   </section>;
+}
