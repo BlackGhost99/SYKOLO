@@ -22,7 +22,10 @@ const dashboard={
   admissions:{total:14,pending:4,accepted:5,enrolled:4,rejected:1},
   staff:{active:19,with_account:13,without_account:6,assigned_to_classes:11,
     active_appointments:17},
-  finance:{currencies:[{currency:"XAF",billed:"1200000.00",
+  finance:{admission_cash:{currency:"XAF",source:"admission_cash_receipt",total:"15000.00",count:1,
+    today:"15000.00",this_month:"15000.00",demo_excluded:1,voided_excluded:1,future_dated_excluded:0,
+    revenue_certified:false},
+    currencies:[{currency:"XAF",billed:"1200000.00",
     paid:"800000.00",outstanding:"400000.00",overdue:"100000.00",
     paid_this_month:"150000.00",paid_today:"50000.00",payments_today:2,
     evidence:{explicit_demo:"5000.00",legacy_cash_unverified:"25000.00",other_declared:"770000.00"}}],
@@ -111,4 +114,17 @@ test("Un résultat ancien ne remplace pas les chiffres récents du propriétaire
   expect((await screen.findAllByText("200")).length).toBeGreaterThan(0);
   await act(async()=>{finishFirst(Response.json(oldData));});
   expect((screen.getAllByText("200")).length).toBeGreaterThan(0);
+});
+
+test("Les entrées d'inscription restent distinctes des frais liés aux élèves",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async()=>Response.json(dashboard)));
+  const user=userEvent.setup();
+  render(<OwnerDashboard schoolId="ecole-1"/>);
+  await screen.findByRole("tab",{name:"Finances"});
+  await user.click(screen.getByRole("tab",{name:"Finances"}));
+  expect(screen.getByText("Frais d’inscription — espèces enregistrées")).toBeTruthy();
+  expect(screen.getAllByText("15 000 XAF").length).toBeGreaterThan(0);
+  expect(screen.getByText(/Les frais d’inscription en espèces ne sont pas additionnés/)).toBeTruthy();
+  expect(screen.getByText(/Une déclaration de caisse n’est pas une certification bancaire/)).toBeTruthy();
+  expect(screen.getByText(/1 simulation\(s\), 1 annulation\(s\)/)).toBeTruthy();
 });

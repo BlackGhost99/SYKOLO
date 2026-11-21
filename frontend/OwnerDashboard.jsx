@@ -67,6 +67,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
   const staff=data?.staff||{};
   const admission=data?.admissions||{};
   const finance=data?.finance?.currencies||[];
+  const admissionCash=data?.finance?.admission_cash;
   const activity=data?.activity||{};
   const financialTable=finance.length
     ? <Table headers={["Devise","Frais nets comptabilisés","Paiements enregistrés","Solde comptable","Échu comptable","Enregistré ce mois"]}
@@ -135,8 +136,23 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
         </Card>}</div></>}
         {tab==="synthese"&&<div className="yd-owner-quick-grid">{[["finances","coins","Situation financière","Consulter les écritures et les soldes"],["admissions","adduser","Admissions",number(admission.pending)+" en attente"],["personnel","idcard","Personnel",number(staff.active)+" collaborateurs actifs"],["activite","calendar","Activité",number(activity.total_30d)+" opérations sur 30 jours"],["abonnement","receipt","Abonnement YEM","Contrat, simulation et échéances"]].map(([id,icon,label,desc])=><Card key={id} title={label} icon={icon}><p>{desc}</p><Button onClick={()=>setTab(id)}>Consulter</Button></Card>)}</div>}
         {tab==="finances"&&<Card title="Situation financière de l’établissement" icon="coins"
-          subtitle="Total des frais et règlements enregistrés ; aucune caisse ni modification depuis cet espace">
+          subtitle="Entrées par origine distincte, sans écriture nouvelle ni addition automatique">
+          <h3>Entrées financières — ventilation</h3>
+          <h3>Frais d’inscription — espèces enregistrées</h3>
+          <Table headers={["Origine","Devise","Montant déclaré","Opérations","Ce mois","Aujourd’hui"]}
+            rows={[[ "Inscriptions à la caisse",admissionCash?.currency||"XAF",
+              amount(admissionCash?.total||"0",admissionCash?.currency||"XAF"),
+              number(admissionCash?.count||0),
+              amount(admissionCash?.this_month||"0",admissionCash?.currency||"XAF"),
+              amount(admissionCash?.today||"0",admissionCash?.currency||"XAF"),
+            ]]}/>
+          <p className="hint" role="note">Espèces enregistrées, hors simulations, annulations et dates futures. Une déclaration de caisse n’est pas une certification bancaire.</p>
+          {(admissionCash?.demo_excluded||admissionCash?.voided_excluded||admissionCash?.future_dated_excluded)
+            ? <p className="hint">Écritures non incluses : {number(admissionCash?.demo_excluded||0)} simulation(s), {number(admissionCash?.voided_excluded||0)} annulation(s), {number(admissionCash?.future_dated_excluded||0)} date(s) future(s).</p>
+            : null}
+          <h3>Frais liés aux élèves — registre distinct</h3>
           {financialTable}
+          <p className="hint">Les frais périodiques et les autres frais déjà enregistrés restent dans le registre ci-dessus, sans reclassement automatique. Les frais d’inscription en espèces ne sont pas additionnés aux autres écritures tant qu’un contrôle anti-doublon inter-registres n’a pas été validé. Les paiements d’inscription en ligne ne sont pas intégrés dans cette première vue.</p>
           <p className="hint" role="note">Ce tableau est un relevé d'écritures, pas un état de recettes certifiées. Les montants à justifier ne sont pas considérés comme vérifiés.</p>
           <h3>Contrôle des écritures enregistrées</h3>
           {reconciliationTable}

@@ -23,6 +23,7 @@ from .attendance_models import AttendanceMark
 from .admission_models import AdmissionApplication
 from .finance_models import FeeCharge, FeePayment
 from .finance_evidence import evidence_totals
+from .entry_income import admission_cash_income
 from .models import SchoolAudit, SchoolMember
 from .organization_models import SchoolAppointment
 from .services import owns_school
@@ -255,6 +256,7 @@ def owner_overview(request, school_id):
             ).count(),
         },
         "finance": {
+            "admission_cash": admission_cash_income(school, selected, today),
             "currencies": financial_rows,
             "monthly": monthly_payments,
             "note": ("Écritures comptables enregistrées (y compris anciennes opérations à rapprocher), "
