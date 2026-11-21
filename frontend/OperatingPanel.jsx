@@ -5,7 +5,23 @@ const API="/api/v1/";
 const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
 const fmt=(amount,currency)=>new Intl.NumberFormat("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(amount||0))+" "+currency;
 const METHODS=[["especes","Espèces (déclarées)"],["virement","Virement (déclaré)"],["mobile_money","Mobile Money (déclaré)"],["autre","Autre règlement"]];
-const STATUS={draft:"À valider",approved:"Approuvée",partially_paid:"Partiellement réglée",paid:"Réglée"};
+const STATUS={draft:"Brouillon",submitted:"En attente de validation",rejected:"Refusée",approved:"Autorisée",partially_paid:"Partiellement réglée",paid:"Réglée"};
+const POLES=[
+  ["school","Scolarité"],["extraschool","Extrascolarité"],
+  ["common","Administration et charges communes"],["investment","Investissements"],
+  ["cash_other","Autres sorties de trésorerie"],
+];
+const POLE_LABELS={unclassified:"À classer (historique)",...Object.fromEntries(POLES)};
+const BENEFICIARY_TYPES=[
+  ["supplier","Fournisseur ou prestataire"],
+  ["staff","Personnel — hors rémunération"],
+  ["government","Administration ou organisme public"],
+  ["parent","Parent ou responsable légal"],
+  ["individual","Personne physique"],
+  ["organization","Organisation ou association"],
+  ["other","Autre bénéficiaire"],
+];
+const BENEFICIARY_LABELS=Object.fromEntries(BENEFICIARY_TYPES);
 async function request(route,method="GET",data){
   if(method!=="GET"){
     const auth=await fetch(API+"auth/csrf",{credentials:"same-origin"});
@@ -25,13 +41,43 @@ async function request(route,method="GET",data){
 export default function OperatingPanel({schoolId,workingYearId="",canManage=false,canApprove=false,canPay=false,canReverse=false}){
   const root="schools/"+schoolId+"/operating/";
   const [suppliers,setSuppliers]=useState([]);
+  const [categories,setCategories]=useState([]);
+  const [classifications,setClassifications]=useState({poles:[],centers:[],natures:[]});
+  const [centerForm,setCenterForm]=useState({code:"",name:"",activity_pole:""});
+  const [natureForm,setNatureForm]=useState({code:"",name:""});
+  const [editingOption,setEditingOption]=useState(null);
+  const [editingPole,setEditingPole]=useState(null);
+  const [confirmOptionArchive,setConfirmOptionArchive]=useState("");
+  const [showCatalog,setShowCatalog]=useState(false);
+  const [confirmCatalogImport,setConfirmCatalogImport]=useState(false);
+  const [catalogSearch,setCatalogSearch]=useState("");
+  const [showEntireCatalog,setShowEntireCatalog]=useState(false);
+  const [categoryForm,setCategoryForm]=useState({code:"",name:"",parent:"",suggested_pole:""});
+  const [editingCategory,setEditingCategory]=useState(null);
+  const [archiveTarget,setArchiveTarget]=useState("");
   const [budgets,setBudgets]=useState([]);
   const [expenses,setExpenses]=useState([]);
+  const [expenseListInfo,setExpenseListInfo]=useState({total:0,offset:0,has_more:false,workflow_counts:{}});
   const [summary,setSummary]=useState(null);
   const [supplierForm,setSupplierForm]=useState({name:"",contact:"",phone:"",email:""});
   const [budgetForm,setBudgetForm]=useState({category:"",currency:"XAF",ceiling:""});
-  const [expenseForm,setExpenseForm]=useState({budget:"",supplier:"",label:"",amount:"",invoice_reference:"",expense_on:today()});
+  const [expenseForm,setExpenseForm]=useState({
+    budget:"",supplier:"",label:"",amount:"",invoice_reference:"",
+    expense_on:today(),activity_pole:"",cost_center:"",accounting_nature:"",
+    cost_center_ref:"",accounting_nature_ref:"",
+    category_ref:"",subcategory_ref:"",
+    beneficiary_type:"supplier",beneficiary_name:"",beneficiary_reference:"",
+  });
+  const [poleFilter,setPoleFilter]=useState("");
+  const [workflowFilter,setWorkflowFilter]=useState("");
+  const [pageOffset,setPageOffset]=useState(0);
+  const PAGE_SIZE=30;
+  const [draftClassification,setDraftClassification]=useState({activity_pole:"",cost_center:"",accounting_nature:"",cost_center_ref:"",accounting_nature_ref:"",category_ref:"",subcategory_ref:""});
+  const [draftBeneficiary,setDraftBeneficiary]=useState({
+    beneficiary_type:"supplier",supplier:"",beneficiary_name:"",beneficiary_reference:"",
+  });
   const [detail,setDetail]=useState(null);
+  const [rejectionReason,setRejectionReason]=useState("");
   const [payment,setPayment]=useState({amount:"",method:"especes",reference:"",paid_on:today()});
   const [paymentKey,setPaymentKey]=useState("");
   const [busy,setBusy]=useState(false);
@@ -39,15 +85,30 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const [message,setMessage]=useState("");
   const refresh=useCallback(async()=>{
     const qs=workingYearId?"?year="+encodeURIComponent(workingYearId):"";
-    const [sup,bud,exp,sum]=await Promise.all([
-      request(root+"suppliers"),request(root+"budgets"+qs),
-      request(root+"expenses"+qs),request(root+"summary"+qs),
+    const expenseParams=new URLSearchParams();
+    if(workingYearId)expenseParams.set("year",workingYearId);
+    if(poleFilter)expenseParams.set("activity_pole",poleFilter);
+    if(workflowFilter)expenseParams.set("workflow_state",workflowFilter);
+    expenseParams.set("limit",String(PAGE_SIZE));
+    expenseParams.set("offset",String(pageOffset));
+    const expenseQs="?"+expenseParams.toString();
+    const [sup,cat,bud,exp,sum,cls]=await Promise.all([
+      request(root+"suppliers"),request(root+"categories"),request(root+"budgets"+qs),
+      request(root+"expenses"+expenseQs),request(root+"summary"+qs),request(root+"classification"),
     ]);
     setSuppliers(sup.suppliers||[]);
+    setCategories(cat.categories||[]);
+    setClassifications({poles:cls.poles||[],centers:cls.centers||[],natures:cls.natures||[]});
     setBudgets(bud.budgets||[]);
     setExpenses(exp.expenses||[]);
+    setExpenseListInfo({
+      total:exp.total??(exp.expenses||[]).length,
+      offset:exp.offset??0,
+      has_more:exp.has_more??false,
+      workflow_counts:exp.workflow_counts||{},
+    });
     setSummary(sum);
-  },[root,workingYearId]);
+  },[root,workingYearId,poleFilter,workflowFilter,pageOffset]);
   useEffect(()=>{
     let active=true;
     setDetail(null);setError("");setMessage("");
@@ -64,6 +125,60 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       return result;
     }catch(e){setError(e.message);return null;}
     finally{setBusy(false);}
+  }
+  async function installDefaultCatalog(){
+    const families=Array.from({length:20},(_,i)=>"b"+String(i+1).padStart(2,"0"));
+    const installed=await op(()=>request(root+"catalog-defaults","POST",{
+      families,include_subcategories:true,
+    }),"Catalogue proposé installé sans supprimer ni réactiver vos fiches existantes.");
+    setConfirmCatalogImport(false);
+    if(installed)setMessage(
+      "Catalogue : "+installed.created_families+" familles et "+
+      installed.created_subcategories+" sous-catégories ajoutées. "+
+      "Les catégories existantes ont été préservées."
+    );
+  }
+  async function createClassification(event,kind){
+    event.preventDefault();
+    const form=kind==="cost_center"?centerForm:natureForm;
+    const payload={...form,kind};
+    const row=await op(()=>request(root+"classification","POST",payload),
+      kind==="cost_center"?"Centre de coûts ajouté.":"Nature comptable ajoutée.");
+    if(row){
+      if(kind==="cost_center")setCenterForm({code:"",name:"",activity_pole:""});
+      else setNatureForm({code:"",name:""});
+    }
+  }
+  async function saveClassification(event){
+    event.preventDefault();
+    if(!editingOption)return;
+    const row=await op(()=>request(root+"classification/"+editingOption.id,"PATCH",{
+      revision:editingOption.revision,name:editingOption.name,
+      activity_pole:editingOption.kind==="cost_center"?editingOption.activity_pole:"",
+    }),"Référence modifiée : les anciennes dépenses conservent leur libellé.");
+    if(row)setEditingOption(null);
+  }
+  async function toggleClassification(item){
+    if(confirmOptionArchive!==item.id){setConfirmOptionArchive(item.id);return;}
+    const changed=await op(()=>request(root+"classification/"+item.id,"PATCH",{
+      revision:item.revision,active:!item.active,
+    }),item.active?"Référence archivée.":"Référence réactivée.");
+    if(changed)setConfirmOptionArchive("");
+  }
+  async function savePole(event){
+    event.preventDefault();
+    if(!editingPole)return;
+    const row=await op(()=>request(root+"classification/poles/"+editingPole.code,"PATCH",{
+      revision:editingPole.revision,label:editingPole.label,
+    }),"Libellé du pôle modifié. Son code est conservé.");
+    if(row)setEditingPole(null);
+  }
+  async function togglePole(pole){
+    if(confirmOptionArchive!==pole.code){setConfirmOptionArchive(pole.code);return;}
+    const changed=await op(()=>request(root+"classification/poles/"+pole.code,"PATCH",{
+      revision:pole.revision,active:!pole.active,
+    }),pole.active?"Pôle désactivé pour les nouvelles demandes.":"Pôle réactivé.");
+    if(changed)setConfirmOptionArchive("");
   }
   async function addSupplier(event){
     event.preventDefault();
@@ -95,14 +210,72 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   }
   async function addExpense(event){
     event.preventDefault();
-    const saved=await op(()=>request(root+"expenses","POST",expenseForm),
+    const payload={
+      ...expenseForm,
+      supplier:expenseForm.beneficiary_type==="supplier"?expenseForm.supplier:null,
+      beneficiary_name:expenseForm.beneficiary_type==="supplier"?"":expenseForm.beneficiary_name,
+    };
+    const saved=await op(()=>request(root+"expenses","POST",payload),
       "Demande enregistrée. Un autre responsable doit l'approuver.");
-    if(saved)setExpenseForm({...expenseForm,label:"",amount:"",invoice_reference:""});
+    if(saved)setExpenseForm({...expenseForm,label:"",amount:"",invoice_reference:"",subcategory_ref:""});
   }
   async function openExpense(id){
     setError("");
-    try{setDetail(await request(root+"expenses/"+id));}
-    catch(e){setError(e.message);}
+    try{
+      const data=await request(root+"expenses/"+id);
+      setDetail(data);
+      setRejectionReason("");
+      setDraftClassification({
+        activity_pole:data.expense.activity_pole==="unclassified"?"":data.expense.activity_pole,
+        cost_center:data.expense.cost_center||"",
+        accounting_nature:data.expense.accounting_nature||"",
+        cost_center_ref:data.expense.cost_center_ref||"",
+        accounting_nature_ref:data.expense.accounting_nature_ref||"",
+        category_ref:data.expense.category_ref||"",
+        subcategory_ref:data.expense.subcategory_ref||"",
+      });
+      setDraftBeneficiary({
+        beneficiary_type:data.expense.beneficiary_type||"supplier",
+        supplier:data.expense.supplier||"",
+        beneficiary_name:data.expense.beneficiary_type==="supplier"?"":data.expense.beneficiary_name||"",
+        beneficiary_reference:data.expense.beneficiary_reference||"",
+      });
+    }catch(e){setError(e.message);}
+  }
+  async function updateDraftClassification(event){
+    event.preventDefault();
+    if(!detail)return;
+    const saved=await op(()=>request(root+"expenses/"+detail.expense.id,"PATCH",{
+      revision:detail.expense.revision,...draftClassification,
+    }),"Classification du projet enregistrée.");
+    if(saved)await openExpense(detail.expense.id);
+  }
+  async function updateDraftBeneficiary(event){
+    event.preventDefault();
+    if(!detail)return;
+    const saved=await op(()=>request(root+"expenses/"+detail.expense.id,"PATCH",{
+      revision:detail.expense.revision,
+      beneficiary_type:draftBeneficiary.beneficiary_type,
+      supplier:draftBeneficiary.beneficiary_type==="supplier"?draftBeneficiary.supplier:null,
+      beneficiary_name:draftBeneficiary.beneficiary_type==="supplier"?"":draftBeneficiary.beneficiary_name,
+      beneficiary_reference:draftBeneficiary.beneficiary_reference,
+    }),"Bénéficiaire du projet mis à jour.");
+    if(saved)await openExpense(detail.expense.id);
+  }
+  async function submitExpense(item){
+    const saved=await op(()=>request(root+"expenses/"+item.id+"/submit","POST",{
+      revision:item.revision,
+    }),"Demande soumise au contrôleur. Aucun fonds n'est engagé avant autorisation.");
+    if(saved)await openExpense(item.id);
+  }
+  async function rejectExpense(event){
+    event.preventDefault();
+    if(!detail||rejectionReason.trim().length<10)return;
+    const item=detail.expense;
+    const saved=await op(()=>request(root+"expenses/"+item.id+"/reject","POST",{
+      revision:item.revision,reason:rejectionReason.trim(),
+    }),"Demande refusée. Motif enregistré ; une correction est requise pour la soumettre à nouveau.");
+    if(saved)await openExpense(item.id);
   }
   async function approveExpense(item){
     const saved=await op(()=>request(root+"expenses/"+item.id+"/approve","POST",{revision:item.revision}),
@@ -138,9 +311,46 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       "Versement annulé, historique préservé.");
     if(saved)await openExpense(detail.expense.id);
   }
+  async function addCategory(event){
+    event.preventDefault();
+    const saved=await op(()=>request(root+"categories","POST",{
+      ...categoryForm,parent:categoryForm.parent||null,
+    }),"Catégorie de dépenses ajoutée.");
+    if(saved)setCategoryForm({code:"",name:"",parent:"",suggested_pole:""});
+  }
+  async function updateCategory(event){
+    event.preventDefault();
+    if(!editingCategory)return;
+    const saved=await op(()=>request(root+"categories/"+editingCategory.id,"PATCH",{
+      revision:editingCategory.revision,name:editingCategory.name,
+      suggested_pole:editingCategory.suggested_pole,
+    }),"Catégorie actualisée ; les anciens libellés des dépenses sont conservés.");
+    if(saved)setEditingCategory(null);
+  }
+  async function toggleCategory(item){
+    const saved=await op(()=>request(root+"categories/"+item.id,"PATCH",{
+      revision:item.revision,active:!item.active,
+    }),item.active?"Catégorie archivée sans supprimer les opérations.":"Catégorie réactivée.");
+    if(saved)setArchiveTarget("");
+  }
+  const filteredCategories=categories.filter(c=>{
+    const term=catalogSearch.trim().toLocaleLowerCase("fr");
+    if(!term)return true;
+    const parent=categories.find(p=>p.id===c.parent);
+    return [c.code,c.name,parent?.name||""].some(x=>x.toLocaleLowerCase("fr").includes(term));
+  });
+  const displayedCategories=showEntireCatalog?filteredCategories:filteredCategories.slice(0,60);
+  const activePoles=classifications.poles.length?
+    classifications.poles.filter(p=>p.active).map(p=>[p.code,p.label]):POLES;
+  const poleLabels={...POLE_LABELS,...Object.fromEntries(classifications.poles.map(p=>[p.code,p.label]))};
+  const activeCenters=(pole)=>classifications.centers.filter(c=>c.active&&(!c.activity_pole||c.activity_pole===pole));
+  const activeNatures=classifications.natures.filter(n=>n.active);
+  const categoryRoots=categories.filter(c=>!c.parent);
+  const activeRoots=categoryRoots.filter(c=>c.active);
+  const selectableSubs=(parentId)=>categories.filter(c=>c.parent===parentId&&c.active);
   const approvedBudgets=budgets.filter(b=>b.approved && Number(b.available)>0);
   const currentBudget=budgets.find(b=>b.id===expenseForm.budget);
-  const statusTone=s=>s==="paid"?"green":s==="approved"?"blue":s==="partially_paid"?"orange":"gray";
+  const statusTone=s=>s==="paid"?"green":s==="approved"?"blue":s==="partially_paid"?"orange":s==="rejected"?"red":s==="submitted"?"blue":"gray";
 
   return <section aria-label="Dépenses, fournisseurs et budgets">
     <Card title="Dépenses et budgets de fonctionnement" icon="barchart"
@@ -158,6 +368,175 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
         {!Object.keys(summary.totals||{}).length&&<p>Aucune enveloppe enregistrée pour cette année.</p>}
       </div>}
     </Card>
+    <Card title="Ventilation des sorties par activité" icon="barchart"
+      subtitle="Engagements approuvés et règlements déclarés, sans mélange avec les recettes.">
+      {Object.entries(summary?.by_activity_pole||{}).flatMap(([currency,groups])=>
+        Object.entries(groups).map(([pole,values])=>
+          <p key={currency+"-"+pole}>
+            <strong>{poleLabels[pole]||pole} · {currency}</strong>
+            <span style={{display:"block"}}>Engagé : {fmt(values.committed,currency)} · Déclaré payé : {fmt(values.paid,currency)} · Reste : {fmt(values.unpaid,currency)}</span>
+          </p>))}
+      {!Object.keys(summary?.by_activity_pole||{}).length&&<p>Aucune sortie approuvée sur cette période.</p>}
+      <p className="hint">Les anciennes dépenses non classées restent visibles sans réaffectation automatique.</p>
+    </Card>
+    <div className="actions">
+      <Button onClick={()=>setShowCatalog(!showCatalog)}>{showCatalog?"Masquer le catalogue":"Configurer les catégories de dépenses"}</Button>
+    </div>
+    {showCatalog&&<Card title="Catalogue de dépenses" icon="idcard"
+      subtitle="Catégories et sous-catégories personnalisables par établissement. Archivage sans suppression.">
+      {canManage&&<div className="actions">
+        {!confirmCatalogImport?
+          <Button disabled={busy} onClick={()=>setConfirmCatalogImport(true)}>Installer les familles B01 à B20</Button>:
+          <>
+            <p role="status">Importer 20 familles et 211 sous-catégories du cahier, sans modifier les fiches existantes ?</p>
+            <Button primary disabled={busy} onClick={installDefaultCatalog}>Confirmer l'installation</Button>
+            <Button disabled={busy} onClick={()=>setConfirmCatalogImport(false)}>Annuler</Button>
+          </>}
+      </div>}
+      <p className="hint">Ce modèle est facultatif : tous les libellés restent personnalisables. Aucune catégorie archivée ne sera réactivée automatiquement.</p>
+      <label className="field">Rechercher une catégorie<input value={catalogSearch}
+        onChange={e=>{setCatalogSearch(e.target.value);setShowEntireCatalog(false);}}
+        placeholder="Famille, code, sous-catégorie"/></label>
+      {categories.length>0&&<Table headers={["Code","Catégorie / sous-catégorie","Pôle suggéré","État","Actions"]}
+        rows={displayedCategories.map(item=>[
+          item.code,(item.parent?"↳ ":"")+item.name,
+          poleLabels[item.suggested_pole]||"Non défini",
+          <Status tone={item.active?"green":"gray"}>{item.active?"Active":"Archivée"}</Status>,
+          canManage?<div className="actions">
+            <Button className="small" disabled={busy} onClick={()=>{setEditingCategory({...item});setArchiveTarget("");}}>Modifier</Button>
+            {archiveTarget===item.id?
+              <>
+                <Button className="small" disabled={busy} onClick={()=>toggleCategory(item)}>Confirmer {item.active?"archivage":"réactivation"}</Button>
+                <Button className="small" onClick={()=>setArchiveTarget("")}>Annuler</Button>
+              </>:
+              <Button className="small" disabled={busy} onClick={()=>setArchiveTarget(item.id)}>{item.active?"Archiver":"Réactiver"}</Button>}
+          </div>:"—",
+        ])}/>}
+      {filteredCategories.length>60&&!showEntireCatalog&&<Button onClick={()=>setShowEntireCatalog(true)}>
+        Voir les {filteredCategories.length} catégories et sous-catégories
+      </Button>}
+      {!categories.length&&<p>Ce catalogue est vide. Vous pouvez installer les familles du cahier ou créer vos propres catégories.</p>}
+      {canManage&&<form onSubmit={addCategory}>
+        <div className="two">
+          <label className="field">Code catégorie / sous-catégorie<input required maxLength={40} pattern="[a-z][a-z0-9_-]*"
+            placeholder="ex. fournitures" value={categoryForm.code} onChange={e=>setCategoryForm({...categoryForm,code:e.target.value.toLowerCase()})}/></label>
+          <label className="field">Nom catégorie / sous-catégorie<input required maxLength={100} value={categoryForm.name} onChange={e=>setCategoryForm({...categoryForm,name:e.target.value})}/></label>
+          <label className="field">Catégorie parente<select value={categoryForm.parent} onChange={e=>setCategoryForm({...categoryForm,parent:e.target.value})}>
+            <option value="">Aucune — catégorie principale</option>
+            {activeRoots.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Pôle suggéré<select value={categoryForm.suggested_pole} onChange={e=>setCategoryForm({...categoryForm,suggested_pole:e.target.value})}>
+            <option value="">Aucun — classification indépendante</option>
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>
+        </div>
+        <Button primary type="submit" disabled={busy}>Ajouter cette catégorie</Button>
+      </form>}
+      {canManage&&editingCategory&&<form onSubmit={updateCategory}>
+        <p><strong>Modifier {editingCategory.code}</strong> — le code et le parent restent fixes.</p>
+        <div className="two">
+          <label className="field">Nouveau libellé<input required maxLength={100}
+            value={editingCategory.name} onChange={e=>setEditingCategory({...editingCategory,name:e.target.value})}/></label>
+          <label className="field">Pôle conseillé<select value={editingCategory.suggested_pole} onChange={e=>setEditingCategory({...editingCategory,suggested_pole:e.target.value})}>
+            <option value="">Aucun</option>
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>
+        </div>
+        <div className="actions">
+          <Button primary type="submit" disabled={busy}>Enregistrer la catégorie</Button>
+          <Button type="button" onClick={()=>setEditingCategory(null)}>Annuler</Button>
+        </div>
+      </form>}
+      <p className="hint">Modifier une catégorie ne modifie pas les libellés des dépenses déjà enregistrées.</p>
+    </Card>}
+    {showCatalog&&<Card title="Pôles, centres de coûts et natures comptables" icon="barchart"
+      subtitle="Référentiels propres à cet établissement : codes financiers stables, libellés personnalisables.">
+      <p className="hint">S1–S5 sont des axes financiers distincts des catégories. Leur personnalisation ne modifie jamais les montants ni les libellés historiques.</p>
+      <Table headers={["Pôle","Libellé","État","Actions"]}
+        rows={classifications.poles.map((p,i)=>[
+          "S"+(i+1)+" · "+p.code,
+          p.label,
+          <Status tone={p.active?"green":"gray"}>{p.active?"Actif":"Désactivé"}</Status>,
+          canManage?<div className="actions">
+            <Button className="small" disabled={busy} onClick={()=>setEditingPole({...p})}>Renommer</Button>
+            <Button className="small" disabled={busy} onClick={()=>togglePole(p)}>
+              {confirmOptionArchive===p.code?"Confirmer":p.active?"Désactiver":"Réactiver"}
+            </Button>
+          </div>:"—",
+        ])}/>
+      {canManage&&editingPole&&<form onSubmit={savePole}>
+        <p>Modifier le libellé de {editingPole.code} (code fixe)</p>
+        <label className="field">Nouveau libellé du pôle<input required maxLength={100}
+          value={editingPole.label} onChange={e=>setEditingPole({...editingPole,label:e.target.value})}/></label>
+        <div className="actions">
+          <Button primary type="submit" disabled={busy}>Enregistrer le pôle</Button>
+          <Button type="button" onClick={()=>setEditingPole(null)}>Annuler</Button>
+        </div>
+      </form>}
+      <p><strong>Centres de coûts configurés</strong></p>
+      {classifications.centers.length>0&&<Table headers={["Code","Centre","Pôle lié","État","Actions"]}
+        rows={classifications.centers.map(c=>[
+          c.code,c.name,poleLabels[c.activity_pole]||"Tous les pôles",
+          <Status tone={c.active?"green":"gray"}>{c.active?"Actif":"Archivé"}</Status>,
+          canManage?<div className="actions">
+            <Button className="small" onClick={()=>setEditingOption({...c})}>Modifier</Button>
+            <Button className="small" disabled={busy} onClick={()=>toggleClassification(c)}>
+              {confirmOptionArchive===c.id?"Confirmer":c.active?"Archiver":"Réactiver"}
+            </Button>
+          </div>:"—",
+        ])}/>}
+      {canManage&&<form onSubmit={e=>createClassification(e,"cost_center")}>
+        <div className="two">
+          <label className="field">Code du centre de coûts<input required maxLength={40} pattern="[a-z][a-z0-9_-]*"
+            value={centerForm.code} onChange={e=>setCenterForm({...centerForm,code:e.target.value.toLowerCase()})}/></label>
+          <label className="field">Nom du centre de coûts<input required maxLength={100}
+            value={centerForm.name} onChange={e=>setCenterForm({...centerForm,name:e.target.value})}/></label>
+          <label className="field">Pôle de rattachement<select value={centerForm.activity_pole}
+            onChange={e=>setCenterForm({...centerForm,activity_pole:e.target.value})}>
+            <option value="">Tous les pôles</option>
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>
+        </div>
+        <Button primary type="submit" disabled={busy}>Ajouter un centre de coûts</Button>
+      </form>}
+      <p><strong>Natures comptables configurées</strong></p>
+      {classifications.natures.length>0&&<Table headers={["Code","Nature","État","Actions"]}
+        rows={classifications.natures.map(n=>[
+          n.code,n.name,<Status tone={n.active?"green":"gray"}>{n.active?"Active":"Archivée"}</Status>,
+          canManage?<div className="actions">
+            <Button className="small" onClick={()=>setEditingOption({...n})}>Modifier</Button>
+            <Button className="small" disabled={busy} onClick={()=>toggleClassification(n)}>
+              {confirmOptionArchive===n.id?"Confirmer":n.active?"Archiver":"Réactiver"}
+            </Button>
+          </div>:"—",
+        ])}/>}
+      {canManage&&<form onSubmit={e=>createClassification(e,"accounting_nature")}>
+        <div className="two">
+          <label className="field">Code de nature comptable<input required maxLength={40} pattern="[a-z][a-z0-9_-]*"
+            value={natureForm.code} onChange={e=>setNatureForm({...natureForm,code:e.target.value.toLowerCase()})}/></label>
+          <label className="field">Nom de nature comptable<input required maxLength={100}
+            value={natureForm.name} onChange={e=>setNatureForm({...natureForm,name:e.target.value})}/></label>
+        </div>
+        <Button primary type="submit" disabled={busy}>Ajouter une nature comptable</Button>
+      </form>}
+      {canManage&&editingOption&&<form onSubmit={saveClassification}>
+        <p>Modifier {editingOption.kind==="cost_center"?"le centre":"la nature"} : {editingOption.code}</p>
+        <div className="two">
+          <label className="field">Nom de la référence<input required maxLength={100}
+            value={editingOption.name} onChange={e=>setEditingOption({...editingOption,name:e.target.value})}/></label>
+          {editingOption.kind==="cost_center"&&<label className="field">Pôle du centre<select
+            value={editingOption.activity_pole}
+            onChange={e=>setEditingOption({...editingOption,activity_pole:e.target.value})}>
+            <option value="">Tous les pôles</option>
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>}
+        </div>
+        <div className="actions">
+          <Button primary type="submit" disabled={busy}>Enregistrer la référence</Button>
+          <Button type="button" onClick={()=>setEditingOption(null)}>Annuler</Button>
+        </div>
+      </form>}
+    </Card>}
     <Card title="Fournisseurs et prestataires" icon="users"
       subtitle="Annuaire des fournisseurs de l’établissement, distinct du personnel.">
       {suppliers.length>0&&<Table rowKey={(_,i)=>suppliers[i].id} rowActions={(_,i)=>canManage?[{id:"edit",label:"Modifier le fournisseur",write:true,disabled:busy,run:()=>editSupplier(suppliers[i])}]:[]} headers={["Fournisseur","Contact","Téléphone","État","Action"]}
@@ -195,40 +574,189 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     </Card>
     <Card title="Demandes de dépenses" icon="idcard"
       subtitle="Achat, facture ou intervention justifiée : préparation, validation puis règlement.">
-      {expenses.length>0&&<Table rowKey={(_,i)=>expenses[i].id} rowActions={(_,i)=>[{id:"detail",label:"Consulter la dépense",run:()=>openExpense(expenses[i].id)}]} headers={["Objet","Fournisseur","Montant","Déclaré payé","Solde","État","Dossier"]}
+      <label className="field">Filtrer les dépenses par activité<select value={poleFilter} onChange={e=>{setPoleFilter(e.target.value);setPageOffset(0);}}>
+        <option value="">Toutes les activités</option>
+        {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+        <option value="unclassified">À classer (historique)</option>
+      </select></label>
+      <div className="actions" aria-label="File des demandes par état">
+        <Button className="small" onClick={()=>{setWorkflowFilter("");setPageOffset(0);}}>
+          Toutes ({Object.values(expenseListInfo.workflow_counts).reduce((n,v)=>n+v,0)})
+        </Button>
+        {["draft","submitted","rejected","approved"].map(status=>
+          <Button key={status} className="small" onClick={()=>{setWorkflowFilter(status);setPageOffset(0);}}>
+            {STATUS[status]} ({expenseListInfo.workflow_counts[status]||0})
+          </Button>)}
+      </div>
+      <p className="hint">Filtre actif : {workflowFilter?STATUS[workflowFilter]:"Toutes les demandes"}.
+        {expenseListInfo.total} dossier(s) correspondant(s), affichage par lots de {PAGE_SIZE}.
+      </p>
+      {expenses.length>0&&<Table rowKey={(_,i)=>expenses[i].id} rowActions={(_,i)=>[{id:"detail",label:"Consulter la dépense",run:()=>openExpense(expenses[i].id)}]} headers={["Objet","Pôle financier","Bénéficiaire","Montant","Déclaré payé","Solde","État","Dossier"]}
         rows={expenses.map(e=>[
-          e.label,e.supplier_name,fmt(e.amount,e.currency),fmt(e.paid,e.currency),
+          e.label,poleLabels[e.activity_pole]||"À classer",e.beneficiary_name||e.supplier_name||"—",fmt(e.amount,e.currency),fmt(e.paid,e.currency),
           fmt(e.balance,e.currency),
           <Status tone={statusTone(e.status)}>{STATUS[e.status]||e.status}</Status>,
           <Button className="small" onClick={()=>openExpense(e.id)}>Détail</Button>,
         ])}/>}
-      {!expenses.length&&<p>Aucune dépense pour l'année sélectionnée.</p>}
+      {!expenses.length&&<p>Aucune dépense pour les filtres sélectionnés.</p>}
+      <div className="actions">
+        <Button className="small" disabled={busy||pageOffset===0}
+          onClick={()=>setPageOffset(Math.max(0,pageOffset-PAGE_SIZE))}>Page précédente</Button>
+        <span>Page {Math.floor(pageOffset/PAGE_SIZE)+1} / {Math.max(1,Math.ceil(expenseListInfo.total/PAGE_SIZE))}</span>
+        <Button className="small" disabled={busy||!expenseListInfo.has_more}
+          onClick={()=>setPageOffset(pageOffset+PAGE_SIZE)}>Page suivante</Button>
+      </div>
       {canManage&&<form onSubmit={addExpense}>
+        <p className="hint">Les salaires passent exclusivement par le module Paie ; une indemnité hors paie peut être affectée au personnel. Les remboursements de frais scolaires restent à rapprocher dans le circuit dédié.</p>
         <div className="two">
           <label className="field">Enveloppe approuvée<select required value={expenseForm.budget} onChange={e=>setExpenseForm({...expenseForm,budget:e.target.value})}>
             <option value="">Sélectionner un budget</option>
             {approvedBudgets.map(b=><option key={b.id} value={b.id}>{b.category} · {fmt(b.available,b.currency)} disponibles</option>)}
           </select></label>
-          <label className="field">Fournisseur<select required value={expenseForm.supplier} onChange={e=>setExpenseForm({...expenseForm,supplier:e.target.value})}>
-            <option value="">Sélectionner un fournisseur</option>
-            {suppliers.filter(s=>s.active).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          <label className="field">Catégorie de la dépense<select required value={expenseForm.category_ref}
+            onChange={e=>{const item=categories.find(c=>c.id===e.target.value);setExpenseForm({
+              ...expenseForm,category_ref:e.target.value,subcategory_ref:"",
+              activity_pole:expenseForm.activity_pole||item?.suggested_pole||"",
+            });}}>
+            <option value="">Choisir une catégorie active</option>
+            {activeRoots.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select></label>
+          <label className="field">Sous-catégorie de la dépense<select value={expenseForm.subcategory_ref}
+            onChange={e=>setExpenseForm({...expenseForm,subcategory_ref:e.target.value})}>
+            <option value="">Aucune</option>
+            {selectableSubs(expenseForm.category_ref).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Pôle financier<select required value={expenseForm.activity_pole} onChange={e=>setExpenseForm({...expenseForm,activity_pole:e.target.value,cost_center_ref:"",cost_center:""})}>
+            <option value="">Choisir l'activité concernée</option>
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>
+          <label className="field">Centre de coûts<select value={expenseForm.cost_center_ref}
+            onChange={e=>setExpenseForm({...expenseForm,cost_center_ref:e.target.value,cost_center:""})}>
+            <option value="">Aucun — centre non défini</option>
+            {activeCenters(expenseForm.activity_pole).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Nature comptable<select value={expenseForm.accounting_nature_ref}
+            onChange={e=>setExpenseForm({...expenseForm,accounting_nature_ref:e.target.value,accounting_nature:""})}>
+            <option value="">Aucune — nature non définie</option>
+            {activeNatures.map(n=><option key={n.id} value={n.id}>{n.name}</option>)}
+          </select></label>
+          <label className="field">Type de bénéficiaire<select required value={expenseForm.beneficiary_type}
+            onChange={e=>setExpenseForm({...expenseForm,beneficiary_type:e.target.value,supplier:"",beneficiary_name:"",beneficiary_reference:""})}>
+            {BENEFICIARY_TYPES.map(([key,name])=><option key={key} value={key}>{name}</option>)}
+          </select></label>
+          {expenseForm.beneficiary_type==="supplier"?
+            <label className="field">Fournisseur<select required value={expenseForm.supplier} onChange={e=>setExpenseForm({...expenseForm,supplier:e.target.value})}>
+              <option value="">Sélectionner un fournisseur</option>
+              {suppliers.filter(s=>s.active).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            </select></label>:
+            <label className="field">Nom du bénéficiaire<input required maxLength={180}
+              placeholder="Identité ou dénomination du bénéficiaire" value={expenseForm.beneficiary_name}
+              onChange={e=>setExpenseForm({...expenseForm,beneficiary_name:e.target.value})}/></label>}
+          <label className="field">Référence interne du bénéficiaire<input maxLength={120}
+            placeholder="Référence de dossier non sensible (facultatif)" value={expenseForm.beneficiary_reference}
+            onChange={e=>setExpenseForm({...expenseForm,beneficiary_reference:e.target.value})}/></label>
           <label className="field">Objet de l'achat<input required maxLength={200} value={expenseForm.label} onChange={e=>setExpenseForm({...expenseForm,label:e.target.value})}/></label>
           <label className="field">Montant demandé{currentBudget?" ("+currentBudget.currency+")":""}<input required inputMode="decimal" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm,amount:e.target.value})}/></label>
           <label className="field">Référence facture/devis<input required maxLength={120} value={expenseForm.invoice_reference} onChange={e=>setExpenseForm({...expenseForm,invoice_reference:e.target.value})}/></label>
           <label className="field">Date de dépense<input required type="date" value={expenseForm.expense_on} onChange={e=>setExpenseForm({...expenseForm,expense_on:e.target.value})}/></label>
         </div>
-        <Button primary type="submit" disabled={busy||!approvedBudgets.length||!suppliers.some(s=>s.active)}>Préparer la demande</Button>
+        <Button primary type="submit" disabled={busy||!approvedBudgets.length||!activeRoots.length||
+          (expenseForm.beneficiary_type==="supplier"&&!suppliers.some(s=>s.active))}>Préparer la demande</Button>
       </form>}
     </Card>
     {detail&&<Card title={"Dépense — "+detail.expense.label} icon="shield">
       <div className="actions"><Button onClick={()=>setDetail(null)}>Fermer</Button></div>
-      <p>Fournisseur : <strong>{detail.expense.supplier_name}</strong> · Budget : {detail.expense.category}</p>
+      <p>Bénéficiaire : <strong>{detail.expense.beneficiary_name||detail.expense.supplier_name||"—"}</strong>
+        {" · "+(BENEFICIARY_LABELS[detail.expense.beneficiary_type]||"Fournisseur")}
+        {" · Budget : "+detail.expense.category}
+        {detail.expense.beneficiary_reference?" · Référence interne : "+detail.expense.beneficiary_reference:""}
+      </p>
+      <p>Catégorie : <strong>{detail.expense.expense_category||"À classer (historique)"}</strong>
+        {detail.expense.expense_subcategory?" / "+detail.expense.expense_subcategory:""}
+      </p>
+      <p>Activité : <strong>{detail.expense.activity_pole_label||poleLabels[detail.expense.activity_pole]||"À classer"}</strong>
+        {detail.expense.cost_center?" · Centre de coûts : "+detail.expense.cost_center:""}
+        {detail.expense.accounting_nature?" · Nature comptable : "+detail.expense.accounting_nature:""}
+      </p>
+      {canManage&&["draft","rejected"].includes(detail.expense.status)&&<form onSubmit={updateDraftClassification}>
+        <div className="two">
+          <label className="field">Catégorie du projet<select required value={draftClassification.category_ref}
+            onChange={e=>setDraftClassification({...draftClassification,category_ref:e.target.value,subcategory_ref:""})}>
+            <option value="">Choisir une catégorie active</option>
+            {activeRoots.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Sous-catégorie du projet<select value={draftClassification.subcategory_ref}
+            onChange={e=>setDraftClassification({...draftClassification,subcategory_ref:e.target.value})}>
+            <option value="">Aucune</option>
+            {selectableSubs(draftClassification.category_ref).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Pôle de cette dépense<select required value={draftClassification.activity_pole} onChange={e=>setDraftClassification({...draftClassification,activity_pole:e.target.value,cost_center_ref:"",cost_center:""})}>
+            <option value="">Choisir le pôle</option>
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>
+          <label className="field">Centre de coûts du projet<select value={draftClassification.cost_center_ref}
+            onChange={e=>setDraftClassification({...draftClassification,cost_center_ref:e.target.value,cost_center:""})}>
+            <option value="">Aucun</option>
+            {activeCenters(draftClassification.activity_pole).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
+          <label className="field">Nature comptable du projet<select value={draftClassification.accounting_nature_ref}
+            onChange={e=>setDraftClassification({...draftClassification,accounting_nature_ref:e.target.value,accounting_nature:""})}>
+            <option value="">Aucune</option>
+            {activeNatures.map(n=><option key={n.id} value={n.id}>{n.name}</option>)}
+          </select></label>
+        </div>
+        <Button type="submit" disabled={busy}>{detail.expense.status==="rejected"?"Corriger la demande refusée":"Enregistrer la classification"}</Button>
+      </form>}
+      {canManage&&["draft","rejected"].includes(detail.expense.status)&&<form onSubmit={updateDraftBeneficiary}>
+        <p className="hint">Vous pouvez corriger un brouillon ou une demande refusée ; le bénéficiaire est figé après approbation.</p>
+        <div className="two">
+          <label className="field">Type de bénéficiaire du projet<select required value={draftBeneficiary.beneficiary_type}
+            onChange={e=>setDraftBeneficiary({...draftBeneficiary,beneficiary_type:e.target.value,supplier:"",beneficiary_name:"",beneficiary_reference:""})}>
+            {BENEFICIARY_TYPES.map(([key,name])=><option key={key} value={key}>{name}</option>)}
+          </select></label>
+          {draftBeneficiary.beneficiary_type==="supplier"?
+            <label className="field">Fournisseur du projet<select required value={draftBeneficiary.supplier}
+              onChange={e=>setDraftBeneficiary({...draftBeneficiary,supplier:e.target.value})}>
+              <option value="">Sélectionner un fournisseur actif</option>
+              {suppliers.filter(s=>s.active||s.id===detail.expense.supplier).map(s=>
+                <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select></label>:
+            <label className="field">Nom du bénéficiaire du projet<input required maxLength={180}
+              value={draftBeneficiary.beneficiary_name}
+              onChange={e=>setDraftBeneficiary({...draftBeneficiary,beneficiary_name:e.target.value})}/></label>}
+          <label className="field">Référence interne du bénéficiaire du projet<input maxLength={120}
+            value={draftBeneficiary.beneficiary_reference}
+            onChange={e=>setDraftBeneficiary({...draftBeneficiary,beneficiary_reference:e.target.value})}/></label>
+        </div>
+        <Button type="submit" disabled={busy}>Mettre à jour le bénéficiaire</Button>
+      </form>}
       <p>Référence : {detail.expense.invoice_reference} · Date : {detail.expense.expense_on}</p>
       <p>Montant : <strong>{fmt(detail.expense.amount,detail.expense.currency)}</strong> · Déclaré réglé : {fmt(detail.expense.paid,detail.expense.currency)} · Reste : <strong>{fmt(detail.expense.balance,detail.expense.currency)}</strong></p>
       <p>Statut : <Status tone={statusTone(detail.expense.status)}>{STATUS[detail.expense.status]||detail.expense.status}</Status></p>
-      {canApprove&&detail.expense.status==="draft"&&<Button disabled={busy} onClick={()=>approveExpense(detail.expense)}>Approuver dans la limite du budget</Button>}
-      {canManage&&detail.expense.status==="draft"&&<Button disabled={busy} onClick={()=>editExpense(detail.expense)}>Corriger le montant</Button>}
+      {detail.decisions?.length>0&&<details>
+        <summary>Historique des autorisations ({detail.decisions.length})</summary>
+        <Table headers={["Date","Décision","Compte","Justification"]}
+          rows={detail.decisions.map(item=>[
+            new Date(item.occurred_at).toLocaleString("fr-FR"),
+            ({submitted:"Soumission",approved:"Autorisation",rejected:"Refus",revised:"Correction"})[item.action]||item.action,
+            item.actor,item.reason||"—",
+          ])}/>
+      </details>}
+      {canManage&&detail.expense.status==="draft"&&<Button disabled={busy} onClick={()=>submitExpense(detail.expense)}>
+        Soumettre pour autorisation
+      </Button>}
+      {canApprove&&detail.expense.status==="submitted"&&<>
+        <Button disabled={busy} onClick={()=>approveExpense(detail.expense)}>Autoriser la dépense</Button>
+        <form onSubmit={rejectExpense}>
+          <label className="field">Motif du refus (10 caractères minimum)
+            <textarea required minLength={10} maxLength={240} rows={2}
+              value={rejectionReason} onChange={e=>setRejectionReason(e.target.value)}
+              placeholder="Expliquez précisément la correction nécessaire"/>
+          </label>
+          <Button type="submit" disabled={busy||rejectionReason.trim().length<10}>Refuser la demande</Button>
+        </form>
+      </>}
+      {canManage&&["draft","rejected"].includes(detail.expense.status)&&<Button disabled={busy} onClick={()=>editExpense(detail.expense)}>Corriger le montant</Button>}
       {canPay&&["approved","partially_paid"].includes(detail.expense.status)&&<form onSubmit={markPaid}>
         <p className="hint">Déclarer uniquement un paiement déjà effectué : renseignez la preuve et sa référence. Aucune sortie de fonds n'est déclenchée par YEM.</p>
         <div className="two">
