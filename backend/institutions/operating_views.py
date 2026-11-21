@@ -163,8 +163,11 @@ def expense_data(e):
             "expense_category": e.category_label_snapshot or "À classer (historique)",
             "expense_subcategory": e.subcategory_label_snapshot,
             "invoice_reference": e.invoice_reference, "revision": e.revision,
+            "workflow_state": e.workflow_state,
+            "submitted_by": str(e.submitted_by_id) if e.submitted_by_id else None,
+            "submitted_at": e.submitted_at.isoformat() if e.submitted_at else None,
             "paid": fmt(paid), "balance": fmt(e.amount - paid),
-            "status": ("draft" if not e.approved_at else "paid" if paid == e.amount
+            "status": (e.workflow_state if not e.approved_at else "paid" if paid == e.amount
                        else "partially_paid" if paid > ZERO else "approved"),
             "prepared_by": str(e.prepared_by_id),
             "approved_by": str(e.approved_by_id) if e.approved_by_id else None}
@@ -521,8 +524,14 @@ def expense_detail(request, school_id, expense_id):
         row = OperatingExpense.objects.select_related("supplier", "budget").filter(school=school, pk=expense_id).first()
         if not row:
             return fail("Dépense introuvable.", 404)
-        return result({"expense": expense_data(row),
-                       "payments": [payment_data(p) for p in row.payments.order_by("recorded_at")]})
+        from .operating_workflow_views import decision_data
+        return result({
+            "expense": expense_data(row),
+            "payments": [payment_data(p) for p in row.payments.order_by("recorded_at")],
+            "decisions": [
+                decision_data(item) for item in row.workflow_decisions.order_by("occurred_at", "pk")
+            ],
+        })
     data, err = body(
         request,
         {"revision", "label", "invoice_reference", "expense_on", "amount", "supplier",
@@ -541,8 +550,8 @@ def expense_detail(request, school_id, expense_id):
         ).first()
         if not row:
             return fail("Dépense introuvable.", 404)
-        if row.approved_at or not open_year(row.year):
-            return fail("Dépense déjà approuvée ou exercice clôturé.", 409)
+        if row.approved_at or row.workflow_state not in ("draft", "rejected") or not open_year(row.year):
+            return fail("Demande soumise/approuvée ou exercice clôturé : modification refusée.", 409)
         if row.revision != data["revision"]:
             return fail("Demande modifiée par un autre agent.", 409)
         try:
@@ -572,6 +581,12 @@ def expense_detail(request, school_id, expense_id):
                     school, data, existing=row,
                 ).items():
                     setattr(row, field, value)
+            if row.workflow_state == "rejected":
+                # Revising a refused request opens a new draft. Rejection evidence
+                # remains append-only in OperatingExpenseDecision.
+                row.workflow_state = "draft"
+                row.submitted_by = None
+                row.submitted_at = None
             row.full_clean()
         except LookupError as exc:
             return fail(str(exc), 404)
@@ -611,10 +626,11 @@ def approve_expense(request, school_id, expense_id):
         ).first()
         if not budget or not row:
             return fail("Dépense introuvable.", 404)
-        if not open_year(row.year) or not budget.approved_at or row.approved_at or row.revision != data["revision"]:
-            return fail("Dépense déjà approuvée, modifiée ou année clôturée.", 409)
-        if request.user.pk == row.prepared_by_id:
-            return fail("Le préparateur ne peut approuver sa propre dépense.", 403)
+        if request.user.pk in (row.prepared_by_id, row.submitted_by_id):
+            return fail("La validation exige un contrôleur distinct du préparateur et du soumissionnaire.", 403)
+        if (not open_year(row.year) or not budget.approved_at or row.approved_at or
+                row.workflow_state != "submitted" or row.revision != data["revision"]):
+            return fail("Dépense non soumise, déjà traitée, modifiée ou exercice clôturé.", 409)
         if row.activity_pole not in ACTIVE_ACTIVITY_POLES:
             return fail("Classez cette dépense par activité avant approbation.", 409)
         if not row.category_ref_id:
@@ -625,10 +641,12 @@ def approve_expense(request, school_id, expense_id):
             return fail("Budget insuffisant : la dépense dépasse les fonds non engagés.", 409)
         row.approved_by = request.user
         row.approved_at = timezone.now()
+        row.workflow_state = "approved"
         row.revision += 1
         row.full_clean()
         row.save()
-        log_event(school, request, "operating_expense_approved", row.pk)
+        from .operating_workflow_views import record_decision
+        record_decision(school, request, row, "approved")
     return result(expense_data(row))
 
 
