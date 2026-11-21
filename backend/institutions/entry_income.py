@@ -190,8 +190,10 @@ def fee_entries_by_category(school, year, as_of=None):
             **{key: money(value) if isinstance(value, Decimal) else value
                for key, value in totals.items()},
         })
+    from .entry_receivables import category_receivables
     return {
         "rows": rows, "details": details,
+        "receivables": category_receivables(school, year, today),
         "revenue_certified": False,
         "note": (
             "Ventilation des frais facturés et règlements manuels enregistrés. "
