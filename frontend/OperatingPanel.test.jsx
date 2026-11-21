@@ -44,12 +44,26 @@ test("lecteur dépenses : budgets et règlements visibles, boutons de mutation m
   );
 });
 
+test("la ventilation et le filtre des sorties restent propres au module dépenses",async()=>{
+  const fetch=fakeBackend();vi.stubGlobal("fetch",fetch);
+  const user=userEvent.setup();
+  render(<OperatingPanel schoolId="school-1" workingYearId="year-1"/>);
+  expect(await screen.findByText("Ventilation des sorties par activité")).toBeTruthy();
+  await user.selectOptions(screen.getByLabelText("Filtrer les dépenses par activité"),"extraschool");
+  await waitFor(()=>expect(fetch.mock.calls.some(([url,opts])=>
+    url.includes("/operating/expenses?year=year-1&activity_pole=extraschool")&&opts?.method==="GET"
+  )).toBe(true));
+  expect(screen.queryByRole("button",{name:"Enregistrer la classification"})).toBeNull();
+});
+
 test("le comptable peut proposer un fournisseur, sans pouvoir approuver les budgets",async()=>{
   const fetch=fakeBackend();vi.stubGlobal("fetch",fetch);
   document.cookie="csrftoken=operating-test";
   render(<OperatingPanel schoolId="school-1" workingYearId="year-1" canManage/>);
   const user=userEvent.setup();
   await screen.findByText("Réparation tableau");
+  expect(screen.getByLabelText("Pôle financier")).toBeTruthy();
+  await user.selectOptions(screen.getByLabelText("Pôle financier"),"school");
   await user.type(screen.getByLabelText("Nom fournisseur"),"Fournisseur TEST nouveau");
   await user.click(screen.getByRole("button",{name:"Ajouter un fournisseur"}));
   await waitFor(()=>expect(fetch.mock.calls.some(([url,opts])=>
