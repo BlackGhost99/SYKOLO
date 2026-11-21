@@ -57,3 +57,142 @@ def admission_cash_income(school, year, as_of=None):
             is_demo=False, void__isnull=True, received_on__gt=today,
         ).count(),
     }
+
+
+# Only explicit tariff-code conventions have an automatic category. Ambiguous
+# codes are preserved in "a_classer" so an administrator can map them later.
+EXTRASCOLAIRE_CODES = frozenset({
+    "cantine", "transport", "uniforme", "restauration",
+    "club", "activite", "sport", "sortie", "internat", "navette",
+})
+CATEGORIES = (
+    ("scolarite", "Scolarité"),
+    ("inscription_registre", "Inscription — frais liés aux élèves"),
+    ("extrascolaire", "Extrascolaire"),
+    ("a_classer", "Autres frais à classer"),
+    ("demo", "Démonstration — hors recettes réelles"),
+)
+
+
+def _category(code, charge_label="", method=""):
+    """Classify only explicit fee codes; never infer from a display label."""
+    from .finance_evidence import explicit_demo
+
+    key = (code or "").strip().lower().replace("_", "-")
+    frozen_label = (charge_label or "").strip().lower()
+    bracketed_demo = frozen_label.startswith(("[démo]", "[demo]"))
+    if key.startswith("demo-") or method == "simulation" or explicit_demo(charge_label) or bracketed_demo:
+        return "demo"
+    if key == "scolarite" or key.startswith(("scol-", "scolarite-", "tuition-")):
+        return "scolarite"
+    if key == "inscription" or key.startswith(("ins-", "inscription-")):
+        return "inscription_registre"
+    if any(key == prefix or key.startswith(prefix + "-") for prefix in EXTRASCOLAIRE_CODES):
+        return "extrascolaire"
+    return "a_classer"
+
+
+def fee_entries_by_category(school, year, as_of=None):
+    """Assessed fees and non-void manual payments by origin, read-only.
+
+    No PSP/admissions source is added here. Each payment belongs to exactly one
+    category and currency. The cash evidence is *declared*, never certified.
+    """
+    from collections import defaultdict
+    from django.db.models import Count, F
+
+    from .finance_models import FeeCharge, FeePayment
+    from .finance_evidence import classify_payment
+
+    if year is None:
+        return {"rows": [], "details": [], "note": "Aucune année scolaire sélectionnée."}
+
+    today = as_of or timezone.localdate()
+    start_month = today.replace(day=1)
+    values = defaultdict(lambda: {
+        "billed": Decimal("0.00"), "paid": Decimal("0.00"),
+        "paid_today": Decimal("0.00"), "paid_month": Decimal("0.00"),
+        "charges": 0, "payments": 0, "legacy_cash_unverified": Decimal("0.00"),
+        "other_declared": Decimal("0.00"), "explicit_demo": Decimal("0.00"),
+    })
+    labels = dict(CATEGORIES)
+
+    def money(value):
+        return str(value.quantize(Decimal("0.01")))
+
+    charges = FeeCharge.objects.filter(
+        school=school, enrollment__school=school,
+        enrollment__year=year, schedule__school=school, schedule__year=year,
+    )
+    for item in charges.values("schedule__code", "currency", "label").annotate(
+        billed=Sum(F("amount") - F("scholarship_discount")),
+        count=Count("pk"),
+    ):
+        code = item["schedule__code"]
+        category = _category(code, item["label"])
+        totals = values[(category, item["currency"], code)]
+        totals["billed"] += item["billed"] or Decimal("0.00")
+        totals["charges"] += item["count"]
+
+    payments = FeePayment.objects.filter(
+        school=school, charge__school=school, charge__enrollment__school=school,
+        charge__enrollment__year=year, charge__schedule__school=school,
+        charge__schedule__year=year, void__isnull=True,
+    )
+    # Group by date, method and frozen label so demo evidence is not lost
+    # when a FeeSchedule changes after the original posting.
+    for item in payments.values(
+        "charge__schedule__code", "charge__label", "currency", "method", "paid_on",
+    ).annotate(paid=Sum("amount"), count=Count("pk")):
+        code = item["charge__schedule__code"]
+        category = _category(code, item["charge__label"], item["method"])
+        totals = values[(category, item["currency"], code)]
+        paid = item["paid"] or Decimal("0.00")
+        totals["paid"] += paid
+        totals["payments"] += item["count"]
+        if item["paid_on"] == today:
+            totals["paid_today"] += paid
+        if start_month <= item["paid_on"] <= today:
+            totals["paid_month"] += paid
+        evidence = classify_payment(item["method"], item["charge__label"])
+        evidence_name = (
+            "explicit_demo" if category == "demo" or evidence == "simulation" else
+            "legacy_cash_unverified" if evidence == "legacy_unverified" else
+            "other_declared"
+        )
+        totals[evidence_name] += paid
+
+    summary = defaultdict(lambda: {
+        "billed": Decimal("0.00"), "paid": Decimal("0.00"),
+        "paid_today": Decimal("0.00"), "paid_month": Decimal("0.00"),
+        "charges": 0, "payments": 0, "legacy_cash_unverified": Decimal("0.00"),
+        "other_declared": Decimal("0.00"), "explicit_demo": Decimal("0.00"),
+    })
+    details = []
+    for (category, currency, code), totals in sorted(values.items()):
+        subtotal = summary[(category, currency)]
+        for key, value in totals.items():
+            subtotal[key] += value
+        details.append({
+            "category": category, "currency": currency, "fee_code": code,
+            "label": labels[category],
+            **{key: money(value) if isinstance(value, Decimal) else value
+               for key, value in totals.items()},
+        })
+    rows = []
+    for (category, currency), totals in sorted(summary.items()):
+        rows.append({
+            "category": category, "label": labels[category], "currency": currency,
+            "revenue_certified": False,
+            **{key: money(value) if isinstance(value, Decimal) else value
+               for key, value in totals.items()},
+        })
+    return {
+        "rows": rows, "details": details,
+        "revenue_certified": False,
+        "note": (
+            "Ventilation des frais facturés et règlements manuels enregistrés. "
+            "Les inscriptions en espèces de la caisse sont un registre séparé, "
+            "non cumulable sans rapprochement. Aucun montant n'est certifié."
+        ),
+    }

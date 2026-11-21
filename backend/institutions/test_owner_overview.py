@@ -11,6 +11,8 @@ from .academic_models import AcademicClass, AcademicCycle, AcademicLevel, Academ
 from .admission_models import AdmissionApplication
 from .finance_models import FeeCharge, FeePayment, FeePaymentVoid, FeeSchedule
 from .parent_payment_models import AdmissionCashReceipt, AdmissionCashReceiptVoid
+from .entry_income import _category
+from .finance_evidence import explicit_demo
 from .models import Organization, OrganizationMember, School, SchoolAudit, SchoolMember, SchoolRole
 from .services import OWNER_ROLE_TEMPLATE, ROLE_TEMPLATES
 from .staff_models import StaffRecord, StaffAssignment
@@ -234,6 +236,71 @@ class OwnerOverviewTests(TestCase):
         self.assertEqual(fee["paid"], "50000.00")
         for secret in ("Simulation Exclue", "Autre École"):
             self.assertNotIn(secret, response.content.decode())
+
+
+    def test_owner_income_categories_separate_scolarite_extrascolaire_and_unknown_codes(self):
+        self.client.force_login(self.owner)
+        initial = self.client.get(self.url)
+        self.assertEqual(initial.status_code, 200, initial.content)
+        rows = {
+            (row["category"], row["currency"]): row
+            for row in initial.json()["finance"]["fee_income_categories"]["rows"]
+        }
+        self.assertEqual(rows[("scolarite", "XAF")]["billed"], "120000.00")
+        self.assertEqual(rows[("scolarite", "XAF")]["paid"], "50000.00")
+        self.assertEqual(rows[("extrascolaire", "USD")]["billed"], "30.00")
+        self.assertEqual(rows[("extrascolaire", "USD")]["paid"], "0.00")
+        self.assertFalse(initial.json()["finance"]["fee_income_categories"]["revenue_certified"])
+
+        charge = FeeCharge.objects.get(school=self.school, currency="XAF")
+        unknown = FeeSchedule.objects.create(
+            school=self.school, year=self.year, code="frais-a-verifier",
+            label="Libellé sans classement", currency="XAF",
+            amount=Decimal("3000"), due_date=timezone.localdate(),
+        )
+        other_charge = FeeCharge.objects.create(
+            school=self.school, enrollment=charge.enrollment, schedule=unknown,
+            label="Libellé sans classement", currency="XAF", amount=Decimal("3000"),
+            due_date=timezone.localdate(),
+        )
+        FeePayment.objects.create(
+            school=self.school, charge=other_charge, amount=Decimal("1000"),
+            currency="XAF", method="especes", paid_on=timezone.localdate(),
+            idempotency_key=uuid4(), recorded_by=self.director,
+        )
+        FeePayment.objects.create(
+            school=self.school, charge=charge, amount=Decimal("5000"),
+            currency="XAF", method="simulation", paid_on=timezone.localdate(),
+            idempotency_key=uuid4(), recorded_by=self.director,
+        )
+        classified = self.client.get(self.url).json()["finance"]["fee_income_categories"]
+        rows = {(row["category"], row["currency"]): row for row in classified["rows"]}
+        self.assertEqual(rows[("scolarite", "XAF")]["paid"], "50000.00")
+        self.assertEqual(rows[("demo", "XAF")]["paid"], "5000.00")
+        self.assertEqual(rows[("a_classer", "XAF")]["billed"], "3000.00")
+        self.assertEqual(rows[("a_classer", "XAF")]["paid"], "1000.00")
+        self.assertIn(
+            "frais-a-verifier",
+            [d["fee_code"] for d in classified["details"] if d["category"] == "a_classer"],
+        )
+        # Every non-void posted transaction is represented exactly once.
+        self.assertEqual(
+            sum(Decimal(row["paid"]) for row in classified["rows"] if row["currency"] == "XAF"),
+            Decimal("56000.00"),
+        )
+        original = self.client.get(self.url).json()["finance"]["currencies"]
+        self.assertEqual(next(x for x in original if x["currency"] == "XAF")["paid"], "56000.00")
+        self.assertTrue(self.client.get(self.url)["Cache-Control"].startswith("no-store"))
+
+    def test_income_category_defaults_never_assume_crèche_is_extrascolaire(self):
+        self.assertEqual(_category("garderie"), "a_classer")
+        self.assertEqual(_category("transport"), "extrascolaire")
+        self.assertEqual(_category("DEMO-SCOL-202611"), "demo")
+        self.assertEqual(_category("scolarite-2026-11", "[DÉMO] Scolarité"), "demo")
+        self.assertTrue(explicit_demo("[DÉMO] Scolarité 11/2026"))
+        self.assertFalse(explicit_demo("Scolarité ordinaire"))
+        self.assertEqual(_category("SCOL-202611"), "scolarite")
+        self.assertEqual(_category("INS-2026"), "inscription_registre")
 
     def test_real_founder_without_director_role_may_monitor(self):
         self.client.force_login(self.founder)
