@@ -2,6 +2,7 @@ import {ContextTarget} from "./ContextMenu.jsx";
 import React, {useEffect, useState} from "react";
 import AdmissionCashDesk from "./AdmissionCashDesk.jsx";
 import MonthlyTariffSetup from "./MonthlyTariffSetup.jsx";
+import IncomeFeeCategoryPanel from "./IncomeFeeCategoryPanel.jsx";
 
 async function financeApi(url, body, method) {
   if (body !== undefined) await fetch("/api/v1/auth/csrf", {credentials:"same-origin"});
@@ -211,6 +212,7 @@ export default function FinancePanel({schoolId, mode = "all", workingYearId="", 
         const result=await financeApi(finance+"schedules/monthly",payload);
         setMessage(result.created+" mensualité(s) créée(s), "+result.unchanged+" déjà présente(s). Aucun frais élève modifié.");
       })}/>}
+    {settings && canManage && <IncomeFeeCategoryPanel schoolId={schoolId} schedules={schedules} yearId={selectedYear}/>}
     {settings ? <div>
       <h3>Tarifs enregistrés</h3>
       {schedules.length === 0 && <p>Aucun tarif configuré.</p>}

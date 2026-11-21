@@ -68,6 +68,7 @@ EXTRASCOLAIRE_CODES = frozenset({
 CATEGORIES = (
     ("scolarite", "Scolarité"),
     ("inscription_registre", "Inscription — frais liés aux élèves"),
+    ("autre_scolaire", "Autres obligations scolaires"),
     ("extrascolaire", "Extrascolaire"),
     ("a_classer", "Autres frais à classer"),
     ("demo", "Démonstration — hors recettes réelles"),
@@ -103,6 +104,7 @@ def fee_entries_by_category(school, year, as_of=None):
 
     from .finance_models import FeeCharge, FeePayment
     from .finance_evidence import classify_payment
+    from .entry_category_policy import fee_category_overrides, resolved_fee_category
 
     if year is None:
         return {"rows": [], "details": [], "note": "Aucune année scolaire sélectionnée."}
@@ -116,6 +118,7 @@ def fee_entries_by_category(school, year, as_of=None):
         "other_declared": Decimal("0.00"), "explicit_demo": Decimal("0.00"),
     })
     labels = dict(CATEGORIES)
+    overrides = fee_category_overrides(school)
 
     def money(value):
         return str(value.quantize(Decimal("0.01")))
@@ -124,12 +127,12 @@ def fee_entries_by_category(school, year, as_of=None):
         school=school, enrollment__school=school,
         enrollment__year=year, schedule__school=school, schedule__year=year,
     )
-    for item in charges.values("schedule__code", "currency", "label").annotate(
+    for item in charges.values("schedule_id", "schedule__code", "currency", "label").annotate(
         billed=Sum(F("amount") - F("scholarship_discount")),
         count=Count("pk"),
     ):
         code = item["schedule__code"]
-        category = _category(code, item["label"])
+        category = resolved_fee_category(item["schedule_id"], code, item["label"], overrides=overrides)
         totals = values[(category, item["currency"], code)]
         totals["billed"] += item["billed"] or Decimal("0.00")
         totals["charges"] += item["count"]
@@ -142,10 +145,10 @@ def fee_entries_by_category(school, year, as_of=None):
     # Group by date, method and frozen label so demo evidence is not lost
     # when a FeeSchedule changes after the original posting.
     for item in payments.values(
-        "charge__schedule__code", "charge__label", "currency", "method", "paid_on",
+        "charge__schedule_id", "charge__schedule__code", "charge__label", "currency", "method", "paid_on",
     ).annotate(paid=Sum("amount"), count=Count("pk")):
         code = item["charge__schedule__code"]
-        category = _category(code, item["charge__label"], item["method"])
+        category = resolved_fee_category(item["charge__schedule_id"], code, item["charge__label"], item["method"], overrides=overrides)
         totals = values[(category, item["currency"], code)]
         paid = item["paid"] or Decimal("0.00")
         totals["paid"] += paid
