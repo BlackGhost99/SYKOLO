@@ -656,3 +656,78 @@ class OperatingLedgerTests(TestCase):
         }).status_code, 409)
         self.login("econome")
         self.assertEqual(self.pay(expense["id"]).status_code, 409)
+
+    def test_default_catalog_preview_is_read_only_and_full_import_idempotent(self):
+        preview = self.get("catalog-defaults")
+        self.assertEqual(preview.status_code, 200, preview.content)
+        self.assertEqual(preview.json()["total_families"], 20)
+        self.assertEqual(preview.json()["total_subcategories"], 211)
+        self.assertEqual(OperatingExpenseCategory.objects.filter(school=self.school).count(), 2)
+
+        chosen = ["b%02d" % n for n in range(1, 21)]
+        installed = self.post("catalog-defaults", {
+            "families": chosen, "include_subcategories": True,
+        })
+        self.assertEqual(installed.status_code, 200, installed.content)
+        self.assertEqual(installed.json()["created_families"], 20)
+        self.assertEqual(installed.json()["created_subcategories"], 211)
+        self.assertEqual(
+            OperatingExpenseCategory.objects.filter(school=self.school).count(), 233,
+        )
+        self.assertFalse(OperatingExpenseCategory.objects.filter(school=self.other).exists())
+        again = self.post("catalog-defaults", {
+            "families": chosen, "include_subcategories": True,
+        })
+        self.assertEqual(again.status_code, 200, again.content)
+        self.assertTrue(again.json()["idempotent"])
+        self.assertEqual(OperatingExpenseCategory.objects.filter(school=self.school).count(), 233)
+
+    def test_default_catalog_preserves_customized_names_and_archives(self):
+        selected = {"families": ["b07"], "include_subcategories": True}
+        self.assertEqual(self.post("catalog-defaults", selected).status_code, 200)
+        root = OperatingExpenseCategory.objects.get(school=self.school, code="b07")
+        self.assertEqual(root.name, "Matériel pédagogique")
+        root.name = "Équipements de formation personnalisés"
+        root.save(update_fields=["name"])
+        child = OperatingExpenseCategory.objects.filter(school=self.school, parent=root).first()
+        child.active = False
+        child.save(update_fields=["active"])
+        again = self.post("catalog-defaults", selected)
+        self.assertEqual(again.status_code, 200, again.content)
+        self.assertTrue(again.json()["idempotent"])
+        root.refresh_from_db()
+        child.refresh_from_db()
+        self.assertEqual(root.name, "Équipements de formation personnalisés")
+        self.assertFalse(child.active)
+        self.assertEqual(OperatingExpenseCategory.objects.filter(school=self.school, parent=root).count(), 10)
+
+    def test_default_catalog_refuses_conflicts_without_partial_write(self):
+        OperatingExpenseCategory.objects.create(
+            school=self.school, parent=self.category,
+            code="b08", name="Ancien sous-catalogue personnalisé",
+        )
+        response = self.post("catalog-defaults", {
+            "families": ["b07", "b08"], "include_subcategories": True,
+        })
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertFalse(OperatingExpenseCategory.objects.filter(school=self.school, code="b07").exists())
+        self.assertFalse(OperatingExpenseCategory.objects.filter(school=self.school, code__startswith="b07_").exists())
+
+    def test_default_catalog_is_permissioned_and_selection_is_validated(self):
+        initial = OperatingExpenseCategory.objects.filter(school=self.school).count()
+        for bad in ([], ["b00"], ["b07", "b07"], "b07", [1]):
+            self.assertEqual(self.post("catalog-defaults", {"families": bad}).status_code, 422)
+        self.assertEqual(self.post("catalog-defaults", {
+            "families": ["b07"], "include_subcategories": "true",
+        }).status_code, 422)
+        self.assertEqual(OperatingExpenseCategory.objects.filter(school=self.school).count(), initial)
+        self.login("direction")
+        self.assertEqual(self.get("catalog-defaults").status_code, 200)
+        self.assertEqual(self.post("catalog-defaults", {"families": ["b07"]}).status_code, 403)
+        self.login("enseignant")
+        self.assertEqual(self.get("catalog-defaults").status_code, 403)
+        self.login(self.outsider)
+        self.assertEqual(self.client.get(
+            "/api/v1/schools/"+str(self.school.pk)+"/operating/catalog-defaults",
+        ).status_code, 404)
+

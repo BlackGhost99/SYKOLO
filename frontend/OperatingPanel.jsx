@@ -43,6 +43,9 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const [suppliers,setSuppliers]=useState([]);
   const [categories,setCategories]=useState([]);
   const [showCatalog,setShowCatalog]=useState(false);
+  const [confirmCatalogImport,setConfirmCatalogImport]=useState(false);
+  const [catalogSearch,setCatalogSearch]=useState("");
+  const [showEntireCatalog,setShowEntireCatalog]=useState(false);
   const [categoryForm,setCategoryForm]=useState({code:"",name:"",parent:"",suggested_pole:""});
   const [editingCategory,setEditingCategory]=useState(null);
   const [archiveTarget,setArchiveTarget]=useState("");
@@ -114,6 +117,18 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       return result;
     }catch(e){setError(e.message);return null;}
     finally{setBusy(false);}
+  }
+  async function installDefaultCatalog(){
+    const families=Array.from({length:20},(_,i)=>"b"+String(i+1).padStart(2,"0"));
+    const installed=await op(()=>request(root+"catalog-defaults","POST",{
+      families,include_subcategories:true,
+    }),"Catalogue proposé installé sans supprimer ni réactiver vos fiches existantes.");
+    setConfirmCatalogImport(false);
+    if(installed)setMessage(
+      "Catalogue : "+installed.created_families+" familles et "+
+      installed.created_subcategories+" sous-catégories ajoutées. "+
+      "Les catégories existantes ont été préservées."
+    );
   }
   async function addSupplier(event){
     event.preventDefault();
@@ -266,6 +281,13 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     }),item.active?"Catégorie archivée sans supprimer les opérations.":"Catégorie réactivée.");
     if(saved)setArchiveTarget("");
   }
+  const filteredCategories=categories.filter(c=>{
+    const term=catalogSearch.trim().toLocaleLowerCase("fr");
+    if(!term)return true;
+    const parent=categories.find(p=>p.id===c.parent);
+    return [c.code,c.name,parent?.name||""].some(x=>x.toLocaleLowerCase("fr").includes(term));
+  });
+  const displayedCategories=showEntireCatalog?filteredCategories:filteredCategories.slice(0,60);
   const categoryRoots=categories.filter(c=>!c.parent);
   const activeRoots=categoryRoots.filter(c=>c.active);
   const selectableSubs=(parentId)=>categories.filter(c=>c.parent===parentId&&c.active);
@@ -305,8 +327,21 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     </div>
     {showCatalog&&<Card title="Catalogue de dépenses" icon="idcard"
       subtitle="Catégories et sous-catégories personnalisables par établissement. Archivage sans suppression.">
+      {canManage&&<div className="actions">
+        {!confirmCatalogImport?
+          <Button disabled={busy} onClick={()=>setConfirmCatalogImport(true)}>Installer les familles B01 à B20</Button>:
+          <>
+            <p role="status">Importer 20 familles et 211 sous-catégories du cahier, sans modifier les fiches existantes ?</p>
+            <Button primary disabled={busy} onClick={installDefaultCatalog}>Confirmer l'installation</Button>
+            <Button disabled={busy} onClick={()=>setConfirmCatalogImport(false)}>Annuler</Button>
+          </>}
+      </div>}
+      <p className="hint">Ce modèle est facultatif : tous les libellés restent personnalisables. Aucune catégorie archivée ne sera réactivée automatiquement.</p>
+      <label className="field">Rechercher une catégorie<input value={catalogSearch}
+        onChange={e=>{setCatalogSearch(e.target.value);setShowEntireCatalog(false);}}
+        placeholder="Famille, code, sous-catégorie"/></label>
       {categories.length>0&&<Table headers={["Code","Catégorie / sous-catégorie","Pôle suggéré","État","Actions"]}
-        rows={categories.map(item=>[
+        rows={displayedCategories.map(item=>[
           item.code,(item.parent?"↳ ":"")+item.name,
           POLE_LABELS[item.suggested_pole]||"Non défini",
           <Status tone={item.active?"green":"gray"}>{item.active?"Active":"Archivée"}</Status>,
@@ -320,7 +355,10 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
               <Button className="small" disabled={busy} onClick={()=>setArchiveTarget(item.id)}>{item.active?"Archiver":"Réactiver"}</Button>}
           </div>:"—",
         ])}/>}
-      {!categories.length&&<p>Ce catalogue est vide. Les catégories proposées dans les exemples ne sont pas créées automatiquement.</p>}
+      {filteredCategories.length>60&&!showEntireCatalog&&<Button onClick={()=>setShowEntireCatalog(true)}>
+        Voir les {filteredCategories.length} catégories et sous-catégories
+      </Button>}
+      {!categories.length&&<p>Ce catalogue est vide. Vous pouvez installer les familles du cahier ou créer vos propres catégories.</p>}
       {canManage&&<form onSubmit={addCategory}>
         <div className="two">
           <label className="field">Code catégorie / sous-catégorie<input required maxLength={40} pattern="[a-z][a-z0-9_-]*"
