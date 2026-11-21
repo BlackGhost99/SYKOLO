@@ -21,6 +21,7 @@ const expense={id:"exp-1",year:"year-1",budget:"bud-1",category:"Énergie",curre
 function fakeBackend(item=expense, listInfo={}){
   return vi.fn(async (url,opts={})=>{
     if(url==="/api/v1/auth/csrf")return Response.json({ok:true});
+    if(url.endsWith("/operating/catalog-defaults")&&opts.method==="POST")return Response.json({created_families:20,created_subcategories:211,idempotent:false});
     if(opts.method==="POST")return Response.json({...supplier,id:"sup-2"},{status:201});
     if(opts.method==="PATCH")return Response.json({...catalog[0],revision:2});
     if(url.includes("/operating/categories"))return Response.json({categories:catalog});
@@ -191,4 +192,25 @@ test("le comptable peut proposer un fournisseur, sans pouvoir approuver les budg
     JSON.parse(opts.body).name==="Fournisseur TEST nouveau"
   )).toBe(true));
   expect(screen.queryByRole("button",{name:"Approuver"})).toBeNull();
+});
+
+test("import explicite du catalogue B01-B20 sans toucher aux recettes",async()=>{
+  const fetch=fakeBackend();vi.stubGlobal("fetch",fetch);
+  document.cookie="csrftoken=operating-test";
+  const user=userEvent.setup();
+  render(<OperatingPanel schoolId="school-1" workingYearId="year-1" canManage/>);
+  await user.click(screen.getByRole("button",{name:"Configurer les catégories de dépenses"}));
+  expect(screen.getByRole("button",{name:"Installer les familles B01 à B20"})).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"Installer les familles B01 à B20"}));
+  expect(fetch.mock.calls.some(([url,options])=>
+    url.endsWith("/operating/catalog-defaults")&&options?.method==="POST"
+  )).toBe(false);
+  await user.click(screen.getByRole("button",{name:"Confirmer l'installation"}));
+  await waitFor(()=>expect(fetch.mock.calls.some(([url,options])=>{
+    if(!url.endsWith("/operating/catalog-defaults")||options?.method!=="POST")return false;
+    const data=JSON.parse(options.body);
+    return data.include_subcategories===true&&data.families.length===20&&
+      data.families.includes("b01")&&data.families.includes("b20");
+  })).toBe(true));
+  expect(fetch.mock.calls.every(([url])=>!String(url).includes("/finance/charges"))).toBe(true);
 });
