@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import {afterEach,expect,test,vi} from "vitest";
-import {cleanup,render,screen,waitFor} from "@testing-library/react";
+import {cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import IncomeTransactionExplorer from "./IncomeTransactionExplorer.jsx";
 
@@ -45,4 +45,32 @@ test("un échec serveur ne révèle aucune transaction",async()=>{
   await user.click(screen.getByRole("button",{name:"Voir les transactions de transport"}));
   expect((await screen.findByRole("alert")).textContent).toContain("Accès financier refusé");
   expect(screen.queryByRole("link",{name:"Voir le reçu PDF"})).toBeNull();
+});
+
+test("filtre les dates sans exposer de données puis prépare un export CSV protégé",async()=>{
+  const fetcher=vi.fn(async()=>Response.json({total:1,page:1,pages:1,rows:[{
+    id:"receipt-1",date:"2026-11-20",amount:"15000.00",currency:"XAF",
+    method:"especes",evidence:"manual_record",
+    receipt_url:"/api/v1/schools/school/finance/payments/receipt-1/receipt",
+  }]}));
+  vi.stubGlobal("fetch",fetcher);
+  const user=userEvent.setup();
+  render(<IncomeTransactionExplorer schoolId="school" yearId="year"
+    category="scolarite" currency="XAF" feeCode="SCOL-202611"/>);
+  await user.click(screen.getByRole("button",{name:"Voir les transactions de SCOL-202611"}));
+  const exportLink=await screen.findByRole("link",{name:/Exporter les règlements filtrés en CSV/});
+  expect(exportLink.getAttribute("href")).toContain("format=csv");
+  fireEvent.change(screen.getByLabelText("Début de période"),{target:{value:"2026-11-20"}});
+  fireEvent.change(screen.getByLabelText("Fin de période"),{target:{value:"2026-11-20"}});
+  await waitFor(()=>expect(fetcher.mock.calls.some(([url])=>{
+    const params=new URLSearchParams(String(url).split("?")[1]);
+    return params.get("from")==="2026-11-20"&&params.get("to")==="2026-11-20";
+  })).toBe(true));
+  expect(screen.getByRole("link",{name:/Exporter les règlements filtrés en CSV/})
+    .getAttribute("href")).toContain("from=2026-11-20");
+  fireEvent.change(screen.getByLabelText("Début de période"),{target:{value:"2026-11-21"}});
+  expect(screen.getByRole("alert").textContent).toContain("La date de début doit précéder");
+  expect(screen.queryByRole("link",{name:/Exporter les règlements filtrés en CSV/})).toBeNull();
+  await user.click(screen.getByRole("button",{name:"Effacer les dates"}));
+  expect(screen.getByLabelText("Début de période").value).toBe("");
 });
