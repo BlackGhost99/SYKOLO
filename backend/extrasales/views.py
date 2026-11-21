@@ -157,11 +157,10 @@ def sales(request, school_id):
                 expected_revision=data["catalog_revision"],
                 catalog_items=catalog, selections=data["items"],
             )
-            # Inventory management is a distinct feature. Never pretend to
-            # have stock and sell physical items before stock control exists.
-            if any(line["kind"] != "service" for line in snap["lines"]):
-                raise ExtrasSaleRuleError(
-                    "Ventes de produits bloquées jusqu'à activation du contrôle de stock.")
+            # Physical sales require BOTH write flags and an atomic stock deduction.
+            has_physical_goods = any(line["kind"] == "produit" for line in snap["lines"])
+            if has_physical_goods and not getattr(settings, "YEM_EXTRA_STOCK_WRITES_ENABLED", False):
+                raise ExtrasSaleRuleError("Ventes physiques désactivées jusqu'à validation du stock.")
             sale = ExtraSale.objects.create(
                 school=school, year=year, reference="EX-" + uuid.uuid4().hex[:16].upper(),
                 buyer_label=label.strip(), currency=snap["currency"],
@@ -175,6 +174,14 @@ def sales(request, school_id):
                               line_total=Decimal(line["line_total"]))
                 for number, line in enumerate(snap["lines"], start=1)
             ])
+            if has_physical_goods:
+                from .inventory import reserve_product_stock
+                try:
+                    reserve_product_stock(
+                        school=school, snap_lines=snap["lines"], sale=sale, actor=request.user
+                    )
+                except ValueError as exc:
+                    raise ExtrasSaleRuleError(str(exc)) from exc
             SchoolAudit.objects.create(
                 school=school, actor=request.user, event="extras_sale_confirmed",
                 subject=str(sale.pk),
