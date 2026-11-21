@@ -79,7 +79,7 @@ export default function OwnerDashboard({schoolId,schoolName="",onNavigate,workin
       ])}/>
     : <p className="hint">Aucun frais enregistré pour cette année scolaire.</p>;
   const reconciliationTable=finance.length
-    ? <Table headers={["Devise","Simulations identifiées","Ancien cash à justifier","Autres montants déclarés"]}
+    ? <Table headers={["Devise","Simulations identifiées","Espèces historiques à justifier","Autres montants déclarés"]}
       rows={finance.map(row=>[
         row.currency,
         amount(row.evidence?.explicit_demo||"0.00",row.currency),
