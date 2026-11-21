@@ -3,7 +3,7 @@ on:
   push:
     branches: [main, staging, "feat/**"]
   pull_request:
-    branches: [main]
+    branches: [main, "feat/yem-sorties-b3d-demandes-scolaires-20261121"]
 # Multiple YEM conversations can push the same branch repeatedly.
 # Keep the newest verification, never cancel another branch's workflow.
 concurrency:
