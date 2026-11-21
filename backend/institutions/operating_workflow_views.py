@@ -10,6 +10,7 @@ from .operating_models import (
     OperatingExpense, OperatingExpenseDecision, ACTIVE_ACTIVITY_POLES,
 )
 from .operating_views import body, expense_data, fail, gate, open_year, result, txt, validation
+from .operating_classification_service import pole_label
 from .views import log_event
 
 
@@ -35,6 +36,16 @@ def record_decision(school, request, expense, action, reason=""):
 def validate_submission(row):
     if row.activity_pole not in ACTIVE_ACTIVITY_POLES:
         return "Classez cette demande par activité avant soumission."
+    try:
+        pole_label(row.school, row.activity_pole)
+    except ValueError as exc:
+        return str(exc)
+    if row.cost_center_ref_id:
+        center = row.cost_center_ref
+        if not center.active or (center.activity_pole and center.activity_pole != row.activity_pole):
+            return "Centre de coûts archivé ou incompatible avec le pôle."
+    if row.accounting_nature_ref_id and not row.accounting_nature_ref.active:
+        return "Nature comptable archivée : reclassez cette demande."
     if not row.category_ref_id or not row.category_ref.active:
         return "Une catégorie active de dépense est obligatoire."
     if row.subcategory_ref_id and not row.subcategory_ref.active:

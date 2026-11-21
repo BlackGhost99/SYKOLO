@@ -24,6 +24,19 @@ function fakeBackend(item=expense, listInfo={}){
     if(url.endsWith("/operating/catalog-defaults")&&opts.method==="POST")return Response.json({created_families:20,created_subcategories:211,idempotent:false});
     if(opts.method==="POST")return Response.json({...supplier,id:"sup-2"},{status:201});
     if(opts.method==="PATCH")return Response.json({...catalog[0],revision:2});
+    if(url.endsWith("/operating/classification"))return Response.json({
+      poles:[
+        {code:"school",label:"Scolarité",revision:0,active:true},
+        {code:"extraschool",label:"Extrascolarité",revision:0,active:true},
+        {code:"common",label:"Administration et charges communes",revision:0,active:true},
+        {code:"investment",label:"Investissements",revision:0,active:true},
+        {code:"cash_other",label:"Autres sorties de trésorerie",revision:0,active:true},
+      ],
+      centers:[{id:"center-1",kind:"cost_center",code:"pedagogie",name:"Pédagogie",
+        activity_pole:"school",active:true,revision:1}],
+      natures:[{id:"nature-1",kind:"accounting_nature",code:"charge",name:"Charge pédagogique",
+        activity_pole:"",active:true,revision:1}],
+    });
     if(url.includes("/operating/categories"))return Response.json({categories:catalog});
     if(url.includes("/operating/suppliers"))return Response.json({suppliers:[supplier]});
     if(url.includes("/operating/budgets"))return Response.json({budgets:[budget]});
@@ -213,4 +226,46 @@ test("import explicite du catalogue B01-B20 sans toucher aux recettes",async()=>
       data.families.includes("b01")&&data.families.includes("b20");
   })).toBe(true));
   expect(fetch.mock.calls.every(([url])=>!String(url).includes("/finance/charges"))).toBe(true);
+});
+
+test("B2 : centres et natures liés au pôle sans modifier les recettes",async()=>{
+  const fetch=fakeBackend();vi.stubGlobal("fetch",fetch);
+  document.cookie="csrftoken=operating-test";
+  const user=userEvent.setup();
+  render(<OperatingPanel schoolId="school-1" workingYearId="year-1" canManage/>);
+  await screen.findByText("Réparation tableau");
+  await user.selectOptions(screen.getByLabelText("Enveloppe approuvée"),"bud-1");
+  await user.selectOptions(screen.getByLabelText("Catégorie de la dépense"),"cat-1");
+  await user.selectOptions(screen.getByLabelText("Pôle financier"),"school");
+  await user.selectOptions(screen.getByLabelText("Centre de coûts"),"center-1");
+  await user.selectOptions(screen.getByLabelText("Nature comptable"),"nature-1");
+  await user.selectOptions(screen.getByLabelText("Fournisseur",{exact:true}),"sup-1");
+  await user.type(screen.getByLabelText("Objet de l'achat"),"Achat de livres test");
+  await user.type(screen.getByLabelText(/Montant demandé/),"5000");
+  await user.type(screen.getByLabelText("Référence facture/devis"),"DEVIS-B2");
+  await user.click(screen.getByRole("button",{name:"Préparer la demande"}));
+  await waitFor(()=>expect(fetch.mock.calls.some(([url,opts])=>{
+    if(!url.endsWith("/operating/expenses")||opts?.method!=="POST")return false;
+    const p=JSON.parse(opts.body);
+    return p.cost_center_ref==="center-1"&&p.accounting_nature_ref==="nature-1"&&p.activity_pole==="school";
+  })).toBe(true));
+  expect(fetch.mock.calls.every(([url])=>!String(url).includes("/finance/charges"))).toBe(true);
+});
+
+test("B2 : configuration des centres visible uniquement au gestionnaire",async()=>{
+  const fetch=fakeBackend();vi.stubGlobal("fetch",fetch);
+  document.cookie="csrftoken=operating-test";
+  const user=userEvent.setup();
+  render(<OperatingPanel schoolId="school-1" workingYearId="year-1" canManage/>);
+  await user.click(screen.getByRole("button",{name:"Configurer les catégories de dépenses"}));
+  expect(screen.getByText("S1 · school")).toBeTruthy();
+  await user.type(screen.getByLabelText("Code du centre de coûts"),"bibliotheque");
+  await user.type(screen.getByLabelText("Nom du centre de coûts"),"Bibliothèque");
+  await user.selectOptions(screen.getByLabelText("Pôle de rattachement"),"school");
+  await user.click(screen.getByRole("button",{name:"Ajouter un centre de coûts"}));
+  await waitFor(()=>expect(fetch.mock.calls.some(([url,opts])=>{
+    if(!url.endsWith("/operating/classification")||opts?.method!=="POST")return false;
+    const p=JSON.parse(opts.body);
+    return p.kind==="cost_center"&&p.code==="bibliotheque"&&p.activity_pole==="school";
+  })).toBe(true));
 });

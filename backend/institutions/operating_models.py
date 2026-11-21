@@ -64,6 +64,51 @@ class OperatingExpenseCategory(models.Model):
                 raise ValidationError("Une sous-catégorie active ne peut appartenir à une catégorie archivée.")
 
 
+CLASSIFICATION_OPTION_KINDS = (
+    ("pole", "Pôle d'activité"),
+    ("cost_center", "Centre de coûts"),
+    ("accounting_nature", "Nature comptable"),
+)
+
+
+class OperatingClassificationOption(models.Model):
+    """Editable per-school catalog for the five pole labels, centers and natures.
+
+    Pole CODES are stable contractual dimensions; schools can edit display
+    labels or archive a pole for future use, but never rewrite expense history.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey("institutions.School", on_delete=models.PROTECT)
+    kind = models.CharField(max_length=20, choices=CLASSIFICATION_OPTION_KINDS)
+    code = models.SlugField(max_length=40)
+    name = models.CharField(max_length=100)
+    activity_pole = models.CharField(max_length=20, blank=True, default="",
+                                     choices=(("", "Sans restriction"),) + ACTIVITY_POLES[1:])
+    active = models.BooleanField(default=True)
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "kind", "code"], name="uniq_yem_out_classification_option"
+            ),
+        ]
+
+    def clean(self):
+        if self.kind == "pole":
+            if self.code not in ACTIVE_ACTIVITY_POLES or self.activity_pole:
+                raise ValidationError("Code de pôle fixe ou rattachement invalide.")
+        elif self.kind == "cost_center":
+            if self.activity_pole and self.activity_pole not in ACTIVE_ACTIVITY_POLES:
+                raise ValidationError("Pôle de rattachement du centre invalide.")
+        elif self.kind == "accounting_nature":
+            if self.activity_pole:
+                raise ValidationError("Une nature comptable ne dépend pas du pôle d'activité.")
+        else:
+            raise ValidationError("Type de classification inconnu.")
+
+
 class OperatingSupplier(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey("institutions.School", on_delete=models.PROTECT)
@@ -125,6 +170,16 @@ class OperatingExpense(models.Model):
     activity_pole = models.CharField(max_length=20, choices=ACTIVITY_POLES, default="unclassified")
     cost_center = models.CharField(max_length=100, blank=True, default="")
     accounting_nature = models.CharField(max_length=100, blank=True, default="")
+    # Immutable text snapshots preserve former labels when options are renamed.
+    cost_center_ref = models.ForeignKey(
+        OperatingClassificationOption, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="center_expenses"
+    )
+    accounting_nature_ref = models.ForeignKey(
+        OperatingClassificationOption, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="nature_expenses"
+    )
+    activity_pole_label_snapshot = models.CharField(max_length=100, blank=True, default="")
     label = models.CharField(max_length=200)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     expense_on = models.DateField()
@@ -169,6 +224,16 @@ class OperatingExpense(models.Model):
                 self.subcategory_ref.parent_id != self.category_ref_id
             ):
                 raise ValidationError("Sous-catégorie étrangère à la catégorie de dépenses.")
+        if self.cost_center_ref_id:
+            option = self.cost_center_ref
+            if option.school_id != self.school_id or option.kind != "cost_center":
+                raise ValidationError("Centre de coûts d'un autre établissement ou type incorrect.")
+            if option.activity_pole and option.activity_pole != self.activity_pole:
+                raise ValidationError("Centre de coûts incompatible avec ce pôle.")
+        if self.accounting_nature_ref_id:
+            option = self.accounting_nature_ref
+            if option.school_id != self.school_id or option.kind != "accounting_nature":
+                raise ValidationError("Nature comptable d'un autre établissement ou type incorrect.")
         if self.year_id and self.expense_on and not self.year.start_date <= self.expense_on <= self.year.end_date:
             raise ValidationError("Dépense en dehors de l'année scolaire.")
         if bool(self.approved_by_id) != bool(self.approved_at):

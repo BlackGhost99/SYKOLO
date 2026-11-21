@@ -8,7 +8,7 @@ from .academic_models import AcademicYear
 from .models import Organization, School, SchoolRole, SchoolMember, SchoolAudit
 from .operating_models import (OperatingSupplier, OperatingBudget, OperatingExpense,
                                OperatingExpensePayment, OperatingExpenseCategory,
-                               OperatingExpenseDecision)
+                               OperatingExpenseDecision, OperatingClassificationOption)
 from .services import ROLE_TEMPLATES
 
 
@@ -729,5 +729,109 @@ class OperatingLedgerTests(TestCase):
         self.login(self.outsider)
         self.assertEqual(self.client.get(
             "/api/v1/schools/"+str(self.school.pk)+"/operating/catalog-defaults",
+        ).status_code, 404)
+
+    def test_b2_poles_are_virtual_editable_and_versioned(self):
+        self.assertEqual(OperatingClassificationOption.objects.count(), 0)
+        payload = self.get("classification").json()
+        self.assertEqual(len(payload["poles"]), 5)
+        self.assertEqual(payload["centers"], [])
+        self.assertEqual(OperatingClassificationOption.objects.count(), 0)
+        modified = self.patch("classification/poles/school", {
+            "revision": 0, "label": "Enseignement personnalisé",
+        })
+        self.assertEqual(modified.status_code, 200, modified.content)
+        self.assertEqual(modified.json()["revision"], 1)
+        self.assertEqual(self.patch("classification/poles/school", {
+            "revision": 0, "label": "Concurrent",
+        }).status_code, 409)
+        self.assertEqual(self.get("classification").json()["poles"][0]["label"], "Enseignement personnalisé")
+        self.assertFalse(OperatingClassificationOption.objects.filter(school=self.other).exists())
+
+    def test_b2_cost_center_and_nature_preserve_historical_labels(self):
+        center = self.post("classification", {
+            "kind": "cost_center", "code": "college", "name": "Collège",
+            "activity_pole": "school",
+        })
+        self.assertEqual(center.status_code, 201, center.content)
+        nature = self.post("classification", {
+            "kind": "accounting_nature", "code": "entretien",
+            "name": "Charge d'entretien",
+        })
+        self.assertEqual(nature.status_code, 201, nature.content)
+        supplier, budget = self.approved_budget()
+        payload = {"budget": budget["id"], "supplier": supplier["id"],
+            "category_ref": str(self.category.pk), "activity_pole": "school",
+            "cost_center_ref": center.json()["id"],
+            "accounting_nature_ref": nature.json()["id"],
+            "amount": "12000.00", "label": "Achat local",
+            "invoice_reference": "DEVIS-123", "expense_on": "2026-11-10"}
+        expense = self.post("expenses", payload)
+        self.assertEqual(expense.status_code, 201, expense.content)
+        self.assertEqual(expense.json()["cost_center"], "Collège")
+        self.assertEqual(expense.json()["accounting_nature"], "Charge d'entretien")
+        self.assertEqual(expense.json()["activity_pole_label"], "Scolarité")
+        edited = self.patch("classification/"+center.json()["id"], {
+            "revision": 1, "name": "École secondaire",
+        })
+        self.assertEqual(edited.status_code, 200, edited.content)
+        self.assertEqual(
+            self.get("expenses/"+expense.json()["id"]).json()["expense"]["cost_center"], "Collège"
+        )
+        self.assertEqual(self.patch("classification/"+center.json()["id"], {
+            "revision": 2, "activity_pole": "extraschool",
+        }).status_code, 409)
+        foreign = OperatingClassificationOption.objects.create(
+            school=self.other, kind="cost_center", code="foreign", name="Autre",
+        )
+        payload["cost_center_ref"] = str(foreign.pk)
+        self.assertEqual(self.post("expenses", payload).status_code, 404)
+        payload["cost_center_ref"] = center.json()["id"]
+        payload["activity_pole"] = "extraschool"
+        self.assertEqual(self.post("expenses", payload).status_code, 422)
+
+    def test_b2_archived_classification_blocks_new_requests_not_history(self):
+        center = self.post("classification", {
+            "kind": "cost_center", "code": "cantine", "name": "Cantine",
+            "activity_pole": "school",
+        }).json()
+        supplier, budget = self.approved_budget()
+        payload = {"budget": budget["id"], "supplier": supplier["id"],
+            "category_ref": str(self.category.pk), "activity_pole": "school",
+            "cost_center_ref": center["id"], "amount": "1200.00",
+            "label": "Approvisionnement", "invoice_reference": "DEVIS-124",
+            "expense_on": "2026-11-10"}
+        expense = self.post("expenses", payload)
+        self.assertEqual(expense.status_code, 201, expense.content)
+        archived = self.patch("classification/"+center["id"], {
+            "revision": center["revision"], "active": False,
+        })
+        self.assertEqual(archived.status_code, 200, archived.content)
+        self.assertEqual(self.post("expenses", payload).status_code, 422)
+        self.assertEqual(self.post("expenses/"+expense.json()["id"]+"/submit", {
+            "revision": expense.json()["revision"],
+        }).status_code, 409)
+        self.assertEqual(
+            self.get("expenses/"+expense.json()["id"]).json()["expense"]["cost_center"], "Cantine"
+        )
+
+    def test_b2_classification_permissions_and_shape_validation(self):
+        self.assertEqual(self.post("classification", {
+            "kind": "accounting_nature", "code": "nature", "name": "Nature",
+            "activity_pole": "school",
+        }).status_code, 422)
+        self.assertEqual(self.post("classification", {
+            "kind": "pole", "code": "school", "name": "Faux axe",
+        }).status_code, 422)
+        self.login("direction")
+        self.assertEqual(self.get("classification").status_code, 200)
+        self.assertEqual(self.post("classification", {
+            "kind": "cost_center", "code": "forbidden", "name": "Interdit",
+        }).status_code, 403)
+        self.login("enseignant")
+        self.assertEqual(self.get("classification").status_code, 403)
+        self.login(self.outsider)
+        self.assertEqual(self.client.get(
+            "/api/v1/schools/"+str(self.school.pk)+"/operating/classification",
         ).status_code, 404)
 

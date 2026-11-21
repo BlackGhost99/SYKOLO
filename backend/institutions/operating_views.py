@@ -21,6 +21,7 @@ from .operating_models import (OperatingSupplier, OperatingBudget, OperatingExpe
                                OperatingExpensePayment, OperatingExpenseCategory,
                                ACTIVE_ACTIVITY_POLES, ACTIVITY_POLES, BENEFICIARY_TYPES,
                                EXPENSE_WORKFLOW_STATES)
+from .operating_classification_service import classification_fields, pole_label
 from .services import has_permission
 from .views import access, refuse, parse_body, log_event
 
@@ -157,8 +158,12 @@ def expense_data(e):
             "beneficiary_name": e.beneficiary_name or (e.supplier.name if e.supplier_id else ""),
             "beneficiary_reference": e.beneficiary_reference,
             "label": e.label, "amount": fmt(e.amount), "expense_on": e.expense_on.isoformat(),
-            "activity_pole": e.activity_pole, "cost_center": e.cost_center,
+            "activity_pole": e.activity_pole,
+            "activity_pole_label": e.activity_pole_label_snapshot or dict(ACTIVITY_POLES).get(e.activity_pole, ""),
+            "cost_center": e.cost_center,
+            "cost_center_ref": str(e.cost_center_ref_id) if e.cost_center_ref_id else None,
             "accounting_nature": e.accounting_nature,
+            "accounting_nature_ref": str(e.accounting_nature_ref_id) if e.accounting_nature_ref_id else None,
             "category_ref": str(e.category_ref_id) if e.category_ref_id else None,
             "subcategory_ref": str(e.subcategory_ref_id) if e.subcategory_ref_id else None,
             "expense_category": e.category_label_snapshot or "À classer (historique)",
@@ -453,13 +458,14 @@ def expense_fields(school, data):
         raise ValueError("Le budget doit être approuvé avant une dépense.")
     if not open_year(budget.year):
         raise ValueError("Année scolaire clôturée.")
+    activity_pole = activity_pole_value(data["activity_pole"])
     return {
         "budget": budget, "year": budget.year,
         **expense_beneficiary_fields(school, data),
         **expense_catalog_fields(school, data["category_ref"], data.get("subcategory_ref")),
-        "activity_pole": activity_pole_value(data["activity_pole"]),
-        "cost_center": txt(data.get("cost_center", ""), 100, "Centre de coûts", optional=True),
-        "accounting_nature": txt(data.get("accounting_nature", ""), 100, "Nature comptable", optional=True),
+        "activity_pole": activity_pole,
+        "activity_pole_label_snapshot": pole_label(school, activity_pole),
+        **classification_fields(school, data, activity_pole),
         "label": txt(data["label"], 200, "Libellé"),
         "invoice_reference": txt(data["invoice_reference"], 120, "Référence justificative"),
         "expense_on": day(data["expense_on"]), "amount": money(data["amount"]),
@@ -518,6 +524,7 @@ def expenses(request, school_id):
         request,
         {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount",
          "activity_pole", "cost_center", "accounting_nature",
+         "cost_center_ref", "accounting_nature_ref",
          "category_ref", "subcategory_ref", "beneficiary_type",
          "beneficiary_name", "beneficiary_reference"},
         {"budget", "label", "invoice_reference", "expense_on", "amount", "activity_pole",
@@ -564,6 +571,7 @@ def expense_detail(request, school_id, expense_id):
         request,
         {"revision", "label", "invoice_reference", "expense_on", "amount", "supplier",
          "activity_pole", "cost_center", "accounting_nature",
+         "cost_center_ref", "accounting_nature_ref",
          "category_ref", "subcategory_ref", "beneficiary_type",
          "beneficiary_name", "beneficiary_reference"},
         {"revision"},
@@ -594,10 +602,11 @@ def expense_detail(request, school_id, expense_id):
                 row.amount = money(data["amount"])
             if "activity_pole" in data:
                 row.activity_pole = activity_pole_value(data["activity_pole"])
-            if "cost_center" in data:
-                row.cost_center = txt(data["cost_center"], 100, "Centre de coûts", optional=True)
-            if "accounting_nature" in data:
-                row.accounting_nature = txt(data["accounting_nature"], 100, "Nature comptable", optional=True)
+                row.activity_pole_label_snapshot = pole_label(school, row.activity_pole)
+            for field, value in classification_fields(
+                school, data, row.activity_pole, existing=row,
+            ).items():
+                setattr(row, field, value)
             if "category_ref" in data or "subcategory_ref" in data:
                 category_id = data.get("category_ref", row.category_ref_id)
                 subcategory_id = data.get(
@@ -670,6 +679,10 @@ def approve_expense(request, school_id, expense_id):
             return fail("Associez une catégorie de dépenses avant approbation.", 409)
         if not row.category_ref.active or (row.subcategory_ref_id and not row.subcategory_ref.active):
             return fail("Catégorie archivée : reclassez ce projet avant approbation.", 409)
+        from .operating_workflow_views import validate_submission
+        classification_error = validate_submission(row)
+        if classification_error:
+            return fail(classification_error, 409)
         if authorised_total(budget) + row.amount > budget.ceiling:
             return fail("Budget insuffisant : la dépense dépasse les fonds non engagés.", 409)
         row.approved_by = request.user
