@@ -12,6 +12,16 @@ const POLES=[
   ["cash_other","Autres sorties de trésorerie"],
 ];
 const POLE_LABELS={unclassified:"À classer (historique)",...Object.fromEntries(POLES)};
+const BENEFICIARY_TYPES=[
+  ["supplier","Fournisseur ou prestataire"],
+  ["staff","Personnel — hors rémunération"],
+  ["government","Administration ou organisme public"],
+  ["parent","Parent ou responsable légal"],
+  ["individual","Personne physique"],
+  ["organization","Organisation ou association"],
+  ["other","Autre bénéficiaire"],
+];
+const BENEFICIARY_LABELS=Object.fromEntries(BENEFICIARY_TYPES);
 async function request(route,method="GET",data){
   if(method!=="GET"){
     const auth=await fetch(API+"auth/csrf",{credentials:"same-origin"});
@@ -45,9 +55,13 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     budget:"",supplier:"",label:"",amount:"",invoice_reference:"",
     expense_on:today(),activity_pole:"",cost_center:"",accounting_nature:"",
     category_ref:"",subcategory_ref:"",
+    beneficiary_type:"supplier",beneficiary_name:"",beneficiary_reference:"",
   });
   const [poleFilter,setPoleFilter]=useState("");
   const [draftClassification,setDraftClassification]=useState({activity_pole:"",cost_center:"",accounting_nature:"",category_ref:"",subcategory_ref:""});
+  const [draftBeneficiary,setDraftBeneficiary]=useState({
+    beneficiary_type:"supplier",supplier:"",beneficiary_name:"",beneficiary_reference:"",
+  });
   const [detail,setDetail]=useState(null);
   const [payment,setPayment]=useState({amount:"",method:"especes",reference:"",paid_on:today()});
   const [paymentKey,setPaymentKey]=useState("");
@@ -114,7 +128,12 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   }
   async function addExpense(event){
     event.preventDefault();
-    const saved=await op(()=>request(root+"expenses","POST",expenseForm),
+    const payload={
+      ...expenseForm,
+      supplier:expenseForm.beneficiary_type==="supplier"?expenseForm.supplier:null,
+      beneficiary_name:expenseForm.beneficiary_type==="supplier"?"":expenseForm.beneficiary_name,
+    };
+    const saved=await op(()=>request(root+"expenses","POST",payload),
       "Demande enregistrée. Un autre responsable doit l'approuver.");
     if(saved)setExpenseForm({...expenseForm,label:"",amount:"",invoice_reference:"",subcategory_ref:""});
   }
@@ -130,6 +149,12 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
         category_ref:data.expense.category_ref||"",
         subcategory_ref:data.expense.subcategory_ref||"",
       });
+      setDraftBeneficiary({
+        beneficiary_type:data.expense.beneficiary_type||"supplier",
+        supplier:data.expense.supplier||"",
+        beneficiary_name:data.expense.beneficiary_type==="supplier"?"":data.expense.beneficiary_name||"",
+        beneficiary_reference:data.expense.beneficiary_reference||"",
+      });
     }catch(e){setError(e.message);}
   }
   async function updateDraftClassification(event){
@@ -138,6 +163,18 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     const saved=await op(()=>request(root+"expenses/"+detail.expense.id,"PATCH",{
       revision:detail.expense.revision,...draftClassification,
     }),"Classification du projet enregistrée.");
+    if(saved)await openExpense(detail.expense.id);
+  }
+  async function updateDraftBeneficiary(event){
+    event.preventDefault();
+    if(!detail)return;
+    const saved=await op(()=>request(root+"expenses/"+detail.expense.id,"PATCH",{
+      revision:detail.expense.revision,
+      beneficiary_type:draftBeneficiary.beneficiary_type,
+      supplier:draftBeneficiary.beneficiary_type==="supplier"?draftBeneficiary.supplier:null,
+      beneficiary_name:draftBeneficiary.beneficiary_type==="supplier"?"":draftBeneficiary.beneficiary_name,
+      beneficiary_reference:draftBeneficiary.beneficiary_reference,
+    }),"Bénéficiaire du projet mis à jour.");
     if(saved)await openExpense(detail.expense.id);
   }
   async function approveExpense(item){
@@ -326,15 +363,16 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
         {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
         <option value="unclassified">À classer (historique)</option>
       </select></label>
-      {expenses.length>0&&<Table rowKey={(_,i)=>expenses[i].id} rowActions={(_,i)=>[{id:"detail",label:"Consulter la dépense",run:()=>openExpense(expenses[i].id)}]} headers={["Objet","Pôle financier","Fournisseur","Montant","Déclaré payé","Solde","État","Dossier"]}
+      {expenses.length>0&&<Table rowKey={(_,i)=>expenses[i].id} rowActions={(_,i)=>[{id:"detail",label:"Consulter la dépense",run:()=>openExpense(expenses[i].id)}]} headers={["Objet","Pôle financier","Bénéficiaire","Montant","Déclaré payé","Solde","État","Dossier"]}
         rows={expenses.map(e=>[
-          e.label,POLE_LABELS[e.activity_pole]||"À classer",e.supplier_name,fmt(e.amount,e.currency),fmt(e.paid,e.currency),
+          e.label,POLE_LABELS[e.activity_pole]||"À classer",e.beneficiary_name||e.supplier_name||"—",fmt(e.amount,e.currency),fmt(e.paid,e.currency),
           fmt(e.balance,e.currency),
           <Status tone={statusTone(e.status)}>{STATUS[e.status]||e.status}</Status>,
           <Button className="small" onClick={()=>openExpense(e.id)}>Détail</Button>,
         ])}/>}
       {!expenses.length&&<p>Aucune dépense pour l'année sélectionnée.</p>}
       {canManage&&<form onSubmit={addExpense}>
+        <p className="hint">Les salaires passent exclusivement par le module Paie ; une indemnité hors paie peut être affectée au personnel. Les remboursements de frais scolaires restent à rapprocher dans le circuit dédié.</p>
         <div className="two">
           <label className="field">Enveloppe approuvée<select required value={expenseForm.budget} onChange={e=>setExpenseForm({...expenseForm,budget:e.target.value})}>
             <option value="">Sélectionner un budget</option>
@@ -359,21 +397,37 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
           </select></label>
           <label className="field">Centre de coûts<input maxLength={100} placeholder="Ex. Administration, collège, cantine" value={expenseForm.cost_center} onChange={e=>setExpenseForm({...expenseForm,cost_center:e.target.value})}/></label>
           <label className="field">Nature comptable<input maxLength={100} placeholder="Ex. Entretien, achats, immobilisation" value={expenseForm.accounting_nature} onChange={e=>setExpenseForm({...expenseForm,accounting_nature:e.target.value})}/></label>
-          <label className="field">Fournisseur<select required value={expenseForm.supplier} onChange={e=>setExpenseForm({...expenseForm,supplier:e.target.value})}>
-            <option value="">Sélectionner un fournisseur</option>
-            {suppliers.filter(s=>s.active).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          <label className="field">Type de bénéficiaire<select required value={expenseForm.beneficiary_type}
+            onChange={e=>setExpenseForm({...expenseForm,beneficiary_type:e.target.value,supplier:"",beneficiary_name:"",beneficiary_reference:""})}>
+            {BENEFICIARY_TYPES.map(([key,name])=><option key={key} value={key}>{name}</option>)}
           </select></label>
+          {expenseForm.beneficiary_type==="supplier"?
+            <label className="field">Fournisseur<select required value={expenseForm.supplier} onChange={e=>setExpenseForm({...expenseForm,supplier:e.target.value})}>
+              <option value="">Sélectionner un fournisseur</option>
+              {suppliers.filter(s=>s.active).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            </select></label>:
+            <label className="field">Nom du bénéficiaire<input required maxLength={180}
+              placeholder="Identité ou dénomination du bénéficiaire" value={expenseForm.beneficiary_name}
+              onChange={e=>setExpenseForm({...expenseForm,beneficiary_name:e.target.value})}/></label>}
+          <label className="field">Référence interne du bénéficiaire<input maxLength={120}
+            placeholder="Référence de dossier non sensible (facultatif)" value={expenseForm.beneficiary_reference}
+            onChange={e=>setExpenseForm({...expenseForm,beneficiary_reference:e.target.value})}/></label>
           <label className="field">Objet de l'achat<input required maxLength={200} value={expenseForm.label} onChange={e=>setExpenseForm({...expenseForm,label:e.target.value})}/></label>
           <label className="field">Montant demandé{currentBudget?" ("+currentBudget.currency+")":""}<input required inputMode="decimal" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm,amount:e.target.value})}/></label>
           <label className="field">Référence facture/devis<input required maxLength={120} value={expenseForm.invoice_reference} onChange={e=>setExpenseForm({...expenseForm,invoice_reference:e.target.value})}/></label>
           <label className="field">Date de dépense<input required type="date" value={expenseForm.expense_on} onChange={e=>setExpenseForm({...expenseForm,expense_on:e.target.value})}/></label>
         </div>
-        <Button primary type="submit" disabled={busy||!approvedBudgets.length||!suppliers.some(s=>s.active)||!activeRoots.length}>Préparer la demande</Button>
+        <Button primary type="submit" disabled={busy||!approvedBudgets.length||!activeRoots.length||
+          (expenseForm.beneficiary_type==="supplier"&&!suppliers.some(s=>s.active))}>Préparer la demande</Button>
       </form>}
     </Card>
     {detail&&<Card title={"Dépense — "+detail.expense.label} icon="shield">
       <div className="actions"><Button onClick={()=>setDetail(null)}>Fermer</Button></div>
-      <p>Fournisseur : <strong>{detail.expense.supplier_name}</strong> · Budget : {detail.expense.category}</p>
+      <p>Bénéficiaire : <strong>{detail.expense.beneficiary_name||detail.expense.supplier_name||"—"}</strong>
+        {" · "+(BENEFICIARY_LABELS[detail.expense.beneficiary_type]||"Fournisseur")}
+        {" · Budget : "+detail.expense.category}
+        {detail.expense.beneficiary_reference?" · Référence interne : "+detail.expense.beneficiary_reference:""}
+      </p>
       <p>Catégorie : <strong>{detail.expense.expense_category||"À classer (historique)"}</strong>
         {detail.expense.expense_subcategory?" / "+detail.expense.expense_subcategory:""}
       </p>
