@@ -22,6 +22,33 @@ ACTIVITY_POLES = (
 ACTIVE_ACTIVITY_POLES = {key for key, _ in ACTIVITY_POLES if key != "unclassified"}
 
 
+class OperatingExpenseCategory(models.Model):
+    """School-owned two-level catalog; records are archived, never deleted."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey("institutions.School", on_delete=models.PROTECT)
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT,
+                               related_name="subcategories")
+    code = models.SlugField(max_length=40)
+    name = models.CharField(max_length=100)
+    suggested_pole = models.CharField(max_length=20, blank=True, default="",
+                                       choices=(("", "Aucun"),) + ACTIVITY_POLES[1:])
+    active = models.BooleanField(default=True)
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["school", "code"], name="uniq_yem_out_category_code"),
+        ]
+
+    def clean(self):
+        if self.parent_id:
+            if self.parent_id == self.id or self.parent.school_id != self.school_id or self.parent.parent_id:
+                raise ValidationError("Une sous-catégorie doit appartenir à une catégorie racine du même établissement.")
+            if self.active and not self.parent.active:
+                raise ValidationError("Une sous-catégorie active ne peut appartenir à une catégorie archivée.")
+
+
 class OperatingSupplier(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey("institutions.School", on_delete=models.PROTECT)
@@ -66,6 +93,13 @@ class OperatingExpense(models.Model):
     year = models.ForeignKey("institutions.AcademicYear", on_delete=models.PROTECT)
     budget = models.ForeignKey(OperatingBudget, on_delete=models.PROTECT, related_name="expenses")
     supplier = models.ForeignKey(OperatingSupplier, on_delete=models.PROTECT, related_name="expenses")
+    # Optional only to preserve historical rows; new expenses require a catalog category.
+    category_ref = models.ForeignKey(OperatingExpenseCategory, null=True, blank=True,
+                                     on_delete=models.PROTECT, related_name="classified_expenses")
+    subcategory_ref = models.ForeignKey(OperatingExpenseCategory, null=True, blank=True,
+                                        on_delete=models.PROTECT, related_name="subclassified_expenses")
+    category_label_snapshot = models.CharField(max_length=100, blank=True, default="")
+    subcategory_label_snapshot = models.CharField(max_length=100, blank=True, default="")
     # Classification de l'activité : indépendante de la catégorie budgétaire.
     activity_pole = models.CharField(max_length=20, choices=ACTIVITY_POLES, default="unclassified")
     cost_center = models.CharField(max_length=100, blank=True, default="")
@@ -93,6 +127,14 @@ class OperatingExpense(models.Model):
                 raise ValidationError("Enveloppe budgétaire étrangère à la dépense.")
         if self.supplier_id and self.school_id and self.supplier.school_id != self.school_id:
             raise ValidationError("Fournisseur d'un autre établissement.")
+        if self.category_ref_id:
+            if self.category_ref.school_id != self.school_id or self.category_ref.parent_id:
+                raise ValidationError("Catégorie de dépenses étrangère ou non principale.")
+        if self.subcategory_ref_id:
+            if not self.category_ref_id or self.subcategory_ref.school_id != self.school_id or (
+                self.subcategory_ref.parent_id != self.category_ref_id
+            ):
+                raise ValidationError("Sous-catégorie étrangère à la catégorie de dépenses.")
         if self.year_id and self.expense_on and not self.year.start_date <= self.expense_on <= self.year.end_date:
             raise ValidationError("Dépense en dehors de l'année scolaire.")
         if bool(self.approved_by_id) != bool(self.approved_at):
