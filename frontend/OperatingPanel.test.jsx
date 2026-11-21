@@ -68,7 +68,7 @@ test("le catalogue des dépenses est consultable sans droits de modification",as
   render(<OperatingPanel schoolId="school-1" workingYearId="year-1"/>);
   await userEvent.setup().click(screen.getByRole("button",{name:"Configurer les catégories de dépenses"}));
   expect((await screen.findAllByText("Matériel")).length).toBeGreaterThan(0);
-  expect(screen.getByText("Laboratoire")).toBeTruthy();
+  expect(screen.getByText("↳ Laboratoire")).toBeTruthy();
   expect(screen.queryByRole("button",{name:"Ajouter cette catégorie"})).toBeNull();
   expect(screen.queryByRole("button",{name:"Archiver"})).toBeNull();
 });
@@ -79,7 +79,7 @@ test("le comptable peut ajouter une catégorie sans modifier les entrées",async
   const user=userEvent.setup();
   render(<OperatingPanel schoolId="school-1" workingYearId="year-1" canManage/>);
   await user.click(screen.getByRole("button",{name:"Configurer les catégories de dépenses"}));
-  await screen.findByText("Matériel");
+  await screen.findAllByText("Matériel");
   await user.type(screen.getByLabelText("Code catégorie / sous-catégorie"),"cantine");
   await user.type(screen.getByLabelText("Nom catégorie / sous-catégorie"),"Cantine");
   await user.selectOptions(screen.getByLabelText("Pôle suggéré"),"extraschool");
