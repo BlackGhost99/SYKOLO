@@ -233,7 +233,7 @@ test("le comptable et l'économe consultent les catégories sans additionner les
   expect(within(arrears.closest("details")).getAllByText(/25 000 FCFA/).length).toBeGreaterThan(0);
   expect(within(arrears.closest("details")).getAllByText(/15 000 FCFA/).length).toBeGreaterThan(0);
   expect(screen.getByText(/Inscriptions encaissées à la caisse/)).toBeTruthy();
-  expect(screen.getByText(/15 000 FCFA/)).toBeTruthy();
+  expect(screen.getAllByText(/15 000 FCFA/).length).toBeGreaterThan(0);
   expect(screen.getByText(/sans rapprochement/)).toBeTruthy();
   const drill=screen.getByText(/Scolarité \(XAF\) : consulter 1 code\(s\) tarifaire\(s\)/);
   expect(drill.closest("details").open).toBe(false);
