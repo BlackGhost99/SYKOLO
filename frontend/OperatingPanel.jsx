@@ -31,6 +31,10 @@ async function request(route,method="GET",data){
 export default function OperatingPanel({schoolId,workingYearId="",canManage=false,canApprove=false,canPay=false,canReverse=false}){
   const root="schools/"+schoolId+"/operating/";
   const [suppliers,setSuppliers]=useState([]);
+  const [categories,setCategories]=useState([]);
+  const [categoryForm,setCategoryForm]=useState({code:"",name:"",parent:"",suggested_pole:""});
+  const [editingCategory,setEditingCategory]=useState(null);
+  const [archiveTarget,setArchiveTarget]=useState("");
   const [budgets,setBudgets]=useState([]);
   const [expenses,setExpenses]=useState([]);
   const [summary,setSummary]=useState(null);
@@ -39,9 +43,10 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const [expenseForm,setExpenseForm]=useState({
     budget:"",supplier:"",label:"",amount:"",invoice_reference:"",
     expense_on:today(),activity_pole:"",cost_center:"",accounting_nature:"",
+    category_ref:"",subcategory_ref:"",
   });
   const [poleFilter,setPoleFilter]=useState("");
-  const [draftClassification,setDraftClassification]=useState({activity_pole:"",cost_center:"",accounting_nature:""});
+  const [draftClassification,setDraftClassification]=useState({activity_pole:"",cost_center:"",accounting_nature:"",category_ref:"",subcategory_ref:""});
   const [detail,setDetail]=useState(null);
   const [payment,setPayment]=useState({amount:"",method:"especes",reference:"",paid_on:today()});
   const [paymentKey,setPaymentKey]=useState("");
@@ -51,11 +56,12 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const refresh=useCallback(async()=>{
     const qs=workingYearId?"?year="+encodeURIComponent(workingYearId):"";
     const expenseQs=qs+(poleFilter?(qs?"&":"?")+"activity_pole="+encodeURIComponent(poleFilter):"");
-    const [sup,bud,exp,sum]=await Promise.all([
-      request(root+"suppliers"),request(root+"budgets"+qs),
+    const [sup,cat,bud,exp,sum]=await Promise.all([
+      request(root+"suppliers"),request(root+"categories"),request(root+"budgets"+qs),
       request(root+"expenses"+expenseQs),request(root+"summary"+qs),
     ]);
     setSuppliers(sup.suppliers||[]);
+    setCategories(cat.categories||[]);
     setBudgets(bud.budgets||[]);
     setExpenses(exp.expenses||[]);
     setSummary(sum);
@@ -109,7 +115,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     event.preventDefault();
     const saved=await op(()=>request(root+"expenses","POST",expenseForm),
       "Demande enregistrée. Un autre responsable doit l'approuver.");
-    if(saved)setExpenseForm({...expenseForm,label:"",amount:"",invoice_reference:""});
+    if(saved)setExpenseForm({...expenseForm,label:"",amount:"",invoice_reference:"",subcategory_ref:""});
   }
   async function openExpense(id){
     setError("");
@@ -120,6 +126,8 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
         activity_pole:data.expense.activity_pole==="unclassified"?"":data.expense.activity_pole,
         cost_center:data.expense.cost_center||"",
         accounting_nature:data.expense.accounting_nature||"",
+        category_ref:data.expense.category_ref||"",
+        subcategory_ref:data.expense.subcategory_ref||"",
       });
     }catch(e){setError(e.message);}
   }
@@ -165,6 +173,31 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       "Versement annulé, historique préservé.");
     if(saved)await openExpense(detail.expense.id);
   }
+  async function addCategory(event){
+    event.preventDefault();
+    const saved=await op(()=>request(root+"categories","POST",{
+      ...categoryForm,parent:categoryForm.parent||null,
+    }),"Catégorie de dépenses ajoutée.");
+    if(saved)setCategoryForm({code:"",name:"",parent:"",suggested_pole:""});
+  }
+  async function updateCategory(event){
+    event.preventDefault();
+    if(!editingCategory)return;
+    const saved=await op(()=>request(root+"categories/"+editingCategory.id,"PATCH",{
+      revision:editingCategory.revision,name:editingCategory.name,
+      suggested_pole:editingCategory.suggested_pole,
+    }),"Catégorie actualisée ; les anciens libellés des dépenses sont conservés.");
+    if(saved)setEditingCategory(null);
+  }
+  async function toggleCategory(item){
+    const saved=await op(()=>request(root+"categories/"+item.id,"PATCH",{
+      revision:item.revision,active:!item.active,
+    }),item.active?"Catégorie archivée sans supprimer les opérations.":"Catégorie réactivée.");
+    if(saved)setArchiveTarget("");
+  }
+  const categoryRoots=categories.filter(c=>!c.parent);
+  const activeRoots=categoryRoots.filter(c=>c.active);
+  const selectableSubs=(parentId)=>categories.filter(c=>c.parent===parentId&&c.active);
   const approvedBudgets=budgets.filter(b=>b.approved && Number(b.available)>0);
   const currentBudget=budgets.find(b=>b.id===expenseForm.budget);
   const statusTone=s=>s==="paid"?"green":s==="approved"?"blue":s==="partially_paid"?"orange":"gray";
