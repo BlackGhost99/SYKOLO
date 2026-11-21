@@ -810,7 +810,7 @@ class OperatingLedgerTests(TestCase):
         self.assertEqual(self.post("expenses", payload).status_code, 422)
         self.assertEqual(self.post("expenses/"+expense.json()["id"]+"/submit", {
             "revision": expense.json()["revision"],
-        }).status_code, 422)
+        }).status_code, 409)
         self.assertEqual(
             self.get("expenses/"+expense.json()["id"]).json()["expense"]["cost_center"], "Cantine"
         )
