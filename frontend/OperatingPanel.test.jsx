@@ -66,6 +66,7 @@ test("la ventilation et le filtre des sorties restent propres au module dépense
 test("le catalogue des dépenses est consultable sans droits de modification",async()=>{
   const fetch=fakeBackend();vi.stubGlobal("fetch",fetch);
   render(<OperatingPanel schoolId="school-1" workingYearId="year-1"/>);
+  await userEvent.setup().click(screen.getByRole("button",{name:"Configurer les catégories de dépenses"}));
   expect((await screen.findAllByText("Matériel")).length).toBeGreaterThan(0);
   expect(screen.getByText("Laboratoire")).toBeTruthy();
   expect(screen.queryByRole("button",{name:"Ajouter cette catégorie"})).toBeNull();
@@ -77,6 +78,7 @@ test("le comptable peut ajouter une catégorie sans modifier les entrées",async
   document.cookie="csrftoken=operating-test";
   const user=userEvent.setup();
   render(<OperatingPanel schoolId="school-1" workingYearId="year-1" canManage/>);
+  await user.click(screen.getByRole("button",{name:"Configurer les catégories de dépenses"}));
   await screen.findByText("Matériel");
   await user.type(screen.getByLabelText("Code catégorie / sous-catégorie"),"cantine");
   await user.type(screen.getByLabelText("Nom catégorie / sous-catégorie"),"Cantine");
