@@ -4,6 +4,7 @@ Never mix admission-cash receipts, school fees, simulations or currencies.
 Only finance readers have access to the immutable payment references.
 """
 from uuid import UUID
+from decimal import Decimal
 
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
@@ -76,7 +77,7 @@ def transactions(request, school_id):
         if offset <= total < offset + page_size:
             result.append({
                 "id": str(row.pk), "date": row.paid_on.isoformat(),
-                "amount": str(row.amount.quantize(__import__("decimal").Decimal("0.01"))),
+                "amount": str(row.amount.quantize(Decimal("0.01"))),
                 "currency": row.currency, "method": row.method,
                 "category": item_category, "fee_code": code,
                 "evidence": classify_payment(row.method, row.charge.label),
