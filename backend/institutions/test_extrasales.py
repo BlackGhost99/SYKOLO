@@ -311,3 +311,47 @@ class ExtrasSalesLedgerTests(TestCase):
         self.assertEqual(response.status_code, 422, response.content)
         self.assertEqual(ExtraStock.objects.count(), 0)
         self.assertEqual(ExtraStockMovement.objects.count(), 0)
+
+    @override_settings(YEM_EXTRA_SALES_WRITES_ENABLED=True, YEM_EXTRA_STOCK_WRITES_ENABLED=True)
+    def test_product_return_is_bounded_and_does_not_refund_money(self):
+        from extrasales.models import ExtraProductReturn
+        stock_url = f"/api/v1/schools/{self.school.pk}/finance/extras/stock"
+        self.assertEqual(self.post(stock_url, {
+            "catalog_item_id": self.product_id, "quantity_delta": 3,
+            "reason": "Inventaire physique initial certifié",
+            "operation_key": "return-setup-stock-20261121", "revision": 0,
+        }).status_code, 201)
+        sale_data = {
+            **self.request,
+            "idempotency_key": "return-product-sale-20261121",
+            "items": [{"id": self.product_id, "quantity": 2}],
+        }
+        sale_response = self.create(sale_data)
+        self.assertEqual(sale_response.status_code, 201, sale_response.content)
+        sale_id = sale_response.json()["sale"]["id"]
+        line = ExtraSaleLine.objects.get()
+        returns_url = f"{self.url}/{sale_id}/returns"
+        return_data = {
+            "line_id": str(line.pk), "quantity": 1,
+            "reason": "Produit vérifié et retourné au magasin",
+            "operation_key": "return-product-first-20261121",
+        }
+        result = self.post(returns_url, return_data)
+        self.assertEqual(result.status_code, 201, result.content)
+        self.assertFalse(result.json()["monetary_refund"])
+        self.assertEqual(ExtraStock.objects.get().quantity, 2)
+        self.assertEqual(self.post(returns_url, return_data).status_code, 200)
+        self.assertEqual(ExtraProductReturn.objects.count(), 1)
+        excess = self.post(returns_url, {
+            **return_data, "quantity": 2,
+            "operation_key": "return-product-excess-20261121",
+        })
+        self.assertEqual(excess.status_code, 422, excess.content)
+        self.assertEqual(ExtraStock.objects.get().quantity, 2)
+        self.assertEqual(ExtraPayment.objects.count(), 0)
+        self.assertEqual(FeePayment.objects.count(), 0)
+        self.assertEqual(ExtraStockMovement.objects.filter(movement_type="return").count(), 1)
+        self.client.force_login(self.reader)
+        self.assertEqual(self.post(returns_url, {
+            **return_data, "operation_key": "unauthorized-return-20261121",
+        }).status_code, 403)
