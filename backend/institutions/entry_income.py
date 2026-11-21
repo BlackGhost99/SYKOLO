@@ -68,6 +68,7 @@ EXTRASCOLAIRE_CODES = frozenset({
 CATEGORIES = (
     ("scolarite", "Scolarité"),
     ("inscription_registre", "Inscription — frais liés aux élèves"),
+    ("autre_scolaire", "Autres obligations scolaires"),
     ("extrascolaire", "Extrascolaire"),
     ("a_classer", "Autres frais à classer"),
     ("demo", "Démonstration — hors recettes réelles"),
