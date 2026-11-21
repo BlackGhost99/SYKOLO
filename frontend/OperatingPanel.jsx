@@ -449,6 +449,94 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       </form>}
       <p className="hint">Modifier une catégorie ne modifie pas les libellés des dépenses déjà enregistrées.</p>
     </Card>}
+    {showCatalog&&<Card title="Pôles, centres de coûts et natures comptables" icon="barchart"
+      subtitle="Référentiels propres à cet établissement : codes financiers stables, libellés personnalisables.">
+      <p className="hint">S1–S5 sont des axes financiers distincts des catégories. Leur personnalisation ne modifie jamais les montants ni les libellés historiques.</p>
+      <Table headers={["Pôle","Libellé","État","Actions"]}
+        rows={classifications.poles.map((p,i)=>[
+          "S"+(i+1)+" · "+p.code,
+          p.label,
+          <Status tone={p.active?"green":"gray"}>{p.active?"Actif":"Désactivé"}</Status>,
+          canManage?<div className="actions">
+            <Button className="small" disabled={busy} onClick={()=>setEditingPole({...p})}>Renommer</Button>
+            <Button className="small" disabled={busy} onClick={()=>togglePole(p)}>
+              {confirmOptionArchive===p.code?"Confirmer":p.active?"Désactiver":"Réactiver"}
+            </Button>
+          </div>:"—",
+        ])}/>
+      {canManage&&editingPole&&<form onSubmit={savePole}>
+        <p>Modifier le libellé de {editingPole.code} (code fixe)</p>
+        <label className="field">Nouveau libellé du pôle<input required maxLength={100}
+          value={editingPole.label} onChange={e=>setEditingPole({...editingPole,label:e.target.value})}/></label>
+        <div className="actions">
+          <Button primary type="submit" disabled={busy}>Enregistrer le pôle</Button>
+          <Button type="button" onClick={()=>setEditingPole(null)}>Annuler</Button>
+        </div>
+      </form>}
+      <p><strong>Centres de coûts configurés</strong></p>
+      {classifications.centers.length>0&&<Table headers={["Code","Centre","Pôle lié","État","Actions"]}
+        rows={classifications.centers.map(c=>[
+          c.code,c.name,poleLabels[c.activity_pole]||"Tous les pôles",
+          <Status tone={c.active?"green":"gray"}>{c.active?"Actif":"Archivé"}</Status>,
+          canManage?<div className="actions">
+            <Button className="small" onClick={()=>setEditingOption({...c})}>Modifier</Button>
+            <Button className="small" disabled={busy} onClick={()=>toggleClassification(c)}>
+              {confirmOptionArchive===c.id?"Confirmer":c.active?"Archiver":"Réactiver"}
+            </Button>
+          </div>:"—",
+        ])}/>}
+      {canManage&&<form onSubmit={e=>createClassification(e,"cost_center")}>
+        <div className="two">
+          <label className="field">Code du centre de coûts<input required maxLength={40} pattern="[a-z][a-z0-9_-]*"
+            value={centerForm.code} onChange={e=>setCenterForm({...centerForm,code:e.target.value.toLowerCase()})}/></label>
+          <label className="field">Nom du centre de coûts<input required maxLength={100}
+            value={centerForm.name} onChange={e=>setCenterForm({...centerForm,name:e.target.value})}/></label>
+          <label className="field">Pôle de rattachement<select value={centerForm.activity_pole}
+            onChange={e=>setCenterForm({...centerForm,activity_pole:e.target.value})}>
+            <option value="">Tous les pôles</option>
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>
+        </div>
+        <Button primary type="submit" disabled={busy}>Ajouter un centre de coûts</Button>
+      </form>}
+      <p><strong>Natures comptables configurées</strong></p>
+      {classifications.natures.length>0&&<Table headers={["Code","Nature","État","Actions"]}
+        rows={classifications.natures.map(n=>[
+          n.code,n.name,<Status tone={n.active?"green":"gray"}>{n.active?"Active":"Archivée"}</Status>,
+          canManage?<div className="actions">
+            <Button className="small" onClick={()=>setEditingOption({...n})}>Modifier</Button>
+            <Button className="small" disabled={busy} onClick={()=>toggleClassification(n)}>
+              {confirmOptionArchive===n.id?"Confirmer":n.active?"Archiver":"Réactiver"}
+            </Button>
+          </div>:"—",
+        ])}/>}
+      {canManage&&<form onSubmit={e=>createClassification(e,"accounting_nature")}>
+        <div className="two">
+          <label className="field">Code de nature comptable<input required maxLength={40} pattern="[a-z][a-z0-9_-]*"
+            value={natureForm.code} onChange={e=>setNatureForm({...natureForm,code:e.target.value.toLowerCase()})}/></label>
+          <label className="field">Nom de nature comptable<input required maxLength={100}
+            value={natureForm.name} onChange={e=>setNatureForm({...natureForm,name:e.target.value})}/></label>
+        </div>
+        <Button primary type="submit" disabled={busy}>Ajouter une nature comptable</Button>
+      </form>}
+      {canManage&&editingOption&&<form onSubmit={saveClassification}>
+        <p>Modifier {editingOption.kind==="cost_center"?"le centre":"la nature"} : {editingOption.code}</p>
+        <div className="two">
+          <label className="field">Nom de la référence<input required maxLength={100}
+            value={editingOption.name} onChange={e=>setEditingOption({...editingOption,name:e.target.value})}/></label>
+          {editingOption.kind==="cost_center"&&<label className="field">Pôle du centre<select
+            value={editingOption.activity_pole}
+            onChange={e=>setEditingOption({...editingOption,activity_pole:e.target.value})}>
+            <option value="">Tous les pôles</option>
+            {activePoles.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>}
+        </div>
+        <div className="actions">
+          <Button primary type="submit" disabled={busy}>Enregistrer la référence</Button>
+          <Button type="button" onClick={()=>setEditingOption(null)}>Annuler</Button>
+        </div>
+      </form>}
+    </Card>}
     <Card title="Fournisseurs et prestataires" icon="users"
       subtitle="Annuaire des fournisseurs de l’établissement, distinct du personnel.">
       {suppliers.length>0&&<Table rowKey={(_,i)=>suppliers[i].id} rowActions={(_,i)=>canManage?[{id:"edit",label:"Modifier le fournisseur",write:true,disabled:busy,run:()=>editSupplier(suppliers[i])}]:[]} headers={["Fournisseur","Contact","Téléphone","État","Action"]}
