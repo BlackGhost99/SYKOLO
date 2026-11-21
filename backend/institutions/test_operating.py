@@ -220,6 +220,45 @@ class OperatingLedgerTests(TestCase):
         }).status_code, 409)
         self.assertEqual(OperatingExpenseDecision.objects.filter(school=self.school).count(), 1)
 
+    def test_expense_queue_counts_filters_and_pagination_are_exhaustive(self):
+        supplier, budget = self.approved_budget()
+        draft = self.expense(budget["id"], supplier["id"], "10000.00", "F-QUE-01")
+        submitted = self.expense(budget["id"], supplier["id"], "10000.00", "F-QUE-02")
+        approved = self.expense(budget["id"], supplier["id"], "10000.00", "F-QUE-03")
+        self.submit_expense(submitted)
+        self.approve_expense(approved)
+        result = self.get("expenses", {"limit":"1", "offset":"0"})
+        self.assertEqual(result.status_code, 200, result.content)
+        data = result.json()
+        self.assertEqual(data["total"], 3)
+        self.assertEqual(len(data["expenses"]), 1)
+        self.assertTrue(data["has_more"])
+        self.assertEqual(data["workflow_counts"]["draft"], 1)
+        self.assertEqual(data["workflow_counts"]["submitted"], 1)
+        self.assertEqual(data["workflow_counts"]["approved"], 1)
+        page2 = self.get("expenses", {"limit":"1", "offset":"1"}).json()
+        self.assertEqual(page2["total"], 3)
+        self.assertTrue(page2["has_more"])
+        page3 = self.get("expenses", {"limit":"1", "offset":"2"}).json()
+        self.assertFalse(page3["has_more"])
+        seen = {
+            data["expenses"][0]["id"],page2["expenses"][0]["id"],page3["expenses"][0]["id"],
+        }
+        self.assertEqual(seen, {draft["id"], submitted["id"], approved["id"]})
+        awaiting = self.get("expenses", {"workflow_state":"submitted", "limit":"50"}).json()
+        self.assertEqual(awaiting["total"], 1)
+        self.assertEqual(awaiting["expenses"][0]["id"], submitted["id"])
+        # Counts refer to all states before applying the selected state filter.
+        self.assertEqual(awaiting["workflow_counts"]["approved"], 1)
+        for params in ({"limit":"0"}, {"limit":"101"}, {"offset":"-1"},
+                       {"offset":"n/a"}, {"workflow_state":"paid"}):
+            with self.subTest(params=params):
+                self.assertEqual(self.get("expenses", params).status_code, 422)
+        self.login("enseignant")
+        self.assertEqual(self.get("expenses", {"workflow_state":"submitted"}).status_code, 403)
+        self.login(self.outsider)
+        self.assertEqual(self.get("expenses", {"workflow_state":"submitted"}).status_code, 404)
+
     def test_summary_includes_more_than_200_approved_budgets(self):
         """Les totaux des sorties ne doivent pas être tronqués par la liste affichée."""
         from django.utils import timezone
