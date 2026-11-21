@@ -7,13 +7,19 @@ export default function IncomeTransactionExplorer({schoolId,yearId,category,curr
   const [revision,setRevision]=useState(0);
   const [view,setView]=useState(null);
   const [error,setError]=useState("");
-  useEffect(()=>{setOpened(false);setPage(1);setView(null);setError("");},
+  const [fromDate,setFromDate]=useState("");
+  const [toDate,setToDate]=useState("");
+  useEffect(()=>{setOpened(false);setPage(1);setView(null);setError("");setFromDate("");setToDate("");},
     [schoolId,yearId,category,currency,feeCode]);
+  const invalidDates=Boolean(fromDate&&toDate&&fromDate>toDate);
+  const filters=()=>new URLSearchParams({
+    year:yearId,category,currency,fee_code:feeCode,from:fromDate,to:toDate,
+  });
   useEffect(()=>{
-    if(!opened||!yearId)return;
+    if(!opened||!yearId||invalidDates)return;
     let alive=true;
     setView(null);setError("");
-    const p=new URLSearchParams({year:yearId,category,currency,fee_code:feeCode,page:String(page)});
+    const p=filters();p.set("page",String(page));
     fetch(`/api/v1/schools/${schoolId}/finance/entry-transactions?${p}`,{
       credentials:"same-origin",cache:"no-store",
     }).then(async response=>{
@@ -24,16 +30,31 @@ export default function IncomeTransactionExplorer({schoolId,yearId,category,curr
       return response.json();
     }).then(data=>{if(alive)setView(data);}).catch(e=>{if(alive)setError(e.message);});
     return()=>{alive=false;};
-  },[schoolId,yearId,category,currency,feeCode,page,opened,revision]);
+  },[schoolId,yearId,category,currency,feeCode,page,opened,revision,fromDate,toDate,invalidDates]);
   return <div className="yd-card-sub" style={{marginBlock:8}}>
     <button type="button" disabled={!yearId} aria-expanded={opened}
       onClick={()=>setOpened(v=>!v)}>
       {opened?"Fermer les transactions":"Voir les transactions de "+feeCode}
     </button>
     {opened&&<div style={{marginTop:10}}>
+      <div style={{display:"flex",flexWrap:"wrap",gap:12,marginBlock:10}}>
+        <label>Du <input type="date" aria-label="Début de période" value={fromDate}
+          onChange={e=>{setFromDate(e.target.value);setPage(1);}}/></label>
+        <label>Au <input type="date" aria-label="Fin de période" value={toDate}
+          onChange={e=>{setToDate(e.target.value);setPage(1);}}/></label>
+        <button type="button" disabled={!fromDate&&!toDate}
+          onClick={()=>{setFromDate("");setToDate("");setPage(1);}}>
+          Effacer les dates
+        </button>
+      </div>
+      {invalidDates&&<p role="alert">La date de début doit précéder la date de fin.</p>}
       {error&&<p role="alert">{error}</p>}
       {!error&&!view&&<p role="status">Chargement des transactions…</p>}
-      {view&&<>
+      {view&&!invalidDates&&<>
+        <a href={`/api/v1/schools/${schoolId}/finance/entry-transactions?${(()=>{const p=filters();p.set("format","csv");return p;})()}`}
+          download="entrees-declarees.csv">
+          Exporter les règlements filtrés en CSV (2 000 lignes maximum)
+        </a>
         <p>{view.total} règlement(s) enregistré(s) · {feeCode} · {currency}.
           Ces montants sont déclarés, non certifiés par une banque.</p>
         {!view.rows?.length?<p>Aucune opération pour cette page.</p>:
