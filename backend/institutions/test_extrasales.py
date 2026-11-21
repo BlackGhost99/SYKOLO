@@ -215,3 +215,33 @@ class ExtrasSalesLedgerTests(TestCase):
         })
         self.assertEqual(response.status_code, 503)
         self.assertEqual(ExtraPayment.objects.count(), before)
+
+    @override_settings(YEM_EXTRA_SALES_WRITES_ENABLED=True)
+    def test_extras_invoice_and_receipt_are_distinct_private_pdfs(self):
+        sale_id = self.create().json()["sale"]["id"]
+        invoice_url = f"{self.url}/{sale_id}/invoice"
+        invoice = self.client.get(invoice_url)
+        self.assertEqual(invoice.status_code, 200, invoice.content[:200])
+        self.assertEqual(invoice["Content-Type"], "application/pdf")
+        self.assertTrue(invoice.content.startswith(b"%PDF"))
+        self.assertIn("attachment;", invoice["Content-Disposition"])
+        self.client.force_login(self.reader)
+        self.assertEqual(self.client.get(invoice_url).status_code, 403)
+        self.client.force_login(self.receiver)
+        self.assertEqual(self.client.get(invoice_url).status_code, 403)
+        pay = self.post(f"{self.url}/{sale_id}/payments", {
+            "idempotency_key": "extra-a9-receipt-20261121",
+            "amount": "5000.00", "method": "especes",
+        })
+        self.assertEqual(pay.status_code, 201, pay.content)
+        receipt_url = f"{self.url}/{sale_id}/payments/{pay.json()['payment_id']}/receipt"
+        receipt = self.client.get(receipt_url)
+        self.assertEqual(receipt.status_code, 200, receipt.content[:200])
+        self.assertTrue(receipt.content.startswith(b"%PDF"))
+        self.assertEqual(receipt["Cache-Control"], "private, no-store")
+        self.client.force_login(self.manager)
+        self.assertEqual(self.client.get(receipt_url).status_code, 403)
+        self.client.force_login(self.foreign_user)
+        self.assertIn(self.client.get(invoice_url).status_code, (403, 404))
+        self.assertIn(self.client.get(receipt_url).status_code, (403, 404))
+        self.assertEqual(FeePayment.objects.count(), 0)
