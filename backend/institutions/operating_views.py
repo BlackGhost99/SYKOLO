@@ -10,7 +10,7 @@ from datetime import date
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db.models import Sum, Count
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -19,7 +19,8 @@ from accounts.views import authorized
 from .academic_models import AcademicYear
 from .operating_models import (OperatingSupplier, OperatingBudget, OperatingExpense,
                                OperatingExpensePayment, OperatingExpenseCategory,
-                               ACTIVE_ACTIVITY_POLES, ACTIVITY_POLES, BENEFICIARY_TYPES)
+                               ACTIVE_ACTIVITY_POLES, ACTIVITY_POLES, BENEFICIARY_TYPES,
+                               EXPENSE_WORKFLOW_STATES)
 from .services import has_permission
 from .views import access, refuse, parse_body, log_event
 
@@ -478,14 +479,41 @@ def expenses(request, school_id):
         except ValueError as exc:
             return fail(str(exc))
         if year is None:
-            return fail("Année scolaire introuvable.", 404) if request.GET.get("year") else result({"expenses": []})
+            return fail("Année scolaire introuvable.", 404) if request.GET.get("year") else result({
+                "expenses": [], "total": 0, "offset": 0, "has_more": False, "workflow_counts": {},
+            })
         qs = OperatingExpense.objects.filter(school=school, year=year).select_related("supplier", "budget")
         activity_pole = request.GET.get("activity_pole")
         if activity_pole:
             if activity_pole not in dict(ACTIVITY_POLES):
                 return fail("Pôle de sorties inconnu.")
             qs = qs.filter(activity_pole=activity_pole)
-        return result({"expenses": [expense_data(row) for row in qs.order_by("-expense_on", "-created_at")[:400]]})
+        # Independent state counts for the selected school, year and activity.
+        counts = {
+            item["workflow_state"]: item["total"]
+            for item in qs.values("workflow_state").annotate(total=Count("pk"))
+        }
+        state_filter = request.GET.get("workflow_state")
+        if state_filter:
+            if state_filter not in dict(EXPENSE_WORKFLOW_STATES):
+                return fail("État de demande inconnu.")
+            qs = qs.filter(workflow_state=state_filter)
+        try:
+            limit = int(request.GET.get("limit", "50"))
+            offset = int(request.GET.get("offset", "0"))
+        except (ValueError, TypeError):
+            return fail("Pagination invalide.")
+        if limit < 1 or limit > 100 or offset < 0 or offset > 1000000:
+            return fail("Pagination hors limites.")
+        total = qs.count()
+        rows = [
+            expense_data(row)
+            for row in qs.order_by("-expense_on", "-created_at", "-pk")[offset:offset + limit]
+        ]
+        return result({
+            "expenses": rows, "total": total, "offset": offset, "limit": limit,
+            "has_more": offset + len(rows) < total, "workflow_counts": counts,
+        })
     data, err = body(
         request,
         {"budget", "supplier", "label", "invoice_reference", "expense_on", "amount",
