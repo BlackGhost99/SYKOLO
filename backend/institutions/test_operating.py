@@ -109,6 +109,29 @@ class OperatingLedgerTests(TestCase):
             "paid_on": "2026-11-12", "idempotency_key": key or str(uuid.uuid4()),
         })
 
+    def test_summary_includes_more_than_200_approved_budgets(self):
+        """Les totaux des sorties ne doivent pas être tronqués par la liste affichée."""
+        from django.utils import timezone
+
+        approved_at = timezone.now()
+        OperatingBudget.objects.bulk_create([
+            OperatingBudget(
+                school=self.school, year=self.year, category=f"Catégorie {index:03d}",
+                currency="XAF", ceiling="1000.00",
+                proposed_by=self.users["comptabilite"],
+                approved_by=self.users["direction"], approved_at=approved_at,
+            )
+            for index in range(205)
+        ])
+        result = self.get("summary")
+        self.assertEqual(result.status_code, 200, result.content)
+        payload = result.json()
+        self.assertEqual(len(payload["budgets"]), 205)
+        self.assertEqual(payload["totals"]["XAF"]["ceiling"], "205000.00")
+        self.assertEqual(payload["totals"]["XAF"]["committed"], "0.00")
+        self.assertEqual(payload["totals"]["XAF"]["paid"], "0.00")
+        self.assertEqual(payload["totals"]["XAF"]["remaining"], "205000.00")
+
     def test_budget_and_expense_independent_approvals_with_partial_receipts(self):
         supplier, budget = self.approved_budget()
         expense = self.expense(budget["id"], supplier["id"])
