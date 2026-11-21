@@ -42,6 +42,12 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const root="schools/"+schoolId+"/operating/";
   const [suppliers,setSuppliers]=useState([]);
   const [categories,setCategories]=useState([]);
+  const [classifications,setClassifications]=useState({poles:[],centers:[],natures:[]});
+  const [centerForm,setCenterForm]=useState({code:"",name:"",activity_pole:""});
+  const [natureForm,setNatureForm]=useState({code:"",name:""});
+  const [editingOption,setEditingOption]=useState(null);
+  const [editingPole,setEditingPole]=useState(null);
+  const [confirmOptionArchive,setConfirmOptionArchive]=useState("");
   const [showCatalog,setShowCatalog]=useState(false);
   const [confirmCatalogImport,setConfirmCatalogImport]=useState(false);
   const [catalogSearch,setCatalogSearch]=useState("");
@@ -58,6 +64,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const [expenseForm,setExpenseForm]=useState({
     budget:"",supplier:"",label:"",amount:"",invoice_reference:"",
     expense_on:today(),activity_pole:"",cost_center:"",accounting_nature:"",
+    cost_center_ref:"",accounting_nature_ref:"",
     category_ref:"",subcategory_ref:"",
     beneficiary_type:"supplier",beneficiary_name:"",beneficiary_reference:"",
   });
@@ -65,7 +72,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const [workflowFilter,setWorkflowFilter]=useState("");
   const [pageOffset,setPageOffset]=useState(0);
   const PAGE_SIZE=30;
-  const [draftClassification,setDraftClassification]=useState({activity_pole:"",cost_center:"",accounting_nature:"",category_ref:"",subcategory_ref:""});
+  const [draftClassification,setDraftClassification]=useState({activity_pole:"",cost_center:"",accounting_nature:"",cost_center_ref:"",accounting_nature_ref:"",category_ref:"",subcategory_ref:""});
   const [draftBeneficiary,setDraftBeneficiary]=useState({
     beneficiary_type:"supplier",supplier:"",beneficiary_name:"",beneficiary_reference:"",
   });
@@ -85,12 +92,13 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     expenseParams.set("limit",String(PAGE_SIZE));
     expenseParams.set("offset",String(pageOffset));
     const expenseQs="?"+expenseParams.toString();
-    const [sup,cat,bud,exp,sum]=await Promise.all([
+    const [sup,cat,bud,exp,sum,cls]=await Promise.all([
       request(root+"suppliers"),request(root+"categories"),request(root+"budgets"+qs),
-      request(root+"expenses"+expenseQs),request(root+"summary"+qs),
+      request(root+"expenses"+expenseQs),request(root+"summary"+qs),request(root+"classification"),
     ]);
     setSuppliers(sup.suppliers||[]);
     setCategories(cat.categories||[]);
+    setClassifications({poles:cls.poles||[],centers:cls.centers||[],natures:cls.natures||[]});
     setBudgets(bud.budgets||[]);
     setExpenses(exp.expenses||[]);
     setExpenseListInfo({
@@ -179,6 +187,8 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
         activity_pole:data.expense.activity_pole==="unclassified"?"":data.expense.activity_pole,
         cost_center:data.expense.cost_center||"",
         accounting_nature:data.expense.accounting_nature||"",
+        cost_center_ref:data.expense.cost_center_ref||"",
+        accounting_nature_ref:data.expense.accounting_nature_ref||"",
         category_ref:data.expense.category_ref||"",
         subcategory_ref:data.expense.subcategory_ref||"",
       });
