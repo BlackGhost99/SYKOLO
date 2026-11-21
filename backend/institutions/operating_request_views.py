@@ -218,6 +218,34 @@ def visible_requests(request, school):
 
 
 @never_cache
+@require_http_methods(["GET"])
+@authorized
+def school_request_options(request, school_id):
+    school, err = gate_request(request, school_id)
+    if err is not None:
+        return err
+    categories = OperatingExpenseCategory.objects.filter(school=school, active=True).order_by(
+        "name", "code"
+    )
+    centers = OperatingClassificationOption.objects.filter(
+        school=school, kind="cost_center", active=True, activity_pole__in=("", "school"),
+    ).order_by("name")
+    return result({
+        "categories": [{
+            "id": str(c.pk), "parent": str(c.parent_id) if c.parent_id else None,
+            "code": c.code, "name": c.name,
+        } for c in categories],
+        "centers": [{
+            "id": str(c.pk), "name": c.name,
+        } for c in centers],
+        "urgencies": [{
+            "code": code, "label": label,
+        } for code, label in SCHOOL_REQUEST_URGENCY],
+        "financial_data_exposed": False,
+    })
+
+
+@never_cache
 @require_http_methods(["GET", "POST"])
 @authorized
 def school_requests(request, school_id):
