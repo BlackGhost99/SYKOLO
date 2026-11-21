@@ -7,7 +7,8 @@ from django.test import Client, TestCase
 from .academic_models import AcademicYear
 from .models import Organization, School, SchoolRole, SchoolMember, SchoolAudit
 from .operating_models import (OperatingSupplier, OperatingBudget, OperatingExpense,
-                               OperatingExpensePayment, OperatingExpenseCategory)
+                               OperatingExpensePayment, OperatingExpenseCategory,
+                               OperatingExpenseDecision)
 from .services import ROLE_TEMPLATES
 
 
@@ -104,10 +105,19 @@ class OperatingLedgerTests(TestCase):
         self.login("comptabilite")
         return supplier, response.json()
 
+    def submit_expense(self, expense):
+        self.login("comptabilite")
+        response = self.post("expenses/"+expense["id"]+"/submit", {
+            "revision": expense["revision"],
+        })
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
     def approve_expense(self, expense):
+        submitted = self.submit_expense(expense)
         self.login("direction")
         response = self.post("expenses/"+expense["id"]+"/approve", {
-            "revision": expense["revision"],
+            "revision": submitted["revision"],
         })
         self.assertEqual(response.status_code, 200, response.content)
         self.login("comptabilite")
@@ -198,9 +208,10 @@ class OperatingLedgerTests(TestCase):
         self.assertEqual(updated.json()["activity_pole"], "common")
         self.assertEqual(updated.json()["cost_center"], "Administration")
         self.assertEqual(updated.json()["accounting_nature"], "Entretien")
+        submitted = self.submit_expense(updated.json())
         self.login("direction")
         approved = self.post("expenses/" + expense["id"] + "/approve", {
-            "revision": updated.json()["revision"],
+            "revision": submitted["revision"],
         })
         self.assertEqual(approved.status_code, 200, approved.content)
 
@@ -279,9 +290,10 @@ class OperatingLedgerTests(TestCase):
         })
         self.assertEqual(updated.status_code, 200, updated.content)
         self.assertEqual(updated.json()["expense_category"], "Matériel")
+        submitted = self.submit_expense(updated.json())
         self.login("direction")
         approved = self.post("expenses/"+expense["id"]+"/approve", {
-            "revision": updated.json()["revision"],
+            "revision": submitted["revision"],
         })
         self.assertEqual(approved.status_code, 200, approved.content)
 
@@ -308,8 +320,9 @@ class OperatingLedgerTests(TestCase):
         self.assertEqual(expense["beneficiary_type"], "government")
         self.assertEqual(expense["beneficiary_name"], "Administration fiscale TEST")
         self.assertEqual(OperatingSupplier.objects.filter(school=self.school).count(), before)
+        submitted = self.submit_expense(expense)
         self.login("direction")
-        approved = self.post("expenses/"+expense["id"]+"/approve", {"revision": expense["revision"]})
+        approved = self.post("expenses/"+expense["id"]+"/approve", {"revision": submitted["revision"]})
         self.assertEqual(approved.status_code, 200, approved.content)
         self.login("econome")
         paid = self.pay(expense["id"], "5000.00")
@@ -372,9 +385,10 @@ class OperatingLedgerTests(TestCase):
         self.assertEqual(self.patch("expenses/"+expense["id"], {
             "revision": expense["revision"], "beneficiary_name": "Modif obsolète",
         }).status_code, 409)
+        submitted = self.submit_expense(changed)
         self.login("direction")
         self.assertEqual(self.post("expenses/"+expense["id"]+"/approve", {
-            "revision": changed["revision"],
+            "revision": submitted["revision"],
         }).status_code, 200)
         self.login("comptabilite")
         self.assertEqual(self.patch("expenses/"+expense["id"], {
@@ -430,21 +444,27 @@ class OperatingLedgerTests(TestCase):
         first = self.expense(budget["id"], supplier["id"], "75000.00")
         second = self.expense(budget["id"], supplier["id"], "30000.00", "FAC-TEST-002")
         self.approve_expense(first)
+        submitted_second = self.submit_expense(second)
         self.login("direction")
-        rejected = self.post("expenses/"+second["id"]+"/approve", {"revision": second["revision"]})
+        rejected = self.post("expenses/"+second["id"]+"/approve", {"revision": submitted_second["revision"]})
         self.assertEqual(rejected.status_code, 409, rejected.content)
         self.assertFalse(OperatingExpense.objects.get(pk=second["id"]).approved_at)
+        refused = self.post("expenses/"+second["id"]+"/reject", {
+            "revision": submitted_second["revision"], "reason": "Budget insuffisant, demande à corriger",
+        })
+        self.assertEqual(refused.status_code, 200, refused.content)
         self.login("comptabilite")
         edited = self.patch("expenses/"+second["id"], {
-            "revision": 1, "amount": "25000.00",
+            "revision": refused.json()["revision"], "amount": "25000.00",
         })
         self.assertEqual(edited.status_code, 200, edited.content)
         self.assertEqual(self.patch("expenses/"+second["id"], {
-            "revision": 1, "amount": "12000.00",
+            "revision": refused.json()["revision"], "amount": "12000.00",
         }).status_code, 409)
+        second_submitted = self.submit_expense(edited.json())
         self.login("direction")
         approval = self.post("expenses/"+second["id"]+"/approve", {
-            "revision": edited.json()["revision"],
+            "revision": second_submitted["revision"],
         })
         self.assertEqual(approval.status_code, 200, approval.content)
         self.assertEqual(self.get("summary") .json()["totals"]["XAF"]["remaining"], "0.00")
