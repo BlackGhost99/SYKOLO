@@ -487,7 +487,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
         {detail.expense.cost_center?" · Centre de coûts : "+detail.expense.cost_center:""}
         {detail.expense.accounting_nature?" · Nature comptable : "+detail.expense.accounting_nature:""}
       </p>
-      {canManage&&detail.expense.status==="draft"&&<form onSubmit={updateDraftClassification}>
+      {canManage&&["draft","rejected"].includes(detail.expense.status)&&<form onSubmit={updateDraftClassification}>
         <div className="two">
           <label className="field">Catégorie du projet<select required value={draftClassification.category_ref}
             onChange={e=>setDraftClassification({...draftClassification,category_ref:e.target.value,subcategory_ref:""})}>
@@ -506,10 +506,10 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
           <label className="field">Centre de coûts du projet<input maxLength={100} value={draftClassification.cost_center} onChange={e=>setDraftClassification({...draftClassification,cost_center:e.target.value})}/></label>
           <label className="field">Nature comptable du projet<input maxLength={100} value={draftClassification.accounting_nature} onChange={e=>setDraftClassification({...draftClassification,accounting_nature:e.target.value})}/></label>
         </div>
-        <Button type="submit" disabled={busy}>Enregistrer la classification</Button>
+        <Button type="submit" disabled={busy}>{detail.expense.status==="rejected"?"Corriger la demande refusée":"Enregistrer la classification"}</Button>
       </form>}
-      {canManage&&detail.expense.status==="draft"&&<form onSubmit={updateDraftBeneficiary}>
-        <p className="hint">Modifier uniquement les brouillons. L'identité du bénéficiaire est figée après approbation.</p>
+      {canManage&&["draft","rejected"].includes(detail.expense.status)&&<form onSubmit={updateDraftBeneficiary}>
+        <p className="hint">Vous pouvez corriger un brouillon ou une demande refusée ; le bénéficiaire est figé après approbation.</p>
         <div className="two">
           <label className="field">Type de bénéficiaire du projet<select required value={draftBeneficiary.beneficiary_type}
             onChange={e=>setDraftBeneficiary({...draftBeneficiary,beneficiary_type:e.target.value,supplier:"",beneficiary_name:"",beneficiary_reference:""})}>
@@ -543,7 +543,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
             item.actor,item.reason||"—",
           ])}/>
       </details>}
-      {canManage&&["draft","rejected"].includes(detail.expense.status)&&<Button disabled={busy||detail.expense.status==="rejected"} onClick={()=>submitExpense(detail.expense)}>
+      {canManage&&detail.expense.status==="draft"&&<Button disabled={busy} onClick={()=>submitExpense(detail.expense)}>
         Soumettre pour autorisation
       </Button>}
       {canApprove&&detail.expense.status==="submitted"&&<>
@@ -557,7 +557,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
           <Button type="submit" disabled={busy||rejectionReason.trim().length<10}>Refuser la demande</Button>
         </form>
       </>}
-      {canManage&&detail.expense.status==="draft"&&<Button disabled={busy} onClick={()=>editExpense(detail.expense)}>Corriger le montant</Button>}
+      {canManage&&["draft","rejected"].includes(detail.expense.status)&&<Button disabled={busy} onClick={()=>editExpense(detail.expense)}>Corriger le montant</Button>}
       {canPay&&["approved","partially_paid"].includes(detail.expense.status)&&<form onSubmit={markPaid}>
         <p className="hint">Déclarer uniquement un paiement déjà effectué : renseignez la preuve et sa référence. Aucune sortie de fonds n'est déclenchée par YEM.</p>
         <div className="two">
