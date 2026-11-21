@@ -10,6 +10,7 @@ from django.utils import timezone
 from .academic_models import AcademicClass, AcademicCycle, AcademicLevel, AcademicYear
 from .admission_models import AdmissionApplication
 from .finance_models import FeeCharge, FeePayment, FeePaymentVoid, FeeSchedule
+from .parent_payment_models import AdmissionCashReceipt, AdmissionCashReceiptVoid
 from .models import Organization, OrganizationMember, School, SchoolAudit, SchoolMember, SchoolRole
 from .services import OWNER_ROLE_TEMPLATE, ROLE_TEMPLATES
 from .staff_models import StaffRecord, StaffAssignment
@@ -161,6 +162,78 @@ class OwnerOverviewTests(TestCase):
             "other_declared": "50000.00",
         })
         self.assertFalse(response.json()["finance"]["revenue_certified"])
+
+
+    def test_admission_cash_income_is_isolated_from_tuition_and_excludes_voids_demo(self):
+        application = AdmissionApplication.objects.get(school=self.school)
+        today = timezone.localdate()
+        AdmissionCashReceipt.objects.create(
+            school=self.school, application=application, amount_xaf=15000,
+            is_demo=False, received_on=today, recorded_by=self.director,
+        )
+        demo_application = AdmissionApplication.objects.create(
+            school=self.school, year=self.year, classroom=application.classroom,
+            first_name="Simulation", last_name="Exclue", status="submitted", source="ecole",
+        )
+        AdmissionCashReceipt.objects.create(
+            school=self.school, application=demo_application, amount_xaf=35000,
+            is_demo=True, received_on=today, recorded_by=self.director,
+        )
+        void_application = AdmissionApplication.objects.create(
+            school=self.school, year=self.year, classroom=application.classroom,
+            first_name="Annulation", last_name="Exclue", status="submitted", source="ecole",
+        )
+        cancelled = AdmissionCashReceipt.objects.create(
+            school=self.school, application=void_application, amount_xaf=25000,
+            is_demo=False, received_on=today, recorded_by=self.director,
+        )
+        AdmissionCashReceiptVoid.objects.create(
+            school=self.school, receipt=cancelled,
+            reason="Erreur de caisse", voided_by=self.owner,
+        )
+        future_application = AdmissionApplication.objects.create(
+            school=self.school, year=self.year, classroom=application.classroom,
+            first_name="Future", last_name="Exclue", status="submitted", source="ecole",
+        )
+        AdmissionCashReceipt.objects.create(
+            school=self.school, application=future_application, amount_xaf=40000,
+            is_demo=False, received_on=today + timedelta(days=1), recorded_by=self.director,
+        )
+        # A second school with the same academic year cannot influence this total.
+        other_cycle = AcademicCycle.objects.create(school=self.other, code="college", name="Collège")
+        other_level = AcademicLevel.objects.create(
+            school=self.other, cycle=other_cycle, code="6e", name="Sixième",
+        )
+        other_room = AcademicClass.objects.create(
+            school=self.other, year=self.foreign_year, level=other_level,
+            code="6A", name="Sixième A",
+        )
+        foreign_application = AdmissionApplication.objects.create(
+            school=self.other, year=self.foreign_year, classroom=other_room,
+            first_name="Autre", last_name="École", status="submitted", source="ecole",
+        )
+        AdmissionCashReceipt.objects.create(
+            school=self.other, application=foreign_application, amount_xaf=90000,
+            is_demo=False, received_on=today, recorded_by=self.director,
+        )
+        self.client.force_login(self.owner)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200, response.content)
+        income = response.json()["finance"]["admission_cash"]
+        self.assertEqual(income["currency"], "XAF")
+        self.assertEqual(income["total"], "15000.00")
+        self.assertEqual(income["today"], "15000.00")
+        self.assertEqual(income["this_month"], "15000.00")
+        self.assertEqual(income["count"], 1)
+        self.assertEqual(income["demo_excluded"], 1)
+        self.assertEqual(income["voided_excluded"], 1)
+        self.assertEqual(income["future_dated_excluded"], 1)
+        self.assertFalse(income["revenue_certified"])
+        # The original fee ledger keeps its own figures; no implicit summation.
+        fee = next(row for row in response.json()["finance"]["currencies"] if row["currency"] == "XAF")
+        self.assertEqual(fee["paid"], "50000.00")
+        for secret in ("Simulation Exclue", "Autre École"):
+            self.assertNotIn(secret, response.content.decode())
 
     def test_real_founder_without_director_role_may_monitor(self):
         self.client.force_login(self.founder)
