@@ -25,6 +25,21 @@ const dashboard={
   finance:{admission_cash:{currency:"XAF",source:"admission_cash_receipt",total:"15000.00",count:1,
     today:"15000.00",this_month:"15000.00",demo_excluded:1,voided_excluded:1,future_dated_excluded:0,
     revenue_certified:false},
+    fee_income_categories:{
+      revenue_certified:false,
+      rows:[
+        {category:"scolarite",label:"Scolarité",currency:"XAF",billed:"1000000.00",paid:"700000.00",payments:18,paid_month:"100000.00",paid_today:"20000.00"},
+        {category:"extrascolaire",label:"Extrascolaire",currency:"XAF",billed:"100000.00",paid:"50000.00",payments:2,paid_month:"10000.00",paid_today:"0.00"},
+        {category:"a_classer",label:"Autres frais à classer",currency:"XAF",billed:"100000.00",paid:"40000.00",payments:1,paid_month:"0.00",paid_today:"0.00"},
+        {category:"demo",label:"Démonstration — hors recettes réelles",currency:"XAF",billed:"0.00",paid:"10000.00",payments:1,paid_month:"0.00",paid_today:"0.00"},
+      ],
+      details:[
+        {category:"scolarite",currency:"XAF",fee_code:"SCOL-202611",billed:"1000000.00",paid:"700000.00",payments:18},
+        {category:"extrascolaire",currency:"XAF",fee_code:"transport",billed:"100000.00",paid:"50000.00",payments:2},
+        {category:"a_classer",currency:"XAF",fee_code:"frais-divers",billed:"100000.00",paid:"40000.00",payments:1},
+        {category:"demo",currency:"XAF",fee_code:"demo-test",billed:"0.00",paid:"10000.00",payments:1},
+      ],
+    },
     currencies:[{currency:"XAF",billed:"1200000.00",
     paid:"800000.00",outstanding:"400000.00",overdue:"100000.00",
     paid_this_month:"150000.00",paid_today:"50000.00",payments_today:2,
@@ -127,4 +142,22 @@ test("Les entrées d'inscription restent distinctes des frais liés aux élèves
   expect(screen.getByText(/Les frais d’inscription en espèces ne sont pas additionnés/)).toBeTruthy();
   expect(screen.getByText(/Une déclaration de caisse n’est pas une certification bancaire/)).toBeTruthy();
   expect(screen.getByText(/1 simulation\(s\), 1 annulation\(s\)/)).toBeTruthy();
+});
+
+test("Le propriétaire déplie les catégories d'entrées sans ouvrir de dossiers d'élèves",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async()=>Response.json(dashboard)));
+  const user=userEvent.setup();
+  render(<OwnerDashboard schoolId="ecole-1"/>);
+  await screen.findByRole("tab",{name:"Finances"});
+  await user.click(screen.getByRole("tab",{name:"Finances"}));
+  expect(screen.getByText("Ventilation des entrées liées aux élèves")).toBeTruthy();
+  expect(screen.getAllByText("Extrascolaire").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Autres frais à classer").length).toBeGreaterThan(0);
+  const tuition=screen.getByText(/Scolarité — XAF : voir les 1 code\(s\) tarifaire\(s\)/);
+  const details=tuition.closest("details");
+  expect(details.open).toBe(false);
+  await user.click(tuition);
+  expect(details.open).toBe(true);
+  expect(within(details).getByText("SCOL-202611")).toBeTruthy();
+  expect(screen.getByText(/Les règlements restent déclaratifs et non certifiés/)).toBeTruthy();
 });
