@@ -298,3 +298,16 @@ class ExtrasSalesLedgerTests(TestCase):
         self.assertEqual(self.post(stock_url, entry).status_code, 403)
         self.client.force_login(self.foreign_user)
         self.assertIn(self.client.get(stock_url).status_code, (403, 404))
+
+    @override_settings(YEM_EXTRA_STOCK_WRITES_ENABLED=True)
+    def test_unstocked_product_cannot_be_removed_or_create_phantom_balance(self):
+        stock_url = f"/api/v1/schools/{self.school.pk}/finance/extras/stock"
+        response = self.post(stock_url, {
+            "catalog_item_id": self.product_id, "quantity_delta": -1,
+            "reason": "Correction inventaire sans stock",
+            "operation_key": "missing-stock-debit-20261121",
+            "revision": 0,
+        })
+        self.assertEqual(response.status_code, 422, response.content)
+        self.assertEqual(ExtraStock.objects.count(), 0)
+        self.assertEqual(ExtraStockMovement.objects.count(), 0)
