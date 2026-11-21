@@ -155,6 +155,7 @@ from .staff_models import StaffRecord, StaffAssignment, StaffProfessionalDossier
 from .staff_profile_models import StaffProfile  # noqa: E402,F401
 from .payroll_models import StaffPayRun, StaffPayDisbursement  # noqa: E402,F401
 from .operating_models import OperatingSupplier, OperatingBudget, OperatingExpense, OperatingExpensePayment  # noqa: E402,F401
+from .operating_request_models import OperatingSchoolRequest, OperatingSchoolRequestEvent  # noqa: E402,F401
 
 from .curriculum_models import Subject, CourseOffering, CourseUnit, CourseInstructor  # noqa: E402,F401
 

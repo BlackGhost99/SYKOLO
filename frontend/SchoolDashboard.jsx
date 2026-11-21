@@ -8,6 +8,7 @@ import StaffPanel from "./StaffPanel.jsx";
 import StaffProfessionalDossier from "./StaffProfessionalDossier.jsx";
 import PayrollPanel from "./PayrollPanel.jsx";
 import OperatingPanel from "./OperatingPanel.jsx";
+import SchoolExpenseRequestsPanel from "./SchoolExpenseRequestsPanel.jsx";
 import TeacherHome from "./TeacherHome.jsx";
 import TeacherMobileWorkspace from "./TeacherMobileWorkspace.jsx";
 import {teacherWorkspacePolicy} from "./teacher-access.js";
@@ -86,6 +87,7 @@ const sections = {
   parents:{title:"Parents",subtitle:"Les responsables légaux de chaque élève, par classe",modules:[],lives:[
     {key:"directory",label:"Parents par classe",need:["school.parents.manage","school.students.profile.read","school.students.sensitive.read","school.academic.read"]}]},
   expenses:{title:"Dépenses et budgets",subtitle:"Achats, fournisseurs, enveloppes et dépenses autorisées",modules:[],lives:[
+    {key:"requests",label:"Mes demandes et autorisations",need:[],any:["school.operating.request","school.operating.manage","school.operating.approve"]},
     {key:"live",label:"Registre de fonctionnement",need:["school.operating.read"]}]},
   staff:{title:"Personnel",subtitle:"Retrouvez les collaborateurs et gérez leurs affectations",modules:["onboarding"],lives:[
     {key:"directory",label:"Équipe de l’établissement",need:["school.staff.read"]},
@@ -603,6 +605,11 @@ export default function SchoolDashboard({user,accountView,onLogout,initialSchool
       "notifications:inbox":<SchoolNotificationCenter key={chosen} schoolId={chosen} onUnread={setInboxCount}/>,
       "parents:directory":<><PageHeader title={section.title} subtitle={section.subtitle} actions={advancedSettings}/>
         <div className="yd-real-body"><FamilyDirectory key={chosen} schoolId={chosen} onNavigate={navigate} workingYearId={workingYearId}/></div></>,
+      "expenses:requests":<><PageHeader title="Demandes de dépenses scolaires" subtitle="Demandes du personnel, examen indépendant et suivi sans engagement comptable"/>
+        <div className="yd-real-body"><SchoolExpenseRequestsPanel key={chosen+":"+workingYearId} schoolId={chosen}
+          workingYearId={workingYearId}
+          canCreate={can("school.operating.request")||can("school.operating.manage")}
+          canReview={can("school.operating.approve")}/></div></>,
       "expenses:live":<><PageHeader title="Dépenses et budgets" subtitle="Budget annuel, fournisseurs, dépenses et règlements vérifiés"/>
         <div className="yd-real-body"><OperatingPanel key={chosen+":"+workingYearId} schoolId={chosen}
           workingYearId={workingYearId} canManage={can("school.operating.manage")}

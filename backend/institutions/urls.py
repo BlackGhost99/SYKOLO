@@ -10,7 +10,7 @@ from . import import_views, subscription_views, teaching_diary_views, diary_reso
 from . import singpay_views, subscription_reminders, subscription_access, subscription_dashboard
 from . import delegation_views, student_transfers, student_numbering_views
 from . import finance_batch_views, finance_cash_views, finance_summary_views, payroll_views, operating_views, finance_quality_views
-from . import operating_catalog_views, operating_workflow_views, operating_seed_views, operating_classification_views
+from . import operating_catalog_views, operating_workflow_views, operating_seed_views, operating_classification_views, operating_request_views
 from . import annual_views
 from . import class_assignment_views
 from . import calendar_views, primary_views, preschool_followup_views
@@ -174,6 +174,10 @@ urlpatterns = [
     path("schools/<uuid:school_id>/operating/classification/<uuid:option_id>", operating_classification_views.classification_detail),
     path("schools/<uuid:school_id>/operating/classification/poles/<str:pole_code>", operating_classification_views.pole_detail),
     path("schools/<uuid:school_id>/operating/catalog-defaults", operating_seed_views.default_catalog),
+    path("schools/<uuid:school_id>/operating/school-requests/options", operating_request_views.school_request_options),
+    path("schools/<uuid:school_id>/operating/school-requests", operating_request_views.school_requests),
+    path("schools/<uuid:school_id>/operating/school-requests/<uuid:request_id>", operating_request_views.school_request_detail),
+    path("schools/<uuid:school_id>/operating/school-requests/<uuid:request_id>/<str:action>", operating_request_views.school_request_action),
     path("schools/<uuid:school_id>/operating/categories", operating_catalog_views.categories),
     path("schools/<uuid:school_id>/operating/categories/<uuid:category_id>", operating_catalog_views.category_detail),
     path("schools/<uuid:school_id>/operating/suppliers", operating_views.suppliers),

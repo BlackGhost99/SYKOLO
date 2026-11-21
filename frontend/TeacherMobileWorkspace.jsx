@@ -6,6 +6,7 @@ import PreschoolFollowup from "./PreschoolFollowup.jsx";
 import TeacherMobileAttendance from "./TeacherMobileAttendance.jsx";
 import TeacherProfile from "./TeacherProfile.jsx";
 import PWAInstall from "./PWAInstall.jsx";
+import SchoolExpenseRequestsPanel from "./SchoolExpenseRequestsPanel.jsx";
 import {teacherRequest} from "./teacher-mobile-api.js";
 import "./teacher-mobile.css";
 
@@ -36,6 +37,7 @@ export default function TeacherMobileWorkspace({
   const hasCurriculum=permissions.includes("school.curriculum.read")&&permissions.includes("school.academic.read");
   const hasAcademic=permissions.includes("school.academic.read");
   const canDiary=permissions.includes("school.curriculum.read")||permissions.includes("school.diary.read");
+  const canRequest=permissions.includes("school.operating.request");
   const navigation=[...tabs,...(canDiary?[{id:"diary",label:"Cahier",icon:"file"}]:[]),...(preschoolEnabled&&hasAcademic?[{id:"preschool",label:"Suivi",icon:"file"}]:[])];
   const hasTimetable=permissions.includes("school.timetable.read");
   useEffect(()=>{setTab("accueil");},[schoolId]);
@@ -140,6 +142,7 @@ export default function TeacherMobileWorkspace({
               ["classes","users","Mes classes"],["notes","file","Notes"],["moyennes","barchart","Moyennes"],
               ["appel","check","Appel"],["emploi","calendar","Emploi du temps"],
               ...(canDiary?[["diary","file","Cahier de textes"]]:[]),
+              ...(canRequest?[["requests","receipt","Demandes de matériel"]]:[]),
             ].map(([id,icon,label])=><button type="button" className="ym-shortcut" onClick={()=>open(id)} key={id}>
               <span><Icon name={icon} size={26}/></span><strong>{label}</strong>
             </button>)}
@@ -193,6 +196,11 @@ export default function TeacherMobileWorkspace({
         assignments={data.assignments} workingYearId={workingYearId}/>}
       {!loading&&tab==="preschool"&&preschoolEnabled&&hasAcademic&&<div className="ym-page">
         <PreschoolFollowup key={schoolId+":"+workingYearId} schoolId={schoolId} yearId={workingYearId}/>
+      </div>}
+      {tab==="requests"&&canRequest&&<div className="ym-page">
+        <h1>Mes demandes scolaires</h1>
+        <SchoolExpenseRequestsPanel key={schoolId+":"+workingYearId} schoolId={schoolId}
+          workingYearId={workingYearId} canCreate/>
       </div>}
       {tab==="profil"&&<div className="ym-page">
         <h1>Mon profil</h1>
