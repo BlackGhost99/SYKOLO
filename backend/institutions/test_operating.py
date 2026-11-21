@@ -289,6 +289,101 @@ class OperatingLedgerTests(TestCase):
         category.refresh_from_db()
         return self.patch("categories/"+str(category.pk), {"revision": category.revision, **data})
 
+    def test_non_supplier_government_expense_uses_existing_budget_and_controls(self):
+        supplier, budget = self.approved_budget()
+        before = OperatingSupplier.objects.filter(school=self.school).count()
+        response = self.post("expenses", {
+            "budget": budget["id"], "activity_pole": "common",
+            "category_ref": str(self.category.pk),
+            "beneficiary_type": "government",
+            "beneficiary_name": "Administration fiscale TEST",
+            "beneficiary_reference": "DOSSIER-INTERNE-TEST",
+            "label": "Frais administratifs fictifs", "amount": "15000.00",
+            "invoice_reference": "JUST-ADM-01", "expense_on": "2026-11-10",
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        expense = response.json()
+        self.assertIsNone(expense["supplier"])
+        self.assertEqual(expense["supplier_name"], "")
+        self.assertEqual(expense["beneficiary_type"], "government")
+        self.assertEqual(expense["beneficiary_name"], "Administration fiscale TEST")
+        self.assertEqual(OperatingSupplier.objects.filter(school=self.school).count(), before)
+        self.login("direction")
+        approved = self.post("expenses/"+expense["id"]+"/approve", {"revision": expense["revision"]})
+        self.assertEqual(approved.status_code, 200, approved.content)
+        self.login("econome")
+        paid = self.pay(expense["id"], "5000.00")
+        self.assertEqual(paid.status_code, 201, paid.content)
+        self.login("comptabilite")
+        report = self.get("summary").json()
+        self.assertEqual(report["totals"]["XAF"]["committed"], "15000.00")
+        self.assertEqual(report["totals"]["XAF"]["paid"], "5000.00")
+        self.assertEqual(report["by_activity_pole"]["XAF"]["common"]["unpaid"], "10000.00")
+        self.assertEqual(self.get("expenses/"+expense["id"]).json()["expense"]["beneficiary_name"],
+                         "Administration fiscale TEST")
+
+    def test_beneficiary_validation_and_school_isolation(self):
+        supplier, budget = self.approved_budget()
+        base = {
+            "budget": budget["id"], "activity_pole": "common",
+            "category_ref": str(self.category.pk),
+            "label": "Paiement fictif", "amount": "8000.00",
+            "invoice_reference": "JUST-02", "expense_on": "2026-11-10",
+        }
+        cases = [
+            {**base, "beneficiary_type": "supplier"},
+            {**base, "beneficiary_type": "government"},
+            {**base, "beneficiary_type": "staff", "beneficiary_name": " "},
+            {**base, "beneficiary_type": "unknown", "beneficiary_name": "Un nom"},
+            {**base, "beneficiary_type": "government", "beneficiary_name": "Trésor",
+             "supplier": supplier["id"]},
+            {**base, "beneficiary_type": "supplier", "supplier": supplier["id"],
+             "beneficiary_name": "Faux nom fournisseur"},
+        ]
+        for case in cases:
+            with self.subTest(case=case):
+                self.assertEqual(self.post("expenses", case).status_code, 422)
+        foreign = OperatingSupplier.objects.create(school=self.other, name="Fournisseur étranger")
+        invalid = self.post("expenses", {
+            **base, "beneficiary_type": "supplier", "supplier": str(foreign.pk),
+        })
+        self.assertEqual(invalid.status_code, 404)
+        self.assertEqual(OperatingExpense.objects.count(), 0)
+        self.login("secretariat")
+        self.assertEqual(self.post("expenses", {
+            **base, "beneficiary_type": "individual", "beneficiary_name": "TEST",
+        }).status_code, 403)
+
+    def test_draft_beneficiary_switch_preserves_original_audit_and_approved_lock(self):
+        supplier, budget = self.approved_budget()
+        expense = self.expense(budget["id"], supplier["id"])
+        self.assertEqual(expense["beneficiary_type"], "supplier")
+        self.assertEqual(expense["beneficiary_name"], "Fournitures Gabon TEST")
+        switched = self.patch("expenses/"+expense["id"], {
+            "revision": expense["revision"],
+            "beneficiary_type": "staff", "beneficiary_name": "Employé TEST",
+            "beneficiary_reference": "REF-HORS-PAIE",
+        })
+        self.assertEqual(switched.status_code, 200, switched.content)
+        changed = switched.json()
+        self.assertIsNone(changed["supplier"])
+        self.assertEqual(changed["beneficiary_type"], "staff")
+        self.assertEqual(changed["beneficiary_name"], "Employé TEST")
+        self.assertEqual(self.patch("expenses/"+expense["id"], {
+            "revision": expense["revision"], "beneficiary_name": "Modif obsolète",
+        }).status_code, 409)
+        self.login("direction")
+        self.assertEqual(self.post("expenses/"+expense["id"]+"/approve", {
+            "revision": changed["revision"],
+        }).status_code, 200)
+        self.login("comptabilite")
+        self.assertEqual(self.patch("expenses/"+expense["id"], {
+            "revision": changed["revision"]+1, "beneficiary_name": "Tentative rétroactive",
+        }).status_code, 409)
+        self.assertEqual(self.get("expenses/"+expense["id"]).json()["expense"]["beneficiary_name"],
+                         "Employé TEST")
+        self.assertEqual(OperatingSupplier.objects.filter(school=self.school).count(), 1)
+
     def test_budget_and_expense_independent_approvals_with_partial_receipts(self):
         supplier, budget = self.approved_budget()
         expense = self.expense(budget["id"], supplier["id"])

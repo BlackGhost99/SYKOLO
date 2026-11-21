@@ -21,6 +21,16 @@ ACTIVITY_POLES = (
 )
 ACTIVE_ACTIVITY_POLES = {key for key, _ in ACTIVITY_POLES if key != "unclassified"}
 
+BENEFICIARY_TYPES = (
+    ("supplier", "Fournisseur ou prestataire"),
+    ("staff", "Membre du personnel (hors paie)"),
+    ("government", "Administration ou organisme public"),
+    ("parent", "Parent ou responsable légal"),
+    ("individual", "Personne physique"),
+    ("organization", "Organisation ou association"),
+    ("other", "Autre bénéficiaire"),
+)
+
 
 class OperatingExpenseCategory(models.Model):
     """School-owned two-level catalog; records are archived, never deleted."""
@@ -92,7 +102,13 @@ class OperatingExpense(models.Model):
     school = models.ForeignKey("institutions.School", on_delete=models.PROTECT)
     year = models.ForeignKey("institutions.AcademicYear", on_delete=models.PROTECT)
     budget = models.ForeignKey(OperatingBudget, on_delete=models.PROTECT, related_name="expenses")
-    supplier = models.ForeignKey(OperatingSupplier, on_delete=models.PROTECT, related_name="expenses")
+    # Legacy supplier expenses are preserved. New non-commercial outflows
+    # have a named beneficiary without a fabricated supplier record.
+    supplier = models.ForeignKey(OperatingSupplier, null=True, blank=True,
+                                 on_delete=models.PROTECT, related_name="expenses")
+    beneficiary_type = models.CharField(max_length=20, choices=BENEFICIARY_TYPES, default="supplier")
+    beneficiary_name = models.CharField(max_length=180, blank=True, default="")
+    beneficiary_reference = models.CharField(max_length=120, blank=True, default="")
     # Optional only to preserve historical rows; new expenses require a catalog category.
     category_ref = models.ForeignKey(OperatingExpenseCategory, null=True, blank=True,
                                      on_delete=models.PROTECT, related_name="classified_expenses")
@@ -127,6 +143,13 @@ class OperatingExpense(models.Model):
                 raise ValidationError("Enveloppe budgétaire étrangère à la dépense.")
         if self.supplier_id and self.school_id and self.supplier.school_id != self.school_id:
             raise ValidationError("Fournisseur d'un autre établissement.")
+        if self.beneficiary_type not in dict(BENEFICIARY_TYPES):
+            raise ValidationError("Type de bénéficiaire invalide.")
+        if self.beneficiary_type == "supplier":
+            if not self.supplier_id:
+                raise ValidationError("Un fournisseur est obligatoire pour ce bénéficiaire.")
+        elif self.supplier_id or not self.beneficiary_name.strip():
+            raise ValidationError("Indiquez un bénéficiaire nominatif sans fournisseur commercial.")
         if self.category_ref_id:
             if self.category_ref.school_id != self.school_id or self.category_ref.parent_id:
                 raise ValidationError("Catégorie de dépenses étrangère ou non principale.")
