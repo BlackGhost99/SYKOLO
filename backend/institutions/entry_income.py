@@ -62,7 +62,7 @@ def admission_cash_income(school, year, as_of=None):
 # Only explicit tariff-code conventions have an automatic category. Ambiguous
 # codes are preserved in "a_classer" so an administrator can map them later.
 EXTRASCOLAIRE_CODES = frozenset({
-    "cantine", "transport", "uniforme", "garderie", "restauration",
+    "cantine", "transport", "uniforme", "restauration",
     "club", "activite", "sport", "sortie", "internat", "navette",
 })
 CATEGORIES = (
@@ -79,7 +79,9 @@ def _category(code, charge_label="", method=""):
     from .finance_evidence import explicit_demo
 
     key = (code or "").strip().lower().replace("_", "-")
-    if key.startswith("demo-") or method == "simulation" or explicit_demo(charge_label):
+    frozen_label = (charge_label or "").strip().lower()
+    bracketed_demo = frozen_label.startswith(("[démo]", "[demo]"))
+    if key.startswith("demo-") or method == "simulation" or explicit_demo(charge_label) or bracketed_demo:
         return "demo"
     if key == "scolarite" or key.startswith(("scol-", "scolarite-", "tuition-")):
         return "scolarite"
