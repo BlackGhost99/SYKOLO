@@ -236,7 +236,7 @@ const geminiStatuses = {
   ready_unverified:"Clé et modèle détectés. Accès Gemini non vérifié.",
 };
 
-function GeminiReadiness({status,pilotEnabled}) {
+function GeminiReadiness({status,pilotEnabled,usage,refreshUsage}) {
   const [busy,setBusy] = useState(false);
   const [result,setResult] = useState("");
   async function runCheck(live) {
@@ -259,14 +259,20 @@ function GeminiReadiness({status,pilotEnabled}) {
       setResult(live?e.message:"La simulation a échoué.");
     } finally {
       setBusy(false);
+      if (live) refreshUsage();
     }
   }
   return <>
     <p>{pilotEnabled? "Pilote Gemini actif pour la reprise financière." : geminiStatuses[status] || "État Gemini indisponible."}</p>
+    {usage&&<dl>
+      <dt>Tentatives aujourd’hui (UTC)</dt><dd>{usage.today} sur {usage.daily_limit}</dd>
+      <dt>Tentatives restantes aujourd’hui</dt><dd>{usage.remaining}</dd>
+      <dt>Tentatives ce mois (UTC)</dt><dd>{usage.month}</dd>
+    </dl>}
     <button type="button" className="ya-btn ya-btn-outline" disabled={busy} onClick={()=>runCheck(false)}>
       Simuler une réponse Gemini
     </button>
-    {pilotEnabled&&<button type="button" className="ya-btn ya-btn-outline" disabled={busy} onClick={()=>runCheck(true)}>
+    {pilotEnabled&&<button type="button" className="ya-btn ya-btn-outline" disabled={busy||usage?.remaining===0} onClick={()=>runCheck(true)}>
       Tester la connexion Gemini
     </button>}
     {busy&&<p role="status">Vérification en cours…</p>}
@@ -556,7 +562,7 @@ export default function PlatformConsole({user,mfaEnabled,accountView,onLogout}) 
                 {dashboard.intelligence.financial_headers&&<li>Analyse des colonnes financières</li>}
                 {dashboard.intelligence.numbering_suggestions&&<li>Suggestions de séries de matricules</li>}
               </ul>
-              {dashboard.intelligence.gemini&&<GeminiReadiness status={dashboard.intelligence.gemini.status} pilotEnabled={dashboard.intelligence.gemini.pilot_enabled}/>}
+              {dashboard.intelligence.gemini&&<GeminiReadiness status={dashboard.intelligence.gemini.status} pilotEnabled={dashboard.intelligence.gemini.pilot_enabled} usage={dashboard.intelligence.gemini.usage} refreshUsage={()=>setRefreshKey(k=>k+1)}/>}
             </div>
           </div>
         </section>}

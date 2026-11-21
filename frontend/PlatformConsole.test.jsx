@@ -19,7 +19,7 @@ const detail={
   events:[],
 };
 const dashboard={
-  intelligence:{financial_headers:true,numbering_suggestions:true,header_adapter_configured:false,gemini:{status:"ready_unverified"}},
+  intelligence:{financial_headers:true,numbering_suggestions:true,header_adapter_configured:false,gemini:{status:"ready_unverified",usage:{today:1,daily_limit:10,remaining:9,month:4,timezone:"UTC"}}},
   schools:[school],schools_total:1,schools_active:1,schools_inactive:0,
   organizations:1,users_active:1,filtered_total:1,page:1,pages:1,per_page:5,
   recent_events:[],organization_options:[{id:school.organization_id,name:"Groupe Test",schools_count:1}],
@@ -153,6 +153,9 @@ test("le MFA bloque totalement la console",()=>{
 test("distingue la détection de Gemini du résultat de simulation",async()=>{
   mount();
   expect(await screen.findByText("Clé et modèle détectés. Accès Gemini non vérifié.")).toBeTruthy();
+  expect(screen.getByText("Tentatives aujourd’hui (UTC)")).toBeTruthy();
+  expect(screen.getByText("1 sur 10")).toBeTruthy();
+  expect(screen.getByText("Tentatives ce mois (UTC)")).toBeTruthy();
   const user=userEvent.setup();
   await user.click(screen.getByRole("button",{name:"Simuler une réponse Gemini"}));
   expect(await screen.findByText("Simulation réussie. Le moteur local reste actif.")).toBeTruthy();
