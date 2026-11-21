@@ -335,6 +335,24 @@ export function LivePayments({ schoolId, canReceive, params, tabs, advancedSetti
               row.label,row.currency,fmtMoney(row.billed,row.currency),
               fmtMoney(row.paid,row.currency),num(row.payments),
             ])}/>
+          {entry.data.entry_categories.receivables?.rows?.length>0&&
+            <details className="yd-entry-receivable-details">
+              <summary>Créances scolaires et extrascolaires : consulter les impayés par échéance</summary>
+              <p className="yd-card-sub">Même référentiel que la synthèse propriétaire. Les échéances futures ne sont pas des impayés échus ; aucun montant de la caisse d'inscription n'est ajouté.</p>
+              <Table headers={["Catégorie","Devise","Net facturé","Enregistré (déclaratif)","Restant dû","Échu","Exigible aujourd'hui","Futur","Sans date","Trop-perçus"]}
+                rows={entry.data.entry_categories.receivables.rows.map(item=>[
+                  item.label,item.currency,
+                  fmtMoney(item.billed_net,item.currency),
+                  fmtMoney(item.paid_declared,item.currency),
+                  fmtMoney(item.outstanding,item.currency),
+                  fmtMoney(item.overdue,item.currency),
+                  fmtMoney(item.due_today,item.currency),
+                  fmtMoney(item.future,item.currency),
+                  fmtMoney(item.without_due_date,item.currency),
+                  fmtMoney(item.overpayment_review,item.currency),
+                ])}/>
+              <p className="yd-card-sub">{entry.data.entry_categories.receivables.note}</p>
+            </details>}
           {(entry.data.entry_categories.rows||[]).map(row=>{
             const codes=(entry.data.entry_categories.details||[]).filter(item=>
               item.category===row.category&&item.currency===row.currency);
