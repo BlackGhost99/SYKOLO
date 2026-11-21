@@ -6,6 +6,12 @@ const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+
 const fmt=(amount,currency)=>new Intl.NumberFormat("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(amount||0))+" "+currency;
 const METHODS=[["especes","Espèces (déclarées)"],["virement","Virement (déclaré)"],["mobile_money","Mobile Money (déclaré)"],["autre","Autre règlement"]];
 const STATUS={draft:"À valider",approved:"Approuvée",partially_paid:"Partiellement réglée",paid:"Réglée"};
+const POLES=[
+  ["school","Scolarité"],["extraschool","Extrascolarité"],
+  ["common","Administration et charges communes"],["investment","Investissements"],
+  ["cash_other","Autres sorties de trésorerie"],
+];
+const POLE_LABELS={unclassified:"À classer (historique)",...Object.fromEntries(POLES)};
 async function request(route,method="GET",data){
   if(method!=="GET"){
     const auth=await fetch(API+"auth/csrf",{credentials:"same-origin"});
@@ -30,7 +36,12 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const [summary,setSummary]=useState(null);
   const [supplierForm,setSupplierForm]=useState({name:"",contact:"",phone:"",email:""});
   const [budgetForm,setBudgetForm]=useState({category:"",currency:"XAF",ceiling:""});
-  const [expenseForm,setExpenseForm]=useState({budget:"",supplier:"",label:"",amount:"",invoice_reference:"",expense_on:today()});
+  const [expenseForm,setExpenseForm]=useState({
+    budget:"",supplier:"",label:"",amount:"",invoice_reference:"",
+    expense_on:today(),activity_pole:"",cost_center:"",accounting_nature:"",
+  });
+  const [poleFilter,setPoleFilter]=useState("");
+  const [draftClassification,setDraftClassification]=useState({activity_pole:"",cost_center:"",accounting_nature:""});
   const [detail,setDetail]=useState(null);
   const [payment,setPayment]=useState({amount:"",method:"especes",reference:"",paid_on:today()});
   const [paymentKey,setPaymentKey]=useState("");
@@ -39,15 +50,16 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const [message,setMessage]=useState("");
   const refresh=useCallback(async()=>{
     const qs=workingYearId?"?year="+encodeURIComponent(workingYearId):"";
+    const expenseQs=qs+(poleFilter?(qs?"&":"?")+"activity_pole="+encodeURIComponent(poleFilter):"");
     const [sup,bud,exp,sum]=await Promise.all([
       request(root+"suppliers"),request(root+"budgets"+qs),
-      request(root+"expenses"+qs),request(root+"summary"+qs),
+      request(root+"expenses"+expenseQs),request(root+"summary"+qs),
     ]);
     setSuppliers(sup.suppliers||[]);
     setBudgets(bud.budgets||[]);
     setExpenses(exp.expenses||[]);
     setSummary(sum);
-  },[root,workingYearId]);
+  },[root,workingYearId,poleFilter]);
   useEffect(()=>{
     let active=true;
     setDetail(null);setError("");setMessage("");
@@ -101,8 +113,23 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   }
   async function openExpense(id){
     setError("");
-    try{setDetail(await request(root+"expenses/"+id));}
-    catch(e){setError(e.message);}
+    try{
+      const data=await request(root+"expenses/"+id);
+      setDetail(data);
+      setDraftClassification({
+        activity_pole:data.expense.activity_pole==="unclassified"?"":data.expense.activity_pole,
+        cost_center:data.expense.cost_center||"",
+        accounting_nature:data.expense.accounting_nature||"",
+      });
+    }catch(e){setError(e.message);}
+  }
+  async function updateDraftClassification(event){
+    event.preventDefault();
+    if(!detail)return;
+    const saved=await op(()=>request(root+"expenses/"+detail.expense.id,"PATCH",{
+      revision:detail.expense.revision,...draftClassification,
+    }),"Classification du projet enregistrée.");
+    if(saved)await openExpense(detail.expense.id);
   }
   async function approveExpense(item){
     const saved=await op(()=>request(root+"expenses/"+item.id+"/approve","POST",{revision:item.revision}),
@@ -158,6 +185,17 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
         {!Object.keys(summary.totals||{}).length&&<p>Aucune enveloppe enregistrée pour cette année.</p>}
       </div>}
     </Card>
+    <Card title="Ventilation des sorties par activité" icon="barchart"
+      subtitle="Engagements approuvés et règlements déclarés, sans mélange avec les recettes.">
+      {Object.entries(summary?.by_activity_pole||{}).flatMap(([currency,groups])=>
+        Object.entries(groups).map(([pole,values])=>
+          <p key={currency+"-"+pole}>
+            <strong>{POLE_LABELS[pole]||pole} · {currency}</strong>
+            <span style={{display:"block"}}>Engagé : {fmt(values.committed,currency)} · Déclaré payé : {fmt(values.paid,currency)} · Reste : {fmt(values.unpaid,currency)}</span>
+          </p>))}
+      {!Object.keys(summary?.by_activity_pole||{}).length&&<p>Aucune sortie approuvée sur cette période.</p>}
+      <p className="hint">Les anciennes dépenses non classées restent visibles sans réaffectation automatique.</p>
+    </Card>
     <Card title="Fournisseurs et prestataires" icon="users"
       subtitle="Annuaire des fournisseurs de l’établissement, distinct du personnel.">
       {suppliers.length>0&&<Table rowKey={(_,i)=>suppliers[i].id} rowActions={(_,i)=>canManage?[{id:"edit",label:"Modifier le fournisseur",write:true,disabled:busy,run:()=>editSupplier(suppliers[i])}]:[]} headers={["Fournisseur","Contact","Téléphone","État","Action"]}
@@ -195,9 +233,14 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     </Card>
     <Card title="Demandes de dépenses" icon="idcard"
       subtitle="Achat, facture ou intervention justifiée : préparation, validation puis règlement.">
-      {expenses.length>0&&<Table rowKey={(_,i)=>expenses[i].id} rowActions={(_,i)=>[{id:"detail",label:"Consulter la dépense",run:()=>openExpense(expenses[i].id)}]} headers={["Objet","Fournisseur","Montant","Déclaré payé","Solde","État","Dossier"]}
+      <label className="field">Filtrer les dépenses par activité<select value={poleFilter} onChange={e=>setPoleFilter(e.target.value)}>
+        <option value="">Toutes les activités</option>
+        {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+        <option value="unclassified">À classer (historique)</option>
+      </select></label>
+      {expenses.length>0&&<Table rowKey={(_,i)=>expenses[i].id} rowActions={(_,i)=>[{id:"detail",label:"Consulter la dépense",run:()=>openExpense(expenses[i].id)}]} headers={["Objet","Pôle financier","Fournisseur","Montant","Déclaré payé","Solde","État","Dossier"]}
         rows={expenses.map(e=>[
-          e.label,e.supplier_name,fmt(e.amount,e.currency),fmt(e.paid,e.currency),
+          e.label,POLE_LABELS[e.activity_pole]||"À classer",e.supplier_name,fmt(e.amount,e.currency),fmt(e.paid,e.currency),
           fmt(e.balance,e.currency),
           <Status tone={statusTone(e.status)}>{STATUS[e.status]||e.status}</Status>,
           <Button className="small" onClick={()=>openExpense(e.id)}>Détail</Button>,
@@ -209,6 +252,12 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
             <option value="">Sélectionner un budget</option>
             {approvedBudgets.map(b=><option key={b.id} value={b.id}>{b.category} · {fmt(b.available,b.currency)} disponibles</option>)}
           </select></label>
+          <label className="field">Pôle financier<select required value={expenseForm.activity_pole} onChange={e=>setExpenseForm({...expenseForm,activity_pole:e.target.value})}>
+            <option value="">Choisir l'activité concernée</option>
+            {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>
+          <label className="field">Centre de coûts<input maxLength={100} placeholder="Ex. Administration, collège, cantine" value={expenseForm.cost_center} onChange={e=>setExpenseForm({...expenseForm,cost_center:e.target.value})}/></label>
+          <label className="field">Nature comptable<input maxLength={100} placeholder="Ex. Entretien, achats, immobilisation" value={expenseForm.accounting_nature} onChange={e=>setExpenseForm({...expenseForm,accounting_nature:e.target.value})}/></label>
           <label className="field">Fournisseur<select required value={expenseForm.supplier} onChange={e=>setExpenseForm({...expenseForm,supplier:e.target.value})}>
             <option value="">Sélectionner un fournisseur</option>
             {suppliers.filter(s=>s.active).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
@@ -224,6 +273,21 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     {detail&&<Card title={"Dépense — "+detail.expense.label} icon="shield">
       <div className="actions"><Button onClick={()=>setDetail(null)}>Fermer</Button></div>
       <p>Fournisseur : <strong>{detail.expense.supplier_name}</strong> · Budget : {detail.expense.category}</p>
+      <p>Activité : <strong>{POLE_LABELS[detail.expense.activity_pole]||"À classer"}</strong>
+        {detail.expense.cost_center?" · Centre de coûts : "+detail.expense.cost_center:""}
+        {detail.expense.accounting_nature?" · Nature comptable : "+detail.expense.accounting_nature:""}
+      </p>
+      {canManage&&detail.expense.status==="draft"&&<form onSubmit={updateDraftClassification}>
+        <div className="two">
+          <label className="field">Pôle de cette dépense<select required value={draftClassification.activity_pole} onChange={e=>setDraftClassification({...draftClassification,activity_pole:e.target.value})}>
+            <option value="">Choisir le pôle</option>
+            {POLES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+          </select></label>
+          <label className="field">Centre de coûts du projet<input maxLength={100} value={draftClassification.cost_center} onChange={e=>setDraftClassification({...draftClassification,cost_center:e.target.value})}/></label>
+          <label className="field">Nature comptable du projet<input maxLength={100} value={draftClassification.accounting_nature} onChange={e=>setDraftClassification({...draftClassification,accounting_nature:e.target.value})}/></label>
+        </div>
+        <Button type="submit" disabled={busy}>Enregistrer la classification</Button>
+      </form>}
       <p>Référence : {detail.expense.invoice_reference} · Date : {detail.expense.expense_on}</p>
       <p>Montant : <strong>{fmt(detail.expense.amount,detail.expense.currency)}</strong> · Déclaré réglé : {fmt(detail.expense.paid,detail.expense.currency)} · Reste : <strong>{fmt(detail.expense.balance,detail.expense.currency)}</strong></p>
       <p>Statut : <Status tone={statusTone(detail.expense.status)}>{STATUS[detail.expense.status]||detail.expense.status}</Status></p>
