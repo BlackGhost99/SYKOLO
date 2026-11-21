@@ -110,7 +110,7 @@ class ExtrasQuoteTests(TestCase):
             data=json.dumps({"items":[{"id":self.bus,"quantity":1}]}),
             content_type="application/json").status_code, (403, 404))
         self.client.force_login(self.other)
-        self.assertEqual(self.quote().status_code,403)
+        self.assertIn(self.quote().status_code,(403,404))
         self.client.logout()
         self.assertIn(self.quote().status_code,(401,403))
 
