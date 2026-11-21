@@ -18,7 +18,7 @@ const expense={id:"exp-1",year:"year-1",budget:"bud-1",category:"Énergie",curre
   supplier:"sup-1",supplier_name:"Électricien TEST",label:"Réparation tableau",amount:"60000.00",
   paid:"20000.00",balance:"40000.00",status:"partially_paid",invoice_reference:"FAC-TEST",
   expense_on:"2026-11-10",revision:2};
-function fakeBackend(){
+function fakeBackend(item=expense){
   return vi.fn(async (url,opts={})=>{
     if(url==="/api/v1/auth/csrf")return Response.json({ok:true});
     if(opts.method==="POST")return Response.json({...supplier,id:"sup-2"},{status:201});
@@ -26,8 +26,8 @@ function fakeBackend(){
     if(url.includes("/operating/categories"))return Response.json({categories:catalog});
     if(url.includes("/operating/suppliers"))return Response.json({suppliers:[supplier]});
     if(url.includes("/operating/budgets"))return Response.json({budgets:[budget]});
-    if(url.includes("/operating/expenses/"))return Response.json({expense,payments:[]});
-    if(url.includes("/operating/expenses"))return Response.json({expenses:[expense]});
+    if(url.includes("/operating/expenses/"))return Response.json({expense:item,payments:[],decisions:[]});
+    if(url.includes("/operating/expenses"))return Response.json({expenses:[item]});
     if(url.includes("/operating/summary"))return Response.json({
       year:"year-1",budgets:[budget],totals:{XAF:{
         ceiling:"100000.00",committed:"60000.00",paid:"20000.00",remaining:"40000.00",
@@ -115,6 +115,42 @@ test("nouvelle dépense vers une administration sans fournisseur fictif",async()
       data.beneficiary_name==="Administration publique TEST"&&
       data.supplier===null&&data.category_ref==="cat-1";
   })).toBe(true));
+});
+
+test("préparateur : soumission de demande et absence d'autorisation directe",async()=>{
+  const item={...expense,status:"draft",workflow_state:"draft",paid:"0.00",balance:"60000.00"};
+  const fetch=fakeBackend(item);vi.stubGlobal("fetch",fetch);
+  document.cookie="csrftoken=operating-test";
+  const user=userEvent.setup();
+  render(<OperatingPanel schoolId="school-1" workingYearId="year-1" canManage/>);
+  await user.click(await screen.findByRole("button",{name:"Détail"}));
+  await screen.findByText("Dépense — Réparation tableau");
+  expect(screen.getByRole("button",{name:"Soumettre pour autorisation"})).toBeTruthy();
+  expect(screen.queryByRole("button",{name:"Autoriser la dépense"})).toBeNull();
+  await user.click(screen.getByRole("button",{name:"Soumettre pour autorisation"}));
+  await waitFor(()=>expect(fetch.mock.calls.some(([url,opts])=>
+    url.endsWith("/operating/expenses/exp-1/submit")&&opts?.method==="POST"&&
+    JSON.parse(opts.body).revision===2
+  )).toBe(true));
+});
+
+test("contrôleur : refus motivé sans toucher aux encaissements",async()=>{
+  const item={...expense,status:"submitted",workflow_state:"submitted",paid:"0.00",balance:"60000.00"};
+  const fetch=fakeBackend(item);vi.stubGlobal("fetch",fetch);
+  document.cookie="csrftoken=operating-test";
+  const user=userEvent.setup();
+  render(<OperatingPanel schoolId="school-1" workingYearId="year-1" canApprove/>);
+  await user.click(await screen.findByRole("button",{name:"Détail"}));
+  await screen.findByText("Dépense — Réparation tableau");
+  expect(screen.getByRole("button",{name:"Autoriser la dépense"})).toBeTruthy();
+  expect(screen.queryByRole("button",{name:"Soumettre pour autorisation"})).toBeNull();
+  await user.type(screen.getByLabelText(/Motif du refus/),"Facture incomplète à rectifier");
+  await user.click(screen.getByRole("button",{name:"Refuser la demande"}));
+  await waitFor(()=>expect(fetch.mock.calls.some(([url,opts])=>
+    url.endsWith("/operating/expenses/exp-1/reject")&&opts?.method==="POST"&&
+    JSON.parse(opts.body).reason==="Facture incomplète à rectifier"
+  )).toBe(true));
+  expect(fetch.mock.calls.every(([url])=>!String(url).includes("/finance/payments"))).toBe(true);
 });
 
 test("le comptable peut proposer un fournisseur, sans pouvoir approuver les budgets",async()=>{

@@ -21,6 +21,11 @@ ACTIVITY_POLES = (
 )
 ACTIVE_ACTIVITY_POLES = {key for key, _ in ACTIVITY_POLES if key != "unclassified"}
 
+EXPENSE_WORKFLOW_STATES = (
+    ("draft", "Brouillon"), ("submitted", "Soumise"),
+    ("rejected", "Refusée"), ("approved", "Approuvée"),
+)
+
 BENEFICIARY_TYPES = (
     ("supplier", "Fournisseur ou prestataire"),
     ("staff", "Membre du personnel (hors paie)"),
@@ -124,6 +129,12 @@ class OperatingExpense(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     expense_on = models.DateField()
     invoice_reference = models.CharField(max_length=120)
+    # These states never change the amount committed in the budget.
+    # Only approved_at means an authorized budget commitment.
+    workflow_state = models.CharField(max_length=12, choices=EXPENSE_WORKFLOW_STATES, default="draft")
+    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                     null=True, blank=True, related_name="+")
+    submitted_at = models.DateTimeField(null=True, blank=True)
     revision = models.PositiveIntegerField(default=1)
     prepared_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
@@ -162,6 +173,33 @@ class OperatingExpense(models.Model):
             raise ValidationError("Dépense en dehors de l'année scolaire.")
         if bool(self.approved_by_id) != bool(self.approved_at):
             raise ValidationError("Validation de dépense incomplète.")
+        if bool(self.submitted_by_id) != bool(self.submitted_at):
+            raise ValidationError("Soumission de dépense incomplète.")
+        if self.workflow_state == "submitted" and not self.submitted_at:
+            raise ValidationError("Une demande soumise doit conserver son auteur.")
+        if self.workflow_state == "approved" and not self.approved_at:
+            raise ValidationError("Autorisation de dépense incomplète.")
+        if self.approved_at and self.workflow_state != "approved":
+            raise ValidationError("Une dépense autorisée ne peut redevenir un projet.")
+
+
+class OperatingExpenseDecision(models.Model):
+    """Append-only workflow evidence, separate from money/payment records."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey("institutions.School", on_delete=models.PROTECT)
+    expense = models.ForeignKey(OperatingExpense, on_delete=models.PROTECT, related_name="workflow_decisions")
+    action = models.CharField(max_length=16, choices=(
+        ("submitted", "Soumise"), ("rejected", "Refusée"),
+        ("approved", "Approuvée"), ("revised", "Révisée"),
+    ))
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    revision = models.PositiveIntegerField()
+    reason = models.CharField(max_length=240, blank=True, default="")
+    occurred_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if self.expense_id and self.school_id and self.expense.school_id != self.school_id:
+            raise ValidationError("Historique d'une dépense d'un autre établissement.")
 
 
 class OperatingExpensePayment(models.Model):

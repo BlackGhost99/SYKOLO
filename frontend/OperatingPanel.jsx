@@ -5,7 +5,7 @@ const API="/api/v1/";
 const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
 const fmt=(amount,currency)=>new Intl.NumberFormat("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(amount||0))+" "+currency;
 const METHODS=[["especes","Espèces (déclarées)"],["virement","Virement (déclaré)"],["mobile_money","Mobile Money (déclaré)"],["autre","Autre règlement"]];
-const STATUS={draft:"À valider",approved:"Approuvée",partially_paid:"Partiellement réglée",paid:"Réglée"};
+const STATUS={draft:"Brouillon",submitted:"En attente de validation",rejected:"Refusée",approved:"Autorisée",partially_paid:"Partiellement réglée",paid:"Réglée"};
 const POLES=[
   ["school","Scolarité"],["extraschool","Extrascolarité"],
   ["common","Administration et charges communes"],["investment","Investissements"],
@@ -63,6 +63,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     beneficiary_type:"supplier",supplier:"",beneficiary_name:"",beneficiary_reference:"",
   });
   const [detail,setDetail]=useState(null);
+  const [rejectionReason,setRejectionReason]=useState("");
   const [payment,setPayment]=useState({amount:"",method:"especes",reference:"",paid_on:today()});
   const [paymentKey,setPaymentKey]=useState("");
   const [busy,setBusy]=useState(false);
@@ -142,6 +143,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
     try{
       const data=await request(root+"expenses/"+id);
       setDetail(data);
+      setRejectionReason("");
       setDraftClassification({
         activity_pole:data.expense.activity_pole==="unclassified"?"":data.expense.activity_pole,
         cost_center:data.expense.cost_center||"",
@@ -176,6 +178,21 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       beneficiary_reference:draftBeneficiary.beneficiary_reference,
     }),"Bénéficiaire du projet mis à jour.");
     if(saved)await openExpense(detail.expense.id);
+  }
+  async function submitExpense(item){
+    const saved=await op(()=>request(root+"expenses/"+item.id+"/submit","POST",{
+      revision:item.revision,
+    }),"Demande soumise au contrôleur. Aucun fonds n'est engagé avant autorisation.");
+    if(saved)await openExpense(item.id);
+  }
+  async function rejectExpense(event){
+    event.preventDefault();
+    if(!detail||rejectionReason.trim().length<10)return;
+    const item=detail.expense;
+    const saved=await op(()=>request(root+"expenses/"+item.id+"/reject","POST",{
+      revision:item.revision,reason:rejectionReason.trim(),
+    }),"Demande refusée. Motif enregistré ; une correction est requise pour la soumettre à nouveau.");
+    if(saved)await openExpense(item.id);
   }
   async function approveExpense(item){
     const saved=await op(()=>request(root+"expenses/"+item.id+"/approve","POST",{revision:item.revision}),
@@ -238,7 +255,7 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
   const selectableSubs=(parentId)=>categories.filter(c=>c.parent===parentId&&c.active);
   const approvedBudgets=budgets.filter(b=>b.approved && Number(b.available)>0);
   const currentBudget=budgets.find(b=>b.id===expenseForm.budget);
-  const statusTone=s=>s==="paid"?"green":s==="approved"?"blue":s==="partially_paid"?"orange":"gray";
+  const statusTone=s=>s==="paid"?"green":s==="approved"?"blue":s==="partially_paid"?"orange":s==="rejected"?"red":s==="submitted"?"blue":"gray";
 
   return <section aria-label="Dépenses, fournisseurs et budgets">
     <Card title="Dépenses et budgets de fonctionnement" icon="barchart"
@@ -482,7 +499,29 @@ export default function OperatingPanel({schoolId,workingYearId="",canManage=fals
       <p>Référence : {detail.expense.invoice_reference} · Date : {detail.expense.expense_on}</p>
       <p>Montant : <strong>{fmt(detail.expense.amount,detail.expense.currency)}</strong> · Déclaré réglé : {fmt(detail.expense.paid,detail.expense.currency)} · Reste : <strong>{fmt(detail.expense.balance,detail.expense.currency)}</strong></p>
       <p>Statut : <Status tone={statusTone(detail.expense.status)}>{STATUS[detail.expense.status]||detail.expense.status}</Status></p>
-      {canApprove&&detail.expense.status==="draft"&&<Button disabled={busy} onClick={()=>approveExpense(detail.expense)}>Approuver dans la limite du budget</Button>}
+      {detail.decisions?.length>0&&<details>
+        <summary>Historique des autorisations ({detail.decisions.length})</summary>
+        <Table headers={["Date","Décision","Compte","Justification"]}
+          rows={detail.decisions.map(item=>[
+            new Date(item.occurred_at).toLocaleString("fr-FR"),
+            ({submitted:"Soumission",approved:"Autorisation",rejected:"Refus",revised:"Correction"})[item.action]||item.action,
+            item.actor,item.reason||"—",
+          ])}/>
+      </details>}
+      {canManage&&["draft","rejected"].includes(detail.expense.status)&&<Button disabled={busy||detail.expense.status==="rejected"} onClick={()=>submitExpense(detail.expense)}>
+        Soumettre pour autorisation
+      </Button>}
+      {canApprove&&detail.expense.status==="submitted"&&<>
+        <Button disabled={busy} onClick={()=>approveExpense(detail.expense)}>Autoriser la dépense</Button>
+        <form onSubmit={rejectExpense}>
+          <label className="field">Motif du refus (10 caractères minimum)
+            <textarea required minLength={10} maxLength={240} rows={2}
+              value={rejectionReason} onChange={e=>setRejectionReason(e.target.value)}
+              placeholder="Expliquez précisément la correction nécessaire"/>
+          </label>
+          <Button type="submit" disabled={busy||rejectionReason.trim().length<10}>Refuser la demande</Button>
+        </form>
+      </>}
       {canManage&&detail.expense.status==="draft"&&<Button disabled={busy} onClick={()=>editExpense(detail.expense)}>Corriger le montant</Button>}
       {canPay&&["approved","partially_paid"].includes(detail.expense.status)&&<form onSubmit={markPaid}>
         <p className="hint">Déclarer uniquement un paiement déjà effectué : renseignez la preuve et sa référence. Aucune sortie de fonds n'est déclenchée par YEM.</p>
