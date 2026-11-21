@@ -565,6 +565,8 @@ def approve_expense(request, school_id, expense_id):
             return fail("Classez cette dépense par activité avant approbation.", 409)
         if not row.category_ref_id:
             return fail("Associez une catégorie de dépenses avant approbation.", 409)
+        if not row.category_ref.active or (row.subcategory_ref_id and not row.subcategory_ref.active):
+            return fail("Catégorie archivée : reclassez ce projet avant approbation.", 409)
         if authorised_total(budget) + row.amount > budget.ceiling:
             return fail("Budget insuffisant : la dépense dépasse les fonds non engagés.", 409)
         row.approved_by = request.user
