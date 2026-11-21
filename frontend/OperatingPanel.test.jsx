@@ -239,6 +239,7 @@ test("B2 : centres et natures liés au pôle sans modifier les recettes",async()
   await user.selectOptions(screen.getByLabelText("Pôle financier"),"school");
   await user.selectOptions(screen.getByLabelText("Centre de coûts"),"center-1");
   await user.selectOptions(screen.getByLabelText("Nature comptable"),"nature-1");
+  await user.selectOptions(screen.getByLabelText("Fournisseur",{exact:true}),"sup-1");
   await user.type(screen.getByLabelText("Objet de l'achat"),"Achat de livres test");
   await user.type(screen.getByLabelText(/Montant demandé/),"5000");
   await user.type(screen.getByLabelText("Référence facture/devis"),"DEVIS-B2");
